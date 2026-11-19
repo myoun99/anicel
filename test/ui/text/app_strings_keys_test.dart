@@ -1233,7 +1233,6 @@ void main() {
     'tlShowCameraRows': (s) => s.tlShowCameraRows,
     'tlPush': (s) => s.tlPush,
     'tlPull': (s) => s.tlPull,
-    'sbOneStoryboardRowPerCut': (s) => s.sbOneStoryboardRowPerCut,
     'cnHeadCut': (s) => s.cnHeadCut,
     'cnHeadPicture': (s) => s.cnHeadPicture,
     'cnHeadAction': (s) => s.cnHeadAction,

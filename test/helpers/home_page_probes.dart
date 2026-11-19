@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart' show InbetweenMark;
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -566,6 +567,25 @@ bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) =>
 IconData layerKindIcon(WidgetTester tester, String layerId) => tester
     .appIconButton(find.named('timeline-layer-type-button-$layerId'))
     .icon!;
+
+/// Turns [layerId] into [kind] through its type button's list (F-613) —
+/// the press the person makes, on [rail]'s row.
+Future<void> pickLayerKind(
+  WidgetTester tester,
+  String layerId,
+  LayerKind kind, {
+  String rail = 'timeline',
+}) async {
+  final button = find.named('$rail-layer-type-button-$layerId');
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(ValueKey<String>('$rail-layer-kind-${kind.name}-$layerId')),
+  );
+  await tester.pumpAndSettle();
+}
 
 Future<void> expectCutOrder(WidgetTester tester, List<String> cutIds) async {
   expect(

@@ -42,6 +42,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit, layerRailColumnWidthsIn;
+import 'layer_rail_columns.dart' show LayerKindMenu;
 import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
@@ -112,6 +113,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onToggleLayerTimesheet,
     this.onToggleLayerClip,
     required this.onLayerMarkSelected,
+    this.layerKindMenu,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
     this.layerSyncPartnersOf,
@@ -365,6 +367,10 @@ class TimelinePanel extends StatefulWidget {
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
+
+  /// What a row's type button turns it with (F-613); null leaves every
+  /// row's press a pick of the row.
+  final LayerKindMenu? layerKindMenu;
 
   /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
   /// orientations;
@@ -784,6 +790,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      layerKindMenu: widget.layerKindMenu,
       layerFxStateOf: widget.layerFxStateOf,
       layerLinkPartnersOf: widget.layerLinkPartnersOf,
       layerSyncPartnersOf: widget.layerSyncPartnersOf,

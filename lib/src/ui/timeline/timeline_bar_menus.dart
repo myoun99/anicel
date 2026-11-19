@@ -276,7 +276,6 @@ class TimelineBarMenus {
   /// The layer pill's menu. [context] is where a row's window opens
   /// from — the pill's, or the shell's when a key presses the row.
   List<PanelFlyoutEntry> layer(BuildContext context) {
-    final active = session.activeLayer;
     // B8: every verb below acts on the CUT's active layer — the timeline
     // panel's noun — so the storyboard's menu greys them all out honestly
     // instead of editing a row that panel is not showing.
@@ -352,15 +351,10 @@ class TimelineBarMenus {
       // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
       // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
       // link window, and its button unlinks.
-      PanelFlyoutItem(
-        keyValue: 'toggle-storyboard-layer-button',
-        label: editorActionLabel(EditorActionIds.layerStoryboard),
-        shortcuts: const [EditorActionIds.layerStoryboard],
-        icon: Icons.auto_stories_outlined,
-        enabled: serves && session.layerSwitches.canToggleTargetLayerKind,
-        checked: active?.kind == LayerKind.storyboard,
-        onSelected: session.layerSwitches.toggleTargetLayerKind,
-      ),
+      // ↩️「콘티 레이어」 stood here, toggling the row stood on between
+      // animation and storyboard. 🗣️F-613 (유저 2026-11-19): 「레이어버튼의
+      // 콘티레이어로 변경은 입구 대체되니 삭제」 — the row's type button turns
+      // it between image, animation and conte.
       // R5 #5: the SE and CAMERA section switches left. The legend's own
       // sections cell has shown and hidden both since UI-R7, so this pair
       // was a second door to one setting — and the one further from where

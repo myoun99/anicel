@@ -6,10 +6,12 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_kind_choices.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/named.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/rail_glyph_button.dart';
 import 'layer_label_controls.dart';
 import 'row_control_surface.dart';
@@ -602,6 +604,32 @@ double layerRailTrailingWidth({
   return total;
 }
 
+/// What a row's type button turns it with (F-613): whether a row can take
+/// a kind now, asked as the list opens, and the pick.
+typedef LayerKindMenu = ({
+  bool Function(LayerId layerId, LayerKind kind) takes,
+  void Function(LayerId layerId, LayerKind kind) pick,
+});
+
+/// The list [layer]'s type button opens ([LayerTypeButton.kindChoices]):
+/// [layerKindChoices], its own kind the current one, and one it cannot take
+/// shown and shut (「셀이 여럿인 곳은 그 차이를 보여 주되 고를 수 없다」) —
+/// the app's one list of values to pick from ([asFlyoutValueChoices]).
+List<PanelFlyoutEntry> layerKindChoiceEntries(
+  Layer layer, {
+  required String keyPrefix,
+  required LayerKindMenu menu,
+}) => layerKindChoices.asFlyoutValueChoices(
+  current: layer.kind,
+  choiceOf: (kind) => PanelFlyoutChoice(
+    key: '$keyPrefix-layer-kind-${kind.name}-${layer.id}',
+    label: layerKindDisplayName(kind),
+    icon: layerKindIcon(kind),
+    enabled: menu.takes(layer.id, kind),
+  ),
+  onPicked: (kind) => menu.pick(layer.id, kind),
+);
+
 /// The row's TYPE BUTTON (UI-R24 #7): the kind icon, in the rail's fixed
 /// type slot. Always the kind — an attach row's placement arrow rides the
 /// sheet slot ([LayerAttachArrowCell], R10 R3).
@@ -621,6 +649,7 @@ class LayerTypeButton extends StatelessWidget {
     this.icon,
     this.semanticLabel,
     this.onTap,
+    this.kindChoices,
     this.height = 24,
   });
 
@@ -646,9 +675,21 @@ class LayerTypeButton extends StatelessWidget {
 
   final VoidCallback? onTap;
 
+  /// The kinds a press offers the row, as a list opened from the button —
+  /// read as it opens (🗣️F-613: 「레이어의 아이콘 누르면 변경가능한 대상
+  /// 뜨고 변경가능하게」). Null: a press is [onTap].
+  final List<PanelFlyoutEntry> Function()? kindChoices;
+
   /// Rows shorter than the default (the storyboard's floor-height V row)
   /// pass their own so the button never overflows.
   final double height;
+
+  /// What a press does: opens [kindChoices] where the row offers them, else
+  /// [onTap].
+  VoidCallback? _press(BuildContext context) => switch (kindChoices) {
+    final choices? => () => showPanelFlyout(context, entries: choices()),
+    null => onTap,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -669,7 +710,7 @@ class LayerTypeButton extends StatelessWidget {
         : null;
     final iconSize = folder ? 16.0 : 18.0;
     final name = '$keyPrefix-layer-type-button-$idValue';
-    final onTap = this.onTap;
+    final onTap = _press(context);
     if (onTap == null) {
       // Nothing answers a press here (the export window's list), so it is
       // the kind's glyph alone, not a dead button worn dim — the claim

@@ -1121,7 +1121,7 @@ void main() {
       void keptByAnotherConte(EditorSessionManager s, Layer row) {
         final mine = s.requireActiveCut.id;
         s.selectLayer(row.id);
-        s.layerSwitches.toggleTargetLayerKind();
+        s.layerSwitches.changeLayerKind(row.id, LayerKind.storyboard);
         s.effectsAndFx.toggleLayerTransformFx(row.id);
         s.cutVerbs.createCut();
         s.layerStack.addLayerOfKind(LayerKind.storyboard);

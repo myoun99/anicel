@@ -19,7 +19,8 @@ import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsOpacityControl, layerRowWearsFxSwitch;
 import '../timeline/lane_graph.dart'
     show LaneGraph, LaneGraphMode, LaneGraphVerbs;
-import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
+import '../timeline/layer_rail_columns.dart'
+    show LayerKindMenu, layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
 import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
@@ -124,6 +125,23 @@ class SessionRowButtonPresses {
           session.layerMarks.setLayerMark(id, edit(layer.mark));
         }
       }, description: 'Set layer label');
+
+  /// The type button's kinds (F-613): what a row can turn into now, and a
+  /// pick made on every row it acts on, as one step — a row that cannot
+  /// take the kind stays as it is. Both ask of the layer a press on the row
+  /// acts on ([RowSelection.layerActedOn]): a conte rail's row names the
+  /// conte in hand, as its pick does.
+  LayerKindMenu get kindMenu => (
+    takes: (pressed, kind) => session.layerSwitches.canChangeLayerKind(
+      session.rowSelectionVerbs.layerActedOn(pressed),
+      kind,
+    ),
+    pick: (pressed, kind) => session.rowSelectionVerbs.pickAcross(
+      pressed,
+      (id) => session.layerSwitches.changeLayerKind(id, kind),
+      description: 'Change layer kind',
+    ),
+  );
 
   void pickBlendMode(LayerId pressed, LayerBlendMode mode) =>
       session.layerSwitches.setBlendModeForLayers(

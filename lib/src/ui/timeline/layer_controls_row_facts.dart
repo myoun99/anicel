@@ -182,6 +182,7 @@ Widget layerControlsRowFrom(
     onionSkinEnabled: facts.onionSkinEnabled,
     onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
     onLayerMarkSelected: hooks.onLayerMarkSelected,
+    kindMenu: hooks.layerKindMenu,
     onToggleLayerClip: hooks.onToggleLayerClip,
     onToggleLayerMute: hooks.onToggleLayerMute,
     onLayerTotalVolumeChangeEnd: hooks.onLayerTotalVolumeChangeEnd,

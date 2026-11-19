@@ -1187,9 +1187,6 @@ enum AppStrings {
   String get tlPull => _s('tlPull');
   String get tlSetCommasN => _s('tlSetCommasN');
 
-  /// Refused: a cut holds at most one storyboard row.
-  String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
-
   /// The conte sheet panel.
 
   /// The conte panel's page readout on the two pages that carry no number.
@@ -3975,8 +3972,6 @@ enum AppStrings {
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
-    'sbOneStoryboardRowPerCut':
-        'This cut already has a storyboard row. A cut can hold only one.',
     'cnHeadCut': 'CUT',
     'cnHeadPicture': 'PICTURE',
     'cnHeadAction': 'ACTION',
@@ -5954,7 +5949,6 @@ enum AppStrings {
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
-    'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
     'cnHeadCut': 'カット',
     'cnHeadPicture': '画面',
     'cnHeadAction': '内容',
@@ -5980,7 +5974,6 @@ enum AppStrings {
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
     'tlShowSeRows': 'SE行を表示',
     'tlShowCameraRows': 'カメラ行を表示',
-    'shortcutAction.layer-storyboard': '絵コンテレイヤー',
     'setLengthAction': '露光の長さの設定',
     'markEveryField': '間隔',
     'frameCountEntryFrames': 'コマ数',
@@ -7937,7 +7930,6 @@ enum AppStrings {
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
-    'sbOneStoryboardRowPerCut': '이 컷에는 이미 콘티 레이어가 있습니다. 컷당 하나만 가능합니다.',
     'cnHeadCut': '컷',
     'cnHeadPicture': '화면',
     'cnHeadAction': '내용',
@@ -7963,7 +7955,6 @@ enum AppStrings {
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
     'tlShowSeRows': 'SE 행 표시',
     'tlShowCameraRows': '카메라 행 표시',
-    'shortcutAction.layer-storyboard': '콘티 레이어',
     'setLengthAction': '노출 길이 설정',
     'markEveryField': '간격',
     'frameCountEntryFrames': '프레임',
@@ -10076,8 +10067,6 @@ enum AppStrings {
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
-    'sbOneStoryboardRowPerCut':
-        'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'blockFrameLinesLabel': "Lignes d'image dans les blocs",
     'brDualBlend': 'Fusion double',
     'brTextureBrightness': 'Luminosité',
@@ -10141,7 +10130,6 @@ enum AppStrings {
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
     'tlShowSeRows': 'Afficher les lignes SE',
     'tlShowCameraRows': 'Afficher les lignes caméra',
-    'shortcutAction.layer-storyboard': 'Calque storyboard',
     'setLengthAction': "Définir la durée d'exposition",
     'markEveryField': 'Intervalle',
     'frameCountEntryFrames': 'Images',
@@ -11963,7 +11951,6 @@ enum AppStrings {
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
-    'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'blockFrameLinesLabel': '块内帧线',
     'brDualBlend': '双重混合',
     'brTextureBrightness': '亮度',
@@ -12042,7 +12029,6 @@ enum AppStrings {
     'tlProjectAudioRate': '项目音频采样率',
     'tlShowSeRows': '显示 SE 行',
     'tlShowCameraRows': '显示摄影机行',
-    'shortcutAction.layer-storyboard': '分镜图层',
     'setLengthAction': '设置曝光长度',
     'markEveryField': '间隔',
     'frameCountEntryFrames': '帧数',

@@ -25,19 +25,4 @@ void main() {
       );
     }
   });
-
-  /// conte-duplicate-notice-old-name: the notice a cut's second conte row
-  /// meets called it 「스토리보드 레이어」 in Korean, where the row's kind is
-  /// 「콘티」.
-  test('the notice that a cut holds one conte row names the row by its '
-      'kind\'s own word, in every language', () {
-    for (final language in AppLanguage.values) {
-      final strings = AppStrings.of(language);
-      expect(
-        strings.sbOneStoryboardRowPerCut.toLowerCase(),
-        contains(strings.tlKindStoryboard.toLowerCase()),
-        reason: language.name,
-      );
-    }
-  });
 }

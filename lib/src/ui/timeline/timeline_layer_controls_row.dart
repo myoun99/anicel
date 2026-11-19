@@ -10,6 +10,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_kind_choices.dart' show turnsBetweenKinds;
 import '../../models/layer_id.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
@@ -172,6 +173,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerOpacityChangeEnd,
     this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.kindMenu,
     this.onToggleLayerClip,
     this.onToggleLayerMute,
     this.onLayerTotalVolumeChangeEnd,
@@ -253,6 +255,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// that slot either way.
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
+
+  /// What the type button turns a row it [turnsBetweenKinds] with (F-613);
+  /// null leaves every row's press a pick of the row.
+  final LayerKindMenu? kindMenu;
 
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;
@@ -669,18 +675,32 @@ class TimelineLayerControlsRow extends StatelessWidget {
   );
 
   /// The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN fixed slot, a
-  /// control separate from the name (function TBD again — R26 #30-1 moved
-  /// the blend flyout to the toolbar's PS-style dropdown, user rule 07-22;
-  /// tap selects for now). One slot for every row kind, ALWAYS the kind
-  /// (R10 R3): the arrow that used to take this slot on attach rows now
-  /// rides the sheet column.
-  Widget _typeButton(BuildContext context) => LayerTypeButton(
-    keyPrefix: keyPrefix,
-    idValue: '${layer.id}',
-    kind: layer.kind,
-    folderCollapsed: layer.collapsed,
-    onTap: () => onSelectLayer(layerIdNow(context, layer.id)),
-  );
+  /// control separate from the name. One slot for every row kind, ALWAYS
+  /// the kind (R10 R3): the arrow that used to take this slot on attach
+  /// rows now rides the sheet column.
+  ///
+  /// 🗣️F-613 (유저 2026-11-19): 「레이어의 아이콘 누르면 변경가능한 대상
+  /// 뜨고 변경가능하게」 — a row that [turnsBetweenKinds] opens the kinds it
+  /// can turn into; any other still picks the row, as every row's did while
+  /// the button had no verb of its own (R26 #30-1 moved the blend list
+  /// away; 「tap selects for now」).
+  Widget _typeButton(BuildContext context) {
+    final menu = kindMenu;
+    return LayerTypeButton(
+      keyPrefix: keyPrefix,
+      idValue: '${layer.id}',
+      kind: layer.kind,
+      folderCollapsed: layer.collapsed,
+      onTap: () => onSelectLayer(layerIdNow(context, layer.id)),
+      kindChoices: menu == null || !turnsBetweenKinds(layer)
+          ? null
+          : () => layerKindChoiceEntries(
+              BerthRow.at(context) ?? layer,
+              keyPrefix: keyPrefix,
+              menu: menu,
+            ),
+    );
+  }
 
   // ── nesting and the name ──────────────────────────────────────────────
 

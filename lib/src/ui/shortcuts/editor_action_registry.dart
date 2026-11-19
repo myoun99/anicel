@@ -917,7 +917,6 @@ abstract final class EditorActionIds {
   static const cutConvertLinked = 'cut-convert-linked';
   static const layerRename = 'layer-rename';
   static const layerDetach = 'layer-detach';
-  static const layerStoryboard = 'layer-storyboard';
   static const layerAttachFreeAbove = 'layer-attach-free-above';
   static const layerAttachFreeBelow = 'layer-attach-free-below';
   static const layerAttachSyncedAbove = 'layer-attach-synced-above';
@@ -2048,13 +2047,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerDetach,
     label: 'Detach from base',
-    shelf: ShortcutShelf.layerPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerStoryboard,
-    label: 'Storyboard layer',
     shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,

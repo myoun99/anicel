@@ -8,6 +8,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_repeat.dart'
@@ -489,7 +490,10 @@ void main() {
     expect(s.layerMarks.canMarkEvery, isFalse);
     expect(s.cells.canDeleteCellAtCurrentFrame, isFalse);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);
-    expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);
+    expect(
+      s.layerSwitches.canChangeLayerKind(attachId, LayerKind.storyboard),
+      isFalse,
+    );
     expect(
       s.edgeDrag.beginExposureEdgeDrag(
         layerId: attachId,

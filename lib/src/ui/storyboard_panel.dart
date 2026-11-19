@@ -759,6 +759,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
+    this.layerKindMenu,
     this.onToggleLayerTimesheet,
     this.layerOnTimesheetOf,
     this.onToggleLayerOnionSkin,
@@ -1417,6 +1418,10 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
+
+  /// What a conte row's type button turns it with, as the timeline's
+  /// (F-613).
+  final LayerKindMenu? layerKindMenu;
 
   /// B5③ (2026-08-17, ordered twice before): the timeline rows' timesheet
   /// toggle on this rail's rows too — the SAME session verb the timeline
@@ -3455,6 +3460,7 @@ class _StoryboardRailHead extends KeptPiece {
     this.onToggleLayerVisibility,
     this.onLayerOpacityChanged,
     this.onLayerMarkSelected,
+    this.kindMenu,
     this.onToggleLayerTimesheet,
     this.onToggleLayerOnionSkin,
     this.onionSkinEnabled = false,
@@ -3516,6 +3522,7 @@ class _StoryboardRailHead extends KeptPiece {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
+  final LayerKindMenu? kindMenu;
 
   /// The sheet toggle, where the row is handed one
   /// ([_StoryboardRailSweep.handsSheetToggle]): a conte row's writes its
@@ -3579,6 +3586,7 @@ class _StoryboardRailHead extends KeptPiece {
     onLayerOpacityChanged != null,
     onLayerOpacityChangeEnd != null,
     onLayerMarkSelected != null,
+    kindMenu != null,
     onToggleLayerTimesheet != null,
     onToggleLayerOnionSkin != null,
     onionSkinEnabled,
@@ -3628,6 +3636,13 @@ class _StoryboardRailHead extends KeptPiece {
       opacityDragPreview: opacityDragPreview,
       onLayerMarkSelected: (_, edit) =>
           onLayerMarkSelected?.call(rowId, edit),
+      kindMenu: switch (kindMenu) {
+        final menu? => (
+          takes: (_, kind) => menu.takes(rowId, kind),
+          pick: (_, kind) => menu.pick(rowId, kind),
+        ),
+        null => null,
+      },
       onToggleLayerTimesheet: toggleSheet == null
           ? null
           : (_) => toggleSheet(rowId),

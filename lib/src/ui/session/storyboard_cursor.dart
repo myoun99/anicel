@@ -6,13 +6,11 @@ import '../../models/cut_id.dart';
 import '../../models/exposure_memo.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_conte_row.dart';
 import '../storyboard_layer_policy.dart';
-import '../text/app_strings.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'range_selections.dart';
@@ -41,25 +39,6 @@ class StoryboardCursor {
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
   final RangeSelections _rangeSelections;
-
-  /// Why the storyboard toggle is refused, or null when it is allowed.
-  ///
-  /// A cut holds at most ONE storyboard row: the conte has one strip per
-  /// cut and the coverage rule has one row to tile it. The toggle says so
-  /// rather than silently doing nothing, and rather than making the second
-  /// row that used to red-screen the V row.
-  String? get targetLayerStoryboardRefusal {
-    final targetLayer = _selection.activeLayer;
-    if (targetLayer == null || targetLayer.kind == LayerKind.storyboard) {
-      return null;
-    }
-    final cut = _project.activeCutOrNull;
-    if (cut == null ||
-        cutAcceptsAnotherStoryboardLayer(cut, exceptLayerId: targetLayer.id)) {
-      return null;
-    }
-    return AppText.strings.sbOneStoryboardRowPerCut;
-  }
 
   /// Writes a conte cell's ACTION text, undoably.
   ///

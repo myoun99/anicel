@@ -717,6 +717,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
             onToggleLayerClip: _rowPresses.toggleClip,
             onLayerMarkSelected: _rowPresses.pickMark,
+            layerKindMenu: _rowPresses.kindMenu,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,

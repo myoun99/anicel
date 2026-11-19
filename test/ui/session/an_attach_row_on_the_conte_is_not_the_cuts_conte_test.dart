@@ -82,7 +82,7 @@ void main() {
     session.selectLayer(cel.id);
 
     expect(
-      session.layerSwitches.canToggleTargetLayerKind,
+      session.layerSwitches.canChangeLayerKind(cel.id, LayerKind.storyboard),
       isFalse,
       reason: 'the cut has its conte',
     );

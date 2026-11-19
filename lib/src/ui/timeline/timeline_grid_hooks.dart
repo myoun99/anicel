@@ -16,7 +16,8 @@ import '../dialogs/link_window.dart' show LinkKind;
 import '../input/two_axis_drag.dart'
     show SheetZoom, TwoAxisScrollController, sheetZoom;
 import 'layer_label_controls.dart' show LayerMarkEdit;
-import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
+import 'layer_rail_columns.dart'
+    show LayerKindMenu, LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
@@ -127,6 +128,7 @@ class TimelineGridHooks {
     this.onToggleLayerOnionSkin,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
+    this.layerKindMenu,
     this.onToggleLayerClip,
     this.commaDrag,
     this.rangeHooks,
@@ -465,6 +467,10 @@ class TimelineGridHooks {
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
+
+  /// What a row's type button turns it with (F-613); null leaves every
+  /// row's press a pick of the row.
+  final LayerKindMenu? layerKindMenu;
 
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;

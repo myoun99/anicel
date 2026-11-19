@@ -1125,6 +1125,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onLayerOpacityChanged: _rowPresses.previewOpacity,
                     onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
                     onLayerMarkSelected: _rowPresses.pickMark,
+                    layerKindMenu: _rowPresses.kindMenu,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
                     onToggleLayerTimesheet: _rowPresses.toggleTimesheet,

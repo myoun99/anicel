@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
+import 'package:anicel/src/models/layer_kind.dart';
 
 import 'helpers/room_for_the_pills.dart';
 import 'helpers/timeline_host.dart';
@@ -83,17 +84,14 @@ void main() {
     expect(find.bySemanticsLabel('Animation layer'), findsNWidgets(2));
   });
 
-  testWidgets('storyboard toggle updates the active layer kind icon', (
+  testWidgets('the type button turns a row into the conte and back', (
     WidgetTester tester,
   ) async {
     await _open(tester);
 
     expect(layerKindIcon(tester, 'default-layer-1'), Icons.filter_outlined);
 
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-storyboard-layer-button'),
-    );
+    await pickLayerKind(tester, 'default-layer-1', LayerKind.storyboard);
 
     expect(
       layerKindIcon(tester, 'default-layer-1'),
@@ -101,10 +99,7 @@ void main() {
     );
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
 
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-storyboard-layer-button'),
-    );
+    await pickLayerKind(tester, 'default-layer-1', LayerKind.animation);
 
     expect(layerKindIcon(tester, 'default-layer-1'), Icons.filter_outlined);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
@@ -116,10 +111,7 @@ void main() {
     await _open(tester);
     await addLayer(tester);
 
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('toggle-storyboard-layer-button'),
-    );
+    await pickLayerKind(tester, 'default-layer-2', LayerKind.storyboard);
 
     expect(layerKindIcon(tester, 'default-layer-1'), Icons.filter_outlined);
     expect(

@@ -1082,6 +1082,7 @@ class _StoryboardRowsAndLabels {
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       opacityDragPreview: widget.opacityDragPreview,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      kindMenu: widget.layerKindMenu,
       onToggleLayerTimesheet: _sheetToggleOf(rowId),
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
       onionSkinEnabled:

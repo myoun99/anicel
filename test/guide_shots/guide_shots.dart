@@ -1086,8 +1086,8 @@ Future<void> timelineShots(WidgetTester tester) async {
     'menu-layer',
     rect: keyed(tester, [
       'timeline-layer-menu-button',
+      'timeline-rename-layer-button',
       'timeline-detach-layer-button',
-      'toggle-storyboard-layer-button',
     ]).inflate(8),
     ratio: 2,
   );

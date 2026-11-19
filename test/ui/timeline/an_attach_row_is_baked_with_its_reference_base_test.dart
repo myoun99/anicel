@@ -119,7 +119,7 @@ void main() {
     }
     if (conte) {
       s.selectLayer(paper);
-      s.layerSwitches.toggleTargetLayerKind();
+      s.layerSwitches.changeLayerKind(paper, LayerKind.storyboard);
       expect(current(s, paper).kind, LayerKind.storyboard, reason: 'premise');
     }
     s.cutCommandCoordinator.setLayerAttachment(
