@@ -241,6 +241,10 @@ void main() {
       contains('_report(times.summary(DateTime.now().difference(started)))'),
     );
     expect(source, contains('ownClock: ownClock,'));
+    // In line: from the moment the batch asked the line for its suites to
+    // the moment it started.
+    expect(source, contains('asked = DateTime.now();'));
+    expect(source, contains('final inLine = began.difference(asked);'));
     expect(source, contains('final cpu = CpuWatch(process.pid);'));
     expect(source, contains('spent: spent,'));
     expect(
