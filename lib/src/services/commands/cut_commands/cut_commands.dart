@@ -260,6 +260,7 @@ class _CutCommands {
     canvasSize: canvasSize,
     place: place,
     brushFrameStore: _coordinator.brushFrameStore,
+    setText: _coordinator.setCelText,
   );
 
   /// What [placeCutCanvas]'s [step] asks of a cut, in whole pixels — and

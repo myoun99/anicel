@@ -40,6 +40,7 @@ import '../../models/exposure_memo.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
+import '../bitmap_surface_geometry.dart' show CelTextSetter;
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../command.dart' show Command, WorkAhead, oneStepOf;
@@ -157,6 +158,7 @@ class CutCommandCoordinator {
     required this.historyManager,
     this.brushFrameStore,
     this.sheetInkStores = const [],
+    this.setCelText,
   });
 
   final ProjectRepository repository;
@@ -170,6 +172,11 @@ class CutCommandCoordinator {
   /// The sheets' handwriting stores — where a deleted 동기컷 canonical's
   /// handwriting moves to the cut taking its sync over.
   final List<BrushFrameStore> sheetInkStores;
+
+  /// How a canvas resize that fits its picture sets a cel's texts again
+  /// ([ResizeCutCanvasCommand.setText]) — the text tool's own setting,
+  /// handed in from where letters are laid out.
+  final CelTextSetter? setCelText;
 
   // ── the cut commands: their own object, in their own file ───────────
   //

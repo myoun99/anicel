@@ -7,7 +7,7 @@ import '../../models/cut_content_translation.dart'
 import '../../models/cut_id.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/project.dart';
-import '../bitmap_surface_geometry.dart' show CelFit;
+import '../bitmap_surface_geometry.dart' show CelFit, CelTextSetter;
 import '../brush_frame_store.dart';
 import '../cels_ahead.dart';
 import '../command.dart';
@@ -39,6 +39,7 @@ class ResizeCutCanvasCommand
     required this.canvasSize,
     this.place = PictureMovedBy.none,
     this.brushFrameStore,
+    this.setText,
   });
 
   final ProjectRepository repository;
@@ -65,6 +66,11 @@ class ResizeCutCanvasCommand
   /// project model only stores the cut size; stroke data lives in the
   /// app-level brush store).
   final BrushFrameStore? brushFrameStore;
+
+  /// How a fit sets each cel's texts again from their grown numbers
+  /// (`celTextsFitted`) — handed in from where letters are laid out. A fit
+  /// of a cel with texts and none to set them throws, and is not taken.
+  final CelTextSetter? setText;
 
   Project? _previousProject;
   double _contentDx = 0;
@@ -161,7 +167,7 @@ class ResizeCutCanvasCommand
         return store.fitCutCelsAhead(
           targetsOf(project, cutId),
           fitted.fitOf,
-          lay: celFitted,
+          lay: (cel, fit) => celFitted(cel, fit, setText: setText),
           report: report,
         );
       }

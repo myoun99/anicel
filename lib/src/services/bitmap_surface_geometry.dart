@@ -10,11 +10,12 @@ import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
 import '../models/cut_content_translation.dart'
-    show ResizeWalk, carriedPose, resizeWalk;
+    show ResizeWalk, carriedPoint, carriedPose, resizeSizeOf, resizeWalk;
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/engine_tile_ledger.dart';
+import 'cel_text_box_edits.dart' show celTextScaledAbout;
 import 'guide_geometry.dart' show GuideTransform;
 
 /// Raster geometry ops for baked surfaces (R19 bake-only): canvas resize
@@ -540,6 +541,64 @@ CelTextContent celTextContentMoved(
     : content.copyWith(
         anchor: CanvasPoint(x: content.anchor.x + dx, y: content.anchor.y + dy),
       );
+
+/// [content] as a resize's fit by [walk] leaves it: standing where the
+/// picture now is — its anchor carried by the walk — with every length of
+/// it ([celTextScaledAbout]: the letters' size, tracking and outline, the
+/// box's width and least height) the walk's one size ([resizeSizeOf])
+/// times what it was.
+///
+/// 🗣️I-180-Q7 a (유저 2026-11-20): 「a 숫자를 키워 다시 조판」 — the numbers
+/// grow by Q2's law, and the text is set again from them ([celTextsFitted]):
+/// a fit that differs across and down leaves the letters' shape as it was.
+CelTextContent celTextContentFitted(
+  CelTextContent content,
+  ResizeWalk walk,
+) => celTextScaledAbout(
+  content,
+  resizeSizeOf(walk),
+  content.anchor,
+).copyWith(anchor: carriedPoint(content.anchor, walk));
+
+/// How a text is SET from its numbers: its content's plate behind a wall
+/// ([CelText.plate]) — the text tool's own setting, which lives where
+/// letters are laid out (`setCelTextPlate`) and is handed in.
+typedef CelTextSetter =
+    Future<Map<TileCoord, BitmapTile>> Function(
+      CelTextContent content,
+      PasteboardWall wall,
+    );
+
+/// [texts] as a resize's fit by [walk] leaves them, behind [wall]: each
+/// one's numbers fitted ([celTextContentFitted]) and set again from them by
+/// [setText] — never its old plate stretched (🗣️I-180-Q7 a).
+///
+/// ⚠️Throws where there are texts and nothing to set them with: a step
+/// that cannot set them is not taken, as a lay that fails is not
+/// (`BrushFrameStore.fitCutCelsAhead`).
+Future<List<CelText>> celTextsFitted(
+  List<CelText> texts,
+  ResizeWalk walk, {
+  required PasteboardWall wall,
+  required CelTextSetter? setText,
+}) async {
+  if (texts.isEmpty) {
+    return texts;
+  }
+  if (setText == null) {
+    throw StateError('a fit of a cel with texts was given no way to set them');
+  }
+  Future<CelText> fitted(CelText text) async {
+    final content = celTextContentFitted(text.content, walk);
+    return CelText(
+      id: text.id,
+      content: content,
+      plate: await setText(content, wall),
+    );
+  }
+
+  return Future.wait([for (final text in texts) fitted(text)]);
+}
 
 /// A text's [pixels] — its plate moved by whole pixels — cut onto the grid
 /// of its cel, [canvasSize] in tiles of [tileSize]: the very pass a

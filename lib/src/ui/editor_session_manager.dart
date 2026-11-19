@@ -84,6 +84,7 @@ import 'session/block_shift.dart';
 import 'session/cut_shift.dart';
 import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
+import 'text/cel_text_bake.dart' show setCelTextPlate;
 import 'text/word_bake.dart' show RepaintOnWordBakes;
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -266,6 +267,7 @@ class EditorSessionManager extends ChangeNotifier
       historyManager: historyManager,
       brushFrameStore: renderCaches.brushFrameStore,
       sheetInkStores: renderCaches.sheetInkStores,
+      setCelText: setCelTextPlate,
     );
     activeCutControllers.rebuild();
     renderCaches.attach();

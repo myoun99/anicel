@@ -24,7 +24,7 @@ import 'transform_track.dart';
 /// 🗣️I-180 (유저 2026-11-19 · 20): a resize may FIT the picture to the new
 /// canvas as an import fits a file (비율 유지 · 비율 무시), and then
 /// 「그림이나 내부 값이나 키나 싹 다 변경」 — places by the scale, and a
-/// number that sizes something by the one size factor ([_sizeOf]).
+/// number that sizes something by the one size factor ([resizeSizeOf]).
 /// 「내용물 변경안하는걸 옵션으로 … 지금이랑 같은 법」: 원본 크기 is today's
 /// resize, every value here at scale 1.
 ///
@@ -79,16 +79,18 @@ bool _stays(ResizeWalk walk) =>
     walk.sx == 1 && walk.sy == 1 && walk.dx == 0 && walk.dy == 0;
 
 /// The ONE number a resize sizes a number by — a camera's zoom, a pixel
-/// value, a cel number's letters: the scale where it is the same across and
-/// down, and where it is not, the two's geometric mean.
+/// value, a cel number's letters, a text's lengths (I-180-Q7): the scale
+/// where it is the same across and down, and where it is not, the two's
+/// geometric mean.
 ///
 /// 🗣️I-180-Q2 a (유저 2026-11-20): 「두 배율의 기하평균」 for a pixel value,
 /// and I-180-Q4 a 「기하평균의 역수 — Q2 와 같은 법」 for the camera's zoom;
 /// I-180-Q3's memo 「크기라는건 배율 말한거였음. 가로세로길이 하나만 어긋나게
 /// 바뀌는게아니라」 — a size is one scale, never stretched across alone.
-double _sizeOf(ResizeWalk walk) => math.sqrt(walk.sx * walk.sy);
+double resizeSizeOf(ResizeWalk walk) => math.sqrt(walk.sx * walk.sy);
 
-CanvasPoint _carried(CanvasPoint point, ResizeWalk walk) => CanvasPoint(
+/// Where [walk] carries [point] — a point of the old canvas, on the new.
+CanvasPoint carriedPoint(CanvasPoint point, ResizeWalk walk) => CanvasPoint(
   x: walk.sx * point.x + walk.dx,
   y: walk.sy * point.y + walk.dy,
 );
@@ -154,7 +156,7 @@ PropertyTrack<CanvasPoint> _carriedPointTrack(
     keys: {
       for (final entry in track.keys.entries)
         entry.key: entry.value.copyWith(
-          value: _carried(entry.value.value, walk),
+          value: carriedPoint(entry.value.value, walk),
           path: _scaledPath(entry.value.path, walk),
         ),
     },
@@ -224,7 +226,7 @@ CutCamera carryCutCamera(
     walk: walk,
   );
   final anchorPoint = _carriedPointTrack(track.anchorPoint, walk);
-  final scale = _sizedLane(track.scale, 1 / _sizeOf(walk));
+  final scale = _sizedLane(track.scale, 1 / resizeSizeOf(walk));
   if (identical(position, track.position) &&
       identical(anchorPoint, track.anchorPoint) &&
       identical(scale, track.scale)) {
@@ -236,18 +238,23 @@ CutCamera carryCutCamera(
 }
 
 GuideAxis _carriedAxis(GuideAxis axis, ResizeWalk walk) => axis.copyWith(
-  origin: _carried(axis.origin, walk),
+  origin: carriedPoint(axis.origin, walk),
   angleDegrees: _scaledDegrees(axis.angleDegrees, walk),
 );
 
 GuideLine _carriedLine(GuideLine line, ResizeWalk walk) =>
-    line.copyWith(a: _carried(line.a, walk), b: _carried(line.b, walk));
+    line.copyWith(
+      a: carriedPoint(line.a, walk),
+      b: carriedPoint(line.b, walk),
+    );
 
 VanishingPoint _carriedVanishingPoint(
   VanishingPoint point,
   ResizeWalk walk,
 ) => switch (point) {
-  VanishingPointAt(:final point) => VanishingPointAt(_carried(point, walk)),
+  VanishingPointAt(:final point) => VanishingPointAt(
+    carriedPoint(point, walk),
+  ),
   // A direction is a vector, not a place — it does not move; a scale that
   // differs across and down turns it.
   VanishingPointTowards(:final dx, :final dy) =>
@@ -326,8 +333,8 @@ Map<String, EffectParameter> _sizedPixelValues(LayerEffect effect, double by) {
 /// filters: its points ([LayerEffect.points] — a radial blur's centre) and
 /// where a kind that draws its own picture stands it ([LayerEffect.stand]
 /// — a cel number's letters), and its pixel values and the size it stands
-/// its picture at by the size factor ([_sizeOf]). Points and stands are the
-/// row's paper's, read before its pose as its cels' pixels are, so the
+/// its picture at by the size factor ([resizeSizeOf]). Points and stands are
+/// the row's paper's, read before its pose as its cels' pixels are, so the
 /// content map carries them. Unkeyed, they read the paper's middle
 /// ([effectPointOnPaper], [effectStandPose]), a row at rest's on [from] —
 /// and are keyed where they stood first, as a position lane is
@@ -343,7 +350,7 @@ LayerEffect _carriedEffect(
   required ResizeWalk walk,
 }) {
   final centre = layerIdentityPose(from).center;
-  final size = _sizeOf(walk);
+  final size = resizeSizeOf(walk);
   TransformTrack placed(TransformTrack keys, {required bool sized}) {
     final position = _carriedPositionLane(
       keys.position,
@@ -382,7 +389,7 @@ LayerEffect _carriedEffect(
 /// the content map, its size by the scale on each axis, as the picture is.
 TransformPose carriedPose(TransformPose pose, ResizeWalk walk) =>
     pose.copyWith(
-      center: _carried(pose.center, walk),
+      center: carriedPoint(pose.center, walk),
       scaleX: pose.scaleX * walk.sx,
       scaleY: pose.scaleY * walk.sy,
     );
@@ -395,7 +402,7 @@ TransformPose carriedPose(TransformPose pose, ResizeWalk walk) =>
 /// does. The model's [MediaReference.laid] and the cels' pixels both move by
 /// this one answer.
 ({int dx, int dy}) laidShiftOf(TransformPose laid, ResizeWalk walk) {
-  final to = _carried(laid.center, walk);
+  final to = carriedPoint(laid.center, walk);
   return (
     dx: (to.x - laid.center.x).round(),
     dy: (to.y - laid.center.y).round(),

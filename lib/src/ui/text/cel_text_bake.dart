@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/cel_text.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../native/engine_tile_ledger.dart';
@@ -95,6 +96,31 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
     set.dispose();
   }
   return _keptWhereUnchanged(previous, cut.tiles);
+}
+
+/// [content]'s plate as this app sets it, behind [wall] — once the faces
+/// it is set in that are on their way have arrived, as the text tool waits
+/// for them: a text that comes with its numbers alone (a CLIP STUDIO text,
+/// `ClipImportDoor`) or whose numbers a fit grew (I-180-Q7 a,
+/// `celTextsFitted`).
+Future<Map<TileCoord, BitmapTile>> setCelTextPlate(
+  CelTextContent content,
+  PasteboardWall wall,
+) async {
+  final arriving = celTextFacesArriving(content);
+  if (arriving != null) {
+    await arriving;
+  }
+  final layout = layoutCelText(content);
+  try {
+    return await bakeCelTextPlate(
+      layout,
+      pasteboard: wall,
+      tileSize: defaultCelTileSize,
+    );
+  } finally {
+    layout.dispose();
+  }
 }
 
 /// The part of the canvas a bake of [layout] rasters: everything the text

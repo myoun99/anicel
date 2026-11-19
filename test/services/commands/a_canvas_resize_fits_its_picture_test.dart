@@ -8,6 +8,7 @@ import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_photo.dart';
+import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -15,12 +16,16 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/media_reference.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart'
+    show CelTextSetter;
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/commands/resize_cut_canvas_command.dart';
@@ -203,6 +208,100 @@ void main() {
         .pose;
     expect(pose.center, CanvasPoint(x: 100, y: 80));
     expect((pose.scaleX, pose.scaleY), (1.0, 1.0));
+  });
+
+  // 🗣️I-180-Q7 a (유저 2026-11-20 「a 숫자를 키워 다시 조판」): a text goes
+  // where its picture goes, its lengths grow by the one size (Q2), and it is
+  // set again from those numbers — never its plate stretched, so a fit that
+  // differs across and down (×4 × ×1 here) keeps its letters' shape.
+  group('a text on a fitted cel', () {
+    final text = CelText(
+      id: 7,
+      content: CelTextContent(
+        spans: [
+          const CelTextSpan(
+            text: 'A',
+            style: TextLetterStyle(
+              fontSize: 20,
+              letterSpacing: 1,
+              outlineWidth: 2,
+            ),
+          ),
+        ],
+        anchor: CanvasPoint(x: 50, y: 40),
+        wrapWidth: 100,
+        minHeight: 30,
+      ),
+    );
+    const wide = CanvasSize(width: 2048, height: 256);
+
+    BrushFrameStore holding(BitmapSurface surface) =>
+        BrushFrameStore()..storeBakedSurface(cel(drawnRow), surface);
+
+    ResizeCutCanvasCommand fitted(
+      BrushFrameStore store, {
+      CelTextSetter? setText,
+    }) => ResizeCutCanvasCommand(
+      repository: repository(),
+      cutId: cutId,
+      canvasSize: wide,
+      place: const PictureFittedBy(MediaFitMode.stretch),
+      brushFrameStore: store,
+      setText: setText,
+    );
+
+    test('stands where the picture goes, set again from numbers grown by '
+        'the one size', () async {
+      final store = holding(inked().withTexts([text]));
+      final set = BitmapTile(
+        size: side,
+        pixels: Uint8List(side * side * 4)..[3] = 0xFF,
+      );
+      final asked = <(CelTextContent, PasteboardWall)>[];
+      await resize(
+        fitted(
+          store,
+          setText: (content, wall) async {
+            asked.add((content, wall));
+            return {TileCoord(x: 1, y: 0): set};
+          },
+        ),
+      );
+
+      final kept = store.bakedSurfaceOrNull(cel(drawnRow))!.texts.single;
+      final content = kept.content;
+      final style = content.spans.single.style;
+      expect(kept.id, 7);
+      expect(content.anchor, CanvasPoint(x: 200, y: 40));
+      expect(
+        (style.fontSize, style.letterSpacing, style.outlineWidth),
+        (40.0, 2.0, 4.0),
+        reason: '√(4 × 1) = 2 — one size, across and down',
+      );
+      expect((content.wrapWidth, content.minHeight), (200.0, 60.0));
+      expect(asked.single, (content, wide.pasteboardAt(PasteboardReach.whole)));
+      expect(kept.plate.keys, [TileCoord(x: 1, y: 0)]);
+      expect(
+        identical(kept.plate.values.single, set),
+        isTrue,
+        reason: 'the plate is the one set from those numbers',
+      );
+    });
+
+    test('🚨with nothing to set it again, the fit takes no step', () async {
+      final surface = inked().withTexts([text]);
+      final store = holding(surface);
+      final command = fitted(store);
+      await expectLater(
+        command.workAhead(undo: false)!((_) {}),
+        throwsStateError,
+      );
+      expect(command.execute, throwsStateError);
+      expect(
+        identical(store.bakedSurfaceOrNull(cel(drawnRow)), surface),
+        isTrue,
+      );
+    });
   });
 
   test('비율 무시 늘림 scales each axis by its own factor', () async {
