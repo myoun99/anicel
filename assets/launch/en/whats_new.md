@@ -2,107 +2,44 @@
 
 ## New
 
-- **Several timelines** — the timeline button on the conte panel's legend makes, opens, renames, duplicates and deletes timelines. Opening another timeline switches everything over, cuts and SE rows included. A synced cut, shared by two timelines, has a sync button of its own beside the link button.
-- **Ruler markers** — double-click the ruler to place a marker with text, a color and a length. Drag it to move it; double-click it to edit or delete it.
-- **Rasterize an fx** — the rasterize button on an fx group's or a transform's header bakes that one fx into the picture just as it shows. The button is off while no value has changed.
-- **Gradient and continuous fill** — with "Gradient" on in the fill tool's settings, pick a range with a region or a lasso, then drag again to paint a gradient across it. "Continuous Fill" fills every region you pass over while holding down, all at once.
-- **Stroke start and end** — "Start and end" in the brush settings makes a stroke's start and end thin and light. Clip Studio brushes bring their start and end settings with them.
-- **Import TVPaint brushes** — bring in a BRUSH.tvpx exported from TVPaint's custom panel with "Import brushes".
-- **XDTS timesheets** — the timesheet formats now include the XDTS viewer's four sheets (A3 6 seconds, B4 6 seconds, B4 3 seconds, Ponoc 6 seconds). Turn on "Ink output" when exporting XDTS and the timesheet's handwriting goes along, shown in the viewer.
-- **Video in cel export** — the export window's Cels tab writes a video for each cut too (MP4, MOV or GIF). The Sequence tab's video formats gain GIF, and folders made by "Folders" take a prefix and a suffix.
-- **Importing** — choose "New project" under "Into" in the import window to open the file in a new tab. Videos can come in as "Picture only" or "Sound only", and a video at another frame rate than the project's can be fitted to the project. Numbered files dropped together gather into one row, and each row can be switched off to leave it out.
-- **GPU** — in Preferences ▸ System, choose the GPU the app uses (Automatic, Power saving, High performance; Windows) and see the name of the GPU in use. The Memory tab shows the video memory the app uses too.
-- **Solo take** — the take button on the legend shows only the rows of the takes you pick.
-- **Find by key** — in the keyboard shortcuts window, press the button beside the search box and type a key to find the actions that use it. When keys clash, the name of the other action shows beside the warning; press it to take the key off one side.
-- **Selection and transform pills** — a finished selection gets a pill below it (deselect, invert, anti-alias), and the transform tool a pill below its box (anti-alias, flip horizontal, flip vertical, confirm, cancel). Mesh shows all its points before you touch it, and each point's position can be typed in the tool settings panel.
-- **Color edit preview** — Binarize, Delete color and Keep color have a preview button, so you see the result on the canvas before running it.
-- **Alt+wheel zoom** — on the timeline, X-sheet and conte panel, Alt+wheel zooms the frames in and out. A two-finger zoom holds the spot between the fingers.
-- **Cut list** — the legend's first cell shows the current cut's name; press it to open a list of cuts, where cuts can be renamed too.
-- **Sound row equalizer** — a sound row's Fx menu offers an Equalizer (Low Cut, High Cut, Low, High), and playback and export sound the same. The Fx menu is split into Audio and Video sections, the one a row does not use dimmed; a sound row takes audio fx only.
-- **Sound row compressor** — the Audio section of a sound row's Fx menu gains a Compressor (Threshold, Ratio, Attack, Release, Makeup). Just added, it leaves the sound unchanged.
-- **Media pool views** — buttons right of the media pool's ＋ pick a list view or an icon view. The list view keeps the names pinned at the left while columns such as Duration, Video and Audio scroll sideways; the icon view shows big thumbnails, and moving the cursor across a movie shows the frame under it. "Preset view" shows each file's placement preset (kind, start, end, duration) instead of the file.
-- **Placement presets** — from a pool file's menu, Place ▸ "Placement preset" opens a window to set where the file starts and ends when placed, a picture's name and fit, and a sound block's name tag and words. The import window and drag-and-drop start from them. A file of a single picture can come in as an animation layer too.
+- **Sound row presets** — the top of a sound row's Fx list offers presets (Dialogue, Music, Sound effects, Ambience). Picking one puts a set of effects tuned for that sound (an equalizer, a compressor and so on) on the row at once; after that they are the row's own, and their values can be changed.
+- **Noise removal** — the Audio section of a sound row's Fx menu gains Noise removal. One value sets how much of the cleaned sound is heard; just added, it is 0 and leaves the sound unchanged. It works on 44.1 kHz and 96 kHz sound too.
+- **Sync to preset** — the window that opens from a file's in-use mark in the media pool gains "Sync to preset". Pick the places already laid that differ from the file's placement preset and bring values such as start, length and fit back to the preset, or use "Apply to all" for every place that differs. It works for sounds, movies and pictures alike.
+- **Fit the picture to a new canvas size** — the Canvas size window, and the pill when adjusting on the canvas, can fit the picture to the new canvas with "Fit, keep ratio" or "Stretch, ignore ratio". By default the picture stays as it is, as before.
+- **Canvas size for several cuts** — select several cut blocks and change the canvas size, and every selected cut changes at once, in one undo step.
+- **Changing a layer's kind** — press a picture row's kind icon to turn the row between Image, Animation and Storyboard. A kind the row cannot become is shown disabled. Press it among several selected rows and they all change. The Layer menu's storyboard toggle has moved to this button.
+- **Thinning with the lead edge** — pulling a frame block's lead edge backwards thins the blocks out by the frames pulled (one frame: 1, 3, 5, 7…; two frames: 1, 4, 7…). In the conte panel, pulling a cut's lead edge past the cut's end deletes the cut.
+- **Stamp spacing** — the stamp tool's settings gain Spacing, a share of the piece's size; one whole piece by default.
+- **Size of cel export movies** — movies on the export window's Cels tab gain a Size (Camera, Canvas). Camera is the default.
+- **XDTS target** — with XDTS picked in the timesheet format, the target to export (key drawings, in-betweens) is picked below it. Pick one and only that is written.
 
 ## Improved
 
-- **A lighter app** — heavy work has moved to the graphics card and to threads of its own, so drawing, filling, transforming, playing and saving in a large cut stall the screen less. Scrolling and playing the timeline and conte are lighter too, and from the second launch on the "Preparing app" window clears in about a second.
-- **Memory** — opening a large cut, filling over and over, and duplicating a timeline no longer make memory climb so far.
-- **Mouse strokes** — a stroke drawn with the mouse in a heavy scene drags behind less.
-- **Color mixing brushes** — a stroke with color mixing on stalls less as it crosses what is already painted.
-- **Reset buttons** — a reset is on only when there is something to put back, and when on it wears the accent color. The canvas pill's rotate buttons stay their usual color; when the view is turned, the rotation reset lights up instead.
-- **The wait window** — cutting, pasting, duplicating, confirming a transform and color edits across several pictures run behind the wait window; a single picture goes straight through with no window.
-- **Linked cuts** — pasting a cut block linked makes a linked cut as it stands, length, camera keys and conte included. A linked cut's partners are written under its number in the timesheet header, and a linked cut's layers cannot be unlinked.
-- **Trading pictures** — paste onto a block of an image layer or a synced row, or drag a block onto another row's block, and the block stays while only its picture changes. Dragging within a synced row onto the next block trades just the pictures as well.
-- **Selections** — a selection started on an empty cell copies, cuts and pastes the same as one started on a block.
-- **Layer rows** — make a folder with several layers picked and they go into it. Detach acts on every picked layer. A new attach layer lands just above or below the row you stand on, and the attach fold button is split into an upper and a lower half. A folded folder pastes folded.
-- **Legend** — a color label solo picks by label alone, whatever the take. The conte legend's timeline button reads at the same size as a row's name.
-- **SE** — an SE name tag on the canvas holds its name and type in one box. An SE block's name and line are single lines, and Enter closes the window with "OK". The timesheet no longer shades the empty rows of the SE column.
-- **Sound rows** — the blend cell holds a speaker button and a total volume bar (up to 200). A sound row's opacity shows on the canvas while you drag it. The total volume is this bar alone: the "Total volume" lane in the Audio group is gone.
-- **Typing a bar's value** — double-click a row's opacity bar or a sound row's total volume bar and a number pad opens under it to type the value. The conte, the timeline and the X-sheet all work alike.
-- **Pan keys** — the Pan in a sound row's Audio group takes keys as the Volume does, and playback and export move the sound left and right along them.
-- **Name Tag group** — a sound row's Transform group now sits inside its Name Tag group. Switching the Name Tag off hides the row's name tag on screen, in playback and in export alike; switching the Audio group off skips the volume keys and the pan and plays the total volume alone.
-- **The timeline during playback** — buttons such as the frame pill no longer change while playing. Hover the red line of a block that crosses a cut's edge and a tooltip tells why.
-- **Keyboard shortcuts window** — the window is larger, and under "Canvas › Tools" each tool is followed by its sub-tools. The scrollbar no longer overlaps the reset buttons. In the TVPaint preset, Alt-drag moves the view and Ctrl+Alt-drag turns it.
-- **Brush pill on background panels** — with the main viewer or a sheet laid as the background, the same brush pill as the canvas's stands in the same place.
-- **Cut tool** — choose "Display" or "Layer" under "Reference". "Display" cuts every visible layer just as it shows.
-- **Fill tool** — holding down and moving slides the checker pattern along with the cursor.
-- **Import defaults** — pictures come in at their original size. Long options no longer widen the import window. Importing a file of the same name again previews and brings in the new file. Kept files in the media pool show the date they were kept instead of a path.
-- **Percent while opening and importing** — when you open a project or import from the import window, the percent grows with how much of the file has been read. The bar no longer stands still while a file comes down from the cloud, and a .anicel file shows its percent from the start.
-- **Frame rate** — 23.976 fps is marked "Recommended".
-- **Export** — the video preview shows the same picture as the file it writes. Save As (PNG) prints the camera path, guides and onion skin as the canvas shows them. The Cels tab always has a scrollbar for layer folders, and exports the timesheets of every linked cut.
-- **Color labels** — the "Art" process is gone. Paper labels start from the LO paper and take their stage's color, and a new image layer starts in the LO color.
-- **Timesheet format** — with "Book names · repeats left out" on, overlapping books are written short, as BOOK1,2,3.
-- **Direction layer** — a direction layer's drawing always shows above the drawing rows, and new drawing rows are added below the direction row.
-- **Letters** — cel numbers and SE name tags are drawn as sharp as the pictures. Simplified Chinese in the conte prints at the same weight on screen and in PDF.
-- **Merging image layers** — image layers merged together stay an image layer.
-- **Sound in the viewer** — a sound file opens as two waveforms, the whole file and a close-up around the playhead. Press either to go there.
-- **First play in the viewer** — the 1 to 3 second stall when you first press play on a movie opened in the viewer is shorter. The same goes for movies imported into the media pool.
-- **fx plugins** — a plugin that fails to draw shows ⚠ at the head of its row. Applying a plugin for the first time no longer stalls the app. "External FX plugin work limit" in Preferences has steps that are easier to read.
-- **Graphics driver restarts** — unsaved drawing is kept when the driver restarts.
-- **Moving the view** — overlays such as the camera frame move together with the picture when you pan or zoom. While transforming, a selection's outline follows the pixel edges.
-- **Eyedropper** — pressing Alt in the middle of a drag switches to the eyedropper only once the drag ends.
-- **Light mode** — the background color around the canvas stays as it is in light mode.
-- **TVPaint cameras** — a TVPaint camera moving along a curved path comes in with only as many keys as the file has. Before, a key landed every few frames wherever the path bent.
-- **Transforming large pictures** — a selection larger than the graphics card can handle at once can still be transformed with the transform tool, mesh included.
-- **Voice recording** — noise suppression and the volume pass run on another thread when recording stops, so the screen no longer freezes at the end of a long take.
+- **A lighter app** — less hitching while playback pictures are baked ahead (while the green band fills), lighter mouse-wheel scrolling and layer eye toggles on the timeline, and no more waiting on the graphics engine at every stroke. Cuts with a cel number fx, dragging an fx value, the stall at the end of opening a large .anicel, and opening a .tvpp are lighter too.
+- **While picking a color** — turning the color wheel of a lane, or of the paper, the backdrop or the pasteboard, shows the color as it goes and records it once, when the window closes, as one undo step.
+- **Stamp drags** — a row of stamps laid by one drag goes back with a single Ctrl+Z. Stamps across several cels are laid behind the wait window.
+- **Continuous fill and stamp drags** — even if the screen stalls for a moment, every region passed meanwhile is filled, and a row of stamps follows the path as drawn.
+- **Camera instructions on the conte paper** — a camera move shared by two panels is written in each panel for its own part (for example 1f-73f T.B and 74f-144f T.B). A cut of one panel writes the whole cut in the same words as its timesheet.
+- **Cel export** — a storyboard block with no name is still exported, filed under the next free number (the block's name in the project stays as it is). Filtering by color label leaves rows with no label out of the export list. The export window's folding sections start open.
+- **View shortcuts on the floor panel** — zoom and rotate shortcuts work on a timesheet or viewer laid on the floor too.
+- **Pasting into S rows** — frames copied from a regular layer are not pasted into an S row, nor S row frames into a regular layer; the paste buttons turn off then.
+- **TVPaint import** — when a sound file is not where the .tvpp recorded it, it is looked for under the file's folder. Layer instance names in Hangul, kana or other letters come in as written, and each layer's blending mode (Multiply and so on) comes in too.
+- **When the graphics device stops** — on Windows, if the graphics device that draws the screen stops, a window offers "Save and restart", "Quit without saving" or close.
+- **Media pool scrollbars** — the media pool's scrollbars are always shown, in the list view and the icon view.
+- **The tool list** — tool names in the tool settings panel stand on one line, cut with an ellipsis when they do not fit; the tooltip shows the whole name.
 
 ## Fixed
 
-- **Android updates** — every app update wiped the settings and brought back the first-run window.
-- **Closing on Windows** — the app kept running after its window was closed.
-- **Exporting** — exporting a cut while the canvas stood on another cut sometimes closed the app.
-- **Black frames in conte playback** — a black frame showed on the canvas as playback crossed from one cut to the next.
-- **Strokes** — fast curves came out angular, mouse strokes in a heavy scene joined up in long straight lines, a stroke's first ink showed late, and anti-aliasing "None" wore away the grain of bitmap tips.
-- **Holding Shift or Ctrl** — the key's auto-repeat came in as a new press, letting go of a Shift line or stopping playback.
-- A layer in a linked cut could not be renamed, and a linked cut made by a linked paste did not come back with redo after an undo.
-- After dragging layers into a new order, or adding and deleting them, blocks showed on the wrong rows.
-- The last row of an attach group or a folder could not be dragged out of it.
-- A folder row's block color broke off partway, and a line of block color showed above a block's corner triangles.
-- Zooming out the page view mixed up the frame numbers.
-- The handle at the top middle of a graph was hidden under its toolbar.
-- A negative A/V offset barely moved the picture ahead.
-- In a transform, pressing a handle moved the whole picture, the cursor turned into a hand while dragging with the pen, some rows did not follow when several rows were transformed together, and a small selection squeezed in perspective vanished.
-- The color wheel did not follow pure black (#000000).
-- With "Fill Beyond Canvas" off, a fill still ran out past the canvas.
-- A blurred 1px line showed along the canvas edge, and a blur past the canvas was cut off at the picture's end.
-- In linked cuts and synced attach rows, undo could show another row's picture or leave empty cels behind.
-- Attach rows did not follow their base row's reference fx moves.
-- The media button on the right strip lit up without showing its panel.
-- The first "Untitled" project opened at launch did not use the background color you had set.
-- The first click on the Fx button after closing the plugin install window did nothing.
-- Dragging on the canvas with the whole cut tool drew a brush stroke.
-- Standing on the "Centre" lane of a radial blur covered the canvas with a grey veil.
-- Zooming after panning made the view jump for one frame.
-- In the TVPaint preset, the + key did not change the brush size.
-- Opening a TVPaint file with several clips showed a false warning.
-- The onion skin ghost of a row with cel numbers left the number out.
-- A CLIP STUDIO file's pictures and vector layers were cut at the canvas edge, so a picture kept past the canvas never showed on the pasteboard and moving the layer did not bring it back.
-- In a cut with an fx plugin on a row, the screen kept stalling for over a second while pictures were baked ahead for playback, and the baking ahead itself took long.
-- A pen stroke drawn while the screen was frozen for a long time lost its beginning.
-- Stamping a flipped picture with the cut tool, the ghost lagged behind the cursor.
-- At the tool settings panel's narrowest width, the anti-alias buttons' letters overlapped and spilled out of their cell.
-- After the graphics card restarted, a second notice still asked you to restart the app.
-- With the Wintab setting, drawing with the mouse was slow, and a pen stroke's pressure bunched into steps partway through (with Windows Ink on or off).
-- Reading a video stopped right after rewinding it, sound exported to MP4 lost its first moment when opened again, and colors of videos exported on Windows were read wrong.
-- On Windows, a video's frame count came out two too many, and a jump showed the picture from two frames before.
-- Importing a JPEG with false size information closed the app.
+- After undoing every step of a transform box, a change was still held and the selection outline stayed red.
+- Once the undo history was full, gestures made of several steps, such as a stamp drag, no longer went back in one undo.
+- Dragging stamps could drop the last stamp.
+- When editing several selected blocks at once, such as lengthening their frames, the selection rectangle did not follow the blocks.
+- Moving to a frame whose green band an edit had emptied showed the picture, but the band did not fill again.
+- When a canvas size change moved the anchor, effect points (a radial blur's center, a cel number's place and so on) did not follow the picture.
+- Dragging a blur value grew memory by gigabytes, and it did not come back after the blur was removed.
+- In the export window's preview, moving between frames showed a black screen until the next picture came, and a new loading ring showed as a small dot.
+- In the export window, an XDTS sheet with only in-betweens picked showed as a blank screen.
+- A take recorded with noise suppression on was laid slightly late, out of step with the mouth.
+- Deleting colors across several blocks made the progress window look stuck; the percentage now fills.
+- Widening the panel while the media pool list was scrolled to its far side left the columns and scrollbar shifted.
+- With the sub-tool list open, the lower rows of the tool settings panel (continuous fill, gradient and so on) were cut off and could not be scrolled to.
