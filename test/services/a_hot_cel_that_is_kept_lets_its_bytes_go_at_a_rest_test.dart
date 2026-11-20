@@ -175,7 +175,7 @@ void main() {
         expect(tile.hasItsBytesHere, isTrue);
         expect(tile.pixels, pixelsOf(4));
         expect(store.isCelFileBacked(key('f')), isFalse);
-        expect(store.isCelCold(key('f')), isFalse);
+        expect(store.isCelParked(key('f')), isFalse);
       });
 
       test('🚨a cel a canvas stands on keeps its bytes through the rest, '

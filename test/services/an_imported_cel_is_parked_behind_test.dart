@@ -153,7 +153,7 @@ void main() {
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(key('f')), same(landed));
-    expect(store.isCelCold(key('f')), isFalse);
+    expect(store.isCelParked(key('f')), isFalse);
     expect(store.isCelCold(key('g')), isTrue);
     expect(store.hotBakedSurfaceOrNull(key('g')), isNull);
   });
@@ -170,7 +170,7 @@ void main() {
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(key('f')), same(landed));
-    expect(store.isCelCold(key('f')), isTrue);
+    expect(store.isCelParked(key('f')), isTrue);
   });
 
   test('🚨one the engine holds every tile of is left the looks\' shell: '
@@ -240,7 +240,7 @@ void main() {
     await store.drainTiering();
 
     expect(store.isCelFileBacked(key('f')), isTrue);
-    expect(store.isCelCold(key('f')), isFalse);
+    expect(store.isCelParked(key('f')), isFalse);
     expect(store.coldBakedBytes, 0);
   });
 
@@ -257,9 +257,13 @@ void main() {
 
     expect(store.hotBakedSurfaceOrNull(key('f')), same(f));
     expect(store.hotBakedSurfaceOrNull(key('g')), same(g));
-    expect(store.isCelCold(key('f')), isFalse);
-    expect(store.isCelCold(key('g')), isFalse);
+    expect(store.isCelParked(key('f')), isFalse);
+    expect(store.isCelParked(key('g')), isFalse);
     expect(store.isBeingParked(key('g')), isFalse);
+
+    store.parkBehind();
+
+    expect(store.isBeingParked(key('f')), isFalse, reason: 'a later ask');
   });
 
   test('🧱every import lands its cels by the one door: none bakes a cel '

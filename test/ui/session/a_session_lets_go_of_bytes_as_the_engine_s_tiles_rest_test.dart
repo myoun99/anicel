@@ -111,7 +111,7 @@ void main() {
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(at3), isNotNull);
-    expect(store.isCelCold(at3), isFalse);
+    expect(store.isCelParked(at3), isFalse);
     expect(store.hotBakedSurfaceOrNull(at0), isNull);
     expect(store.isCelCold(at0), isTrue);
   });

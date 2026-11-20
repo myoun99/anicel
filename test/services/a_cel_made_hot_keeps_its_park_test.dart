@@ -101,7 +101,10 @@ void main() {
 
       expect(hot.tiles[origin]!.pixels, pixelsOf(4));
       expect(store.hotBakedSurfaceOrNull(key('f')), same(hot));
-      expect(store.isCelCold(key('f')), isTrue);
+      expect(store.isCelParked(key('f')), isTrue);
+      // Parked, and not cold: the two are two questions.
+      expect(store.isCelCold(key('f')), isFalse);
+      expect(store.coldCelKeys, [key('g')]);
       expect(parkOf('f'), same(park));
       expect(File(park.filePath).existsSync(), isTrue);
       expect(store.coldBakedBytes, parkedBytes);
@@ -229,7 +232,7 @@ void main() {
         // What is kept of it now, if anything, is what it shows now.
         final shown = store.hotBakedSurfaceOrNull(key('f'));
         if (shown != null) {
-          expect(store.isCelCold(key('f')), isFalse);
+          expect(store.isCelParked(key('f')), isFalse);
         }
       });
     }

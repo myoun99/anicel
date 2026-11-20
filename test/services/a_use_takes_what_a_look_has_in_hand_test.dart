@@ -143,14 +143,14 @@ void main() {
       expect(store.bakedSurfaceOrNull(key('f')), same(looked));
     });
 
-    test('a parked cel\'s too, its park let go as it is made hot', () async {
+    test('a parked cel\'s too, parked still as it is made hot', () async {
       parkCold(store, {key('a'): ink(1)});
       final looked = await aLookAt('a');
 
       final used = store.bakedSurfaceOrNull(key('a'));
 
       expect(used, same(looked));
-      expect(store.isCelCold(key('a')), isFalse);
+      expect(store.isCelParked(key('a')), isTrue);
     });
 
     test('the shell the looks let go of comes first: the engine holds it '

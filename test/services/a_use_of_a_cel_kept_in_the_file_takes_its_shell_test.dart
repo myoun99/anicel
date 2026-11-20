@@ -190,7 +190,7 @@ void main() {
 
       expect(used, same(shell));
       expect(used.tiles[origin]!.hasItsBytesHere, isFalse);
-      expect(store.isCelCold(key('a')), isTrue);
+      expect(store.isCelParked(key('a')), isTrue);
     });
 
     test('🚨a tile of the cel\'s shell whose slot went reads the file — '

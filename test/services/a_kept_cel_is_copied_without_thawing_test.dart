@@ -86,8 +86,8 @@ void main() {
     expect(looked(store, 'a'), pixelsOf(inked(1)));
   });
 
-  test('🎯a parked cel\'s copy keeps its picture once the source thaws and '
-      'lets go of what it kept', () async {
+  test('🎯a parked cel\'s copy keeps its picture once the source is drawn '
+      'on and lets go of what it kept', () async {
     final store = BrushFrameStore();
     parkCold(store, {key('a'): inked(2)});
 
@@ -98,10 +98,12 @@ void main() {
     expect(store.isCelCold(key('b')), isTrue);
     expect(store.dirtyCelKeysSinceSave, contains(key('b')));
 
-    store.bakedSurfaceOrNull(key('a'));
+    // ↩️A thaw let the park go till 2026-11-21 (cel-originals Q6): a cel
+    // made hot keeps it, and what changes its pixels ends it.
+    store.storeBakedSurface(key('a'), inked(9));
     await ScratchFile.lettingGo;
 
-    expect(store.isCelCold(key('a')), isFalse, reason: 'fixture: it thawed');
+    expect(store.isCelParked(key('a')), isFalse, reason: 'fixture: let go');
     expect(
       looked(store, 'b'),
       pixelsOf(inked(2)),
@@ -195,7 +197,7 @@ void main() {
 
       store.copyCel(key('a'), key('b'), canvasSize: size);
 
-      expect(store.isCelCold(key('b')), isFalse);
+      expect(store.isCelParked(key('b')), isFalse);
       expect(store.coldBakedBytes, 0);
       expect(looked(store, 'b'), pixelsOf(inked(1)));
     });
@@ -246,7 +248,7 @@ void main() {
       blank(store);
       await ScratchFile.lettingGo;
 
-      expect(store.isCelCold(key('b')), isFalse);
+      expect(store.isCelParked(key('b')), isFalse);
       expect(store.celHasRenderableContent(key('b')), isFalse);
       expect(looked(store, 'a'), pixelsOf(inked(2)));
     });
@@ -411,12 +413,14 @@ void main() {
       final before = await roomFiles();
       final bytes = store.coldBakedBytes;
 
-      store.bakedSurfaceOrNull(key('a'));
+      // What changes a cel's pixels ends what it kept (↩️a thaw did till
+      // 2026-11-21: a cel made hot keeps its park — cel-originals Q6).
+      store.storeBakedSurface(key('a'), inked(7));
 
       expect(await roomFiles(), before, reason: 'the copy keeps it');
       expect(store.coldBakedBytes, bytes);
 
-      store.bakedSurfaceOrNull(key('b'));
+      store.storeBakedSurface(key('b'), inked(8));
 
       expect(before.difference(await roomFiles()), hasLength(1));
       expect(store.coldBakedBytes, 0);

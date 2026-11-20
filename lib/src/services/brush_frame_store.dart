@@ -1118,17 +1118,29 @@ class BrushFrameStore {
   /// Bytes currently resident in the hot tier (diagnostics/tests).
   int get hotBakedBytes => _hotWeights.bytes;
 
-  /// Bytes PARKED in the run's 이사대기 room (diagnostics/tests) — no
-  /// longer resident, which is the whole point of the tier moving there.
+  /// Bytes PARKED in the run's 이사대기 room (diagnostics/tests): every
+  /// park's, a hot cel's too ([isCelParked]).
   int get coldBakedBytes => _coldBytes;
 
-  /// Keys currently parked on disk (diagnostics/tests).
-  Iterable<BrushFrameKey> get coldCelKeys => _coldCels.keys;
+  /// Keys of the COLD cels (diagnostics/tests): [isCelCold].
+  Iterable<BrushFrameKey> get coldCelKeys => _coldCels.keys.where(isCelCold);
 
   /// Keys currently backed by the saved project file (diagnostics/tests).
   Iterable<BrushFrameKey> get fileCelKeys => _fileCels.keys;
 
-  bool isCelCold(BrushFrameKey key) => _coldCels.containsKey(key);
+  /// Whether [key] is COLD: parked in the room, and not hot.
+  ///
+  /// ↩️It read the park alone till 2026-11-21, when a park was a cel that
+  /// was not hot. A parked cel made hot keeps its park since (card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu, Q6 —
+  /// [_keepThawed]), so 「parked」 and 「not here」 are two questions, and
+  /// [isCelParked] answers the first.
+  bool isCelCold(BrushFrameKey key) =>
+      _coldCels.containsKey(key) && !_bakedSurfaces.containsKey(key);
+
+  /// Whether [key] has a park in the room, hot or not — a probe.
+  @visibleForTesting
+  bool isCelParked(BrushFrameKey key) => _coldCels.containsKey(key);
 
   bool isCelFileBacked(BrushFrameKey key) => _fileCels.containsKey(key);
 
