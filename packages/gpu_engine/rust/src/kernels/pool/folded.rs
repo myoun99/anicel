@@ -753,13 +753,49 @@ impl Pool {
 
     /// The page of folded tiles the pool may make next — its bytes, and
     /// the bounds it is made within grown by how many —; none where it may
-    /// make none: a `TileAt` names no page more, or its own bytes hold
-    /// none, asked here on the caller's thread ([`Pool::claimed`] says
-    /// what asking another thread that cost).
+    /// make none: a `TileAt` names no page more, asked here on the
+    /// caller's thread ([`Pool::claimed`] says what asking another thread
+    /// that cost).
+    ///
+    /// 🚨NOT HELD TO THE POOL'S OWN LINE ([`Pool::set_most_bytes`]), ONLY
+    /// TO THE BUDGET ([`Bounds::past_its_line`]): the line keeps the
+    /// pool's bytes down, and a fold is what brings them down — its page
+    /// refused at the line, a pool that stands there stands there for
+    /// good. Its tiles left for want of a place are handed to no fold
+    /// again till a folded place is let go ([`Pool::to_fold`]), and
+    /// nothing lets one go. 🔢브러시/렌더링's (2026-11-20, said on
+    /// F-610); no rule of the user's — theirs is F-610-Q5, 「할수있는거
+    /// 다하면서」.
+    ///
+    /// 🔬A Surface Pro 11 (검증/서피스, 2026-11-20, FNK_02 opened and
+    /// left alone, a release build, three runs): the pool stood at
+    /// 1,440 MiB — eleven pages of tiles and one of folded tiles — for
+    /// as long as it was watched in two of them, 70 s and 200 s, where
+    /// the build before came to 320 MiB within a second of its band's
+    /// end. Its line is 512 MiB by half its RAM over the laws' 5,768 —
+    /// under 1,455 MiB at 32 GB: a second page of folded tiles, at
+    /// 1,472, is past it. The build before folded once the band had
+    /// filled, and its first such page took four pages' tiles and more
+    /// before it was full; that day's folds as the band fills
+    /// (`EngineTileLedger._foldBeforeLong`) had filled it by the band's
+    /// end. ⚠️Read off the numbers; the device's own line is asked of
+    /// 검증. The main PC's line is 3 GiB, which nothing measured there
+    /// came near.
+    ///
+    /// ⚠️Past the line by a page of tiles' bytes at the most, and while
+    /// a fold is under way: tiles are handed over a page's before the
+    /// next page's ([`Pool::to_fold`]), and a page whose every tile lies
+    /// folded is given back — after as many pages of folded tiles as
+    /// hold its tiles whole, where none of them folds.
+    ///
+    /// ↩️Till then none was made, nor one made ahead taken
+    /// ([`Pool::folded_page_taken`]), past the pool's bytes (11-19, mine
+    /// as well): a pool is at its line where its store filled it, which
+    /// is where a fold has the most to give back.
     fn folded_page_to_come(&self) -> Option<(u64, (Bounds, u64))> {
         let bytes = self.folded_page_bytes();
         self.next_page().ok()?;
-        self.within_its_bytes(bytes).then(|| (bytes, (self.bounds(), bytes)))
+        Some((bytes, (self.bounds().past_its_line(), bytes)))
     }
 
     /// Whether a fold handed over as the pool stands could have a page
@@ -772,12 +808,13 @@ impl Pool {
     }
 
     /// Puts the page of folded tiles made ahead ([`Room`]) in the books —
-    /// where it was made within the bounds the pool has now, as a page of
-    /// tiles made ahead is taken ([`Pool::claimed`]): one made within
-    /// others goes, on the pages' thread.
+    /// where it was made against the budget the pool keeps to now, as a
+    /// page of tiles made ahead is taken ([`Pool::claimed`]): one made
+    /// against another goes, on the pages' thread. Past the pool's own
+    /// line too ([`Pool::folded_page_to_come`]).
     fn folded_page_taken(&mut self, engine: &Engine) {
         let bytes = self.folded_page_bytes();
-        let now = self.next_page().ok().filter(|_| self.within_its_bytes(bytes));
+        let now = self.next_page().ok();
         let made = now.and_then(|given_back| Some((given_back, self.folded_ahead.taken_as(self.bounds().asked())?)));
         if let Some((given_back, page)) = made {
             let book = Page::Folded(Arena::of((bytes / GRANULE_BYTES) as u32));

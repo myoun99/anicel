@@ -916,7 +916,10 @@ class GpuPool implements _OfAnEngine {
   });
 
   /// Makes no page more past [mostBytes]: the pages made stay — till
-  /// [giveBackPast] — and the next is made only within it.
+  /// [giveBackPast] — and the next is made only within it, but the page
+  /// a fold's tiles need ([fold]): a pool at its line folds on, and
+  /// comes under it (rust/src/kernels/pool/folded.rs,
+  /// `Pool::folded_page_to_come`).
   void makeNoPagePast(int mostBytes) => rust.poolMostBytes(_pool, mostBytes);
 
   /// Keeps to [bytes] in place of the budget the OS gives this process;

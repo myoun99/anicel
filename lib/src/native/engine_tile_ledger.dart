@@ -187,9 +187,11 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   final GpuPool pool;
 final GpuEngine _engine;
 
-  /// The bytes past which no page is made but for the tiles a call holds;
-  /// none but the OS's where null. Falling under the pages made, it gives
-  /// back those nobody holds till they keep within it.
+  /// The bytes past which no page is made but for the tiles a call holds
+  /// and the page a fold lays its tiles on ([foldABatch] —
+  /// [GpuPool.makeNoPagePast] has why); none but the OS's where null.
+  /// Falling under the pages made, it gives back those nobody holds till
+  /// they keep within it.
   int? get byteBudget => _byteBudget;
   set byteBudget(int? bytes) {
     _byteBudget = bytes;

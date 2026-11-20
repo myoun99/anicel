@@ -352,6 +352,13 @@ impl Bounds {
         self.bytes + grows <= self.most_bytes
     }
 
+    /// These, the pool's own line set aside — what a fold's page is
+    /// made within (`folded.rs`, `Pool::folded_page_to_come`): the
+    /// budget still.
+    fn past_its_line(self) -> Self {
+        Self { most_bytes: u64::MAX, ..self }
+    }
+
     fn asked(self) -> Asked {
         Asked { bytes: self.bytes, budget_instead: self.budget_instead }
     }
@@ -677,7 +684,8 @@ impl Pool {
     /// Makes no page more past `most_bytes`: the pages made stay (its store
     /// gives back what nobody holds, [`Pool::give_back`]), and the next is
     /// made only within it — the budget its store gives, again when the
-    /// allowance moves.
+    /// allowance moves. But the page a fold's tiles need, which brings the
+    /// pool under it (`folded.rs`, `Pool::folded_page_to_come`).
     pub(crate) fn set_most_bytes(&mut self, most_bytes: u64) {
         self.most_bytes = most_bytes;
     }
