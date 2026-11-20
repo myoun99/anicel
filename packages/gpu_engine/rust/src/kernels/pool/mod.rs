@@ -1373,8 +1373,11 @@ struct Unowned {
 
 impl Unowned {
     /// The tile at `at` is one of them from here on, weighing `bytes`.
+    /// ⚠️Put once: a tile its maker let go has no maker to let it go
+    /// again (kept.rs, `Kept::let_go` — a picture's own are the tiles it
+    /// ran for). Put twice, the sum would count it twice till the next
+    /// rest's folds weighed all again.
     fn put(&mut self, at: TileAt, bytes: u64) {
-        self.take(at);
         self.tiles.insert(at, bytes);
         self.bytes += bytes;
     }

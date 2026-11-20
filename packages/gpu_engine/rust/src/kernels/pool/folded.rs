@@ -414,9 +414,11 @@ impl Pool {
             return 0;
         };
         let in_its_slot = if slots.away { 0 } else { TILE_BYTES };
+        // One that lies in its slot lies on a page of tiles: the page
+        // its name is on, whose slots were read above.
         let lies = self.lies(at);
         let folded = match self.pages.get(usize::from(lies.page)) {
-            Some(Some(Page::Folded(arena))) if lies != at => arena.bytes_from(lies_from(lies)),
+            Some(Some(Page::Folded(arena))) => arena.bytes_from(lies_from(lies)),
             _ => 0,
         };
         in_its_slot + folded
