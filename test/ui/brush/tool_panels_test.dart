@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_preset.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/ellipsis_text.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/tool_setting_action_probe.dart';
@@ -160,6 +162,60 @@ void main() {
       expect(pressed, [
         const ShapeTilePress(CanvasTool.shape, CanvasShapeKind.line),
       ]);
+    });
+
+    /// 🗣️유저 2026-11-20 「한 줄 + 넘치면 …」 (card
+    /// a-long-word-breaks-mid-word-in-the-tool-list-at-the-floor-width,
+    /// Q1): the guide rows' and the settings names' rule. ↩️A name wrapped,
+    /// and a word longer than the row broke in its middle.
+    testWidgets('a sub-tool\'s name stands on one line — a name longer than '
+        'its room ends in … rather than breaking a word', (tester) async {
+      var cut = 0;
+      for (final tool in [
+        CanvasTool.select,
+        CanvasTool.cut,
+        CanvasTool.fill,
+        CanvasTool.move,
+      ]) {
+        await tester.pumpWidget(
+          app(
+            Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 160,
+                child: ToolLibraryPanel(
+                  key: ValueKey<String>('narrow-$tool'),
+                  tool: tool,
+                  brushLibrary: const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
+        );
+        final tiles = find.byWidgetPredicate(
+          (widget) =>
+              widget is ListTile &&
+              '${widget.key}'.contains('sub-tool-'),
+        );
+        expect(tiles, findsWidgets, reason: '⛔premise: $tool has sub-tools');
+        for (final tile in tiles.evaluate()) {
+          final name = find.descendant(
+            of: find.byKey(tile.widget.key!),
+            matching: find.byType(EllipsisText),
+          );
+          expect(name, findsOneWidget, reason: '${tile.widget.key}');
+          final paragraph = tester.renderObject<RenderParagraph>(name);
+          expect(
+            paragraph.size.height,
+            lessThanOrEqualTo(
+              paragraph.getMinIntrinsicHeight(double.infinity) + 0.5,
+            ),
+            reason: '${tile.widget.key} stands on one line',
+          );
+          if (paragraph.didExceedMaxLines) cut++;
+        }
+      }
+      expect(cut, greaterThan(0), reason: '⛔LIVENESS: a name was cut');
     });
   });
 
