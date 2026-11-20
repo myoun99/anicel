@@ -141,7 +141,8 @@ void main() {
 
   /// What every scan handed to [linesMatching] holds: the axis asked by
   /// name, then the `?` — so a source without one anywhere holds nothing
-  /// for them, and they are not run on it.
+  /// for them, and they are not run on it. Every [pick] holds it too
+  /// ([swappedPicksIn]).
   ///
   /// ↩️Run on every file, the four bans that read all of `lib` and `test`
   /// took 67s of this file's 71: the `\w*` [axisAsked] opens with is tried
@@ -491,8 +492,16 @@ void main() {
 
   /// Lines where a pick's arms come back swapped in the next pick of the
   /// same question, within a statement's reach.
+  ///
+  /// ↩️Without [asksTheAxis] first, the ledger's ban below ran [pick] on
+  /// every file of `lib` and `test`: 67s, the file's heaviest (card
+  /// ci-heaviest-files-draw-on-the-cpu, 2026-11-20). With it, on the code,
+  /// 3.8s — the same 274 picks in the same 91 files of 5435.
   List<int> swappedPicksIn(String source) {
     final code = codeOfLines(source);
+    if (!asksTheAxis.hasMatch(code)) {
+      return const [];
+    }
     final picks = pick.allMatches(code).toList();
     String question(RegExpMatch m) => m[1]!.replaceAll(RegExp(r'\s+'), '');
     final lines = <int>[];
