@@ -302,6 +302,30 @@ void main() {
       expect(wideCheckShare(8), 5);
     });
 
+    test('🚨a small run beside the wide check takes from the third — the '
+        'check wants twelve, not all eighteen, at each batch boundary', () {
+      // 타임라인/콘티 11-21 01:51: a one-file run stood from 01:34 while the
+      // check took eighteen back two seconds after each boundary.
+      final boundary = [
+        waiting('wide', work: 44000, first: true),
+        waiting('one', files: 1, work: 30, waited: 600),
+      ];
+      expect(decide('wide', boundary, machine: 18), 12);
+      expect(decide('one', boundary, machine: 18), 1);
+      // While its batch holds the eighteen, the small run waits for the
+      // boundary — the check takes no running batch's suites, nor gives.
+      final holding = [
+        runningAt('wide', 18, work: 40000, first: true),
+        waiting('one', files: 1, work: 30, waited: 600),
+      ];
+      expect(decide('one', holding, machine: 18), isNull);
+      // A small run still halves no long run that is not the check.
+      expect(
+        decide('a', [waiting('a'), runningAt('s', 1, files: 1, work: 600)]),
+        9,
+      );
+    });
+
     test('beside the first in line a run starts when both fit now — and '
         'takes what is left after the first', () {
       expect(decide('b', [waiting('a'), waiting('b')]), 5);
