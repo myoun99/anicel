@@ -452,10 +452,12 @@ void main() {
     /// So the turns alone ask; what is told comes on the machine's clock.
     ///
     /// ⚠️The UI thread's waits (`debugWaitsHere`) are counted with no frame
-    /// drawn ([untilCutAheadUnframed]): with the box at rest every frame of
-    /// this test waits once, the run's or not (공통 2026-11-20 — not the
-    /// doors', the screen's read-back's nor the ink bounds'), so a count
-    /// across frames says nothing of the doors.
+    /// drawn ([untilCutAheadUnframed]): the frames a run draws are the
+    /// frames the brush tips' thumbnails are made in too, one a frame and
+    /// each counted here — not the box's (공통 2026-11-20: each count traced
+    /// to the callback it came in and where that was asked,
+    /// `BrushTipThumbnails`), so a count across frames says nothing of the
+    /// doors.
     testWidgets('🎯a box at rest asks its cuts of the engine and is told — '
         'its turns wait for none of them', (tester) async {
       await pump(tester);

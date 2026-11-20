@@ -86,6 +86,12 @@ typedef _ReachedRow = ({LayerId id, Layer shown});
 @visibleForTesting
 int debugRowsReached = 0;
 
+/// How many cels were asked whether they hold a drawing
+/// ([PixelVerbs._holdsADrawing]) — a test's count of what a transform asks
+/// of the cels the canvas shows alone.
+@visibleForTesting
+int debugDrawingsAsked = 0;
+
 /// The PIXEL VERBS — what the 색 편집 list does to the pixels of the cels
 /// (색 변환, 픽셀 비우기, 픽셀 잘라내기 · 복사, 위 · 아래 붙여넣기) and 전체
 /// 잘라내기 — with the cels they act on, as their own object.
@@ -175,9 +181,19 @@ class PixelVerbs {
   /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 · I-37-Q1
   /// (10-09): 「변형만」 — the transform reaches into a folder; every other
   /// pixel verb still refuses one.
-  List<BrushFrameKey> transformCellKeys() => [
+  List<BrushFrameKey> transformCellKeys() => _transformCels();
+
+  /// [transformCellKeys] — of [among]'s alone where it is given: a cel
+  /// [among] leaves out is never asked whether it holds a drawing.
+  ///
+  /// 🗣️관제 2026-11-20 (card opening-a-transform-box-holds-the-ui-over-
+  /// half-a-second, ⓐ): ↩️what a transform lifts where you stand asked
+  /// every cel a range names — 2,232 over 62 rows × 36 frames — and kept
+  /// the 62 the canvas shows: 10 of Ctrl+T's 75 ms on the UI thread (공통
+  /// 2026-11-20, 메인 PC 테스트 VM, S5_BA cut 352).
+  List<BrushFrameKey> _transformCels({Set<BrushFrameKey>? among}) => [
     for (final key in _cellsTheLadderNames(intoFolders: true))
-      if (_holdsADrawing(key)) key,
+      if ((among?.contains(key) ?? true) && _holdsADrawing(key)) key,
   ];
 
   /// What a transform lifts where you stand: of the cels its confirm lands
@@ -205,8 +221,7 @@ class PixelVerbs {
     final standing = _standingCel(cut);
     final lifted = {
       ?standing,
-      for (final key in transformCellKeys())
-        if (shown.contains(key)) key,
+      ..._transformCels(among: shown),
     };
     if (lifted.isEmpty || (lifted.length == 1 && lifted.single == standing)) {
       return null;
@@ -239,8 +254,10 @@ class PixelVerbs {
   /// ⛔A PASTE does not ask it (I-55): a blank cel is exactly where a paste
   /// goes — which is why this is the verb's filter over the ladder and not
   /// a rung of the ladder itself.
-  bool _holdsADrawing(BrushFrameKey key) =>
-      _renderCaches.brushFrameStore.celHasRenderableContent(key);
+  bool _holdsADrawing(BrushFrameKey key) {
+    debugDrawingsAsked += 1;
+    return _renderCaches.brushFrameStore.celHasRenderableContent(key);
+  }
 
   /// Whether [key] shows a drawing as its block does: the store's, or a live
   /// stroke's from pen-down ([_liveStrokeDraws]) — what the list's head asks

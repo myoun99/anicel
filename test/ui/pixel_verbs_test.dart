@@ -604,6 +604,34 @@ void main() {
       expect(pixelVerbsOf(session).pixelVerbCellKeys(), isEmpty);
     });
 
+    /// 🗣️관제 2026-11-20 (card opening-a-transform-box-holds-the-ui-over-
+    /// half-a-second, ⓐ): the box over 62 rows × 36 frames asked all 2,232
+    /// cels whether they hold a drawing, and kept the 62 the canvas shows.
+    testWidgets('what a range lifts where you stand asks the cels the canvas '
+        'shows alone whether they hold a drawing', (tester) async {
+      final session = await pump(tester);
+      final (:a, b: _) = await rowsInAFolder(tester, session);
+      session.frameRangeSelection.value = const TimelineFrameRangeSelection(
+        layerId: folder,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pump();
+      final verbs = pixelVerbsOf(session);
+      expect(
+        verbs.transformCellKeys(),
+        hasLength(6),
+        reason: '⛔premise: the range names six cels with a drawing',
+      );
+
+      final asked = debugDrawingsAsked;
+      expect(underfoot(verbs.transformCelsUnderfoot()), [
+        '${a.id.value}-cel-0',
+        'twin-cel-0',
+      ]);
+      expect(debugDrawingsAsked - asked, 2);
+    });
+
     testWidgets('standing on a drawing row nothing is underfoot, and the '
         'transform\'s ladder is the pixel verbs\'', (tester) async {
       final session = await pump(tester);
