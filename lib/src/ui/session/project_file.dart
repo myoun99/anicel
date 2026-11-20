@@ -248,9 +248,6 @@ class ProjectFile {
   /// nothing of this session writes the file, and a file the session has
   /// moved on to since ([_fileGeneration]) is read anew.
   T withOneReadOfTheFile<T>(T Function() batch) {
-    if (_oneRead != null) {
-      return batch();
-    }
     late final layout = readableAnicelLayout(_projectFilePath);
     _oneRead = (generation: _fileGeneration, layout: () => layout);
     try {
