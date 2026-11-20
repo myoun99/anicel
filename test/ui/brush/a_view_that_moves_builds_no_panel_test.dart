@@ -12,6 +12,7 @@ import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/canvas_stage.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
@@ -40,6 +41,9 @@ void main() {
   /// What is drawn through the view, with every view it was built with.
   final drawn = <String, List<CanvasViewport>>{};
 
+  /// Every stage the content stood on ([CanvasStage]).
+  final stoodOn = <Rect?>[];
+
   /// A docked panel in a box [room] tall — the same panel widget at every
   /// height, so whatever builds it again is its own doing — its view kept
   /// in [view].
@@ -49,6 +53,7 @@ void main() {
     required ValueNotifier<CanvasViewport?> view,
   }) async {
     drawn.clear();
+    stoodOn.clear();
     Widget through(String what, CanvasViewport viewport) {
       (drawn[what] ??= []).add(viewport);
       return SizedBox.expand(key: ValueKey<String>(what));
@@ -60,7 +65,12 @@ void main() {
       cacheInvalidationSink: BrushEditCacheInvalidationSink(),
       canvasSize: const CanvasSize(width: 300, height: 300),
       viewportController: view,
-      contentOverride: (context, viewport) => through('content', viewport),
+      contentOverride: (context, viewport) => Builder(
+        builder: (context) {
+          stoodOn.add(CanvasStage.maybeOf(context));
+          return through('content', viewport);
+        },
+      ),
       viewportUnderlayBuilder: (context, viewport, painter, rows) =>
           through('underlay', viewport),
       viewportOverlayBuilder: (context, viewport) =>
@@ -188,8 +198,7 @@ void main() {
     addTearDown(room.dispose);
     addTearDown(view.dispose);
     await pumpDocked(tester, room: room, view: view);
-    final content = find.byKey(const ValueKey<String>('content'));
-    final tall = tester.getSize(content).height;
+    final tall = stoodOn.last!.height;
     Size barsRoom() => tester
         .widget<CanvasViewportVerticalScrollbar>(
           find.byType(CanvasViewportVerticalScrollbar),
@@ -200,7 +209,7 @@ void main() {
     final built = await builtBy(tester, () async {
       room.value = 300;
       await tester.pump();
-      expect(tester.getSize(content).height, tall - 100);
+      expect(stoodOn.last!.height, tall - 100, reason: 'in the same frame');
       await tester.pump();
     });
 
@@ -277,6 +286,16 @@ void main() {
       Object? outlineLook() => tool == CanvasTool.brush
           ? tester.widget<ToolCursorSprite>(outline).look.key
           : null;
+      if (tool == CanvasTool.brush) {
+        final look = tester.widget<ToolCursorSprite>(outline).look;
+        view.value = CanvasViewport(panX: 40, panY: 20);
+        await tester.pump();
+        expect(
+          identical(tester.widget<ToolCursorSprite>(outline).look, look),
+          isTrue,
+          reason: 'a pan moves no outline',
+        );
+      }
       final outlineBefore = outlineLook();
       final before = laid['content'];
 
