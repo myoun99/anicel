@@ -133,11 +133,17 @@ class ConteTabHost extends StatefulWidget {
   /// The models are immutable, so a new one is the only way either moves.
   ///
   /// ⛔THE EYE IS PRINTED HERE, so the project is not compared with its
-  /// eyes open as the timesheet's rows are (`EyesOpen`): a cell's picture
+  /// eyes open as the timesheet's rows are (`AsPrinted`): a cell's picture
   /// is the cut as it shows, and the page asks the picture store for it
   /// again as it prints — the store keys a picture by its rows' eyes
   /// (`StoryboardCutThumbnailStore`), card an-eye-toggle-holds-the-ui-thread
   /// (11-18).
+  ///
+  /// ⚠️Nor are the rail's folds and twirls left out, though no page prints
+  /// them (`trackAsPrinted`): a project compared by value hears only what
+  /// `Project ==` compares, which skips the backdrop and the pasteboard —
+  /// card a-frame-lane-band-lets-its-image-go-on-one-row-pick-and-not-another
+  /// (11-20).
   static Object printedBy(EditorSessionManager session) => (
     project: ByIdentity(session.repository.requireProject()),
     activeCanvas: session.activeCutOrNull?.canvasSize,

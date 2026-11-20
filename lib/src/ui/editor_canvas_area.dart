@@ -18,7 +18,8 @@ import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
-import '../models/eyes_open.dart' show trackWithEyesOpen;
+import '../models/rows_as_printed.dart'
+    show EyeOnThePage, trackAsPrinted;
 import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
@@ -97,7 +98,7 @@ import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/memo_token.dart' show ByIdentity, ByList, EyesOpen;
+import 'timeline/memo_token.dart' show AsPrinted, ByIdentity, ByList;
 import 'timeline/timeline_drag_preview.dart'
     show
         BlockMoveDragPreview,
@@ -355,11 +356,12 @@ class EditorCanvasArea extends StatefulWidget {
   /// (card an-eye-toggle-holds-the-ui-thread, 11-18, step 3b). The eyes
   /// are the picture's to print: the parts that draw the rows hear the
   /// tracks themselves ([tracksDrawnBy]), and the area hears them with
-  /// every eye open ([trackWithEyesOpen]) — but for the two eyes it prints
-  /// itself: the stood row's, which refuses the pen
+  /// every eye open ([EyeOnThePage.notPrinted]) — but for the two eyes it
+  /// prints itself: the stood row's, which refuses the pen
   /// (`EditingCanvas.activeRowStrokeRefusal`, its folders' eyes with it),
   /// and the row the camera layer is framed over
-  /// (`Camera.cameraBackdropSelection`).
+  /// (`Camera.cameraBackdropSelection`). Neither hears the rail's folds and
+  /// twirls, which no page prints ([trackAsPrinted]).
   static Object shownBy(EditorSessionManager session) {
     final project = session.repository.requireProject();
     final cels = session.renderCaches.brushFrameStore;
@@ -370,7 +372,11 @@ class EditorCanvasArea extends StatefulWidget {
     // and the fonts' entries, small values, by `==`.
     return (
       tracks: ByList([
-        for (final track in project.tracks) EyesOpen(track, trackWithEyesOpen),
+        for (final track in project.tracks)
+          AsPrinted(
+            track,
+            (track) => trackAsPrinted(track, EyeOnThePage.notPrinted),
+          ),
       ]),
       refusal: session.editingCanvas.activeRowStrokeRefusal,
       framedOver: camera.isCameraLayerActive
@@ -400,12 +406,12 @@ class EditorCanvasArea extends StatefulWidget {
     );
   }
 
-  /// The tracks as the parts that draw their rows hear them — each by
-  /// identity, an eye toggled among them included, which the area does not
-  /// hear ([shownBy]).
+  /// The tracks as the parts that draw their rows hear them — each as they
+  /// print it ([EyeOnThePage.printed]), an eye toggled among them included,
+  /// which the area does not hear ([shownBy]).
   static Object tracksDrawnBy(EditorSessionManager session) => ByList([
     for (final track in session.repository.requireProject().tracks)
-      ByIdentity(track),
+      AsPrinted(track, (track) => trackAsPrinted(track, EyeOnThePage.printed)),
   ]);
 
   @override

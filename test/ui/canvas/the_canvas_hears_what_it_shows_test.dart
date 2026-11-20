@@ -29,6 +29,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_laying.dart'
     show trackWithItsConteLaid;
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/track_transform_lane_carrier.dart'
+    show trackTransformLaneCarrierId;
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show CanvasLayerImageRequest;
@@ -38,6 +40,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart'
     show theFramesPicture;
@@ -149,6 +153,46 @@ Project _projectWithAConte() {
   );
   return project.copyWith(
     tracks: [trackWithItsConteLaid(withConte, settledCut: (_) => null)],
+  );
+}
+
+/// [_projectWithAConte] with `b` in a folder `f`.
+Project _projectWithAFolderAndAConte() {
+  final project = _projectWithAConte();
+  final track = project.tracks.single;
+  final first = track.cuts.first;
+  const folder = LayerId('f');
+  return project.copyWith(
+    tracks: [
+      track.copyWith(
+        cuts: [
+          first.copyWith(
+            layers: [
+              for (final row in first.layers) ...[
+                if (row.id == const LayerId('b')) ...[
+                  Layer(
+                    id: row.id,
+                    name: row.name,
+                    folderId: folder,
+                    frames: row.frames,
+                    timeline: row.timeline,
+                  ),
+                  Layer(
+                    id: folder,
+                    name: 'F',
+                    kind: LayerKind.folder,
+                    frames: const [],
+                    timeline: const {},
+                  ),
+                ] else
+                  row,
+              ],
+            ],
+          ),
+          ...track.cuts.skip(1),
+        ],
+      ),
+    ],
   );
 }
 
@@ -328,6 +372,59 @@ void main() {
 
       expect(EditorCanvasArea.shownBy(session), isNot(before));
     });
+  });
+
+  // 🔬Card a-frame-lane-band-lets-its-image-go-on-one-row-pick-and-not-another
+  // (11-20): no page prints the rail's folds and twirls — a twirl made the
+  // track anew, and the next word built the area again — not even on the
+  // row stood on, whose eye the area does print.
+  group('a fold or a twirl', () {
+    final folds = <String, void Function(EditorSessionManager session)>{
+      'the stood row\'s lanes twirled': (session) =>
+          session.layerSwitches.toggleLayerLanes(const LayerId('a')),
+      'a group of its lanes opened': (session) =>
+          session.layerSwitches.setLayerLaneGroupExpanded(
+            const LayerId('a'),
+            transformGroupHeaderLane.laneId,
+            expanded: true,
+          ),
+      'a folder folded': (session) =>
+          session.folders.toggleLayerCollapsed(const LayerId('f')),
+      'an attach side folded': (session) => session.folders.setAttachFolds(
+        const LayerId('conte'),
+        {AttachedPlacement.above},
+      ),
+      'a row riding the conte twirled': (session) =>
+          session.layerSwitches.toggleLayerLanes(const LayerId('x')),
+      'the track\'s own row twirled': (session) =>
+          session.layerSwitches.toggleLayerLanes(
+            trackTransformLaneCarrierId(const TrackId('t')),
+          ),
+    };
+    for (final MapEntry(key: act, value: run) in folds.entries) {
+      testWidgets('$act is nothing the canvas shows', (tester) async {
+        final session = sessionOf(_projectWithAFolderAndAConte());
+        session.selectLayer(const LayerId('a'));
+        Track track() => session.repository.requireProject().tracks.single;
+        final was = track();
+        final before = EditorCanvasArea.shownBy(session);
+        final drawn = EditorCanvasArea.tracksDrawnBy(session);
+
+        run(session);
+
+        expect(
+          identical(track(), was),
+          isFalse,
+          reason: '⛔premise: $act made the track anew',
+        );
+        expect(EditorCanvasArea.shownBy(session), before);
+        expect(
+          EditorCanvasArea.tracksDrawnBy(session),
+          drawn,
+          reason: 'nor do the parts that draw the rows print it',
+        );
+      });
+    }
   });
 
   final notShown = <String, void Function(EditorSessionManager session)>{

@@ -215,7 +215,55 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  // What lets the sheet leave the eyes out of what it hears ([EyesOpen] in
+  // 🔬Card a-frame-lane-band-lets-its-image-go-on-one-row-pick-and-not-another
+  // (11-20): a twirl made the cut anew without a word to the session, and
+  // at the next word — the first row picked after it — the sheet built its
+  // document again and baked its panel once more, for a twirl it does not
+  // print: no page prints the rail's folds and twirls.
+  testWidgets('a twirl on any row rebuilds none of it, at the next word '
+      'either', (tester) async {
+    final session = await pumpSheet(tester);
+    final track = session.repository.requireProject().tracks.single;
+    final rows = [
+      ...session.requireActiveCut.layers,
+      ...track.seLayers,
+      track.transitionLayer,
+    ];
+    expect(
+      {for (final row in rows) row.kind},
+      containsAll([LayerKind.animation, LayerKind.se, LayerKind.transition]),
+      reason: '⛔premise: a row of each the sheet prints',
+    );
+
+    for (final (index, row) in rows.indexed) {
+      final before = strata(tester);
+      final project = session.repository.requireProject();
+      session.layerSwitches.toggleLayerLanes(row.id);
+      final heard = notifiesOf(
+        session,
+        () => session.cutVerbs.selectedGuideId = GuideId('picked-$index'),
+      );
+      await tester.pump();
+
+      expect(heard, greaterThan(0), reason: '⛔premise: a word came after');
+      expect(
+        identical(session.repository.requireProject(), project),
+        isFalse,
+        reason: '⛔premise: ${row.name}\'s twirl was written',
+      );
+      expect(
+        identical(strata(tester), before),
+        isTrue,
+        reason: '${row.name} (${row.kind.name}): its twirl is nothing the '
+            'sheet prints',
+      );
+    }
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  // What lets the sheet leave the eyes out of what it hears ([AsPrinted] in
   // its `_printedBy`): it prints none. A sheet that came to print one — a
   // hidden row greyed, left off — hears it again there.
   testWidgets('the sheet prints no eye: every eye shut, it is the very same '
