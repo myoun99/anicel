@@ -251,6 +251,12 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   /// the tree alone: a camera dragged stood the cut not ready wherever the
   /// bar happened to be asked under it, and green wherever nothing asked —
   /// two answers to one drag (검증/서피스 19:30, F-620).
+  ///
+  /// 🗣️A FRAME A NAME TAG STANDS ON IS MADE OF THE CAMERA (F-620-Q8 =
+  /// 「비운다(지금 그대로)」, 유저 2026-11-20): the tag is posed in the shot
+  /// (I-67-Q1), so a camera dragged moves it on the canvas and moves that
+  /// frame's key — the cut stands not ready as under any hand that moves
+  /// frames (Q3). The bar says only whether the frames' pictures are ready.
   List<ReadyRun> playbackReadyRunsForCut(
     Cut cut,
     int start,

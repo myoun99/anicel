@@ -37,6 +37,10 @@ import '../../helpers/draw_on_current_frame.dart' show inkCel;
 /// 🗣️F-620-Q4 = 1 (유저 2026-11-19 「카메라는 초록 그대로」): and only where
 /// the FRAMES moved — a camera dragged moves the tree and no frame's
 /// picture, and its bar is the frames as they stand, whenever it is asked.
+///
+/// 🗣️F-620-Q8 = 「비운다(지금 그대로)」 (유저 2026-11-20): but a frame a
+/// name tag stands on is made of the camera — the tag is posed in the shot
+/// (I-67-Q1) — and a camera dragged over it moves the frames as any hand.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -69,22 +73,45 @@ void main() {
     ],
   );
 
-  /// The open cut — its drawn row [dressed] — and another.
-  EditorSessionManager session({Layer Function(Layer row)? dressed}) =>
-      EditorSessionManager(
-        initialProject: Project(
-          id: const ProjectId('project'),
-          name: 'P',
-          createdAt: DateTime.utc(2026),
-          tracks: [
-            Track(
-              id: const TrackId('track'),
-              name: 'T',
-              cuts: [cutOf('open', dressed: dressed), cutOf('other')],
-            ),
-          ],
+  /// The open cut — its drawn row [dressed] — and another, the track's SE
+  /// rows [seRows].
+  EditorSessionManager session({
+    Layer Function(Layer row)? dressed,
+    List<Layer> seRows = const [],
+  }) => EditorSessionManager(
+    initialProject: Project(
+      id: const ProjectId('project'),
+      name: 'P',
+      createdAt: DateTime.utc(2026),
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'T',
+          cuts: [cutOf('open', dressed: dressed), cutOf('other')],
+          seLayers: seRows,
         ),
-      );
+      ],
+    ),
+  );
+
+  /// An SE row whose name tag stands over the open cut's frames — posed in
+  /// the shot, so the camera moves it on the canvas (I-67-Q1).
+  final aNameTag = Layer(
+    id: const LayerId('se'),
+    name: 'S1',
+    kind: LayerKind.se,
+    frames: [
+      Frame(
+        id: const FrameId('se-cel'),
+        duration: 24,
+        strokes: const [],
+        seName: 'S',
+      ),
+    ],
+    timeline: {
+      0: const TimelineExposure.drawing(FrameId('se-cel'), length: 24),
+    },
+  );
 
   Cut other(EditorSessionManager s) => s.repository
       .requireProject()
@@ -214,6 +241,7 @@ void main() {
     String door,
     int watched,
     Layer Function(Layer row)? dressed,
+    List<Layer> seRows,
     void Function(EditorSessionManager s) hand,
     Object? Function(EditorSessionManager s) shown,
     void Function(EditorSessionManager s) letGo,
@@ -222,6 +250,7 @@ void main() {
       door: 'a lane\'s value — the row\'s position',
       watched: 0,
       dressed: null,
+      seRows: const [],
       hand: (s) => s.laneVerbs.previewLaneValueAt(
         drawnRow,
         'position',
@@ -237,6 +266,7 @@ void main() {
       door: 'the canvas\'s box — the row\'s transform',
       watched: 0,
       dressed: null,
+      seRows: const [],
       hand: (s) => s.laneVerbs.previewLayerTransformAtPlayhead(
         drawnRow,
         (track, f) => transformTrackWithScaleDragged(
@@ -262,6 +292,7 @@ void main() {
           },
         ),
       ),
+      seRows: const [],
       hand: (s) => s.laneVerbs.previewLaneKeySidesAt(
         const LaneRowAddress(drawnRow, 'rotation'),
         0,
@@ -277,6 +308,7 @@ void main() {
       door: 'an effect\'s lane value',
       watched: 0,
       dressed: (row) => dressedWith(row, EffectKind.brightnessContrast),
+      seRows: const [],
       hand: (s) => s.laneVerbs.previewLaneValueAt(
         drawnRow,
         effectLaneId(anEffect, 'brightness'),
@@ -292,6 +324,7 @@ void main() {
       door: 'an effect\'s box on the canvas — a cel number\'s',
       watched: 0,
       dressed: (row) => dressedWith(row, EffectKind.celNumber),
+      seRows: const [],
       hand: (s) => s.laneVerbs.previewEffectKeysAtPlayhead(
         drawnRow,
         effectLaneId(anEffect, 'scale'),
@@ -308,20 +341,34 @@ void main() {
       door: 'a row\'s opacity slider',
       watched: 0,
       dressed: null,
+      seRows: const [],
       hand: (s) => s.opacityVerbs.previewLayerOpacity(drawnRow, 0.5),
       shown: (s) => s.opacityVerbs.dragPreview.value,
       letGo: (s) => s.opacityVerbs.commitLayerOpacity(drawnRow, 1),
     ),
+    (
+      door:
+          'the open cut\'s camera, a name tag standing on the frame — '
+          'posed in the shot, the tag moves on the canvas (🗣️F-620-Q8 = '
+          '「비운다(지금 그대로)」)',
+      watched: 0,
+      dressed: null,
+      seRows: [aNameTag],
+      hand: (s) => cameraDragged(s, 10),
+      shown: onTheLanes,
+      letGo: (s) => s.laneVerbs.endLaneEditPreview(),
+    ),
   ];
 
-  for (final (:door, :watched, :dressed, :hand, :shown, :letGo) in doors) {
+  for (final (:door, :watched, :dressed, :seRows, :hand, :shown, :letGo)
+      in doors) {
     testWidgets('🚨a value shown, not written, moves the frames all the same '
         '— $door: its cut stands not ready, counted once the hand lets go '
         '(검증/서피스 21:36: the box of a cel number, a lane\'s colour wheel)', (
       tester,
     ) async {
       await tester.runAsync(() async {
-        final s = session(dressed: dressed);
+        final s = session(dressed: dressed, seRows: seRows);
         addTearDown(s.dispose);
         final open = s.activeCutOrNull!;
         final budget = s.playbackRig.playbackCache;

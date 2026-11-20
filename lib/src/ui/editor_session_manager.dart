@@ -670,7 +670,9 @@ class EditorSessionManager extends ChangeNotifier
     ),
     // Every drag shown in flight moves a frame but the camera's, which no
     // frame is made of (🗣️F-620-Q4 「카메라는 초록 그대로」) — and a row's
-    // opacity slider, which rides its own channel.
+    // opacity slider, which rides its own channel. ⚠️A name tag is posed in
+    // the shot: the key of the frame stood on answers for a camera dragged
+    // over one (🗣️F-620-Q8 「비운다」, `PlaybackCacheBudget`).
     framesInFlight: () =>
         switch (dragPreview.value) {
           null || LaneEditPreview(cameraCutId: _?) => false,
