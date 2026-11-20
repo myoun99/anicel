@@ -7,8 +7,17 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
+import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
+import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
+import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
 
 /// a-view-change-rebuilds-the-whole-canvas-panel (2026-11-20): every move
 /// of the view — a pan's step, an owner's write, the room a docked panel
@@ -199,4 +208,112 @@ void main() {
     expect(built, isNot(contains(BrushCanvasPanel)));
     expect(built, isNot(contains(ViewHoldGate)));
   });
+
+  /// A panel standing [tool] over a selection, its view kept in [view] —
+  /// what is laid through the view by the host is in [laid].
+  Future<void> pumpStanding(
+    WidgetTester tester,
+    CanvasTool tool, {
+    required ValueNotifier<CanvasViewport?> view,
+    required Map<String, CanvasViewport> laid,
+  }) async {
+    final brush = ValueNotifier(BrushToolState.defaults.copyWith(tool: tool));
+    addTearDown(brush.dispose);
+    final selection = CanvasSelectionCommands()
+      ..setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 10, top: 10, right: 50, bottom: 50),
+        ),
+      );
+    addTearDown(selection.dispose);
+    Widget lay(String what, CanvasViewport viewport) {
+      laid[what] = viewport;
+      return const SizedBox.expand();
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: null,
+            availableFrameKeys: const [],
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            canvasSize: const CanvasSize(width: 300, height: 300),
+            viewportController: view,
+            brushToolState: brush,
+            selectionCommands: selection,
+            contentOverride: (context, viewport) => lay('content', viewport),
+            viewportOverlayBuilder: (context, viewport) =>
+                lay('overlay', viewport),
+            viewportControlsBuilder: (context, viewport) =>
+                lay('controls', viewport),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  T paintedBy<T extends CustomPainter>(
+    WidgetTester tester, [
+    bool Function(T painter)? which,
+  ]) => tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((paint) => paint.painter)
+      .whereType<T>()
+      .where(which ?? (_) => true)
+      .single;
+
+  for (final tool in [CanvasTool.brush, CanvasTool.select, CanvasTool.text]) {
+    testWidgets('with the ${tool.name} in hand, all that stands on the canvas '
+        'is laid again through the view as it moves', (tester) async {
+      final view = ValueNotifier<CanvasViewport?>(CanvasViewport());
+      addTearDown(view.dispose);
+      final laid = <String, CanvasViewport>{};
+      await pumpStanding(tester, tool, view: view, laid: laid);
+      final outline = find.byKey(
+        const ValueKey<String>('brush-cursor-overlay'),
+      );
+      Object? outlineLook() => tool == CanvasTool.brush
+          ? tester.widget<ToolCursorSprite>(outline).look.key
+          : null;
+      final outlineBefore = outlineLook();
+      final before = laid['content'];
+
+      view.value = CanvasViewport(zoom: 3, panX: 40, panY: 20);
+      await tester.pump();
+
+      final now = laid['content']!;
+      expect(now, isNot(before), reason: 'premise: the view moved');
+      final standing = <String, CanvasViewport>{
+        'overlay': laid['overlay']!,
+        'controls': laid['controls']!,
+        'stage planes': paintedBy<StagePlanesPainter>(tester).viewport,
+        'line ants': paintedBy<SelectionAntsPainter>(
+          tester,
+          (ants) => ants.committedRegion == null,
+        ).viewport,
+        if (tool == CanvasTool.brush)
+          'idle ants': paintedBy<SelectionAntsPainter>(
+            tester,
+            (ants) => ants.committedRegion != null,
+          ).viewport,
+        if (tool == CanvasTool.select)
+          'selection layer': tester
+              .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer))
+              .viewport,
+        if (tool == CanvasTool.text)
+          'text layer': tester
+              .widget<CelTextToolLayer>(find.byType(CelTextToolLayer))
+              .stage
+              .viewport,
+      };
+      for (final MapEntry(key: what, value: viewport) in standing.entries) {
+        expect(viewport, now, reason: what);
+      }
+      if (tool == CanvasTool.brush) {
+        expect(outlineLook(), isNot(outlineBefore), reason: 'the outline');
+      }
+    });
+  }
 }

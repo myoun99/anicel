@@ -791,6 +791,27 @@ void main() {
     );
   });
 
+  testWidgets('a view moved under a resting pointer lays the ghost again '
+      'where the pointer is on the canvas now', (tester) async {
+    final env = await pumpPanel(tester, paintUnder: true);
+    env.slot.hold(twoTonePiece());
+    await tester.pump();
+    await restAt(tester, aim);
+    await pumpUntil(tester, () => env.overlay.hasStrokeContent);
+    final up = Map.of(env.overlay.tileImages);
+    expect(up, isNotEmpty, reason: '⛔premise: the ghost is up');
+    final rested = aimOf(tester)!;
+
+    // A wheel turned over another place on the canvas zooms about it.
+    final wheel = TestPointer(99, PointerDeviceKind.mouse)
+      ..hover(onPanel(tester, aim - const Offset(150, 150)));
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, -40)));
+    await pumpUntil(tester, () => !stillShows(env.overlay, up));
+
+    expect(aimOf(tester)!.canvasRect, isNot(rested.canvasRect));
+    expect(stillShows(env.overlay, up), isFalse, reason: 'laid again');
+  });
+
   testWidgets('a row moved under a resting pointer lays the ghost again '
       'where the row shows the press now — the bytes a click there '
       'lands', (tester) async {

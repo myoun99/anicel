@@ -2075,7 +2075,17 @@ void main() {
   /// ceiling of 83, `ShortcutSettingsDialogState` having crossed there
   /// since `55fcd0e8b` (82 → 83 by the same diff). ⛔Not split to fit: each
   /// answer stands beside the reset it answers for.
-  const longClasses = 86;
+  ///
+  /// ⚠️86 → 87 on 2026-11-20, ONE name: `_PanelBuild` crossed (581 → 622)
+  /// when a move of the view stopped building the whole canvas panel (card
+  /// a-view-change-rebuilds-the-whole-canvas-panel): the deck is built once
+  /// per build of the panel, and each leaf drawn through the view — the
+  /// content, the underlay, the gesture layer, the shell's bars — is laid in
+  /// a builder that hears it. 🔬`clean_code_diff` against master
+  /// (`db2da7cdc`) names this one and no other class. ⛔Not split to fit:
+  /// a leaf hears the view where it is laid, and a seam cut for the count
+  /// would put the hearing apart from the leaf.
+  const longClasses = 87;
 
   late CleanCodeScan scan;
   setUpAll(() {
