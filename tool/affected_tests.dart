@@ -1686,7 +1686,7 @@ Future<_BatchResult> _flutterTestIn(
         kind: kind,
       ),
     ],
-    environment: {...temp.environment, ...launch.environment},
+    environment: temp.environment..addAll(launch.environment),
     runInShell: launch.shell,
   );
   var ranTests = false;

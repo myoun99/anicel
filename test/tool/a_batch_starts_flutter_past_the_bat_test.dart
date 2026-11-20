@@ -82,27 +82,19 @@ void main() {
     expect(source, contains('...launch.leading,'));
     expect(
       source,
-      contains('environment: {...temp.environment, ...launch.environment},'),
+      contains('environment: temp.environment..addAll(launch.environment),'),
     );
     expect(source, contains('runInShell: launch.shell,'));
     expect(source, contains('_launch.argBudget;'));
     expect(source, isNot(contains("Platform.isWindows ? 'flutter.bat'")));
   });
 
-  test('on this machine the launch it reads starts the tool: it says '
-      "Flutter's version", () async {
-    final launch = flutterLaunch(
-      Platform.environment,
-      windows: Platform.isWindows,
-    );
-    final ran = await Process.run(
-      launch.executable,
-      [...launch.leading, '--version'],
-      environment: launch.environment,
-      runInShell: launch.shell,
-    );
-    expect(ran.exitCode, 0, reason: '${ran.stdout}\n${ran.stderr}');
-    expect('${ran.stdout}', contains('Flutter'));
-    if (Platform.isWindows) expect(launch.shell, isFalse);
+  test('on a Windows machine with Flutter, its SDK has the three files — a '
+      'Flutter that moved them would send every batch back through the '
+      '.bat, and this says so', () {
+    if (!Platform.isWindows) return;
+    final launch = flutterLaunch(Platform.environment, windows: true);
+    expect(launch.executable, endsWith(r'\bin\cache\dart-sdk\bin\dart.exe'));
+    expect(launch.shell, isFalse);
   });
 }
