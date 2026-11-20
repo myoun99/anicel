@@ -272,7 +272,10 @@ class _CanvasPanelSelection {
   /// [under]'s pixels on [surface] cut through [region] — the lift's dabs
   /// and the picture with its hole — or null with nothing of it under the
   /// outline. ⛔ONE CUT for the press and for the box at rest
-  /// ([boxAtRest]): what is cut ahead is what the press would cut.
+  /// ([boxAtRest]): what is cut ahead is what the press would cut — the
+  /// same reading, lift and hole, by the doors' told twins
+  /// ([_cutOneAhead]), which answer pixel for pixel what these do
+  /// (a_stamp_laid_once_told_is_the_stamp_laid_waited_test.dart).
   _Cut? _cut(
     BrushFrameEditingCoordinator coordinator,
     _Underfoot under,
@@ -422,43 +425,139 @@ class _CanvasPanelSelection {
         return;
       }
       await _ahead.aTurn();
-      final options = _maskOptions;
-      final surface = coordinator.currentSurfaceOf(under.key);
-      final cut = _cut(
+      if (!await _cutOneAhead(
         coordinator,
-        under,
+        run,
         region,
-        surface,
-        options,
+        under,
         '$liftId-$index',
-      );
-      final ahead = _ahead.cuts[under.key] = _CutAhead(
-        region: region,
-        placement: under.placement,
-        options: options,
-        from: surface,
-        cut: cut,
-      );
-      _ahead.declareTo(coordinator);
-      if (cut != null) {
-        await _ahead.aTurn();
-        ahead.float = _floatAheadOf(cut, under);
+      )) {
+        return;
       }
     }
+    debugCutsAheadThrough += 1;
   }
 
-  /// [cut]'s float laid ahead of the press, as [_floatAtThePress] would
-  /// lay it — the other half of what the press did on the UI thread.
+  /// [under] cut ahead through [region], and its float laid a turn after
+  /// ([_floatAheadOf]) — false where the run moved on meanwhile.
+  ///
+  /// 🗣️브러시/렌더링 2026-11-20 (b7aba1ce1): [_cut]'s lift and hole by the
+  /// engine's told doors, which wait for no GPU and answer of the picture
+  /// as it stood when asked. So, as the doors ask of whoever uses them:
+  /// ⓐ an answer is kept only for the run that asked, on a cel still
+  /// holding the picture it was asked of — and the hole is asked of the
+  /// picture the lift was; ⓑ a cut whose hole the engine did not put after
+  /// all is forgotten ([BrushFrameEditingCoordinator.deriveSurfaceOnceTold]'s
+  /// `unput`); ⓒ a refusal leaves the cel to the press, whose waited door
+  /// says why.
+  ///
+  /// ↩️Each step waited for the GPU on the UI's thread — and for all the
+  /// GPU had queued, not its own work alone: 4–18 ms a turn, 31–63 with
+  /// the queue full (공통 2026-11-20, S5_BA cut 352, 메인 PC 테스트 VM).
+  Future<bool> _cutOneAhead(
+    BrushFrameEditingCoordinator coordinator,
+    int run,
+    CanvasSelectionRegion region,
+    _Underfoot under,
+    String liftId,
+  ) async {
+    final options = _maskOptions;
+    final surface = coordinator.currentSurfaceOf(under.key);
+    bool stands() =>
+        run == _ahead.run &&
+        identical(coordinator.currentSurfaceOf(under.key), surface);
+    _CutAhead? ahead;
+    var unput = false;
+    final _Cut? cut;
+    try {
+      final inArtwork = regionInArtworkSpace(
+        region: region,
+        placement: under.placement,
+      );
+      final lift = inArtwork == null
+          ? null
+          : await buildSelectionLiftDabsOnceTold(
+              region: inArtwork,
+              surface: surface,
+              liftId: liftId,
+              options: options,
+            );
+      if (!stands()) {
+        return run == _ahead.run;
+      }
+      final holed = lift == null
+          ? null
+          : await coordinator.deriveSurfaceOnceTold(
+              lift.eraseDab,
+              key: under.key,
+              unput: () {
+                unput = true;
+                if (identical(_ahead.cuts[under.key], ahead)) {
+                  _ahead.cuts.remove(under.key);
+                }
+              },
+            );
+      cut = lift == null || holed == null ? null : (lift: lift, holed: holed);
+    } on GpuRefused {
+      return run == _ahead.run;
+    }
+    if (unput || !stands()) {
+      return run == _ahead.run;
+    }
+    ahead = _ahead.cuts[under.key] = _CutAhead(
+      region: region,
+      placement: under.placement,
+      options: options,
+      from: surface,
+      cut: cut,
+    );
+    _ahead.declareTo(coordinator);
+    if (cut == null) {
+      return true;
+    }
+    await _ahead.aTurn();
+    return _floatAheadOf(run, cut, under, ahead);
+  }
+
+  /// [cut]'s float laid ahead of the press into [ahead], as
+  /// [_floatAtThePress] would lay it — the other half of what the press did
+  /// on the UI thread; false where the run moved on meanwhile. By the told
+  /// door ([floatSurfaceOnceTold]), kept as [_cutOneAhead] keeps a cut.
   ///
   /// ↩️The layer laid every float's surface as the box opened: 42–55 ms of
   /// the press's 67–82 over six cels of S5_BA cut 352 (메인 PC · 테스트 VM,
   /// 2026-11-20), the cuts ahead already taken.
-  _FloatAhead _floatAheadOf(_Cut cut, _Underfoot under) {
+  Future<bool> _floatAheadOf(
+    int run,
+    _Cut cut,
+    _Underfoot under,
+    _CutAhead ahead,
+  ) async {
     final stampDab = stampOnCanvas(cut.lift.stampDab, under.placement);
-    return (
-      stampDab: stampDab,
-      surface: floatSurfaceOf(stampDab, _state._stagePasteboard),
-    );
+    BitmapSurface? laid;
+    var unput = false;
+    try {
+      laid = await floatSurfaceOnceTold(
+        stampDab,
+        _state._stagePasteboard,
+        unput: () {
+          unput = true;
+          final float = ahead.float;
+          if (float != null && identical(float.surface, laid)) {
+            ahead.float = null;
+          }
+        },
+      );
+    } on GpuRefused {
+      return run == _ahead.run;
+    }
+    if (run != _ahead.run) {
+      return false;
+    }
+    if (!unput) {
+      ahead.float = (stampDab: stampDab, surface: laid);
+    }
+    return true;
   }
 
   final _CutsAhead _ahead = _CutsAhead();
@@ -529,8 +628,14 @@ final class _CutAhead {
 }
 
 /// A cut's float laid ahead of the press: its stamp on the canvas, and the
-/// surface the box draws it from ([floatSurfaceOf]).
+/// surface the box draws it from ([floatSurfaceOnceTold]).
 typedef _FloatAhead = ({BrushDab stampDab, BitmapSurface surface});
+
+/// How many runs of a box at rest cut every cel they stood over
+/// ([_CanvasPanelSelection.boxAtRest]) — what a test lets the engine's
+/// answers come in for: the cuts are told on the machine's own clock.
+@visibleForTesting
+int debugCutsAheadThrough = 0;
 
 /// What a box at rest has cut ahead of the press that opens it
 /// ([_CanvasPanelSelection.boxAtRest]) — an object of its own so that what

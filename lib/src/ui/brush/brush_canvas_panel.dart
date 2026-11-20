@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
 import '../canvas/canvas_drag_in_flight.dart';
 import '../canvas/shown_cels.dart';

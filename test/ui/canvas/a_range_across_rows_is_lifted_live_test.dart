@@ -50,6 +50,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import '../../helpers/wait_window.dart' show watchTheBar, windowBehind;
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/surface_rgba_in_place.dart';
 import '../../helpers/until_the_brushes_land.dart';
 
@@ -350,17 +351,24 @@ void main() {
   /// frames ahead of the press that opens it, and that press cuts only a
   /// cel that changed since.
   group('🗣️a box at rest cuts its cels ahead', () {
-    /// Ctrl+T — the box at rest — and the frames its cuts take.
+    /// The turns and the engine's answers a run of the box at rest takes,
+    /// one begun since [runs] were through: a cut a turn and its float
+    /// another, the turns running on with no frame asked for, and each step
+    /// told on the machine's own clock (brush's told doors, b7aba1ce1).
+    Future<void> untilCutAhead(WidgetTester tester, int runs) async => expect(
+      await settleAsync(tester, () => debugCutsAheadThrough > runs),
+      isTrue,
+      reason: '⛔premise: the box at rest cut every cel it frames',
+    );
+
+    /// Ctrl+T — the box at rest — and its cuts ([untilCutAhead]).
     Future<CanvasSelectionCommands> restTheBox(WidgetTester tester) async {
+      final runs = debugCutsAheadThrough;
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
       await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pumpAndSettle();
-      // A cut a turn and its float another: the turns run on, with no frame
-      // asked for.
-      for (var turn = 0; turn < 6; turn += 1) {
-        await tester.pump(Duration.zero);
-      }
+      await untilCutAhead(tester, runs);
       return tester
           .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer).first)
           .selectionCommands!;
@@ -390,6 +398,50 @@ void main() {
         {for (final key in stack.live!.liftedRows.keys) key.frameId.value},
         {'${b.value}-0'},
         reason: 'B lifted in its own row, A floats in the live row',
+      );
+    });
+
+    /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second ④
+    /// (브러시/렌더링 2026-11-20, b7aba1ce1): what a box at rest cuts and
+    /// lays ahead is asked of the engine and told — each step waited for
+    /// the GPU on the UI's thread, and for all the GPU had queued with it.
+    /// So the turns alone ask; what is told comes on the machine's clock.
+    ///
+    /// ⚠️Not counted by the UI thread's waits (`debugWaitsHere`): with the
+    /// box at rest every frame of this test waits once, the run's or not
+    /// (공통 2026-11-20 — not the doors', the screen's read-back's nor the
+    /// ink bounds'), so the count says nothing of the doors.
+    testWidgets('🎯a box at rest asks its cuts of the engine and is told — '
+        'its turns wait for none of them', (tester) async {
+      await pump(tester);
+      final runs = debugCutsAheadThrough;
+      final lifts = debugSelectionLiftsBuilt;
+      final floats = debugFloatSurfacesMade;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      // The turns a run takes, on the pumped clock alone.
+      for (var turn = 0; turn < 6; turn += 1) {
+        await tester.pump(Duration.zero);
+      }
+
+      expect(
+        debugSelectionLiftsBuilt - lifts,
+        1,
+        reason: '⛔LIVENESS: the first cel\'s lift asked',
+      );
+      expect(
+        debugCutsAheadThrough,
+        runs,
+        reason: 'a cut answered on the pumped clock — waited for, not told',
+      );
+
+      await untilCutAhead(tester, runs);
+      expect(
+        (debugSelectionLiftsBuilt - lifts, debugFloatSurfacesMade - floats),
+        (2, 2),
+        reason: 'LIVENESS: both cels cut and laid ahead, once told',
       );
     });
 
@@ -480,6 +532,7 @@ void main() {
 
       // The whole canvas selected: the box stands on the marquee, so a pose
       // moves no edge of it and the box at rest is not told again.
+      final runs = debugCutsAheadThrough;
       commands.setRegion(
         CanvasSelectionRegion.shape(
           CanvasSelectionShape.rect(
@@ -491,6 +544,7 @@ void main() {
         ),
       );
       await frames();
+      await untilCutAhead(tester, runs);
       final before = debugSelectionLiftsBuilt;
 
       session.laneVerbs.updateLayerTransformTrack(
