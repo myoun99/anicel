@@ -362,7 +362,6 @@ void main() {
     'memoryItemTimelineTiles': (s) => s.memoryItemTimelineTiles,
     'memoryItemMoviePictures': (s) => s.memoryItemMoviePictures,
     'memoryItemTileImages': (s) => s.memoryItemTileImages,
-    'memoryItemEnginePool': (s) => s.memoryItemEnginePool,
     'memoryItemEngineScratch': (s) => s.memoryItemEngineScratch,
     'memoryItemGpuInSystem': (s) => s.memoryItemGpuInSystem,
     'containerAreaSettings': (s) => s.containerAreaSettings,

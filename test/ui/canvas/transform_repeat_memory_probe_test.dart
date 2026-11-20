@@ -15,7 +15,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/native/qa_memory.dart';
-import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -189,7 +188,6 @@ void main() {
         'undo': history.retainedBytes,
         'drawings': store.hotBakedBytes + store.reclaimableViewBytes,
         'brushTips': BrushTipStampCache.instance.residentBytes,
-        'enginePool': TileBlocks.parkedBytes,
         'scratch': NativeScratch.liveBytes,
         'imageCache': PaintingBinding.instance.imageCache.currentSizeBytes,
         'panelRasters': StaticRaster.censusBytes,

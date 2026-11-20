@@ -132,7 +132,6 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'timelineTiles' => strings.memoryItemTimelineTiles,
       'moviePictures' => strings.memoryItemMoviePictures,
       'tileImages' => strings.memoryItemTileImages,
-      'enginePool' => strings.memoryItemEnginePool,
       'engineScratch' => strings.memoryItemEngineScratch,
       'gpuInSystem' => strings.memoryItemGpuInSystem,
       _ => id,

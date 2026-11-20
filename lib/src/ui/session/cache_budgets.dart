@@ -23,9 +23,10 @@ import '../playback/playback_cache_budget.dart';
 /// the device-scaled ones would make the allowance a lie: the native
 /// uploads' 640MB would sit outside it, one of the largest (and playback's
 /// 600MB did, until it took the cels' law). 🗣️유저 2026-09-16 (memory-allowance-Q2): 「천장을 걸 수 있는
-/// 것은 전부 허용치 안으로」 — so the engine's parked tile blocks (a
-/// compile-time cap in C until then) and the framework's image cache
-/// (ceilinged by the binding at startup) are entries too. What is sized by
+/// 것은 전부 허용치 안으로」 — so the framework's image cache (ceilinged
+/// by the binding at startup) is an entry too; ↩️the engine's parked tile
+/// blocks were one with it (a compile-time cap in C until then) till no
+/// block parked any more (2026-11-21, `TileBlocks`). What is sized by
 /// the screen and has no cache to cap is not — and says so by being a
 /// census row no entry names.
 enum CacheBudgetLine {
@@ -76,10 +77,12 @@ enum CacheBudgetLine {
   /// decodes its own pixels, so the ceiling suits a cache that is nearly
   /// empty; it exists so a list of assets added one day cannot quietly take
   /// the framework's default tenth of a gigabyte.
+  ///
+  /// ↩️`enginePool` stood after this one till 2026-11-21: 512MB of the
+  /// allowance for the engine's tile blocks parked for reuse, which went
+  /// with the lists (유저 on card cel-originals-are-held-twice-in-ram-
+  /// and-on-the-gpu, Q7: 「타일풀은 아예 없애는걸로 가자」).
   imageCache({'imageCache'}),
-
-  /// The drawing engine's tile blocks parked for reuse.
-  enginePool({'enginePool'}),
 
   /// The canvas's tile pictures — every decoded tile's GPU copy, truths and
   /// stand-ins. Ceilinged since 2026-09-16 (render round): the ones no
@@ -99,11 +102,6 @@ enum CacheBudgetLine {
 
   /// The framework's image cache ceiling ([imageCache]).
   static const int frameworkImageCacheBytes = 8 * 1024 * 1024;
-
-  /// The engine's parked tile blocks ([enginePool]): one full 8K frame of
-  /// tiles (256MB) plus headroom for a previous frame still draining — the
-  /// number the lists start from (native/tile_blocks `CAP_AT_START`).
-  static const int engineTilePoolBytes = 512 * 1024 * 1024;
 
   /// This line's budget on a device with [physicalMemoryBytes] of RAM — null
   /// (no engine: tests, host runs) keeps the desktop-class ceiling, as every
@@ -127,7 +125,6 @@ enum CacheBudgetLine {
     ),
     CacheBudgetLine.brushTips => BrushTipStampCache.defaultByteBudget,
     CacheBudgetLine.imageCache => frameworkImageCacheBytes,
-    CacheBudgetLine.enginePool => engineTilePoolBytes,
     CacheBudgetLine.tileImages => TilePictureBudget.deviceScaledByteBudget(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
@@ -146,7 +143,6 @@ enum CacheBudgetLine {
     CacheBudgetLine.sheetInk ||
     CacheBudgetLine.brushTips ||
     CacheBudgetLine.imageCache ||
-    CacheBudgetLine.enginePool ||
     CacheBudgetLine.tileImages => 0,
   };
 }
@@ -201,7 +197,6 @@ class CacheBudgets {
   int get sheetImages => this[CacheBudgetLine.sheetImages];
   int get brushTips => this[CacheBudgetLine.brushTips];
   int get imageCache => this[CacheBudgetLine.imageCache];
-  int get enginePool => this[CacheBudgetLine.enginePool];
   int get tileImages => this[CacheBudgetLine.tileImages];
 
   int get total => _bytes.values.fold(0, (sum, bytes) => sum + bytes);

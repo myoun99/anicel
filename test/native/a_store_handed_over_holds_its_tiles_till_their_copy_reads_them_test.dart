@@ -16,7 +16,7 @@ import '../helpers/collect_garbage.dart';
 /// store's bytes into its slots is the engine's thread's, and the caller
 /// waits for none of it (rust/src/kernels/pool/mod.rs,
 /// `gpu_engine_pool_store`). A tile's pixels are a native block its
-/// finalizer hands back to the lists for the next tile made
+/// finalizer hands back, the allocator's for the next tile made
 /// (BitmapTile.readPixels has the accident) — so a tile nothing else holds,
 /// collected before its copy ran, would land another tile's bytes in its
 /// slot. 🗣️관제 10:07: the hold a real one, no assert, and a pin of it
@@ -60,7 +60,8 @@ void main() {
     await collectGarbageUntil(() => canary.target == null);
     expect(canary.target, isNull, reason: '⛔premise: the collector came');
     expect(stored.target, isNotNull, reason: 'its copy has not read it');
-    // Blocks a collected tile handed back go to the next tiles made.
+    // A block a collected tile handed back is the allocator's for the
+    // next tiles made.
     final churned = [for (var made = 0; made < 64; made++) tileOf(0xEE)];
 
     await engine.done();

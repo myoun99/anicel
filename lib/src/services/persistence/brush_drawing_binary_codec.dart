@@ -139,7 +139,7 @@ typedef CelParts<P> = ({
 sealed class LaidPixels {
   const LaidPixels();
 
-  /// [pixels] laid: copied into a block of the lists' ([TileBlocks]), or —
+  /// [pixels] laid: copied into a tile's block ([TileBlocks]), or —
   /// one colour — their word, and no block asked for.
   factory LaidPixels.copyOf(Uint8List pixels) {
     final word = oneWordOf(pixels);
@@ -167,19 +167,18 @@ sealed class LaidPixels {
   /// by itself.
   BitmapTile adopted(int tileSize, [TileWeight? weighedBy]);
 
-  /// A block of the lists' holding them, the caller's to free or to lay
+  /// A tile's block holding them, the caller's to free or to lay
   /// again ([LaidPixels.keeping]) — for whoever writes into a laid tile
   /// before it is adopted. These are not used after — what they knew of
   /// the bytes ([LaidBlock.hasInk]) with them: laid again, asked again.
   Pointer<Uint8> inABlock(int tileSize);
 
-  /// Gives back what they hold of the lists — for pixels nothing will
-  /// adopt.
+  /// Gives back the block they hold — for pixels nothing will adopt.
   void giveBack();
 }
 
-/// A block of the lists' ([TileBlocks]) at [address], the adopting tile's
-/// to free.
+/// A tile's block ([TileBlocks]) at [address], the adopting tile's to
+/// free.
 final class LaidBlock extends LaidPixels {
   const LaidBlock(this.address, {required this.hasInk});
 

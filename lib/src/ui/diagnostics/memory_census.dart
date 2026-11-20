@@ -12,7 +12,6 @@ import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
 import '../../native/qa_memory.dart';
 import '../../native/screen_texture.dart';
-import '../../native/tile_blocks.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
@@ -297,17 +296,13 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           // viewer holds its source at full size.
           CutPieceSlot.allPieceBytes,
     ),
-    // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
-    // blocks parked for reuse and grow-only scratch sized by the largest
-    // call so far. Both resident, both read as engine overhead until
-    // C-ipad-crash (2026-09-11). ✂️Two rows since 2026-09-16: the pool has
-    // a ceiling the allowance sets ([CacheBudgetLine.enginePool]) and the
-    // scratch has none — one row would have been half inside the
-    // allowance and half out.
-    MemoryCensusItem(
-      id: 'enginePool',
-      bytes: TileBlocks.parkedBytes,
-    ),
+    // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: the
+    // grow-only scratch sized by the largest call so far. Resident, and
+    // read as engine overhead until C-ipad-crash (2026-09-11).
+    // ↩️A row of tile blocks parked for reuse stood before it till
+    // 2026-11-21 (`enginePool` — 유저 on cel-originals Q7: 「타일풀은
+    // 아예 없애는걸로 가자」): a freed block waits nowhere now
+    // (`TileBlocks`).
     MemoryCensusItem(id: 'engineScratch', bytes: NativeScratch.liveBytes),
     // 🚨WHAT THE GPU HOLDS IN THE RAM, where its own memory is apart: the
     // non-local segments' use (`GpuEngine.videoMemory`) — the buffers the

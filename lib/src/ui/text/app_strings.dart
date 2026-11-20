@@ -796,7 +796,6 @@ enum AppStrings {
   String get memoryItemTimelineTiles => _s('memoryItemTimelineTiles');
   String get memoryItemMoviePictures => _s('memoryItemMoviePictures');
   String get memoryItemTileImages => _s('memoryItemTileImages');
-  String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
   String get memoryItemGpuInSystem => _s('memoryItemGpuInSystem');
   String get containerAreaSettings => _s('containerAreaSettings');
@@ -2855,7 +2854,6 @@ enum AppStrings {
     'memoryItemTimelineTiles': 'Timeline tile images',
     'memoryItemMoviePictures': 'Reference movies',
     'memoryItemTileImages': 'Canvas tile images',
-    'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
     'memoryItemGpuInSystem': 'GPU memory in RAM',
     'memoryOutsideAllowance': 'Outside the app allowance',
@@ -4443,7 +4441,6 @@ enum AppStrings {
     'memoryItemTimelineTiles': 'タイムラインのタイル画像',
     'memoryItemMoviePictures': '参照動画',
     'memoryItemTileImages': 'キャンバスのタイル画像',
-    'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
     'memoryItemGpuInSystem': 'RAM上のGPUメモリ',
     'memoryOutsideAllowance': 'アプリの割り当ての外',
@@ -6420,7 +6417,6 @@ enum AppStrings {
     'memoryItemTimelineTiles': '타임라인 타일 이미지',
     'memoryItemMoviePictures': '참조 동영상',
     'memoryItemTileImages': '캔버스 타일 이미지',
-    'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
     'memoryItemGpuInSystem': 'RAM에 있는 GPU 메모리',
     'memoryOutsideAllowance': '앱 허용치 밖',
@@ -8428,7 +8424,6 @@ enum AppStrings {
     'memoryItemTimelineTiles': 'Images des tuiles de la timeline',
     'memoryItemMoviePictures': 'Vidéos de référence',
     'memoryItemTileImages': 'Images des tuiles du canevas',
-    'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
     'memoryItemGpuInSystem': 'Mémoire GPU en RAM',
     'memoryOutsideAllowance': "Hors de l'allocation de l'app",
@@ -10546,7 +10541,6 @@ enum AppStrings {
     'memoryItemTimelineTiles': '时间轴图块图像',
     'memoryItemMoviePictures': '引用视频',
     'memoryItemTileImages': '画布图块图像',
-    'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
     'memoryItemGpuInSystem': '位于内存的显存',
     'memoryOutsideAllowance': '应用配额之外',

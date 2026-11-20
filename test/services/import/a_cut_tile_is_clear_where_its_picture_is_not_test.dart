@@ -7,26 +7,20 @@ import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/services/import/tile_cutter.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
-/// A block comes off the lists holding whatever its last holder left
+/// A block holds whatever the allocator left there
 /// ([TileBlocks.alloc]), so the cutter clears it before the rows go in: a
 /// tile the picture covers in part is clear where the picture is not.
 /// 🚨The clearing is `zeroBytes` since 2026-11-16 (card
 /// the-tile-cutter-is-most-of-a-raster-import) — this pins that it still
 /// clears, and that the tiles keep their columns past the first.
 void main() {
-  // A side no other tile wears, so the list of its size holds only what
-  // these tests park there.
   const side = 23;
   final length = BitmapTile.bytesFor(side);
   const red = [200, 10, 20, 255];
 
-  /// A block of [length] full of 0xab, parked: the next ask's answer.
-  int parkedDirty() {
-    final block = TileBlocks.alloc(length);
-    block.asTypedList(length).setAll(0, List.filled(length, 0xab));
-    TileBlocks.free(block);
-    return block.address;
-  }
+  // Every block asked for comes full of 0xab: what a block held before.
+  setUp(() => TileBlocks.debugComesFullOf = 0xab);
+  tearDown(() => TileBlocks.debugComesFullOf = null);
 
   /// [width] × [height] of red, cut at ([left], [top]) into tiles of [side].
   CutTiles cutRed(int left, int top, int width, int height) {
@@ -63,18 +57,11 @@ void main() {
 
   test('🚨a block that held another picture is clear where this one is '
       'not', () {
-    final dirty = parkedDirty();
-
     final tiles = cutRed(5, 4, 10, 7);
     addTearDown(() => giveBackCut(tiles));
 
     expect(tiles, hasLength(1));
     final tile = tiles.single;
-    expect(
-      (tile.pixels as LaidBlock).address,
-      dirty,
-      reason: 'premise: the cut took the dirty block',
-    );
     expect(pixelOf(tile.pixels, 5, 4), red, reason: 'its first pixel');
     expect(pixelOf(tile.pixels, 14, 10), red, reason: 'its last pixel');
     const outside = [(4, 4), (15, 4), (5, 3), (5, 11), (0, 0), (22, 22)];

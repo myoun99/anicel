@@ -67,28 +67,22 @@ void main() {
   Map<TileCoord, List<int>> bytesByCoord(Map<TileCoord, BitmapTile> tiles) =>
       {for (final entry in tiles.entries) entry.key: entry.value.pixels};
 
-  // A tile side no other tile in this process wears, so the list of its
-  // size ([TileBlocks]) holds what these tests park there and nothing a
-  // collected tile's finalizer brings.
+  // A tile side no other tile in this process wears, so the blocks laid
+  // and held of its size ([TileBlocks.debugLaid], [TileBlocks.debugHeld])
+  // are what these tests ask for and nothing else.
   const side = 24;
   final length = BitmapTile.bytesFor(side);
 
-  /// Two blocks of [length] parked on the lists: the addresses the next two
-  /// asks of that size are answered with, in that order — the last freed
-  /// first.
-  List<int> twoParked() {
-    final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-    blocks.forEach(TileBlocks.free);
-    return [blocks[1].address, blocks[0].address];
-  }
+  /// The blocks of [length] laid so far, and those held now.
+  ({int laid, int held}) blocks() => (
+    laid: TileBlocks.debugLaid(length),
+    held: TileBlocks.debugHeld(length),
+  );
 
-  /// What the next two asks of [length] are answered with, given back when
-  /// the test ends.
-  List<int> nextTwoAsks() {
-    final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-    addTearDown(() => blocks.forEach(TileBlocks.free));
-    return [for (final block in blocks) block.address];
-  }
+  /// Every cel of [side] a test adopted, held till the file ends: a tile
+  /// collected gives its block back when the collector chooses, under a
+  /// later test's count.
+  final adoptedHere = <BitmapSurface>[];
 
   /// A tile's worth of two colours — one that takes a block: a tile of one
   /// colour is laid as its word ([LaidPixels]).
@@ -139,23 +133,22 @@ void main() {
 
   test('🚨a block it could not get frees every block it got — nothing else '
       'knows they exist', () {
-    final parked = twoParked();
-    // The third tile asks for a block of no bytes, which the lists refuse.
+    final before = blocks();
+    // The third tile asks for a block of no bytes, which is refused.
     final entry = twoTilesThen([(x: 2, y: 0, pixels: Uint8List(0))]);
 
     expect(() => layCelEntry(entry), throwsStateError);
 
     expect(
-      nextTwoAsks(),
-      unorderedEquals(parked),
-      reason: 'the two it got are parked again: held still, these asks '
-          'would be answered with fresh blocks',
+      blocks(),
+      (laid: before.laid + 2, held: before.held),
+      reason: 'the two it got went back',
     );
   });
 
   test('a tile size no tile takes is refused BEFORE the first block — the '
       'main isolate\'s adoption must never be the first to refuse', () {
-    final parked = twoParked();
+    final before = blocks();
 
     expect(
       () => layCelEntry(twoTilesThen(const [], tileSize: 0)),
@@ -163,10 +156,10 @@ void main() {
     );
 
     expect(
-      nextTwoAsks(),
-      parked,
-      reason: 'the parked blocks lie as they lay: taken and given back, '
-          'they would lie the other way round',
+      blocks(),
+      before,
+      reason: 'no block was asked for: one taken and given back is laid '
+          'all the same',
     );
   });
 
@@ -185,11 +178,11 @@ void main() {
         ),
       ],
     );
-    final parked = twoParked();
+    final before = blocks();
 
     freeLaidCel(layCelEntry(entry));
 
-    expect(nextTwoAsks().toSet(), parked.toSet());
+    expect(blocks(), (laid: before.laid + 2, held: before.held));
   });
 
   group('a tile of one colour (card '
@@ -218,24 +211,19 @@ void main() {
 
     test('🚨takes no block: its word crosses, and one block is asked for '
         'the cel\'s one tile of two colours', () {
-      final parked = twoParked();
+      final before = blocks();
 
       final laid = layCelEntry(whiteInkWhite());
       addTearDown(() => freeLaidCel(laid));
 
       expect(laid.tiles[0].pixels, isA<LaidWord>());
       expect(laid.tiles[2].pixels, isA<LaidWord>());
+      expect(laid.tiles[1].pixels, isA<LaidBlock>());
       expect(
-        laid.tiles[1].pixels,
-        isA<LaidBlock>().having((b) => b.address, 'address', parked[0]),
-      );
-      final next = TileBlocks.alloc(length);
-      TileBlocks.free(next);
-      expect(
-        next.address,
-        parked[1],
-        reason: 'the second parked block lies as it lay: a block taken for '
-            'a tile of one colour would have been this one',
+        blocks(),
+        (laid: before.laid + 1, held: before.held + 1),
+        reason: 'one block asked for, and held: a block taken for a tile '
+            'of one colour would be one more laid',
       );
     });
 
@@ -246,6 +234,7 @@ void main() {
       final copied = entry.toSurface();
 
       final laid = laidCelSurface(layCelEntry(entry));
+      adoptedHere.addAll([laid, copied]);
 
       expect(bytesByCoord(laid.tiles), bytesByCoord(copied.tiles));
       expect(laid.tiles.keys, [
@@ -258,13 +247,13 @@ void main() {
       expect(copied.keptTileBytes, length);
     });
 
-    test('given back unadopted, the one block it took parks again and '
+    test('given back unadopted, the one block it took goes back and '
         'nothing else is freed', () {
-      final parked = twoParked();
+      final before = blocks();
 
       freeLaidCel(layCelEntry(whiteInkWhite()));
 
-      expect(nextTwoAsks(), parked);
+      expect(blocks(), (laid: before.laid + 1, held: before.held));
     });
   });
 }

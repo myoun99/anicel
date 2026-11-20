@@ -167,7 +167,6 @@ void main() {
       'undo',
       'brushTips',
       'moviePictures',
-      'enginePool',
       'engineScratch',
       'gpuInSystem',
     });
@@ -300,7 +299,6 @@ void main() {
       'timelineTiles',
       'moviePictures',
       'tileImages',
-      'enginePool',
       'engineScratch',
       'gpuInSystem',
     });
@@ -638,7 +636,7 @@ void main() {
         discrete,
         // The tile pictures moved inside on 2026-09-16 (render round): a
         // ceiling the session sets ([CacheBudgetLine.tileImages]).
-        ['캔버스 타일 이미지', '그리기 엔진 타일 풀', '이미지 캐시', '그림'],
+        ['캔버스 타일 이미지', '이미지 캐시', '그림'],
         [
           '그리기 엔진 작업 버퍼',
           '패널 래스터',

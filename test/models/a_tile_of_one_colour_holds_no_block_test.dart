@@ -229,14 +229,13 @@ void main() {
 
     test('🚨a tile written in place: of one colour it gives its fresh block '
         'back, of two it keeps it', () {
-      // A side no other tile wears, so the list of its size ([TileBlocks])
-      // holds what this test parks there and nothing else.
+      // A side no other tile wears: the blocks laid and held of its size
+      // ([TileBlocks.debugLaid], [TileBlocks.debugHeld]) are this test's
+      // alone.
       const ownSide = 26;
       final ownLength = BitmapTile.bytesFor(ownSide);
-      // Two blocks parked: the lists answer the next two asks of the size
-      // with them, the last freed first.
-      final parked = [TileBlocks.alloc(ownLength), TileBlocks.alloc(ownLength)];
-      parked.forEach(TileBlocks.free);
+      final laid = TileBlocks.debugLaid(ownLength);
+      final held = TileBlocks.debugHeld(ownLength);
 
       // The colour's block is the first ask, the written tile's fresh block
       // the second.
@@ -245,18 +244,16 @@ void main() {
         size: ownSide,
         write: (pixels) => pixels.setAll(0, first.pixels),
       );
-      final next = TileBlocks.alloc(ownLength);
-      addTearDown(() => TileBlocks.free(next));
 
       expect(written.pixels, first.pixels);
       expect(written.ownBytes, 0);
       expect(addressOf(written), addressOf(first));
-      expect(addressOf(first), parked[1].address, reason: 'fixture');
+      expect(TileBlocks.debugLaid(ownLength), laid + 2, reason: 'fixture');
       expect(
-        next.address,
-        parked[0].address,
-        reason: 'the block it wrote into is parked again: held still, this '
-            'ask is answered with a fresh one',
+        TileBlocks.debugHeld(ownLength),
+        held + 1,
+        reason: 'the block it wrote into went back: the colour\'s alone '
+            'is held',
       );
 
       final twoColours = BitmapTile.written(
@@ -267,14 +264,16 @@ void main() {
       );
       expect(twoColours.ownBytes, ownLength);
       expect(addressOf(twoColours), isNot(addressOf(first)));
+      expect(TileBlocks.debugHeld(ownLength), held + 2);
     });
 
     test('🚨a write that throws gives its block back — no tile holds it '
         'yet', () {
+      // A side of its own, as above.
       const ownSide = 27;
       final ownLength = BitmapTile.bytesFor(ownSide);
-      final parked = TileBlocks.alloc(ownLength);
-      TileBlocks.free(parked);
+      final laid = TileBlocks.debugLaid(ownLength);
+      final held = TileBlocks.debugHeld(ownLength);
 
       expect(
         () => BitmapTile.written(
@@ -284,13 +283,12 @@ void main() {
         throwsStateError,
       );
 
-      final next = TileBlocks.alloc(ownLength);
-      addTearDown(() => TileBlocks.free(next));
       expect(
-        next.address,
-        parked.address,
-        reason: 'held still, this ask is answered with a fresh block',
+        TileBlocks.debugLaid(ownLength),
+        laid + 1,
+        reason: '⛔premise: a block was asked for',
       );
+      expect(TileBlocks.debugHeld(ownLength), held);
     });
 
     test('⚠️a block adopted is adopted unread, whatever its colour — the '

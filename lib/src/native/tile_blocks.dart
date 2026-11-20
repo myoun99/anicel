@@ -1,6 +1,6 @@
-// The engine's Rust library carries the tile blocks' lists
-// (rust/src/lib.rs), and its names are found in that code asset — no
-// library opened, no path named.
+// The engine's Rust library carries the tile blocks (rust/src/lib.rs),
+// and its names are found in that code asset — no library opened, no path
+// named.
 @DefaultAsset(gpuEngineAsset)
 library;
 
@@ -16,43 +16,75 @@ external Pointer<Void> _alloc(int size);
 @Native<Void Function(Pointer<Void>)>(symbol: 'qa_tile_free')
 external void _free(Pointer<Void> pixels);
 
-@Native<Int64 Function()>(symbol: 'qa_tile_pool_cached_bytes')
-external int _parkedBytes();
+@Native<Int64 Function(Int64)>(symbol: 'qa_tile_blocks_laid')
+external int _laid(int size);
 
-@Native<Void Function()>(symbol: 'qa_tile_pool_trim')
-external void _trim();
+@Native<Int64 Function(Int64)>(symbol: 'qa_tile_blocks_held')
+external int _held(int size);
 
-@Native<Void Function(Int64)>(symbol: 'qa_tile_pool_set_byte_cap')
-external void _setByteCap(int bytes);
-
-/// A tile's block of pixels, from the engine's lists (native/tile_blocks):
-/// a freed block parks by its exact size, and the next ask of that size
-/// takes it (R20-E1 — 🔬the measure is beside the lists).
+/// A tile's block of pixels, asked of the allocator through the engine's
+/// library (native/tile_blocks) and given back to it as its tile lets go:
+/// a freed block waits nowhere.
+///
+/// 🗣️유저 2026-11-21 (card cel-originals-are-held-twice-in-ram-and-on-the-
+/// gpu, Q7): 「타일풀은 아예 없애는걸로 가자」. ↩️Till then a freed block
+/// parked on a list of its exact size for the next ask of it, under a cap
+/// the memory allowance set — 2,159.8 MB of nobody's picture on the user's
+/// PC. 🔬What an ask pays without the lists is beside the blocks' doors
+/// (the crate).
 ///
 /// 🚨ONE ALLOCATOR A PROCESS, WHICHEVER ISOLATE ASKS. `@Native` finds the
 /// same library in every isolate, so a worker lays the blocks the main
 /// isolate's tiles adopt and free, and no word of where they come from
-/// passes between the two. ↩️While the lists were the C engine's a worker
+/// passes between the two. ↩️While the blocks were the C engine's a worker
 /// was handed their functions' addresses: its own probe could load another
 /// binary, or none — a test's path override and its forced fallback were
 /// statics, and statics do not cross isolates.
 abstract final class TileBlocks {
-  /// A block of [byteLength] bytes. ⚠️Its bytes are whatever its last
-  /// holder left: whoever asks writes every one.
+  /// A block of [byteLength] bytes. ⚠️Its bytes are whatever the allocator
+  /// left there: whoever asks writes every one.
   static Pointer<Uint8> alloc(int byteLength) {
     final block = _alloc(byteLength);
     if (block == nullptr) {
       throw StateError('qa_tile_alloc failed for $byteLength bytes');
     }
+    assert(() {
+      if (debugComesFullOf case final byte?) {
+        block
+            .cast<Uint8>()
+            .asTypedList(byteLength)
+            .fillRange(0, byteLength, byte);
+      }
+      return true;
+    }());
     return block.cast();
   }
 
-  /// Gives [block] back to the lists — one [alloc] answered.
+  /// Gives [block] back to the allocator — one [alloc] answered.
   static void free(Pointer<Uint8> block) => _free(block.cast());
+
+  /// Test seam: every block this isolate asks for comes full of this
+  /// byte — what an allocator may leave in one, said aloud, so that a
+  /// block not written whole shows it. ↩️A test parked a block it had
+  /// filled, and the lists answered the next ask with it.
+  @visibleForTesting
+  static int? debugComesFullOf;
+
+  /// Test seam: how many blocks of exactly [byteLength] bytes the process
+  /// ever laid — the blocks' own books (the crate has why they are by
+  /// size), whichever isolate asked. ↩️A test found a freed block on the
+  /// lists: the next ask of its size was answered with it.
+  @visibleForTesting
+  static int debugLaid(int byteLength) => _laid(byteLength);
+
+  /// Test seam: how many of them are held now — laid, and not given
+  /// back by a free here, on a worker or by a collected tile's finalizer.
+  @visibleForTesting
+  static int debugHeld(int byteLength) => _held(byteLength);
 
   /// Has [block] — [byteLength] bytes — freed as [holder] is collected, the
   /// tile that holds it or the colour whose tiles share it (`BitmapTile`):
-  /// the lists' own free, called on the collector's thread. Its weight is
+  /// the blocks' own free, called on the collector's thread. Its weight is
   /// told to the collector as [holder]'s, or — [weighedBy] — as a part of
   /// the one weight of the tiles made together with it ([TileWeight]).
   ///
@@ -99,19 +131,6 @@ abstract final class TileBlocks {
   static final NativeFinalizer _freesWhenCollected = NativeFinalizer(
     Native.addressOf<NativeFinalizerFunction>(_free),
   );
-
-  /// Bytes of the blocks parked for reuse — resident, and nobody's picture.
-  /// The memory census reads it.
-  static int get parkedBytes => _parkedBytes();
-
-  /// Caps what may park. The memory tab's allowance sets it
-  /// (`CacheBudgetLine.enginePool`, memory-allowance-Q2); lowering it frees
-  /// the excess on the spot.
-  static void setByteCap(int bytes) => _setByteCap(bytes);
-
-  /// Frees every parked block: the OS says memory is tight
-  /// (`DrawingEngines.respondToMemoryPressure`).
-  static void trim() => _trim();
 }
 
 /// The weight of the blocks of tiles made together — a cel's, made a
@@ -164,7 +183,7 @@ final class TileWeight implements Finalizable {
     final made = make(weight);
     weight._told = true;
     if (weight._bytes > 0) {
-      // The lists' free of no block: this entry is there for the weight.
+      // The blocks' free of no block: this entry is there for the weight.
       TileBlocks._freesWhenCollected.attach(
         weight,
         nullptr,

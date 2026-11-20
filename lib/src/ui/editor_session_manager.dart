@@ -97,7 +97,6 @@ import '../native/app_gpu_engine.dart' show EnginePictures;
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
-import '../native/tile_blocks.dart';
 import '../native/tiles_stood_on.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
@@ -479,12 +478,12 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.byteBudget = budgets.undo;
     playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
-    // The two the allowance did not reach until 2026-09-16 (Q2): the
-    // framework's image cache, seeded by the binding before any session,
-    // and the engine's parked tile blocks, a compile-time cap until then.
+    // The one the allowance did not reach until 2026-09-16 (Q2): the
+    // framework's image cache, seeded by the binding before any session.
+    // ↩️The engine's parked tile blocks were the other, till no block
+    // parked any more (2026-11-21, `TileBlocks`).
     // ★A new [CacheBudgetLine] is applied HERE, and nowhere else.
     _frameworkImageCache?.maximumSizeBytes = budgets.imageCache;
-    TileBlocks.setByteCap(budgets.enginePool);
     // The canvas's tile pictures (render round, 2026-09-16): the walk that
     // lets the unshown ones go reads this ceiling after every paint.
     TilePictureBudget.instance.byteBudget = budgets.tileImages;
