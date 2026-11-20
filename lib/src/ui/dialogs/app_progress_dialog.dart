@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../native/lost_screen.dart';
 import '../../services/wait_window.dart';
 import '../text/app_strings.dart';
+import '../widgets/app_spinner.dart';
 import '../widgets/app_window.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/fixed_label.dart';
@@ -121,7 +122,7 @@ class AppProgressDialog extends StatelessWidget {
               const SizedBox(
                 width: _spinnerBox,
                 height: _spinnerBox,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: AppSpinner(),
               ),
               const SizedBox(width: 12),
               Expanded(
