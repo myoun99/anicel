@@ -140,8 +140,8 @@ void main() {
           .onPressed !=
       null;
 
-  /// The 색 편집 head lights as a drawing lands on [bar]'s panel: the shared
-  /// pill is built again, and every other control on the bar stays.
+  /// The 색 편집 head lights as a drawing lands on [bar]'s panel: its group
+  /// is built again, and every other control on the bar stays.
   Future<void> expectTheHeadAlone(
     WidgetTester tester,
     EditorSessionManager s,
@@ -154,13 +154,18 @@ void main() {
     await tester.pump();
     expect(headIsLit(tester, bar), isTrue, reason: 'the head lit');
 
-    final shared = _keysIn(tester, bar, 'timeline-toolbar-shared-group');
-    final moved = _builtAgain(tester, bar, before);
-    expect(moved, contains('shared-colour-edit-button'));
     expect(
-      moved.difference(shared),
-      isEmpty,
-      reason: 'the head is on the shared pill — nothing outside it changed',
+      _keysIn(tester, bar, 'timeline-toolbar-shared-group'),
+      contains('shared-colour-edit-button'),
+      reason: 'premise: the head is on the shared pill',
+    );
+    // 🔬Card the-shared-pill-is-first-built-on-the-first-stroke-after-launch
+    // (11-20): the shared pill was one group, and the head lighting built
+    // its eleven verbs again. A group is what the pill's dividers bound.
+    expect(
+      _builtAgain(tester, bar, before),
+      {'shared-colour-edit-button'},
+      reason: 'the head is a group of its own — nothing beside it changed',
     );
     expect(
       identical(tester.widget(bar), toolbar),
@@ -170,7 +175,7 @@ void main() {
   }
 
   testWidgets('the pixel board filling lights the head over a blank cel, on '
-      'its own news, and builds that pill alone', (tester) async {
+      'its own news, and builds that head alone', (tester) async {
     final s = await openOnAnEmptyCel(tester);
     final bar = find.descendant(
       of: find.byType(TimelineTabHost),
@@ -196,12 +201,7 @@ void main() {
     await tester.pump();
 
     expect(headIsLit(tester, bar), isTrue, reason: 'the head heard the board');
-    expect(
-      _builtAgain(tester, bar, before).difference(
-        _keysIn(tester, bar, 'timeline-toolbar-shared-group'),
-      ),
-      isEmpty,
-    );
+    expect(_builtAgain(tester, bar, before), {'shared-colour-edit-button'});
   });
 
   Future<Finder> openTheStoryboard(WidgetTester tester) async {
@@ -215,7 +215,7 @@ void main() {
     );
   }
 
-  testWidgets('a drawing landing lights the 색 편집 head and builds its pill '
+  testWidgets('a drawing landing lights the 색 편집 head and builds its group '
       'alone — on the timeline', (tester) async {
     final s = await openOnAnEmptyCel(tester);
     await expectTheHeadAlone(

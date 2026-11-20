@@ -649,36 +649,6 @@ class TimelineActionToolbar extends StatelessWidget {
     ),
   );
 
-  /// Every gate the shared pill shows — what it is built again for.
-  Object _sharedPillKey() => (
-    panelContext.deleteSubject,
-    AppText.settings.value.programLanguage,
-    // ㉕: the three that joined the delete read their own gates.
-    // T3 made it four — 잘라내기 asks the same question copy does.
-    // B8: every gate is the PANEL's now — the timeline context answers
-    // with the session getters this key used to name, the storyboard's
-    // with its standing row, host answer included (the side channel this
-    // key used to carry as its last entry).
-    panelContext.canCutRun,
-    panelContext.canCopyFrame,
-    panelContext.canPasteLinkedFrame,
-    panelContext.canPasteIndependentFrame,
-    // T25: and the fifth resident reads its own subject, for the same
-    // reason the delete reads `deleteSubject` — the button's enablement
-    // and what the press DOES have to come from one answer.
-    onEditInstance != null && panelContext.canEditInstance,
-    // The 색 편집 head reads the gate its rows open behind.
-    session.pixelVerbs.canOpenColourEdit,
-    // I-45: the link-independent button, from its own one answer.
-    panelContext.canUnlink,
-    // F-455: 복제, likewise.
-    panelContext.canDuplicate,
-    // I-78: 병합, likewise.
-    panelContext.canMerge,
-    // I-18: 자동 이름 지정, likewise.
-    panelContext.canAutoName,
-  );
-
   /// 🚨★★★ THE SHARED PILL — verbs that belong to no noun (⑰㉕, 유저 2026-08-12:
   /// 「프레임알약 옆에 공용버튼 들어가는 알약만들고 거기」).
   ///
@@ -754,207 +724,277 @@ class TimelineActionToolbar extends StatelessWidget {
   /// between two drawn cels, equal on every other gate, reused the bar whole
   /// and this pill never looked again. The answer travelled in the hosts'
   /// tokens until the groups heard the seek themselves.
+  ///
+  /// 🚨A ZONE PER GROUP, as the frame pill is: the verbs between two
+  /// dividers are built again for their own gates alone (card
+  /// the-shared-pill-is-first-built-on-the-first-stroke-after-launch,
+  /// 2026-11-20). ↩️The pill was one group on one key of every gate it
+  /// showed, so the first stroke on an empty cel — the 색 편집 head lighting
+  /// at pen-down (pen-up-dock-tail-Q2) — built all eleven verbs again, 72 of
+  /// the pill's 96 elements in the test VM.
   Widget _sharedPill() => _StaticCommandGroup(
     news: _news,
-    gates: _sharedPillKey,
+    gates: () => AppText.settings.value.programLanguage,
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
-        // ⛔THE DESELECT IS NOT HERE. It was, for one round, and that made
-        // TWO buttons called 선택 해제 wearing the same `Icons.deselect` —
-        // this one letting go of the timeline's selections, `rail-deselect-
-        // button` letting go of the marquee, and nothing on screen saying
-        // which was which (유저 2026-08-27: 「선택해제 타임라인에 중복으로
-        // 존재하는거」).
-        //
-        // The rail's is the one that stayed, and it lets go of the marquee
-        // alone (유저 2026-10-14, I-40) — a tap lets go of the timeline's
-        // selections (T10). ⚠️The 취소 button, if it is built, goes beside
-        // THAT one; the note about holding its neighbour slot moved with the
-        // button it was about.
-        // 🚨T25 — Edit Instance, on the SHARED pill because its subject is
-        // 「지금 무엇이 선택됐나」 and that is what this pill is for.
-        //
-        // ⚠️It keeps the key it had on the frame pill. The button moved; it
-        // did not become a different button, and every test that reached it
-        // still does.
-        // 🗣️F-261: an action now, so it wears that action's name and its key
-        // — I-19's five beside it did the same.
-        _iconButton(
-          key: const ValueKey<String>('shared-edit-button'),
-          tooltip: editorActionLabel(EditorActionIds.editInstance),
-          shortcuts: const [EditorActionIds.editInstance],
-          icon: Icons.edit_outlined,
-          // B8: ONE source — the panel. The timeline's context answers with
-          // the session's subject (the same answer [editSelectionInstance]
-          // dispatches on, so lit and does-something cannot come apart);
-          // the storyboard's answers with its standing row's block, from
-          // the SAME resolver its host dispatches on.
-          onPressed: onEditInstance != null && panelContext.canEditInstance
-              ? onEditInstance
-              : null,
-        ),
-        // 🗣️I-18 — 자동 이름 지정, beside Edit (유저: 「타임라인 공용 알약에
-        // 새 버튼 신설. 내용은 블록 이름 자동편집으로 … 버튼은 자동 이름
-        // 지정」). It asks what is selected, the pill's one ladder, and
-        // numbers what the panel names from the number its window asks for.
-        // A context of its own: the window opens from where it was pressed.
-        Builder(
-          builder: (context) => _iconButton(
-            key: const ValueKey<String>('shared-auto-name-button'),
-            tooltip: editorActionLabel(EditorActionIds.editAutoName),
-            shortcuts: const [EditorActionIds.editAutoName],
-            icon: Icons.format_list_numbered,
-            onPressed: panelContext.canAutoName
-                ? () => unawaited(
-                    autoNameWithWindow(context, session, panel: panelContext),
-                  )
-                : null,
+        _StaticCommandGroup(
+          news: _news,
+          gates: () => (
+            AppText.settings.value.programLanguage,
+            // T25: the fifth resident reads its own subject, for the same
+            // reason the delete reads `deleteSubject` — the button's
+            // enablement and what the press DOES have to come from one
+            // answer.
+            onEditInstance != null && panelContext.canEditInstance,
+            // I-18: 자동 이름 지정, likewise.
+            panelContext.canAutoName,
           ),
+          builder: _sharedEditPair,
         ),
         const PillDivider(),
-        // 🚨T3 신설 — 잘라내기, 「복사 버튼 왼쪽」 (유저 2026-08-13).
-        //
-        // Copy keeps the original and stores the clip; this one stores the
-        // clip and takes the original out, and the tail closes over the
-        // hole. It is the LIFT half of the one splice — the same half a
-        // paste-over-a-selection does before it puts the clip down — so it
-        // needed no placement rules of its own.
-        // 🗣️I-19: each of these six IS one action's entrance, so it wears
-        // that action's registry name and names the action for its key.
-        _iconButton(
-          key: const ValueKey<String>('shared-cut-button'),
-          tooltip: editorActionLabel(EditorActionIds.editCut),
-          shortcuts: const [EditorActionIds.editCut],
-          icon: Icons.content_cut,
-          onPressed: panelContext.cutPress,
-        ),
-        // I-77: with rows selected the copy takes the ROWS, and the two
-        // pastes put down whichever the hand holds. The panel answers which
-        // ([ToolbarPanelContext]); nothing here knows the difference.
-        _iconButton(
-          key: const ValueKey<String>('shared-copy-button'),
-          tooltip: editorActionLabel(EditorActionIds.editCopy),
-          shortcuts: const [EditorActionIds.editCopy],
-          icon: Icons.content_copy,
-          onPressed: panelContext.copyPress,
-        ),
-        // ㉕ 확정 #8: the paste that makes a REAL frame, not a link. Two
-        // buttons rather than one with a modifier, because which one you
-        // meant is not a detail — a linked paste that was meant to be
-        // independent is only discovered later, by drawing on it and
-        // watching another cel change.
-        _iconButton(
-          key: const ValueKey<String>('shared-paste-independent-button'),
-          tooltip: editorActionLabel(EditorActionIds.editPasteIndependent),
-          shortcuts: const [EditorActionIds.editPasteIndependent],
-          icon: Icons.content_paste,
-          onPressed: panelContext.pasteIndependentPress,
-        ),
-        _iconButton(
-          key: const ValueKey<String>('shared-paste-linked-button'),
-          tooltip: editorActionLabel(EditorActionIds.editPasteLinked),
-          shortcuts: const [EditorActionIds.editPasteLinked],
-          icon: Icons.link,
-          onPressed: panelContext.pasteLinkedPress,
-        ),
-        // 🚨I-45 — 링크 독립, beside the paste that makes a link (유저
-        // 2026-09-20: 「링크 독립버튼. 위치는 타임라인의 공용 알약부분? 프레임
-        // 독립시키거나 레이어나 컷이나」). It asks what is selected, the pill's
-        // one ladder: rows → their links, the frame axis → its shared
-        // pictures, and on the storyboard the cuts.
-        _iconButton(
-          key: const ValueKey<String>('shared-unlink-button'),
-          tooltip: editorActionLabel(EditorActionIds.editUnlink),
-          shortcuts: const [EditorActionIds.editUnlink],
-          icon: Icons.link_off,
-          onPressed: panelContext.unlinkPress,
-        ),
-        // 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
-        // 컷버튼의 레이어복제/컷복제 삭제」 — the layer pill's and the cut
-        // pill's duplicates, one button. The panel answers which noun
-        // ([ToolbarPanelContext.canDuplicate]): the rows on the timeline,
-        // the cut on the storyboard.
-        _iconButton(
-          key: const ValueKey<String>('shared-duplicate-button'),
-          tooltip: editorActionLabel(EditorActionIds.editDuplicate),
-          shortcuts: const [EditorActionIds.editDuplicate],
-          icon: Icons.control_point_duplicate,
-          onPressed: panelContext.duplicatePress,
-        ),
-        // 🗣️I-78 (유저 2026-10-06): 「병합버튼. 우선 레이어 다중선택하고
-        // 병합하는걸 원하는데, 프레임도 사용가능할거같으니 공용알약에 두는걸
-        // 생각중」 — beside 복제, the other verb that makes a row of rows. A
-        // context of its own: the press opens its windows from here.
-        Builder(
-          builder: (context) => _iconButton(
-            key: const ValueKey<String>('shared-merge-button'),
-            tooltip: editorActionLabel(EditorActionIds.editMerge),
-            shortcuts: const [EditorActionIds.editMerge],
-            icon: Icons.merge,
-            onPressed: panelContext.canMerge
-                ? () => unawaited(
-                    mergeSelectionSubject(
-                      context,
-                      session,
-                      panelContext.mergeSubject,
-                    ),
-                  )
-                : null,
+        _StaticCommandGroup(
+          news: _news,
+          gates: () => (
+            AppText.settings.value.programLanguage,
+            panelContext.deleteSubject,
+            // ㉕: the three that joined the delete read their own gates.
+            // T3 made it four — 잘라내기 asks the same question copy does.
+            // B8: every gate is the PANEL's now — the timeline context
+            // answers with the session getters this key used to name, the
+            // storyboard's with its standing row, host answer included (the
+            // side channel this key used to carry as its last entry).
+            panelContext.canCutRun,
+            panelContext.canCopyFrame,
+            panelContext.canPasteLinkedFrame,
+            panelContext.canPasteIndependentFrame,
+            // I-45: the link-independent button, from its own one answer.
+            panelContext.canUnlink,
+            // F-455: 복제, likewise.
+            panelContext.canDuplicate,
+            // I-78: 병합, likewise.
+            panelContext.canMerge,
           ),
-        ),
-        _iconButton(
-          key: const ValueKey<String>('shared-delete-button'),
-          tooltip: editorActionLabel(EditorActionIds.editDelete),
-          shortcuts: const [EditorActionIds.editDelete],
-          icon: Icons.delete_outline,
-          danger: true,
-          onPressed: panelContext.deletePress(
-            onDeleteRowSelection: onDeleteRowSelection,
-          ),
+          builder: _sharedClipboardRow,
         ),
         const PillDivider(),
-        // 🚨THE TWO PIXEL VERBS, on THIS pill.
-        //
-        // 유저 2026-08-10 put ③ here in the first place — 「다만 이 버튼은
-        // 타임라인에 두는게 나을듯」 — and the reason holds for both: the
-        // selection that decides HOW MANY drawings change is the frame range,
-        // and it is drawn here. A button belongs beside the thing that
-        // decides how much it does. The marquee only decides how much of ONE
-        // drawing.
-        //
-        // ⚠️They sit after the delete rather than beside the deselect, whose
-        // neighbour slot is held for the 취소 button (see there).
-        //
-        // ⛔Dimmed with nothing to act on, never hidden.
-        //
-        // ✅ONE BUTTON, FOUR VERBS (유저 2026-08-27, I-8-Q3/Q4): 「그걸 하나의
-        // 버튼으로 넣어서 앵커팝오버로 열리도록 한 버튼으로. 색 편집 버튼이란
-        // 느낌? 그 안에 색관련 편집버튼 존재하는느낌」 — and 「기존에 있던
-        // 색변환이랑 픽셀삭제 그 버튼 안에 들어가는거 잊지말고」.
-        //
-        // The head RUNS NOTHING. 색 편집 is a category, not a verb, so a
-        // press that also did one of its verbs would be one button answering
-        // two questions. The retired buttons' key strings live on as the
-        // menu items', so tests only gain a menu-open tap.
-        Builder(
-          builder: (context) => _iconButton(
-            key: const ValueKey<String>('shared-colour-edit-button'),
-            tooltip: AppText.strings.tlSharedColourEdit,
-            icon: Icons.palette_outlined,
-            onPressed: session.pixelVerbs.canOpenColourEdit
-                ? () => showPanelFlyout(
-                    context,
-                    entries: _menus.colourEdit(context),
-                    // 🗣️I-164: 「그 색 편집 앵커창 나가면 사라짐. 즉
-                    // 체크해제됨」 — a row chosen ends it where it lands.
-                    onDismissed: () => session.pixelVerbPreview.verb = null,
-                  )
-                : null,
+        _StaticCommandGroup(
+          news: _news,
+          // The 색 편집 head reads the gate its rows open behind.
+          gates: () => (
+            AppText.settings.value.programLanguage,
+            session.pixelVerbs.canOpenColourEdit,
           ),
+          builder: _sharedColourEditHead,
         ),
       ],
     ),
+    zoned: true,
+  );
+
+  /// The shared pill's first group: what is selected, edited and named.
+  Widget _sharedEditPair(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // ⛔THE DESELECT IS NOT HERE. It was, for one round, and that made
+      // TWO buttons called 선택 해제 wearing the same `Icons.deselect` —
+      // this one letting go of the timeline's selections, `rail-deselect-
+      // button` letting go of the marquee, and nothing on screen saying
+      // which was which (유저 2026-08-27: 「선택해제 타임라인에 중복으로
+      // 존재하는거」).
+      //
+      // The rail's is the one that stayed, and it lets go of the marquee
+      // alone (유저 2026-10-14, I-40) — a tap lets go of the timeline's
+      // selections (T10). ⚠️The 취소 button, if it is built, goes beside
+      // THAT one; the note about holding its neighbour slot moved with the
+      // button it was about.
+      // 🚨T25 — Edit Instance, on the SHARED pill because its subject is
+      // 「지금 무엇이 선택됐나」 and that is what this pill is for.
+      //
+      // ⚠️It keeps the key it had on the frame pill. The button moved; it
+      // did not become a different button, and every test that reached it
+      // still does.
+      // 🗣️F-261: an action now, so it wears that action's name and its key
+      // — I-19's five beside it did the same.
+      _iconButton(
+        key: const ValueKey<String>('shared-edit-button'),
+        tooltip: editorActionLabel(EditorActionIds.editInstance),
+        shortcuts: const [EditorActionIds.editInstance],
+        icon: Icons.edit_outlined,
+        // B8: ONE source — the panel. The timeline's context answers with
+        // the session's subject (the same answer [editSelectionInstance]
+        // dispatches on, so lit and does-something cannot come apart);
+        // the storyboard's answers with its standing row's block, from
+        // the SAME resolver its host dispatches on.
+        onPressed: onEditInstance != null && panelContext.canEditInstance
+            ? onEditInstance
+            : null,
+      ),
+      // 🗣️I-18 — 자동 이름 지정, beside Edit (유저: 「타임라인 공용 알약에
+      // 새 버튼 신설. 내용은 블록 이름 자동편집으로 … 버튼은 자동 이름
+      // 지정」). It asks what is selected, the pill's one ladder, and
+      // numbers what the panel names from the number its window asks for.
+      // A context of its own: the window opens from where it was pressed.
+      Builder(
+        builder: (context) => _iconButton(
+          key: const ValueKey<String>('shared-auto-name-button'),
+          tooltip: editorActionLabel(EditorActionIds.editAutoName),
+          shortcuts: const [EditorActionIds.editAutoName],
+          icon: Icons.format_list_numbered,
+          onPressed: panelContext.canAutoName
+              ? () => unawaited(
+                  autoNameWithWindow(context, session, panel: panelContext),
+                )
+              : null,
+        ),
+      ),
+    ],
+  );
+
+  /// The shared pill's second group: what is selected, cut, copied, put
+  /// down, unlinked, duplicated, merged and deleted.
+  Widget _sharedClipboardRow(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // 🚨T3 신설 — 잘라내기, 「복사 버튼 왼쪽」 (유저 2026-08-13).
+      //
+      // Copy keeps the original and stores the clip; this one stores the
+      // clip and takes the original out, and the tail closes over the
+      // hole. It is the LIFT half of the one splice — the same half a
+      // paste-over-a-selection does before it puts the clip down — so it
+      // needed no placement rules of its own.
+      // 🗣️I-19: each of these six IS one action's entrance, so it wears
+      // that action's registry name and names the action for its key.
+      _iconButton(
+        key: const ValueKey<String>('shared-cut-button'),
+        tooltip: editorActionLabel(EditorActionIds.editCut),
+        shortcuts: const [EditorActionIds.editCut],
+        icon: Icons.content_cut,
+        onPressed: panelContext.cutPress,
+      ),
+      // I-77: with rows selected the copy takes the ROWS, and the two
+      // pastes put down whichever the hand holds. The panel answers which
+      // ([ToolbarPanelContext]); nothing here knows the difference.
+      _iconButton(
+        key: const ValueKey<String>('shared-copy-button'),
+        tooltip: editorActionLabel(EditorActionIds.editCopy),
+        shortcuts: const [EditorActionIds.editCopy],
+        icon: Icons.content_copy,
+        onPressed: panelContext.copyPress,
+      ),
+      // ㉕ 확정 #8: the paste that makes a REAL frame, not a link. Two
+      // buttons rather than one with a modifier, because which one you
+      // meant is not a detail — a linked paste that was meant to be
+      // independent is only discovered later, by drawing on it and
+      // watching another cel change.
+      _iconButton(
+        key: const ValueKey<String>('shared-paste-independent-button'),
+        tooltip: editorActionLabel(EditorActionIds.editPasteIndependent),
+        shortcuts: const [EditorActionIds.editPasteIndependent],
+        icon: Icons.content_paste,
+        onPressed: panelContext.pasteIndependentPress,
+      ),
+      _iconButton(
+        key: const ValueKey<String>('shared-paste-linked-button'),
+        tooltip: editorActionLabel(EditorActionIds.editPasteLinked),
+        shortcuts: const [EditorActionIds.editPasteLinked],
+        icon: Icons.link,
+        onPressed: panelContext.pasteLinkedPress,
+      ),
+      // 🚨I-45 — 링크 독립, beside the paste that makes a link (유저
+      // 2026-09-20: 「링크 독립버튼. 위치는 타임라인의 공용 알약부분? 프레임
+      // 독립시키거나 레이어나 컷이나」). It asks what is selected, the pill's
+      // one ladder: rows → their links, the frame axis → its shared
+      // pictures, and on the storyboard the cuts.
+      _iconButton(
+        key: const ValueKey<String>('shared-unlink-button'),
+        tooltip: editorActionLabel(EditorActionIds.editUnlink),
+        shortcuts: const [EditorActionIds.editUnlink],
+        icon: Icons.link_off,
+        onPressed: panelContext.unlinkPress,
+      ),
+      // 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
+      // 컷버튼의 레이어복제/컷복제 삭제」 — the layer pill's and the cut
+      // pill's duplicates, one button. The panel answers which noun
+      // ([ToolbarPanelContext.canDuplicate]): the rows on the timeline,
+      // the cut on the storyboard.
+      _iconButton(
+        key: const ValueKey<String>('shared-duplicate-button'),
+        tooltip: editorActionLabel(EditorActionIds.editDuplicate),
+        shortcuts: const [EditorActionIds.editDuplicate],
+        icon: Icons.control_point_duplicate,
+        onPressed: panelContext.duplicatePress,
+      ),
+      // 🗣️I-78 (유저 2026-10-06): 「병합버튼. 우선 레이어 다중선택하고
+      // 병합하는걸 원하는데, 프레임도 사용가능할거같으니 공용알약에 두는걸
+      // 생각중」 — beside 복제, the other verb that makes a row of rows. A
+      // context of its own: the press opens its windows from here.
+      Builder(
+        builder: (context) => _iconButton(
+          key: const ValueKey<String>('shared-merge-button'),
+          tooltip: editorActionLabel(EditorActionIds.editMerge),
+          shortcuts: const [EditorActionIds.editMerge],
+          icon: Icons.merge,
+          onPressed: panelContext.canMerge
+              ? () => unawaited(
+                  mergeSelectionSubject(
+                    context,
+                    session,
+                    panelContext.mergeSubject,
+                  ),
+                )
+              : null,
+        ),
+      ),
+      _iconButton(
+        key: const ValueKey<String>('shared-delete-button'),
+        tooltip: editorActionLabel(EditorActionIds.editDelete),
+        shortcuts: const [EditorActionIds.editDelete],
+        icon: Icons.delete_outline,
+        danger: true,
+        onPressed: panelContext.deletePress(
+          onDeleteRowSelection: onDeleteRowSelection,
+        ),
+      ),
+    ],
+  );
+
+  /// 🚨THE TWO PIXEL VERBS, on THIS pill.
+  ///
+  /// 유저 2026-08-10 put ③ here in the first place — 「다만 이 버튼은
+  /// 타임라인에 두는게 나을듯」 — and the reason holds for both: the
+  /// selection that decides HOW MANY drawings change is the frame range,
+  /// and it is drawn here. A button belongs beside the thing that
+  /// decides how much it does. The marquee only decides how much of ONE
+  /// drawing.
+  ///
+  /// ⚠️They sit after the delete rather than beside the deselect, whose
+  /// neighbour slot is held for the 취소 button (see there).
+  ///
+  /// ⛔Dimmed with nothing to act on, never hidden.
+  ///
+  /// ✅ONE BUTTON, FOUR VERBS (유저 2026-08-27, I-8-Q3/Q4): 「그걸 하나의
+  /// 버튼으로 넣어서 앵커팝오버로 열리도록 한 버튼으로. 색 편집 버튼이란
+  /// 느낌? 그 안에 색관련 편집버튼 존재하는느낌」 — and 「기존에 있던
+  /// 색변환이랑 픽셀삭제 그 버튼 안에 들어가는거 잊지말고」.
+  ///
+  /// The head RUNS NOTHING. 색 편집 is a category, not a verb, so a
+  /// press that also did one of its verbs would be one button answering
+  /// two questions. The retired buttons' key strings live on as the
+  /// menu items', so tests only gain a menu-open tap.
+  Widget _sharedColourEditHead(BuildContext context) => _iconButton(
+    key: const ValueKey<String>('shared-colour-edit-button'),
+    tooltip: AppText.strings.tlSharedColourEdit,
+    icon: Icons.palette_outlined,
+    onPressed: session.pixelVerbs.canOpenColourEdit
+        ? () => showPanelFlyout(
+            context,
+            entries: _menus.colourEdit(context),
+            // 🗣️I-164: 「그 색 편집 앵커창 나가면 사라짐. 즉
+            // 체크해제됨」 — a row chosen ends it where it lands.
+            onDismissed: () => session.pixelVerbPreview.verb = null,
+          )
+        : null,
   );
 
   /// The FRAME pill — the verbs a rough pass wears out, none of them folded.
