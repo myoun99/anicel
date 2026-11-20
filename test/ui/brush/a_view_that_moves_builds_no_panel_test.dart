@@ -226,7 +226,9 @@ void main() {
     required ValueNotifier<CanvasViewport?> view,
     required Map<String, CanvasViewport> laid,
   }) async {
-    final brush = ValueNotifier(BrushToolState.defaults.copyWith(tool: tool));
+    final brush = ValueNotifier(
+      BrushToolState.defaults.copyWith(tool: tool, size: 40),
+    );
     addTearDown(brush.dispose);
     final selection = CanvasSelectionCommands()
       ..setRegion(
@@ -288,6 +290,11 @@ void main() {
           : null;
       if (tool == CanvasTool.brush) {
         final look = tester.widget<ToolCursorSprite>(outline).look;
+        expect(
+          look.key,
+          isNot(('brush', null, null)),
+          reason: '⛔premise: an outline, not the crosshair',
+        );
         view.value = CanvasViewport(panX: 40, panY: 20);
         await tester.pump();
         expect(
