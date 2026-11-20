@@ -1,10 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../models/media_asset.dart';
 import '../input/pen_friendly_scroll_controller.dart';
 import '../input/scroller_press_hold.dart';
+import '../layout/device_grid_scroll_controller.dart' show singleScrollPixelsOf;
+import '../layout/render_shifted_child.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeightIn;
@@ -155,30 +158,29 @@ class _MediaPoolListState extends State<MediaPoolList> {
           math.max(0.0, room.maxWidth - lane),
         );
         // 🚨THE COLUMNS SCROLL, THE VIEW DOES NOT: a window as wide as the
-        // view rides the sideways scroll's offset, and only the columns in
-        // it move. So the lines' own scroll is as wide as the view, and its
-        // bar stands at the view's edge, not at the columns' end; and a line
-        // is pressed where it is drawn. ↩️The whole surface scrolled sideways
-        // under a name translated back: the list's bar went off-screen with
-        // the columns, and was hand-placed at the edge to stay.
+        // view rides the sideways scroll ([_RidesTheScroll]), and only the
+        // columns in it move. So the lines' own scroll is as wide as the
+        // view, and its bar stands at the view's edge, not at the columns'
+        // end; and a line is pressed where it is drawn. ↩️The whole surface
+        // scrolled sideways under a name translated back: the list's bar
+        // went off-screen with the columns, and was hand-placed at the edge
+        // to stay.
         return SingleChildScrollView(
           controller: _across,
           scrollDirection: Axis.horizontal,
           child: SizedBox(
             width: math.max(room.maxWidth, nameWidth + columnsWidth + lane),
             height: room.maxHeight,
-            child: ListenableBuilder(
-              listenable: _across,
-              builder: (context, _) => Stack(
-                children: [
-                  Positioned(
-                    left: _offset,
-                    top: 0,
-                    bottom: 0,
-                    width: room.maxWidth,
-                    child: _window(context, nameWidth, widths),
-                  ),
-                ],
+            child: _RidesTheScroll(
+              controller: _across,
+              along: 1,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: room.maxWidth,
+                  height: room.maxHeight,
+                  child: _window(context, nameWidth, widths),
+                ),
               ),
             ),
           ),
@@ -186,11 +188,6 @@ class _MediaPoolListState extends State<MediaPoolList> {
       },
     );
   }
-
-  /// How far the columns are scrolled sideways.
-  double get _offset => _across.hasClients && _across.positions.length == 1
-      ? _across.offset
-      : 0;
 
   /// What the view shows: the heads, and every file's line under them, its
   /// bar in a lane of its own beside the lines — always there, as every
@@ -275,8 +272,9 @@ class _MediaPoolListState extends State<MediaPoolList> {
           child: OverflowBox(
             alignment: Alignment.centerLeft,
             maxWidth: double.infinity,
-            child: Transform.translate(
-              offset: Offset(-_offset, 0),
+            child: _RidesTheScroll(
+              controller: _across,
+              along: -1,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -329,5 +327,97 @@ class _MediaPoolListState extends State<MediaPoolList> {
               ),
       ),
     );
+  }
+}
+
+/// [child] moved along the list's sideways scroll as [controller] stands
+/// when it is PAINTED and pressed — [along] 1 with the scroll, the view
+/// that stays; −1 against it, the columns under that view.
+///
+/// 🚨READ AFTER THE PULL (card a-widened-pool-list-leaves-its-window-behind,
+/// 저장 2026-11-20): a single-child viewport lays its content out first and
+/// pulls its position into the new range after, telling no listener
+/// (`ScrollWindowSettle` says the same of the dock's column). Read at the
+/// build, the view stood where the position had been: scrolled to its end
+/// at 190 px and widened to 260, the position came back from 957 to 905 and
+/// the names, the lines and the bar's lane stood 52 px to the right — the
+/// lane off the panel. Read where it is painted, it is read after the pull,
+/// in the same frame.
+///
+/// A push is a PAINT offset, as a rail window's is (`LayerRailWindow`): a
+/// scroll repaints what rides it and builds and lays out nothing. ↩️The
+/// whole window was built again at every step of a sideways scroll.
+class _RidesTheScroll extends SingleChildRenderObjectWidget {
+  const _RidesTheScroll({
+    required this.controller,
+    required this.along,
+    required Widget super.child,
+  });
+
+  final ScrollController controller;
+  final double along;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderRidesTheScroll(controller, along);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) =>
+      (renderObject as _RenderRidesTheScroll).configure(controller, along);
+}
+
+class _RenderRidesTheScroll extends RenderProxyBox
+    with RenderShiftedChildHitTest {
+  _RenderRidesTheScroll(this._controller, this._along);
+
+  ScrollController _controller;
+  double _along;
+
+  void configure(ScrollController controller, double along) {
+    if (identical(controller, _controller) && along == _along) {
+      return;
+    }
+    if (attached) {
+      _controller.removeListener(_scrolled);
+      controller.addListener(_scrolled);
+    }
+    _controller = controller;
+    _along = along;
+    _scrolled();
+  }
+
+  void _scrolled() {
+    markNeedsPaint();
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _controller.addListener(_scrolled);
+  }
+
+  @override
+  void detach() {
+    _controller.removeListener(_scrolled);
+    super.detach();
+  }
+
+  @override
+  Offset get childPaintOffset =>
+      Offset(_along * (singleScrollPixelsOf(_controller) ?? 0), 0);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child != null) {
+      context.paintChild(child, offset + childPaintOffset);
+    }
+  }
+
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) {
+    final shift = childPaintOffset;
+    transform.translateByDouble(shift.dx, shift.dy, 0, 1);
   }
 }

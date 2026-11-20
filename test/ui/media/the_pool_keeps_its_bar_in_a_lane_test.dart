@@ -64,6 +64,32 @@ void main() {
     ),
   );
 
+  ScrollPosition acrossOf(WidgetTester tester) => tester
+      .state<ScrollableState>(
+        find.descendant(
+          of: find.byType(MediaPoolList),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.right,
+          ),
+        ),
+      )
+      .position;
+
+  /// The head's columns — its line is the list's first.
+  Rect headColumnsOf(WidgetTester tester) => tester.getRect(
+    find
+        .descendant(
+          of: find.descendant(
+            of: find.byType(MediaPoolList),
+            matching: find.byType(OverflowBox),
+          ).first,
+          matching: find.byType(Row),
+        )
+        .first,
+  );
+
   for (final MapEntry(key: name, value: view) in views.entries) {
     testWidgets('🚨the $name keeps its bar in a lane while its two files fit '
         '— nothing drawn under it', (tester) async {
@@ -124,41 +150,54 @@ void main() {
     tester,
   ) async {
     for (final width in [190.0, 260.0]) {
-      // A list of its own at each width: one widened while scrolled to its
-      // end is another question (card
-      // a-widened-pool-list-leaves-its-window-behind).
+      // A list of its own at each width — one widened while scrolled to its
+      // end is the next test's.
       await tester.pumpWidget(const SizedBox());
       await pump(tester, view: const MediaPoolView(), width: width);
-      final across = tester.state<ScrollableState>(
-        find.descendant(
-          of: find.byType(MediaPoolList),
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is Scrollable &&
-                widget.axisDirection == AxisDirection.right,
-          ),
-        ),
-      );
-      final end = across.position.maxScrollExtent;
+      final across = acrossOf(tester);
+      final end = across.maxScrollExtent;
       expect(end, greaterThan(0), reason: 'LIVENESS: $width overflows');
-      across.position.jumpTo(end);
+      across.jumpTo(end);
       await tester.pump();
 
-      // The head's columns — its line is the list's first.
-      final columns = find
-          .descendant(
-            of: find.descendant(
-              of: find.byType(MediaPoolList),
-              matching: find.byType(OverflowBox),
-            ).first,
-            matching: find.byType(Row),
-          )
-          .first;
       expect(
-        tester.getRect(columns).right,
+        headColumnsOf(tester).right,
         moreOrLessEquals(laneOf(tester).left),
         reason: 'at $width',
       );
     }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  // 🚨card a-widened-pool-list-leaves-its-window-behind (2026-11-20): the
+  // view read its place at the build, and a viewport pulls its position
+  // back into range in its layout without a word — scrolled to its end at
+  // 190 and widened to 260, the names, the lines and the lane stood where
+  // the old end had put them.
+  testWidgets('🚨widened while scrolled to its end, the list stands where '
+      'its position came back to — the lane at the panel\'s edge, the last '
+      'column ending at it', (tester) async {
+    await pump(tester, view: const MediaPoolView(), width: 190);
+    double nameLeft() => tester.getRect(find.text('foot.wav')).left;
+    final unscrolledName = nameLeft();
+    final narrowEnd = acrossOf(tester).maxScrollExtent;
+    acrossOf(tester).jumpTo(narrowEnd);
+    await tester.pump();
+
+    await pump(tester, view: const MediaPoolView(), width: 260);
+
+    final across = acrossOf(tester);
+    expect(
+      (across.pixels, across.pixels < narrowEnd),
+      (across.maxScrollExtent, true),
+      reason: 'the premise: the position came back to a nearer end',
+    );
+    final lane = laneOf(tester);
+    expect(lane.right, moreOrLessEquals(260));
+    expect(headColumnsOf(tester).right, moreOrLessEquals(lane.left));
+    expect(
+      nameLeft(),
+      moreOrLessEquals(unscrolledName),
+      reason: 'the names stay at the view\'s left',
+    );
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 }
