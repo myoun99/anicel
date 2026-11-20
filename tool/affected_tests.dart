@@ -1116,7 +1116,7 @@ Future<int> _runTests(
   final unkeyed = <String>{};
   final unrun = <String>[];
   final slow = <SlowTest>[];
-  final reports = Directory.systemTemp.createTempSync('affected-times');
+  final reports = takeReportsFolder();
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
   // takes the suites the line gives it then, by the work still to do. A
@@ -1153,7 +1153,7 @@ Future<int> _runTests(
               BatchKind.realtime => ' — a real-time pin, alone',
             }}${checkout == null ? '' : ' — in the twin checkout'}'
             ' — at ${clockAt(began)}, ${spanOf(inLine)} in line');
-        final report = File('${reports.path}/batch$i.json');
+        final report = File('${reports.folder.path}/batch$i.json');
         _BatchResult? ran;
         try {
           final result = ran = await _flutterTest(
@@ -1279,11 +1279,7 @@ Future<int> _runTests(
     );
   }
   _report(times.summary(DateTime.now().difference(started)));
-  try {
-    reports.deleteSync(recursive: true);
-  } on FileSystemException {
-    // A report still held open is the system temp folder's to clear.
-  }
+  reports.end();
 
   if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
   if (moved.isNotEmpty) {
@@ -1783,6 +1779,29 @@ List<String> stillRunning(String report) {
 /// says does not — which is why this looks for the shape of a test result
 /// rather than for the shape of an error.
 final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
+
+/// The folder a run writes its batches' reports to: a [RunTemp] of the
+/// checkout, in a parent of its own ([kReportsParent]) under [temp] — the
+/// system temp unless a test names one.
+///
+/// 🗣️2026-11-20 (card the-wide-check-takes-five-hours): it was a new
+/// `affected-times*` folder each run, removed when the run ended — and each
+/// run cut short left its own: 174 of them, 334 MB. As a [RunTemp], what a
+/// killed run left goes when its checkout's next run takes the folder, and
+/// one whose checkout is gone goes with the sweep.
+///
+/// ⛔A PARENT OF ITS OWN: the batches' temps are [RunTemp]s of the same
+/// checkout in the system temp, numbered from 0, and the hooks runner keeps
+/// a build only while TEMP is what it was. Beside them this folder would
+/// take number 0 and move every batch to 1 — every hook built again.
+RunTemp takeReportsFolder({Directory? temp}) => RunTemp.take(
+  parent: Directory(
+    '${(temp ?? Directory.systemTemp).path}'
+    '${Platform.pathSeparator}$kReportsParent',
+  ),
+);
+
+const kReportsParent = 'affected_reports';
 
 /// Passed through to this terminal as it arrives rather than buffered: a
 /// suite takes tens of minutes, and a tool that says nothing until it
