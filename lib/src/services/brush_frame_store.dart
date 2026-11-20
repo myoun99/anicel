@@ -1509,13 +1509,15 @@ class BrushFrameStore {
   }) {
     key = _canonicalize(key);
     coolWhereTheEngineLetGo(key);
-    if (!_thawsAt(key, canvasSize) || _usedAsInHand(key) != null) {
+    if (!_thawsAt(key, canvasSize)) {
       return Future<void>.value();
     }
     return _thawing.join(key, () async {
       // A look thawing it thaws it for this use too: the use takes what
       // the look was handed ([_usedAsLooked]), where both at once
-      // thawed it twice and each kept its own.
+      // thawed it twice and each kept its own. No turn is given up
+      // where no look thaws it: what is in hand is the cel before
+      // this returns, on no worker.
       while (_looking.isRunning(key)) {
         await _looking.runOf(key);
       }

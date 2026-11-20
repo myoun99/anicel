@@ -123,9 +123,10 @@ void main() {
     test('a thaw ahead takes it too, and waits for no worker', () async {
       final shell = await aShellOf('f');
 
-      await store.thawAhead(key('f'), canvasSize: canvasSize);
+      final thawed = store.thawAhead(key('f'), canvasSize: canvasSize);
 
       expect(store.hotBakedSurfaceOrNull(key('f')), same(shell));
+      await thawed;
     });
 
     test('and the read a canvas stands on', () async {

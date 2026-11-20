@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/cel_looks.dart';
+import 'package:anicel/src/services/persistence/thaw_in_worker.dart'
+    show celThawTurns;
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
@@ -109,13 +112,15 @@ void main() {
       expect(store.isCelFileBacked(key('f')), isTrue, reason: 'still clean');
     });
 
-    test('a thaw ahead takes it too', () async {
+    test('a thaw ahead takes it too, before it returns: it waits for no '
+        'worker', () async {
       final looked = await aLookAt('f');
       theFileGoes('f');
 
-      await store.thawAhead(key('f'), canvasSize: canvasSize);
+      final thawed = store.thawAhead(key('f'), canvasSize: canvasSize);
 
       expect(store.hotBakedSurfaceOrNull(key('f')), same(looked));
+      await thawed;
     });
 
     test('and the read a canvas stands on', () async {
@@ -162,13 +167,30 @@ void main() {
   });
 
   group('🚨a use and a look at once thaw the cel once', () {
+    /// The most thaws under way at once until [asked] have all answered,
+    /// read at every turn: a worker's job is done on this thread in a
+    /// test (`debugWorkersRunHere`), turn by turn, so a second thaw begun
+    /// a turn after the first is under way beside it. ⚠️Not read once the
+    /// doors have given up their turns: by then the one thaw is over.
+    Future<int> mostThawingAtOnce(List<Future<Object?>> asked) async {
+      var most = 0;
+      var answered = false;
+      final all = Future.wait(asked).whenComplete(() => answered = true);
+      for (var turn = 0; turn < 256 && !answered; turn++) {
+        most = max(most, celThawTurns.running);
+        await null;
+      }
+      await all;
+      return most;
+    }
+
     test('a use that comes as a look thaws it waits for the look, and '
         'takes what it read', () async {
       final look = store.lookAhead(key('f'), canvasSize: canvasSize);
       final use = store.thawAhead(key('f'), canvasSize: canvasSize);
+      expect(await mostThawingAtOnce([look, use]), 1, reason: 'one thaw');
 
       final looked = await look;
-      await use;
 
       expect(store.hotBakedSurfaceOrNull(key('f')), same(looked));
     });
@@ -177,8 +199,7 @@ void main() {
         'handed the cel hot', () async {
       final use = store.thawAhead(key('f'), canvasSize: canvasSize);
       final look = store.lookAhead(key('f'), canvasSize: canvasSize);
-
-      await use;
+      expect(await mostThawingAtOnce([look, use]), 1, reason: 'one thaw');
 
       expect(await look, same(store.hotBakedSurfaceOrNull(key('f'))));
     });
