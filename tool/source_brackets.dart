@@ -209,7 +209,16 @@ int? codeIndexOf(String source, String char, [int from = 0]) {
 
 /// [source] with its comments taken out, and its strings kept whole — a
 /// `//` inside one stays.
-String withoutComments(String source) {
+String withoutComments(String source) =>
+    _commentsOut(source, (string) => string);
+
+/// [source] with its comments taken out and each string as its quotes
+/// alone — for a scan that must not read a name a string holds as code.
+String codeOnly(String source) => _commentsOut(source, (_) => "''");
+
+/// [source] with its comments taken out and each string as [string] writes
+/// it.
+String _commentsOut(String source, String Function(String string) string) {
   final code = StringBuffer();
   var i = 0;
   while (i < source.length) {
@@ -220,7 +229,7 @@ String withoutComments(String source) {
       continue;
     }
     if (source[i] != '/') {
-      code.write(source.substring(i, past));
+      code.write(string(source.substring(i, past)));
     }
     i = past;
   }

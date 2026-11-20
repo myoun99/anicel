@@ -97,4 +97,11 @@ void main() {
       "a \nc  e 'f // g'",
     );
   });
+
+  test('or strings come out too, their quotes left', () {
+    expect(
+      codeOnly("a // b\nc /* d */ e 'f // g' + \"h\""),
+      "a \nc  e '' + ''",
+    );
+  });
 }

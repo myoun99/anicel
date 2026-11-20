@@ -42,37 +42,76 @@ void main() {
         isNull,
       );
       expect(whyAlone('void main() => guideShots(AppLanguage.en);'), isNull);
+      expect(
+        whyAlone('void main() {\n'
+            "  expect(whyAlone('class _P extends AutomatedTestWidgetsFlutter"
+            "Binding {}'), isNotNull);\n"
+            "  print('LookTestBinding.ensureInitialized()');\n"
+            '}'),
+        isNull,
+        reason: 'what a string says is not the file',
+      );
     });
   });
 
-  group("a file's library annotations go with its group", () {
-    test('its time limit, its skip, its tags and where it runs', () {
+  group("a file's library annotations are its entry's", () {
+    test('read as written, each on one line — what follows `library;` is '
+        'no longer the library', () {
       const source = "@TestOn('vm')\n"
-          '@Timeout(Duration(minutes: 3))\n'
-          "@Tags(['benchmark'])\n"
-          "@Skip('guide screenshots, not a check')\n"
+          '@Timeout(\n  Duration(minutes: 3),\n)\n'
+          '// a comment\n'
+          '@Skip()\n'
           'library;\n'
           '\n'
           '@Timeout(Duration(minutes: 9))\n'
           'void main() {}\n';
-      expect(
-        groupArguments(source),
-        "testOn: 'vm', timeout: Timeout(Duration(minutes: 3)), "
-        "tags: ['benchmark'], skip: 'guide screenshots, not a check'",
-      );
+      expect(libraryAnnotations(source), [
+        "@TestOn('vm')",
+        '@Timeout( Duration(minutes: 3), )',
+        '@Skip()',
+      ]);
+      expect(libraryAnnotations('// a comment\nvoid main() {}'), isEmpty);
     });
 
-    test('a bare skip skips, and a factor or none is a timeout too', () {
-      expect(groupArguments('@Skip()\nlibrary;'), 'skip: true');
-      expect(
-        groupArguments('@Timeout.factor(2)\nlibrary;'),
-        'timeout: Timeout.factor(2)',
+    test('🪦an entry carries them as its own, and hands a group nothing a '
+        'flutter_test group cannot take — it takes a skip and a retry', () {
+      final source = entrySource(
+        ['test/a_test.dart', 'test/b_test.dart'],
+        (path) => "@TestOn('vm')\n@Timeout(Duration(minutes: 5))\nlibrary;\n"
+            'void main() {}',
+        toRoot: '../../..',
       );
       expect(
-        groupArguments('@Timeout.none\nlibrary;'),
-        'timeout: Timeout.none',
+        source,
+        contains("@TestOn('vm')\n@Timeout(Duration(minutes: 5))\nlibrary;\n"
+            "import 'package:flutter_test/flutter_test.dart';\n"),
       );
-      expect(groupArguments('// a comment\nvoid main() {}'), isEmpty);
+      expect(source, contains("  group('test/a_test.dart', f0.main);"));
+      expect(source, contains("  group('test/b_test.dart', f1.main);"));
+    });
+
+    test('so a file shares an entry only with files of its own annotations',
+        () {
+      String sourceOf(String path) => path.contains('slow')
+          ? '@Timeout(Duration(minutes: 3))\nlibrary;\nvoid main() {}'
+          : 'void main() {}';
+      final files = [
+        for (var i = 0; i < 12; i++)
+          if (i.isEven)
+            'test/slow${i}_test.dart'
+          else
+            'test/plain${i}_test.dart',
+      ];
+      final cut = bundlesOf(files, read: sourceOf);
+      expect(cut.alone, isEmpty);
+      for (final bundle in cut.bundles) {
+        expect(
+          bundle.map((file) => libraryAnnotations(sourceOf(file))).toSet(),
+          hasLength(1),
+          reason: '$bundle',
+        );
+      }
+      expect(cut.bundles.expand((bundle) => bundle).toSet(), {...files});
     });
   });
 
@@ -107,21 +146,16 @@ void main() {
     });
 
     test('an entry imports its files and runs each as a group named by its '
-        'path, with what its annotations say', () {
+        'path', () {
       final source = entrySource(
         ['test/a_test.dart', 'test/b_test.dart'],
-        (path) => path.startsWith('test/b')
-            ? '@Timeout(Duration(minutes: 5))\nlibrary;\nvoid main() {}'
-            : 'void main() {}',
+        (path) => 'void main() {}',
         toRoot: '../../..',
       );
+      expect(source, isNot(contains('library;')));
       expect(source, contains("import '../../../test/a_test.dart' as f0;"));
       expect(source, contains("  group('test/a_test.dart', f0.main);"));
-      expect(
-        source,
-        contains("  group('test/b_test.dart', f1.main, "
-            'timeout: Timeout(Duration(minutes: 5)));'),
-      );
+      expect(source, contains("  group('test/b_test.dart', f1.main);"));
       expect(
         bundleConfigSource('../../..'),
         "export '../../../test/flutter_test_config.dart';\n",

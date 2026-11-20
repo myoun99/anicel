@@ -45,7 +45,7 @@ const _sharedBindings = {
 /// Why the test file [source] cannot share an isolate with others — or
 /// null when it can.
 String? whyAlone(String source) {
-  final code = withoutComments(source);
+  final code = codeOnly(source);
   if (RegExp(r'\bclass\s+\w+\s+extends\s+\w*Binding\b').hasMatch(code)) {
     return 'it declares a test binding of its own, and an isolate holds one';
   }
@@ -67,29 +67,11 @@ String? whyAlone(String source) {
   return null;
 }
 
-/// What [source]'s library annotations hand its group — what the runner
-/// reads from them for a file of its own: its time limit (per test, as
-/// ever), its skip and its tags (`dart_test.yaml` skips `benchmark` by its
-/// tag), where it runs and how often it is tried.
-String groupArguments(String source) => [
-  for (final (name, inside) in libraryAnnotations(source))
-    ?switch (name) {
-      'Timeout' || 'Timeout.factor' => 'timeout: $name($inside)',
-      'Timeout.none' => 'timeout: Timeout.none',
-      'Skip' => 'skip: ${inside.trim().isEmpty ? 'true' : inside}',
-      'Tags' => 'tags: $inside',
-      'TestOn' => 'testOn: $inside',
-      'OnPlatform' => 'onPlatform: $inside',
-      'Retry' => 'retry: $inside',
-      _ => null,
-    },
-].join(', ');
-
-/// The annotations before [source]'s `library;`, each as its name and what
-/// its brackets hold (empty for none).
-List<(String, String)> libraryAnnotations(String source) {
+/// [source]'s library annotations, as written — what stands before its
+/// `library;` — each on one line.
+List<String> libraryAnnotations(String source) {
   final code = withoutComments(source);
-  final found = <(String, String)>[];
+  final found = <String>[];
   var at = 0;
   while (true) {
     while (at < code.length && code[at].trim().isEmpty) {
@@ -98,53 +80,69 @@ List<(String, String)> libraryAnnotations(String source) {
     if (at >= code.length || code[at] != '@') return found;
     final name = RegExp(r'[\w.]+').matchAsPrefix(code, at + 1);
     if (name == null) return found;
+    final start = at;
     at = name.end;
-    var inside = '';
     if (code.startsWith('(', at)) {
       final close = matchingClose(code, at);
       if (close == null) return found;
-      inside = code.substring(at + 1, close);
       at = close + 1;
     }
-    found.add((name[0]!, inside));
+    found.add(code.substring(start, at).replaceAll(RegExp(r'\s+'), ' '));
   }
 }
 
 /// A batch's [files] — longest first — as entries of at most
 /// [kFilesPerBundle], dealt in turn so each starts on a heavy file and the
-/// entries weigh about alike; and the files that cannot share
-/// ([whyAlone], [kRunsAlone]) as they are. [reversed] runs each entry's
-/// files the other way round — the census's second order.
+/// entries weigh about alike, a file only with files of its own library
+/// annotations ([entrySource] makes them the entry's); and the files that
+/// cannot share ([whyAlone], [kRunsAlone]) as they are. [reversed] runs
+/// each entry's files the other way round — the census's second order.
 ({List<List<String>> bundles, List<String> alone}) bundlesOf(
   List<String> files, {
   required String Function(String path) read,
   bool reversed = false,
 }) {
   final alone = <String>[];
-  final shared = <String>[];
+  final alike = <String, List<String>>{};
   for (final file in files) {
-    (kRunsAlone.containsKey(file) || whyAlone(read(file)) != null
-            ? alone
-            : shared)
-        .add(file);
-  }
-  final count = (shared.length / kFilesPerBundle).ceil();
-  final bundles = [for (var i = 0; i < count; i++) <String>[]];
-  for (var i = 0; i < shared.length; i++) {
-    bundles[i % count].add(shared[i]);
+    final source = read(file);
+    if (kRunsAlone.containsKey(file) || whyAlone(source) != null) {
+      alone.add(file);
+    } else {
+      (alike[libraryAnnotations(source).join('\n')] ??= []).add(file);
+    }
   }
   return (
     bundles: [
-      for (final bundle in bundles)
-        [if (reversed) ...bundle.reversed else ...bundle],
+      for (final shared in alike.values)
+        for (final bundle in _dealt(shared))
+          [if (reversed) ...bundle.reversed else ...bundle],
     ],
     alone: alone,
   );
 }
 
+/// [files] dealt in turn into as few entries of [kFilesPerBundle] as hold
+/// them.
+List<List<String>> _dealt(List<String> files) {
+  final count = (files.length / kFilesPerBundle).ceil();
+  final bundles = [for (var i = 0; i < count; i++) <String>[]];
+  for (var i = 0; i < files.length; i++) {
+    bundles[i % count].add(files[i]);
+  }
+  return bundles;
+}
+
 /// The source of an entry that runs [files] — paths from the checkout's
-/// root — each as a group named by its path, from a folder [toRoot] below
-/// the root. [read] gives each file's source, for its annotations.
+/// root, of one set of library annotations ([bundlesOf]) — each as a group
+/// named by its path, from a folder [toRoot] below the root. [read] gives
+/// each file's source; its annotations are the entry's.
+///
+/// 🪦THE ENTRY'S, NOT THE GROUP'S (census 11-20): under flutter_test a
+/// group takes a skip and a retry and nothing else (`test_compat.dart`).
+/// Each group was handed its file's time limit and platform, and 74
+/// entries did not compile — their files ran alone, and were read as
+/// having lost their isolation.
 String entrySource(
   List<String> files,
   String Function(String path) read, {
@@ -152,20 +150,28 @@ String entrySource(
 }) {
   final source = StringBuffer()
     ..writeln('// Written by tool/affected_tests.dart for one batch, and '
-        'gone when it ends.')
-    ..writeln("import 'package:flutter_test/flutter_test.dart';");
+        'gone when it ends.');
+  final annotations = files.isEmpty
+      ? const <String>[]
+      : libraryAnnotations(read(files.first));
+  if (annotations.isNotEmpty) {
+    source
+      ..writeAll(annotations, '\n')
+      ..writeln()
+      ..writeln('library;');
+  }
+  source.writeln("import 'package:flutter_test/flutter_test.dart';");
   for (var i = 0; i < files.length; i++) {
     source.writeln("import '$toRoot/${files[i]}' as f$i;");
   }
   source.writeln('void main() {');
   for (var i = 0; i < files.length; i++) {
-    final more = groupArguments(read(files[i]));
-    source.writeln("  group('${files[i]}', f$i.main"
-        "${more.isEmpty ? '' : ', $more'});");
+    source.writeln("  group('${files[i]}', f$i.main);");
   }
   source.writeln('}');
   return source.toString();
 }
+
 /// What each file of a bundled batch did, out of its report's [runs]
 /// (`suiteRuns`) and the files each entry ran ([entries], by the entry's
 /// path from the root). An entry's own run says what its files' groups
