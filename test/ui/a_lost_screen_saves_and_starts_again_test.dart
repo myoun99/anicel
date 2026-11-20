@@ -39,6 +39,13 @@ void main() {
   setUp(() {
     said = [];
     answers = [];
+    // Pinned, not inherited: the lost screen is heard from the Windows
+    // runner alone (`windows/runner/lost_screen.h`) and the save it asks
+    // for is Windows' save window. On the macOS runner — a SCOPED platform
+    // — a never-saved Save As takes the staged road instead, the save
+    // window's seam is never asked, and its stage rooms are left behind
+    // (first seen red on build 1094's Apple workflows, 2026-11-21).
+    FolderPicker.debugOperatingSystem = 'windows';
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(LostScreen.channel, (call) async {
           said.add(call);
