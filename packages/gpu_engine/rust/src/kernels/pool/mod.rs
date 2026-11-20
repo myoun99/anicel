@@ -383,6 +383,21 @@ enum Ahead {
     Made(wgpu::Buffer, Asked),
     /// Refused by the budget or the driver, and not asked again as they
     /// were asked.
+    ///
+    /// ⏳NOT ASKED AGAIN WHILE THE HAND RESTS, where neither moves: a fold
+    /// refused its page waits for the pool's bytes or the budget kept to
+    /// to move, and what the OS counts of the process moves apart from
+    /// both (card a-refused-fold-page-is-not-asked-again-while-the-hand-
+    /// rests, closed as a record — 브러시/렌더링 2026-11-20, 관제 asked
+    /// where it goes). 🔬No device met has refused one. Of the OS's budget
+    /// only Windows tells any — Apple answers what is used and no budget,
+    /// Android nothing (`platform::video_memory`) — and there the Surface
+    /// stood 14,814 MB under its budget at its most (FNK_02, 42 pages
+    /// asked, all granted — 서피스11 캔버스 베이스) and the main PC
+    /// 14,597 MB (S5_BA cut 352, its band full). ⛔No rule of when to
+    /// ask again, or of who asks in an app at rest, was written for a
+    /// refusal nobody has met: where one is seen, the card opens again
+    /// on its numbers.
     Refused(Asked),
 }
 
