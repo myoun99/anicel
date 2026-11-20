@@ -3,6 +3,7 @@
 @Timeout(Duration(minutes: 3))
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -207,6 +208,54 @@ void main() {
     );
   });
 
+  testWidgets('🚨a landing once told is no hand\'s: it puts no fold off, '
+      'and the folds are asked for a rest after the first', (tester) async {
+    EngineTileLedger.foldsAtRest = true;
+    addTearDown(() => EngineTileLedger.foldsAtRest = false);
+    final answered = _Answered(appGpuEngine);
+    final beat = EngineTileLedger.rest ~/ 5;
+    final picture = strip(1, 1);
+    final kept = <LandedTile>[];
+
+    /// A landing told on [row] — asked on the pumped clock, which stands
+    /// while the GPU says what it made: the rest it asks for is counted
+    /// from where the clock stood.
+    Future<void> aLandingTold(int row) async {
+      var told = false;
+      unawaited(
+        answered
+            .landOnceTold(
+              rowOf(row, 1),
+              by: finishes(picture, row, 1),
+              unput: () {},
+            )
+            .then((landed) {
+              kept.addAll(landed);
+              told = true;
+            }),
+      );
+      expect(await settleAsync(tester, () => told), isTrue);
+    }
+
+    for (var row = 0; row < 4; row++) {
+      await aLandingTold(row);
+      await tester.pump(beat);
+    }
+    expect(answered.asked, isEmpty, reason: 'a rest is five beats');
+
+    await aLandingTold(4);
+    await tester.pump(beat);
+
+    expect(answered.asked, hasLength(1));
+    // No timer is left behind: what is asked is told there is none left.
+    EngineTileLedger.foldsAtRest = false;
+    for (final batch in answered.asked) {
+      batch.complete(false);
+    }
+    await tester.pump(EngineTileLedger.rest * 2);
+    expect(kept, hasLength(5));
+  });
+
   test('a landing that was not finished fails as the engine refuses it, and '
       'takes no slot', () async {
     final ledger = EngineTileLedger(appGpuEngine);
@@ -259,3 +308,18 @@ void main() {
 
 /// The red of the [column]th tile's width of a strip made by [seed].
 int redOf(int column, int seed) => 40 + 50 * column + seed;
+
+/// A ledger whose folds a test answers: each batch a rest asks for waits
+/// for its word, and folds nothing.
+class _Answered extends EngineTileLedger {
+  _Answered(super.engine);
+
+  final asked = <Completer<bool>>[];
+
+  @override
+  Future<bool> foldABatch() {
+    final batch = Completer<bool>();
+    asked.add(batch);
+    return batch.future;
+  }
+}
