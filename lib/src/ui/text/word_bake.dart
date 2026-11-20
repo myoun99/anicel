@@ -815,10 +815,24 @@ final class BakedWords {
   /// none (`flutter_test_config.dart`).
   @visibleForTesting
   void debugForgetEveryBake() {
+    // ⚖️Gives back what the landed bakes hold (their images, disposed by
+    // the store's retire): the store made below holds none of them, and
+    // left here they wait for no one. No test sees it — its mutant lived
+    // (11-20, 관제: 「안 죽는 줄」 kept with its reason).
     _images.clear();
+    // The bakes in flight go with the store: a word asked again joins
+    // none of them, and is baked anew.
     _images = _bakes();
+    // ⚖️Each key here names a bake of the store let go above, where it
+    // finds nothing: only the map's room is given back. No test sees it —
+    // its mutant lived (11-20).
     _latestOf.clear();
     _waiting.clear();
+    // 🛡️A test that ends between a bake's landing and the frame that wakes
+    // its waiters: the painters to wake are that test's, and a wake it
+    // scheduled may never run once it has ended — left scheduled, no
+    // landing would wake a painter again in this process. No test ends
+    // there — both mutants lived (11-20).
     _toWake.clear();
     _wakeScheduled = false;
     _baking.clear();
