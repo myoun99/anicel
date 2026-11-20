@@ -181,6 +181,72 @@ impl DenoiseState {
         }
     }
 
+    /// The values it carries from frame to frame, kept as doubles
+    /// ([`DenoiseState::keep`]): every float of its memories, then its
+    /// cepstra's place and the last period.
+    pub(crate) const VALUES: usize = FRAME_SIZE
+        + NB_BANDS * CEPS_MEM
+        + FRAME_SIZE
+        + pitch::BUF
+        + 1
+        + 2
+        + NB_BANDS
+        + RnnState::VALUES
+        + 2;
+
+    /// Its floats in their one order, to keep and to read back.
+    fn floats(&self) -> impl Iterator<Item = &f32> {
+        let last_gain = std::iter::once(&self.last_gain);
+        self.analysis_mem
+            .iter()
+            .chain(self.cepstral_mem.iter().flatten())
+            .chain(&self.synthesis_mem)
+            .chain(&self.pitch_buf)
+            .chain(last_gain)
+            .chain(&self.mem_hp_x)
+            .chain(&self.lastg)
+            .chain(self.rnn.floats())
+    }
+
+    fn floats_mut(&mut self) -> impl Iterator<Item = &mut f32> {
+        let last_gain = std::iter::once(&mut self.last_gain);
+        self.analysis_mem
+            .iter_mut()
+            .chain(self.cepstral_mem.iter_mut().flatten())
+            .chain(&mut self.synthesis_mem)
+            .chain(&mut self.pitch_buf)
+            .chain(last_gain)
+            .chain(&mut self.mem_hp_x)
+            .chain(&mut self.lastg)
+            .chain(self.rnn.floats_mut())
+    }
+
+    /// Writes what it carries into `into`, [`DenoiseState::VALUES`] of
+    /// them: a float kept as a double is the same number, so one read back
+    /// ([`DenoiseState::kept`]) goes on as this one would.
+    pub(crate) fn keep(&self, into: &mut [f64]) {
+        let ints = [self.memid as f64, f64::from(self.last_period)];
+        let values = self.floats().map(|&value| f64::from(value)).chain(ints);
+        for (slot, value) in into[..Self::VALUES].iter_mut().zip(values) {
+            *slot = value;
+        }
+    }
+
+    /// The state [`DenoiseState::keep`] wrote into `from` — at rest where
+    /// it is all zeros.
+    pub(crate) fn kept(from: &[f64]) -> Self {
+        let mut state = Self::new();
+        let (floats, ints) = from[..Self::VALUES].split_at(Self::VALUES - 2);
+        for (slot, &value) in state.floats_mut().zip(floats) {
+            *slot = value as f32;
+        }
+        // Read back as written; ⚠️never an index past the cepstra, a
+        // memory handed through the door being whatever it is.
+        state.memid = ints[0] as usize % CEPS_MEM;
+        state.last_period = ints[1] as i32;
+        state
+    }
+
     /// `rnnoise_process_frame` without its voice probability: `input`, in
     /// 16-bit range, denoised into the frame it returns — the one before
     /// it, by the overlap.

@@ -45,7 +45,7 @@ typedef FramePlace = ({
 /// THE TEXTURE A BOX OF THE ENGINE'S PIXELS IS SHOWN THROUGH: opened once
 /// the app's engine is open ([appGpuEngineOpen]) and the box [asks] for one,
 /// its sides rounded up from what is [want]ed, and opened again where that
-/// outgrows it — the one it replaces freed once it is shown no more.
+/// outgrows it — the one it replaces handed on or freed.
 ///
 /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
 /// 않고 새 장치를 열어 사본으로 되살린다」 — let go of with the engine it was
@@ -56,21 +56,31 @@ final class EngineScreenTexture {
   /// just been opened on an engine, [letGo] that the one open went with its
   /// engine, and [putUp] that a frame the GPU finished is up on it
   /// ([ScreenTexture.putUp]) — the box shows it by a paint, and draws the
-  /// newest asked for meanwhile where it is [behind].
+  /// newest asked for meanwhile where it is [behind]. Its sides are rounded
+  /// up a [sideStep]; one it outgrows is handed to [replaced] where that
+  /// shows a frame, else freed once it is shown no more.
   EngineScreenTexture({
     required bool Function() asks,
     required void Function(GpuEngine engine) opened,
     required void Function() letGo,
     required void Function({required bool behind}) putUp,
+    int? sideStep,
+    void Function(ScreenTexture outgrown)? replaced,
   }) : _asks = asks,
        _opened = opened,
        _letGo = letGo,
-       _putUp = putUp;
+       _putUp = putUp,
+       _replaced = replaced,
+       sideStep = sideStep ?? _screenSideStep;
 
   final bool Function() _asks;
   final void Function(GpuEngine engine) _opened;
   final void Function() _letGo;
   final void Function({required bool behind}) _putUp;
+  final void Function(ScreenTexture outgrown)? _replaced;
+
+  /// The step the texture's sides are rounded up to, in device pixels.
+  final int sideStep;
 
   late final StandsOnTheAppsEngine _onTheEngine = StandsOnTheAppsEngine(
     letGo: _wentWithItsEngine,
@@ -211,8 +221,7 @@ final class EngineScreenTexture {
     unawaited(texture?.free());
   }
 
-  static int _steppedUp(int side) =>
-      (side + _screenSideStep - 1) ~/ _screenSideStep * _screenSideStep;
+  int _steppedUp(int side) => (side + sideStep - 1) ~/ sideStep * sideStep;
 
   /// The size to open a texture at: null where one is being opened at it,
   /// or none is to be — the engine shut, the box not asking, nothing to
@@ -230,8 +239,8 @@ final class EngineScreenTexture {
     return size == _opening ? null : size;
   }
 
-  /// Opens the texture [_toOpen] says; the one it replaces is freed once it
-  /// is shown no more.
+  /// Opens the texture [_toOpen] says; the one it replaces is handed on
+  /// ([replaced]) or freed once it is shown no more.
   Future<void> open() async {
     final engine = appGpuEngineOpen.value;
     final asked = _toOpen;
@@ -252,8 +261,13 @@ final class EngineScreenTexture {
     }
     _opening = null;
     _texture = opened..putUp = _putUp;
+    // What the outgrown one shows stands till the new one shows its own.
+    final handedOn = held != null && held.showsAFrame ? _replaced : null;
+    handedOn?.call(held!);
     _opened(engine);
-    await held?.free();
+    if (handedOn == null) {
+      await held?.free();
+    }
   }
 }
 

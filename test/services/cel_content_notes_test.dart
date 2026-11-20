@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_drawing_state.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -115,6 +116,27 @@ void main() {
     expect(notes.has(cel), isFalse);
   });
 
+  // 🔬Card an-eye-toggle-holds-the-ui-thread (11-18): a frame's key asks
+  // this of each cel it stacks, and each asking read the store for the
+  // cel, with no cel noted at all.
+  test('a cel not noted is answered without reading the store — and a '
+      'noted one by its content still', () {
+    final store = _CelsAsked();
+    final notes = CelContentNotes.orTheStoresContent(store);
+    addTearDown(notes.dispose);
+    final noted = key('noted');
+    store.getOrCreateFrame(noted);
+    store.getOrCreateFrame(key('other'));
+    notes.note(noted);
+    store.asked.clear();
+
+    expect(notes.has(key('other')), isFalse);
+    expect(store.asked, isEmpty);
+
+    expect(notes.has(noted), isTrue);
+    expect(store.asked, [noted], reason: '⛔CONTROL: the count sees a read');
+  });
+
   test('it is empty until a cel is noted, and again once the note is taken '
       'back — and a note the content moved past still counts', () {
     final store = BrushFrameStore();
@@ -180,4 +202,15 @@ void main() {
       expect(notes.revision.value, noted);
     });
   });
+}
+
+/// A store that records each cel whose state is read ([frameOrNull]).
+final class _CelsAsked extends BrushFrameStore {
+  final List<BrushFrameKey> asked = [];
+
+  @override
+  BrushFrameDrawingState? frameOrNull(BrushFrameKey key) {
+    asked.add(key);
+    return super.frameOrNull(key);
+  }
 }

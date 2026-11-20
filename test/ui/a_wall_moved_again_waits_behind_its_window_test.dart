@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -217,12 +218,13 @@ void main() {
     final target = session.activeTrack.cuts.firstWhere(
       (cut) => cut.id != origin.id,
     );
-    session.cutCommandCoordinator.resizeCutCanvas(
+    session.cutCommandCoordinator.placeCutCanvas(
       cutId: target.id,
       canvasSize: CanvasSize(
         width: origin.canvasSize.width - 2,
         height: origin.canvasSize.height - 2,
       ),
+      place: PictureMovedBy.none,
     );
     draw(session, target.id);
     await tester.pumpAndSettle();

@@ -187,7 +187,7 @@ final class ProjectOpenDoor {
     // bound to its working copy.
     if (projects.boundTo(ProviderDocuments.workingCopyOf(path) ?? path)
         case final open?) {
-      projects.activate(open);
+      await projects.activate(open);
       return;
     }
     final ({({EditorSessionManager session, bool staged}) value})? opened;

@@ -742,9 +742,6 @@ void main() {
       await pickExportStill(tester, ExportStillFormat.png);
       await tapKey(tester, 'export-queue-add-button');
       expect(handed, isEmpty, reason: 'queued without being asked');
-      await tester.ensureVisible(find.textContaining('Naming'));
-      await tester.tap(find.textContaining('Naming'));
-      await tester.pump();
       await tester.ensureVisible(
         find.byKey(const ValueKey<String>('export-naming-base-field')),
       );

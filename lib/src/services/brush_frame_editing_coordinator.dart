@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 
@@ -20,6 +21,7 @@ import '../models/brush_frame_cache_invalidation.dart';
 import '../models/brush_frame_key.dart';
 import '../models/brush_history_policy.dart';
 import '../models/dirty_tile_set.dart';
+import 'bitmap_surface_brush_commit.dart';
 import 'bitmap_surface_geometry.dart';
 import 'brush_edit_session_cache_operations.dart';
 import 'brush_frame_edit_session_store.dart';
@@ -99,6 +101,12 @@ class BrushFrameEditingCoordinator {
   final bool _laysCelsOnItsCanvas;
 
   BrushFrameKey get activeFrameKey => _activeFrameKey;
+
+  /// A stroke goes up over the active cel: what its landing will need
+  /// of the store is on its way before the pen lifts
+  /// ([BrushFrameStore.bringBytesAhead]).
+  void aStrokeGoesUp() =>
+      unawaited(frameStore.bringBytesAhead(_activeFrameKey));
   BrushEditSessionState get activeSessionState => _sessionFor(_activeFrameKey);
 
   /// The cel's CURRENT pixels — the pre-image capture point for
@@ -293,6 +301,33 @@ class BrushFrameEditingCoordinator {
       return null;
     }
     return result.sessionState.canvasState.currentSurface;
+  }
+
+  /// [deriveSurfaceWith] of one stamp — [stamp], a lift's erase — with no
+  /// wait for the GPU ([materializeStampOnceTold]): the hole a box at rest
+  /// derives ahead of the press, of [key]'s cel as it stands now. [unput]
+  /// is called where the tiles of the surface answered were not put
+  /// after all: the surface is forgotten there.
+  ///
+  /// ⚠️It does not go through the commit's own function, and its bytes are
+  /// still what the confirm lands — [deriveSurfaceWith]'s condition. A
+  /// single stamp in the colour blend at full strength reaches the
+  /// commit's materialize as it came
+  /// (`brushCommitResultForBrushDabSequenceOnBitmapSurface`), and
+  /// [materializeStampOnceTold] is that materialize by the engine's other
+  /// door, held to it tile for tile
+  /// (a_stamp_laid_once_told_is_the_stamp_laid_waited_test.dart).
+  Future<BitmapSurface?> deriveSurfaceOnceTold(
+    BrushDab stamp, {
+    BrushFrameKey? key,
+    required void Function() unput,
+  }) async {
+    final made = await materializeStampOnceTold(
+      surface: currentSurfaceOf(key ?? _activeFrameKey),
+      dab: stamp,
+      unput: unput,
+    );
+    return made.hasChanges ? made.surface : null;
   }
 
   /// Commits a finished stroke into the active cel's surface and returns

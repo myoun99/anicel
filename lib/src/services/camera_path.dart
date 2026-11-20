@@ -247,6 +247,7 @@ Iterable<SheetMark> cameraPathMarks(
     ],
     sizes: sizes,
     layer: layer,
+    crossed: true,
   );
 }
 

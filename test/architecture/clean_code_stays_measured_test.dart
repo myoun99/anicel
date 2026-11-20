@@ -1116,7 +1116,85 @@ void main() {
   /// is `_filter` (eleven) now, of `qa_audio_filter` — the ONE door every
   /// sound filter takes, its kind first, so the compressor brought no door
   /// of its own. The count did not move.
-  const wideSignatures = 453;
+  ///
+  /// ⚠️453 → 452 on 2026-11-18 (board
+  /// the-screen-premultiplies-ram-tiles-to-show-them, F-215): the frame
+  /// feed's `_show` and its two feeds took a record, `_OnTheTexture` — the
+  /// viewport, the device's ratio and the texture's corner travel together
+  /// as one placing on the texture. 🔬`clean_code_diff` against master
+  /// (`96c3a5d3a`) names `FramePictureViewState._show` gone and none added.
+  ///
+  /// ⚠️452 → 454 on 2026-11-19, two named as the rule above asks (F-619-Q1
+  /// — 유저 「따라간다 — 어떤 조작이든 선택한 블록이 움직이면」):
+  /// `CutTrimDrag.begin` and `CutTrimDrag._beginLead` (five) took the band
+  /// held beside the trim, which follows the conte panels it holds where
+  /// the trim re-tiles them, each step and past the release. 🔬
+  /// `clean_code_diff` against master (`8e9b6d843`) names those two added
+  /// and nothing gone. ⛔Not bundled to fit: `EdgeDragRoles` keeps what a
+  /// drag in flight is handed for every drag (its own ⛔ keeps the begin's
+  /// out), and the band is this drag's alone. The storyboard grips' three
+  /// begins that took it too went back under by taking the comma begin's
+  /// roles (`ExposureBeginRoles`), which hold the band themselves.
+  ///
+  /// ⚠️454 → 455 on 2026-11-19, named as the rule above asks (F-622 — 유저
+  /// 「콘티용지패널만 예외로 카메라 오버레이 중앙의 십자사각형 없도록」):
+  /// `cameraWorkMarks` (five — the trails, the keys, the sizes, the stratum
+  /// and whether the surface crosses its keys) is the ONE drawing every
+  /// surface writes a camera's work with, and the conte's paper is the one
+  /// that writes no cross. 🔬`clean_code_diff` against master (`3b7c14714`)
+  /// names that one added and nothing gone. ⛔Not bundled to fit: the
+  /// sizes are how large a surface writes the marks, and a cross it does
+  /// not write is not a size — an arm of none would answer two questions.
+  ///
+  /// ⚠️455 → 456 on 2026-11-19, one named as the rule above asks (card
+  /// F-621 ⑤ — 유저 「50%되고나면 앱이 멈추고 5초쯤지나면 다시진행되」):
+  /// `FolderPicker.readOpenedFileInto` (six) reads an opened file in on a
+  /// worker and makes what its door needs of the bytes there — the path,
+  /// what is made of them, the wait's two ends every opened file's read
+  /// takes (`readOpenedFile`'s), and the two stretches of the window's bar
+  /// it tells: the bytes in, and the making. 🔬`clean_code_diff` against
+  /// master (`3b7c14714`) names that one added and nothing gone. ⛔Not
+  /// bundled to fit: the bar's two stretches are the door's to place (the
+  /// .tvpp door gives each half), and one callback told which stretch it
+  /// is in would be one name answering two questions.
+  ///
+  /// ⚠️456 → 457 on 2026-11-20, one named as the rule above asks (F-610 —
+  /// 유저 F-610-Q5 「할수있는거 다하면서」: a band being made folds as it
+  /// fills): `EngineTileLedger.land` (five — the tiles asked, what makes
+  /// them, whether it compared, how the landing is made again, and whose
+  /// it is) took whether the landing is the hand's: a hand's puts the
+  /// folds off till it rests, and any other asks for them as a store
+  /// does. 🔬`clean_code_diff` against master (`55630003e`) names that one
+  /// added and nothing gone. ⛔Not bundled to fit, and no default: whose
+  /// landing it is is every caller's to say by name — one that said
+  /// nothing would be answered as the hand's, and what it lays would
+  /// stand unfolded for as long as it comes.
+  ///
+  /// ⚠️457 → 456 on 2026-11-20, following them down (card I-180 — a canvas
+  /// resize that fits its picture): the content walk's two translators
+  /// (`translateLayerForResize`, `translateCutContentModel` — carried by a
+  /// scale too now, `carryLayerForResize` and `carryCutContentModel`) and
+  /// `ProjectRepository.resizeCutCanvasContent` each take one
+  /// `ResizeWalk` now, and the walk's maker (`resizeWalk`, six — a scale,
+  /// a move and the centre's own move on each axis) came in; `layCelRegion`
+  /// (five) took the canvas a resize lays a cel on. 🔬`clean_code_diff`
+  /// against master (`18c50ed55`, at 457) names those two added and three
+  /// gone. ⛔The fit did not ride beside the offset down the resize's
+  /// verbs: one `CanvasPicturePlace` says where the picture goes, so a fit
+  /// cannot carry an offset.
+  ///
+  /// ⚠️456 → 457 on 2026-11-20, one named as the rule above asks (card
+  /// opening-a-transform-box-holds-the-ui-over-half-a-second ④ —
+  /// 브러시/렌더링's told doors, b7aba1ce1): `_CanvasPanelSelection._cutOneAhead` (five — the
+  /// coordinator, the run, the region, the cel and its lift's name) is one
+  /// cel's cut of a box at rest by the told doors, apart from the run's
+  /// walk over the cels (`_cutAheadOf`), as the press's `_cut` (six) is one
+  /// cel's cut by the waited ones. 🔬`clean_code_diff` against master
+  /// (`0c3159396`) names that one added and nothing gone. ⛔Not read off
+  /// `_CutsAhead` to fit: past a told answer its run and region are
+  /// whichever run stands then — the run handed in is how the cut knows
+  /// its answer is still its own.
+  const wideSignatures = 457;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1535,6 +1613,21 @@ void main() {
   /// place the trunk's count stood under the ceiling; what the pool is
   /// handed is `_handedToThePool` now. 🔬`clean_code_diff` against master
   /// (`efb502eea`) names it gone.
+  ///
+  /// ⚠️393 → 394 on 2026-11-19, one named as the rule above asks (card
+  /// a-stamp-drag-undoes-a-stamp-at-a-time — 🗣️유저 「스탬프 도구설정에
+  /// 간격설정도 두도록」): `BrushToolState`'s constructor crossed sixty
+  /// carrying the stamp's spacing (`cutStampSpacing`) beside its opacity.
+  /// 🔬`clean_code_diff` against master (`589a75366`, at 393 — on its
+  /// ceiling) named that one added and nothing gone. ⛔Not split to fit: it
+  /// is one table — of a tool's fields, each clamped where it is taken, as
+  /// `BrushToolState.clamped` is (416 → 417 above).
+  ///
+  /// ⚠️394 → 393 on 2026-11-19, one gone and nothing added (card F-621
+  /// ⑤): `TvppImportDoor.bakeEveryCel` went under when the six doors that
+  /// each deleted a staged copy by hand took the one
+  /// `FolderPicker.letGoOfStagedCopy`. 🔬`clean_code_diff` against master
+  /// (`3b7c14714`) names it gone.
   const longBodies = 393;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

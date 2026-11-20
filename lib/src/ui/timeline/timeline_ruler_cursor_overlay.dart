@@ -106,9 +106,11 @@ class ReadyRunsOfTheDocument {
 ///   raises an "invalidated" event when a cel is edited. There is no token
 ///   a gated painter could compare. The only honest answer is to keep the
 ///   read cheap and re-read it on every signal that can change it, which is
-///   what [repaintSignal] carries (warm progress + pixel edits) alongside
-///   the playhead — and to REPAINT only when what it read differs from what
-///   it drew ([TimelineRulerCursorOverlay]'s gate, F-166).
+///   what [repaintSignal] carries (a picture laid or let go of, a cel edited,
+///   a hand letting go of a count put off under it:
+///   `PlaybackCacheBudget.readinessMoved`) alongside the playhead — and to
+///   REPAINT only when what it read differs from what it drew
+///   ([TimelineRulerCursorOverlay]'s gate, F-166).
 ///
 /// Shared by the storyboard ruler and the timeline ruler (it was the
 /// storyboard's private painter first).
@@ -347,8 +349,8 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 /// and on its own raster layer, so its repaints never touch the static
 /// strip underneath.
 ///
-/// 🚨ITS [repaintSignal] IS GATED (F-166, 2026-09-26). Warm progress
-/// fires once per frame the prerender finishes, and between two strokes it
+/// 🚨ITS [repaintSignal] IS GATED (F-166, 2026-09-26). The signal
+/// fires once per frame the prerender lays, and between two strokes it
 /// walks the whole cut, nearly every frame of it already green — yet every
 /// tick repainted this strip, and a repaint anywhere in the timeline dock
 /// throws the dock's still image away. Measured on the real app (cut 301):

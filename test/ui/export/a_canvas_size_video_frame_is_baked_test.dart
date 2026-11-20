@@ -317,6 +317,44 @@ void main() {
       });
     });
 
+    // 🗣️F-618 ① (유저 2026-11-19): 「캔버스 보이는대로가아니라」 — a film of
+    // the Cels tab is handed its cut with the rows it holds shown and the
+    // rest hidden. ↩️A transition's frame drew the project's cut.
+    testWidgets('🚨halfway, the leaving cut is the one the frame was handed: '
+        'its row hidden there, its paper shows where its ink was', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final session = mixing();
+        addTearDown(session.dispose);
+        final task = midway(session);
+        final handed = task.cut.copyWith(
+          layers: [
+            for (final layer in task.cut.layers)
+              if (layer.id == const LayerId('c1-row'))
+                layer.copyWith(isVisible: false)
+              else
+                layer,
+          ],
+        );
+
+        final (_, inked, _, _) = centreOf(await videoFrame(session, task));
+        final (_, g, b, _) = centreOf(
+          await videoFrame(
+            session,
+            ExportFrameTask(cut: handed, frameIndex: task.frameIndex),
+          ),
+        );
+        expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut, coming');
+        expect(
+          g,
+          greaterThan(inked + 15),
+          reason: 'the leaving cut\'s green paper at half (255), not its ink '
+              '(200) — $inked with its row shown',
+        );
+      });
+    });
+
     testWidgets('at a preview\'s size the mix is the same, smaller: each cut '
         'laid at that size (export-film-preview-is-not-the-film)', (
       tester,

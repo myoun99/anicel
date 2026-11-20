@@ -70,6 +70,24 @@ void main() {
     expect(ledger.pool.bytes, page);
   });
 
+  // A collected key's walk passes every live slot to find the few whose
+  // key is gone (card a-closed-projects-collection-walks-the-tile-
+  // ledger): what guards a slot is asked of those it would let go.
+  test('the walk for collected keys asks no live tile whether the engine '
+      'alone holds it', () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final live = [for (var at = 0; at < 6; at += 1) aTileOfItsOwn()];
+    for (final tile in live) {
+      await storedAndRead(ledger, tile);
+    }
+    final asked = ledger.debugGuardsAsked;
+
+    ledger.respondToMemoryPressure();
+
+    expect(ledger.debugGuardsAsked - asked, 0);
+    expect(ledger.slotCount, live.length, reason: 'every live slot kept');
+  });
+
   test('a page a tile is held on stays', () {
     final ledger = EngineTileLedger(appGpuEngine);
     final kept = aTileOfItsOwn();

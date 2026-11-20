@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
+import '../../models/cut.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/envelope/cut_envelope_source.dart';
@@ -15,7 +16,6 @@ import '../dialogs/dialog_verb.dart';
 import '../dialogs/envelope_format_window.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
-import '../timeline/memo_token.dart' show ByIdentity;
 import '../widgets/app_icon_button.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import 'cut_envelope_builder.dart';
@@ -89,12 +89,27 @@ class CutEnvelopeTabHost extends StatefulWidget {
   // every tab beside it.
 
   /// What the envelope prints of [session], to the panel host that hears
-  /// the session through it: the project — the cut it is the envelope of
-  /// and the work's form among it. The model is immutable, so a new one is
-  /// the only way it moves. Which cut that is, the one under the playhead
-  /// (F-90), turns it over through the host's own listenable.
-  static Object printedBy(EditorSessionManager session) =>
-      ByIdentity(session.repository.requireProject());
+  /// the session through it: the envelope itself — what it reads of the
+  /// cut under the playhead (F-90) — and the work's form it is printed on.
+  /// Which cut that is turns it over through the host's own listenable.
+  ///
+  /// 🔬↩️It was the PROJECT, by identity: every edit anywhere in the work
+  /// — an eye toggled, a stroke on another cut — built the envelope again
+  /// for nothing it prints (card an-eye-toggle-holds-the-ui-thread, 11-18;
+  /// the sheets' law, session-news-rebuilds-unsliced 10-20).
+  static Object printedBy(EditorSessionManager session) => (
+    source: _sourceOf(session, session.cutUnderPlayhead.resolve()?.cut),
+    form: session.timesheetInfo.envelopeFormId,
+  );
+
+  /// What the envelope of [cut] reads — none with no cut there.
+  static CutEnvelopeSource _sourceOf(EditorSessionManager session, Cut? cut) =>
+      cut == null
+      ? const CutEnvelopeSource()
+      : buildCutEnvelopeSource(
+          project: session.repository.requireProject(),
+          cut: cut,
+        );
 
   @override
   State<CutEnvelopeTabHost> createState() => _CutEnvelopeTabHostState();
@@ -143,12 +158,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       paperWidth: paper.width.toDouble(),
       paperHeight: paper.height.toDouble(),
     );
-    final source = cut == null
-        ? const CutEnvelopeSource()
-        : buildCutEnvelopeSource(
-            project: session.repository.requireProject(),
-            cut: cut,
-          );
+    final source = CutEnvelopeTabHost._sourceOf(session, cut);
 
     final inkController = widget.inkController;
     inkController?.syncGeometry(aspectRatio: form.aspectRatio);

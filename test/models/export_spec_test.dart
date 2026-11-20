@@ -8,6 +8,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 
 void main() {
@@ -68,6 +69,8 @@ void main() {
         'of them', () {
       const spec = CelsExportSpec();
       expect(spec.sizeMode, ExportSizeMode.canvas);
+      // 🗣️F-616: 「셀 크기는 기본값 캔버스, 동영상 항목의 크기는 기본값 카메라」.
+      expect(spec.videoSizeMode, ExportSizeMode.camera);
       // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
       expect(spec.kinds, {
         ExportCelKind.cel,
@@ -82,6 +85,7 @@ void main() {
       expect(spec.sheetOnly, isFalse);
       expect(spec.sheetInk, isFalse, reason: 'a plain XDTS (I-161)');
       expect(spec.viewerSheet, isNull, reason: 'each cut its own sheet\'s');
+      expect(spec.xdtsHalves, CelsExportSpec.allXdtsHalves, reason: 'both');
       expect(spec.toJson().keys, unorderedEquals(['format', 'naming']));
       expect(CelsExportSpec.fromJson(spec.toJson()), spec);
     });
@@ -101,6 +105,7 @@ void main() {
     test('non-default fields round-trip', () {
       final spec = const CelsExportSpec().copyWith(
         sizeMode: ExportSizeMode.camera,
+        videoSizeMode: ExportSizeMode.canvas,
         naming: const ExportCelNaming(
           frameDigits: 4,
           projectFolder: true,
@@ -118,11 +123,21 @@ void main() {
         scope: ExportScopeKind.project,
         sheetInk: true,
         viewerSheet: XdtsViewerSheet.ponocSixSeconds,
+        xdtsHalves: const {XdtsSheetHalf.douga},
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
+      expect(restored.videoSizeMode, ExportSizeMode.canvas);
       expect(restored.sheetInk, isTrue);
       expect(restored.viewerSheet, XdtsViewerSheet.ponocSixSeconds);
+      expect(restored.xdtsHalves, {XdtsSheetHalf.douga});
+      // Neither half written stays neither, not both again (F-618 ③).
+      expect(
+        CelsExportSpec.fromJson(
+          const CelsExportSpec(xdtsHalves: {}).toJson(),
+        ).xdtsHalves,
+        isEmpty,
+      );
       expect(restored.kinds, {ExportCelKind.conte, ExportCelKind.direction});
       expect(restored.take, 3);
       expect(restored.base, isFalse);

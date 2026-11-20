@@ -6,8 +6,21 @@
 // was opened with.
 //
 //   bash tool/run.sh test_queue --window <minutes> <who…>   open it
-//   bash tool/run.sh test_queue --window close              close it
+//   bash tool/run.sh test_queue --window close <who…>       close it
+//   bash tool/run.sh test_queue --window close              close any
 //   bash tool/run.sh test_queue --window                    is it open?
+//
+// 🔒ONE WINDOW, ITS OPENER'S (card
+// a-second-measurement-window-overwrites-the-first, 보드/인프라 · 관제
+// 2026-11-19). Opening wrote the file whatever was there, so a second
+// session measuring took the first's window over — its deadline and name —
+// both measurements ran at once, and whichever closed first closed the
+// other's window too, the line and the lands starting again in the middle
+// of a measurement. That is the window's own law, 「nothing new starts」,
+// kept against another measurement: a name opens it only when no other
+// name's window is open (its own it extends), and closes only its own. A
+// close with no name closes whatever is open — the way 관제 clears a
+// window its opener left.
 //
 // 🗣️WHY (card a-quiet-window-drains-in-minutes, 관제 2026-11-17 on 유저
 // 「정한것들 좋고 그런 효율적으로 하는방식 좋아. 할수있는거 최대한하자」): a
@@ -63,34 +76,48 @@ MeasureWindow? openWindow(Directory line, {DateTime? now}) {
 String waitingFor(MeasureWindow window) =>
     '기다리는 중 — 측정 창(${window.who} · ${_clock(window.until)}까지)';
 
-/// Opens the window on [line] for [lasting] from [now], as [who]'s.
-MeasureWindow openTheWindow(
+/// [who] as a window names its opener: each run of white space one space.
+String _named(String who) => who.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// Opens the window on [line] for [lasting] from [now], as [who]'s — or,
+/// when another name's window is open there, leaves that one as it is
+/// (🔒ONE WINDOW, ITS OPENER'S). [window] is the window open after the
+/// call; [opened] says whether it is [who]'s.
+({MeasureWindow window, bool opened}) openTheWindow(
   Directory line, {
   required String who,
   required Duration lasting,
   DateTime? now,
 }) {
+  final named = _named(who);
+  final held = openWindow(line, now: now);
+  if (held != null && held.who != named) return (window: held, opened: false);
   final seconds =
       (now ?? DateTime.now()).add(lasting).millisecondsSinceEpoch ~/ 1000;
-  final named = who.replaceAll(RegExp(r'\s+'), ' ').trim();
   line.createSync(recursive: true);
   // Written whole and then put in place: a reader never reads half of it.
   File('${line.path}/$kWindowFile.$pid.part')
     ..writeAsStringSync('$seconds\t$named\n')
     ..renameSync('${line.path}/$kWindowFile');
-  return (
+  final window = (
     who: named,
     until: DateTime.fromMillisecondsSinceEpoch(seconds * 1000),
   );
+  return (window: window, opened: true);
 }
 
-/// Closes the window on [line], open or not.
-void closeTheWindow(Directory line) {
+/// Closes the window on [line], open or not — or, given [who], only
+/// [who]'s: another name's open window is left as it is and returned
+/// (🔒ONE WINDOW, ITS OPENER'S). Null when none is open after the call.
+MeasureWindow? closeTheWindow(Directory line, {String? who}) {
+  final held = openWindow(line);
+  if (who != null && held != null && held.who != _named(who)) return held;
   try {
     File('${line.path}/$kWindowFile').deleteSync();
   } on FileSystemException {
     // No window was open.
   }
+  return null;
 }
 
 /// `test_queue --window …` ([args] after the flag) on the line at [line]:
@@ -113,29 +140,41 @@ int windowCommand(
         : windowIsOpen(open));
     return 0;
   }
-  if (args.length == 1 && args.first == 'close') {
-    closeTheWindow(line);
+  final who = args.skip(1).join(' ').trim();
+  if (args.first == 'close') {
+    final left = closeTheWindow(line, who: who.isEmpty ? null : who);
+    if (left != null) {
+      say('test_queue: not closed — the window open is ${_whose(left)}');
+      return 1;
+    }
     say('test_queue: the measurement window is closed');
     return 0;
   }
   final minutes = int.tryParse(args.first);
-  final who = args.skip(1).join(' ').trim();
   if (minutes == null || minutes <= 0 || who.isEmpty) {
     say('usage: bash tool/run.sh test_queue --window <minutes> <who…> | '
-        '--window close | --window');
+        '--window close [<who…>] | --window');
     return 2;
   }
-  final open = openTheWindow(
+  final (:window, :opened) = openTheWindow(
     line,
     who: who,
     lasting: Duration(minutes: minutes),
   );
-  say('test_queue: the measurement window is open till ${_clock(open.until)} '
-      '(${open.who}) — what runs runs to its end, and nothing new starts. '
-      'In the line now:');
+  if (!opened) {
+    say('test_queue: not opened — the window open is ${_whose(window)}; '
+        'open yours once it closes');
+    return 1;
+  }
+  say('test_queue: the measurement window is open till '
+      '${_clock(window.until)} (${window.who}) — what runs runs to its end, '
+      'and nothing new starts. In the line now:');
   describe(line).forEach(say);
   return 0;
 }
+
+String _whose(MeasureWindow window) =>
+    "${window.who}'s, till ${_clock(window.until)}";
 
 /// What `--list` and `--window` say of [window], open.
 String windowIsOpen(MeasureWindow window) =>

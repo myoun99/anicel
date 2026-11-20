@@ -11,12 +11,15 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
+import '../../services/command.dart' show WorkAhead;
+import '../../services/wait_window.dart' show drawingsOf;
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'independent_clip_mint.dart'
     show
         carryBakedPictures,
         carrySurfaces,
         copyBakedPictures,
+        picturesShownAhead,
         picturesShownBy;
 import 'render_caches.dart';
 import 'session_roles.dart';
@@ -73,6 +76,18 @@ class CutCopies {
       timesheet: written(_Sheet.timesheet),
     );
   }
+
+  /// What [shownBy] reads of [sources]' cels, thawed ahead of it
+  /// ([picturesShownAhead]).
+  WorkAhead shownAhead(Iterable<Cut> sources) => picturesShownAhead(
+    store: _renderCaches.brushFrameStore,
+    drawings: [
+      for (final source in sources)
+        for (final (row, cel) in drawingsOf(source.layers))
+          (cut: source, row: row, cel: cel),
+    ],
+    keyOf: _project.brushFrameKeyForCut,
+  );
 
   /// [source] onto its copy [copy] at once, its source standing beside it —
   /// whose rows [rows] and whose cels [cels] name, by the ones they copy.

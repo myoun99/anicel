@@ -632,6 +632,40 @@ enum EffectKind {
     filtersSound: true,
   ),
 
+  /// The NOISE REMOVAL (board audio-fx-second-effect-and-presets, Q1 = 1):
+  /// the take's RNNoise over the row's sound, its Amount the share of the
+  /// cleaned sound heard over the sound as it was — baked into the row's
+  /// sound a span at a time (`FilteredSpan`), never into its picture
+  /// ([filtersSound]), late by nothing (native/audio_mix denoiser.rs).
+  ///
+  /// 🗣️Q1 (유저 2026-11-18): 「둘로 시작 — ノイズ除去 는 다음 라운드에 효과로
+  /// 지어 セリフ 에 더한다」 — the menu's next, after コンプレッサー (design 1).
+  /// The design drew its head row alone: one Amount, 0 to 100, is my
+  /// choice, after the noise reductions that go by one (board line 11-18
+  /// 20:2x), changed if the user says so. It starts at 0, so the effect
+  /// just added changes nothing ([changesNothingAtItsDefaults]).
+  noiseRemoval(
+    'noiseRemoval',
+    label: 'Noise removal',
+    parameters: [
+      EffectParameterSpec(
+        id: 'amount',
+        label: 'Amount',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
+    filtersSound: true,
+  ),
+
   /// A plugin's effect: its parameters, the words they go by and what it
   /// does to the pixels are the plugin's ([LayerEffect.plugin],
   /// sdk/fx/anicel-fx) — ONE kind for every plugin, told apart by the

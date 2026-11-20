@@ -279,6 +279,43 @@ void main() {
     expect(find.byKey(band), findsNothing);
   });
 
+  testWidgets('an S row with its graph open is handed back whole across a '
+      'build: its lanes and the room the graph stands in after them are '
+      'kept (card the-conte-rail-row-holders-are-new-each-pass)', (
+    tester,
+  ) async {
+    final key = laneGroupKey(s1, pose);
+    await pump(
+      tester,
+      project(),
+      // Taller than its lanes, so the graph stands in room after them.
+      graphs: LaneGraphsView(open: {key: const LaneGraph(extent: 1200)}),
+    );
+    final unit = find.ancestor(
+      of: labelOf(s1, pose),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Listener &&
+            widget.key ==
+                const ValueKey<TimelineRowAddress>(LayerRowAddress(s1)),
+      ),
+    );
+    expect(unit, findsOneWidget, reason: '⛔전제: the rail lays the S row');
+    final room = find.descendant(
+      of: unit,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is SizedBox && widget.child == null,
+      ),
+    );
+    expect(room, findsWidgets, reason: '⛔전제: the graph stands in room');
+    final before = tester.widget(unit);
+
+    tester.element(find.byType(StoryboardPanel)).markNeedsBuild();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget(unit), same(before));
+  });
+
   testWidgets('an S row\'s open graph stands where its lanes are, as tall '
       'as the timeline\'s — the rail and the sheet stand as far beside it', (
     tester,

@@ -84,6 +84,7 @@ import 'session/block_shift.dart';
 import 'session/cut_shift.dart';
 import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
+import 'text/cel_text_bake.dart' show setCelTextPlate;
 import 'text/word_bake.dart' show RepaintOnWordBakes;
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -97,6 +98,7 @@ import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
 import '../native/tile_blocks.dart';
+import '../native/tiles_stood_on.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
 import 'session/cache_budgets.dart';
@@ -136,6 +138,7 @@ import 'session/project_audio.dart';
 import 'session/movie_cel_hydrator.dart';
 import 'session/playback_rig.dart';
 import 'session/render_caches.dart';
+import 'session/stands_with_its_picture.dart';
 import 'session/frame_range_move_drag.dart';
 import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
@@ -245,7 +248,10 @@ class EditorSessionManager extends ChangeNotifier
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
     historyManager = HistoryManager()
-      ..scope = RepositoryStepScope(repository)
+      ..scope = RepositoryStepScope(
+        repository,
+        cels: renderCaches.brushFrameStore,
+      )
       ..places.placeNow = () => standingPlace;
     // 🚨With the history, not at its first step: from the first change it
     // lets go of the pictures only deep entries hold. Built lazily, it
@@ -262,6 +268,7 @@ class EditorSessionManager extends ChangeNotifier
       historyManager: historyManager,
       brushFrameStore: renderCaches.brushFrameStore,
       sheetInkStores: renderCaches.sheetInkStores,
+      setCelText: setCelTextPlate,
     );
     activeCutControllers.rebuild();
     renderCaches.attach();
@@ -310,6 +317,15 @@ class EditorSessionManager extends ChangeNotifier
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
     AppMemory.settings.addListener(_applyCacheBudgets);
+    // The hot cels of the frame this project's canvas stands on keep
+    // their slots where a full pool makes room ([TilesStoodOn]) — read
+    // then, of where the playhead is then.
+    TilesStoodOn.app.standsOn(
+      editingCanvas,
+      () => editingCanvas.hotTilesAtThePlayhead(
+        renderCaches.brushFrameStore.hotBakedSurfaceOrNull,
+      ),
+    );
     // A plugin installed or taken off greys or ungreys the effects of it
     // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
     // 걸린다」) — the app's one list, so every open project hears it.
@@ -515,6 +531,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     appSettings: appSettings,
+    dragPreview: dragPreview,
   );
 
   // ── every pixel this session is holding: its own object ─────────────
@@ -651,6 +668,17 @@ class EditorSessionManager extends ChangeNotifier
       ByIdentity(onionSkin.layerIds.value),
       onionSkin.settings.value,
     ),
+    // Every drag shown in flight moves a frame but the camera's, which no
+    // frame is made of (🗣️F-620-Q4 「카메라는 초록 그대로」) — and a row's
+    // opacity slider, which rides its own channel. ⚠️A name tag is posed in
+    // the shot: the key of the frame stood on answers for a camera dragged
+    // over one (🗣️F-620-Q8 「비운다」, `PlaybackCacheBudget`).
+    framesInFlight: () =>
+        switch (dragPreview.value) {
+          null || LaneEditPreview(cameraCutId: _?) => false,
+          _ => true,
+        } ||
+        opacityVerbs.movesAPicture,
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -740,12 +768,13 @@ class EditorSessionManager extends ChangeNotifier
   /// its cut, with the row [Standing.layerACutSwitchSeats] names, then the
   /// frame of that cut's own the run is on.
   void _landOn(PlaybackPosition position) {
-    if (position.cutId != editingSession.activeCutId) {
-      selectCut(position.cutId);
-    }
-    selectFrameIndex(
+    // On the run's own track: a run plays the cuts of the track chosen
+    // (`playbackRunOf`), so the frame is read as it will be once it opens.
+    goToCut(
+      position.cutId,
       activeCutControllers.clampedFrameIndex(
         playheadCursors.ownFrameOf(position),
+        frameCount: playbackFrameCountOf(cutById(position.cutId)),
       ),
     );
   }
@@ -1094,8 +1123,38 @@ class EditorSessionManager extends ChangeNotifier
   // leaves it to them. The hand-offs inside an action go through
   // [standing] and the controllers, not through these.
   void selectCut(CutId cutId) {
-    historyManager.places.leave();
-    standing.selectCut(cutId);
+    if (cutId == activeCutId) {
+      historyManager.places.leave();
+      return;
+    }
+    // Its frame 0, where the cut opens ([Standing.selectCut]).
+    goToCut(cutId, 0, stand: () {});
+  }
+
+  /// 🗣️Q3 = stand (the-standing-canvas-composes-a-frame-twice-before-its-
+  /// picture, 유저 2026-11-18 13:43: 「컷도 앞 컷에 서 있는다」): THE door to
+  /// a frame of a cut, open or not — every move that may cross into another
+  /// cut goes through it, and through [standsWithItsPicture]: the cut, its
+  /// row and the frame land together once the frame's pictures are there,
+  /// and the canvas stands on the frame it shows meanwhile. [stand] stands
+  /// on [frame] once the cut is open — [selectFrameIndex]'s landing where
+  /// none is given.
+  ///
+  /// ⛔Not a cut switch and a seek one after the other: a seek asked while
+  /// the switch waits is a move in the cut still stood in, and replaces it.
+  @override
+  void goToCut(CutId cutId, int frame, {VoidCallback? stand}) {
+    standsWithItsPicture.moveTo(
+      frame,
+      () {
+        // Every door that moves walks off first (I-41) — the cut stood in
+        // too: [Standing.selectCut] keeps it.
+        historyManager.places.leave();
+        standing.selectCut(cutId);
+        (stand ?? () => _standOnFrame(frame))();
+      },
+      inCut: cutId,
+    );
   }
 
   TimelineRowAddress get currentRow => standing.currentRow;
@@ -1561,7 +1620,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs, projectSettings: projectSettings);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs, projectSettings: projectSettings, followTheBand: rangeSelections.followTheBandThrough);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -1836,6 +1895,9 @@ class EditorSessionManager extends ChangeNotifier
       playbackRig.prerenderScheduler.notifyEditActivity,
     ),
     voiceRecording.dispose,
+    // The move that waits let go of, before the rig that makes its
+    // pictures goes.
+    standsWithItsPicture.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
     audioConformStore.dispose,
@@ -1889,6 +1951,8 @@ class EditorSessionManager extends ChangeNotifier
     TimelineGridTileStore.instance.clear,
     // So do the rows' kept pictures, by what each was drawn from.
     RepaintOnWordBakes.clearKeptPictures,
+    // Its canvas stands on no tile any more ([TilesStoodOn]).
+    () => TilesStoodOn.app.standDown(editingCanvas),
     canvasStroke.dispose,
     historyManager.dispose,
   ];
@@ -2420,21 +2484,30 @@ class EditorSessionManager extends ChangeNotifier
   /// 그곳으로 이동만, 다음 언두가 편집을 되돌린다 … 리두는 대칭」. Standing
   /// elsewhere than the edit was made, the undo only WALKS there
   /// ([Standing.standOn]) and leaves the way back for redo.
+  ///
+  /// 🚨THE WAY BACK IS LEFT WHERE THE WALK LANDS, never at the press (card
+  /// F-624 ②, 검증 11-20 「Ctrl+Z 를 7번 눌러도 안 돌아오고 다시하기 버튼만
+  /// 켜짐」): the walk waits for its frame's picture, and a move that comes
+  /// first — the ruler pressed — takes its place. ↩️Left at the press, each
+  /// walk that never landed left a way back from where the user never went,
+  /// the redo lit with nothing moved.
   void undo() {
     _settleAndAdopt();
     final here = standingPlace;
     final gap = editingSession.gapGlobalFrame;
     if (_walkTo(undo: true) case final there?) {
-      historyManager.leaveWalkBack(
-        WalkBack(() {
-          if (here != null) {
-            standing.standOn(here);
-          } else if (gap != null) {
-            parkGlobalFrame(gap);
-          }
-        }),
+      standing.standOn(
+        there,
+        landed: () => historyManager.leaveWalkBack(
+          WalkBack(() {
+            if (here != null) {
+              standing.standOn(here);
+            } else if (gap != null) {
+              parkGlobalFrame(gap);
+            }
+          }),
+        ),
       );
-      standing.standOn(there);
       return;
     }
     historyPictures.step(
@@ -2489,10 +2562,12 @@ class EditorSessionManager extends ChangeNotifier
   /// settled where it left the user — a press is a new action — and work
   /// still in hand (a pending move) lands as an entry made HERE, which is
   /// what the press is for: asked first, the walk would carry the user away
-  /// from it.
+  /// from it. A gesture's line still being written goes up the same way
+  /// ([HistoryGestures.putUp]).
   void _settleAndAdopt() {
     historyManager.places.settle();
     historyManager.onBeforeUndoRedo?.call();
+    historyManager.gestures.putUp();
   }
 
   // --- Layer state / commands --------------------------------------------
@@ -2513,7 +2588,7 @@ class EditorSessionManager extends ChangeNotifier
   late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFolderFold: standing.handOffCurrentRowOnFolderFold, keepStandingShown: standing.keepStandingShown, layerVerbs: layerVerbs);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
-  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor);
+  late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers);
 
   /// AUDIO-PRO R3: mid-run schedule refresh, fired by the history
   /// listener — every mix switch is an edit and undoes (mute, the Total,
@@ -2576,7 +2651,12 @@ class EditorSessionManager extends ChangeNotifier
     // conform has not answered for simply has no silhouette yet (the
     // length the landing uses is the one this returns).
     peaksFor: audioConformStore.peaksFor,
-    frameRate: () => projectSettings.projectFrameRate,
+    clock: () => (
+      rate: projectSettings.projectFrameRate,
+      speed: repository.requireProject().audioSpeed,
+    ),
+    // The pool's own read of the file — the one its lengths are said from.
+    factsOf: (path) => mediaPool.mediaFactsOf(path)?.picture,
     // 🚨An SE row is the TRACK's, so [layerById] — which walks the open
     // cut — never finds one. These are the doors `landSound` itself uses.
     seRowFor: trackSeGlobalLayerById,
@@ -2878,9 +2958,14 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
 
-    activeCutControllers.timelineController.createDrawingFrameForLayer(
-      layerId: layer.id,
-      frameId: mintFrameId(layer.id),
+    // At a block's head the new drawing pushes the block and the ones glued
+    // after it, a band's blocks among them (F-619-Q1).
+    final timeline = activeCutControllers.timelineController;
+    rangeSelections.followTheBandThrough(
+      () => timeline.createDrawingFrameForLayer(
+        layerId: layer.id,
+        frameId: mintFrameId(layer.id),
+      ),
     );
     notifyListeners();
   }
@@ -3636,11 +3721,22 @@ class EditorSessionManager extends ChangeNotifier
   /// seek-dependent surfaces (editing canvas, timeline toolbar enablement,
   /// camera pose panel, timesheet playhead) subscribe to
   /// [frameSeekCommitted] and rebuild once per committed seek.
+  ///
+  /// A canvas that stands goes there with its picture
+  /// ([standsWithItsPicture]): the seek lands once it is there.
   @override
   void selectFrameIndex(int frameIndex) {
     // R15-⑤: a live STROKE refuses the seek outright — a
     // flip under an in-flight edit tore widgets down inside the build
     // phase (red screens) and could land the edit on the wrong cel.
+    if (strokeInFlight) {
+      return;
+    }
+    standsWithItsPicture.moveTo(frameIndex, () => _standOnFrame(frameIndex));
+  }
+
+  /// [selectFrameIndex] as it lands.
+  void _standOnFrame(int frameIndex) {
     if (strokeInFlight) {
       return;
     }
@@ -3829,10 +3925,7 @@ class EditorSessionManager extends ChangeNotifier
     final axis = projectSettings.axisForTrack(trackId);
     final entry = axis.isGap(globalFrame) ? null : axis.ownerOf(globalFrame);
     if (entry != null) {
-      if (entry.cutId != activeCutId) {
-        selectCut(entry.cutId);
-      }
-      selectFrameIndex(axis.localIn(entry, globalFrame));
+      goToCut(entry.cutId, axis.localIn(entry, globalFrame));
       return;
     }
     // A GAP on the tapped track PARKS there (user 2026-07-29, superseding
@@ -3888,8 +3981,16 @@ class EditorSessionManager extends ChangeNotifier
   /// selected track's. A caller that computed its move on one axis must
   /// land it on the same one — resolving on a different track would put
   /// the playhead in a cut the move never chose.
+  ///
+  /// [then] runs once it lands: what follows a move that may go into
+  /// another cut is done in the cut it lands in, never in the one stood in
+  /// while it waits ([goToCut]).
   @override
-  void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis}) {
+  void selectGlobalFrame(
+    int globalFrame, {
+    TrackFrameAxis? onAxis,
+    VoidCallback? then,
+  }) {
     if (strokeInFlight) {
       return;
     }
@@ -3899,12 +4000,20 @@ class EditorSessionManager extends ChangeNotifier
       // A GAP (leading, mid-track, or a track with no cut — F-341): no cut
       // there — park + deselect.
       parkGlobalFrame(globalFrame);
+      then?.call();
       return;
     }
-    if (local.cutId != activeCutId) {
-      selectCut(local.cutId);
-    }
-    selectFrameIndex(local.localFrame);
+    final frame = local.localFrame;
+    goToCut(
+      local.cutId,
+      frame,
+      stand: then == null
+          ? null
+          : () {
+              _standOnFrame(frame);
+              then();
+            },
+    );
   }
 
   // ── the frame scrub: its own object, in its own file ───────────────────
@@ -3920,6 +4029,17 @@ class EditorSessionManager extends ChangeNotifier
     brushInputActive: brushInputActive,
     editingFrameCursor: editingFrameCursor,
     playbackRig: playbackRig,
+    moves: standsWithItsPicture,
+  );
+
+  /// Where a move of the playhead waits for its frame's pictures while a
+  /// canvas stands to show them ([StandsWithItsPicture]).
+  late final StandsWithItsPicture standsWithItsPicture = StandsWithItsPicture(
+    pictures: () => playbackRig.framePictures,
+    cut: () => activeCutOrNull,
+    cutById: cutById,
+    frame: () => activeCutControllers.timelineController.currentFrameIndex,
+    placement: () => onionSkin.settings.value.placement,
   );
 
   // ── the onion skin: its own object, in its own file ─────────────────
@@ -3980,6 +4100,7 @@ class EditorSessionManager extends ChangeNotifier
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
     sheetPhotos: sheetPhotoEdits,
+    followTheBand: rangeSelections.followTheBandThrough,
   );
 
   // ── the fonts registered with the project: their own object ─────────

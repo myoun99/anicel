@@ -15,6 +15,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart'
+    show timelineRowWindowMargin;
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
@@ -172,6 +174,23 @@ void main() {
   testWidgets('a scroll inside one window lays no row', (tester) async {
     await open(tester);
     final position = rows(tester);
+    // The window reaches a notch past the view ([timelineRowWindowMargin]):
+    // a scroll short of the gap between that reach and the end of the last
+    // row it built brings no row in. Half a row in first, so the reach
+    // stands inside a row rather than on its edge.
+    final view = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+    );
+    Iterable<Rect> built() => find
+        .byType(TimelineLayerControlsRow)
+        .evaluate()
+        .map((row) => tester.getRect(find.byWidget(row.widget)));
+    final base = built().first.height / 2;
+    position.jumpTo(base);
+    await tester.pumpAndSettle();
+    final lastEnd = built().map((row) => row.bottom).reduce(math.max);
+    final gap = lastEnd - (view.bottom + timelineRowWindowMargin);
+    expect(gap, greaterThan(0), reason: '⛔전제: a scroll fits inside');
     var laid = 0;
     debugOnRebuildDirtyWidget = (element, _) {
       if (element.widget is ValueListenableBuilder<int>) {
@@ -180,12 +199,15 @@ void main() {
     };
     addTearDown(() => debugOnRebuildDirtyWidget = null);
 
-    position.jumpTo(1);
+    position.jumpTo(base + gap / 2);
     await tester.pump();
     final inside = laid;
     laid = 0;
     position.jumpTo(position.maxScrollExtent);
-    await tester.pump();
+    // The rows the window takes in are laid in the frames after the move
+    // where every row it shows stands laid (a-timeline-wheel-notch-lays-
+    // out-the-rail-Q2 = 1, [TimelineRowWindowWalk]).
+    await tester.pumpAndSettle();
     final across = laid;
     debugOnRebuildDirtyWidget = null;
 

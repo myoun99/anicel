@@ -201,7 +201,6 @@ void main() {
         shown.show(
           target,
           inverse: const [1, 0, 0, 1, 0, 0],
-          scale: 1,
           sampling: GpuSampling.nearest,
           rect: (0, 0, 4, 4),
         );

@@ -1,5 +1,6 @@
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_shape.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../services/canvas_read_source.dart';
@@ -9,8 +10,8 @@ import 'paint_tool_state_notifier.dart';
 /// What a person's tools were holding when the project was saved (F-123):
 /// the tool in hand, the brush each paint tool held, the tile each rail
 /// group was left on, the outline each tracing verb drags, the fill's and
-/// the stamp's blend and opacity, whether a cut takes what it cuts and what
-/// it reads.
+/// the stamp's blend and opacity, the stamp's spacing, whether a cut takes
+/// what it cuts and what it reads.
 ///
 /// 유저 2026-09-13: 「저장시 마지막으로 고른 툴 상태(무슨 브러시인지, 무슨
 /// 지우개인지, 채우기툴에서 뭐 골라져있는지 등) … 존재안하는게 있으면 해당
@@ -40,6 +41,7 @@ class ToolChoice {
     this.shapeOptions,
     this.fillOpacity,
     this.cutStampOpacity,
+    this.cutStampSpacing,
     this.cutDeletesSource,
     this.cutSource,
   });
@@ -62,6 +64,7 @@ class ToolChoice {
   final ShapeToolOptions? shapeOptions;
   final double? fillOpacity;
   final double? cutStampOpacity;
+  final double? cutStampSpacing;
   final bool? cutDeletesSource;
   final CanvasReadSource? cutSource;
 
@@ -88,6 +91,7 @@ class ToolChoice {
     if (shapeOptions != null) 'shapeOptions': shapeOptions!.toJson(),
     if (fillOpacity != null) 'fillOpacity': fillOpacity,
     if (cutStampOpacity != null) 'cutStampOpacity': cutStampOpacity,
+    if (cutStampSpacing != null) 'cutStampSpacing': cutStampSpacing,
     if (cutDeletesSource != null) 'cutDeletesSource': cutDeletesSource,
     if (cutSource != null) 'cutSource': cutSource!.name,
   };
@@ -117,6 +121,7 @@ class ToolChoice {
     shapeOptions: ShapeToolOptions.fromJson(json['shapeOptions']),
     fillOpacity: _opacity(json['fillOpacity']),
     cutStampOpacity: _opacity(json['cutStampOpacity']),
+    cutStampSpacing: _spacing(json['cutStampSpacing']),
     cutDeletesSource: switch (json['cutDeletesSource']) {
       final bool deletes => deletes,
       _ => null,
@@ -141,6 +146,15 @@ CanvasShapeKind? _shapeNamed(Object? json, {required CanvasTool of}) {
 /// An opacity as written, or null when it is not one (a number from 0 to 1).
 double? _opacity(Object? json) =>
     json is num && json >= 0 && json <= 1 ? json.toDouble() : null;
+
+/// A stamp's spacing as written, or null when it is not one the stamp takes
+/// ([BrushShape.minSpacing] to [BrushShape.maxSpacing] of the piece).
+double? _spacing(Object? json) =>
+    json is num &&
+        json >= BrushShape.minSpacing &&
+        json <= BrushShape.maxSpacing
+    ? json.toDouble()
+    : null;
 
 Iterable<MapEntry<Object?, Object?>> _entries(Object? json) =>
     json is Map ? json.entries : const [];
@@ -177,6 +191,7 @@ ToolChoice toolChoiceOf(PaintToolStateNotifier tools) {
     shapeOptions: live.shapeOptions,
     fillOpacity: live.fillOpacity,
     cutStampOpacity: live.cutStampOpacity,
+    cutStampSpacing: live.cutStampSpacing,
     cutDeletesSource: live.cutDeletesSource,
     cutSource: live.cutSource,
   );
@@ -215,6 +230,7 @@ void resumeToolChoice(
     shapeOptions: choice.shapeOptions,
     fillOpacity: choice.fillOpacity,
     cutStampOpacity: choice.cutStampOpacity,
+    cutStampSpacing: choice.cutStampSpacing,
     cutDeletesSource: choice.cutDeletesSource,
     cutSource: choice.cutSource,
   );

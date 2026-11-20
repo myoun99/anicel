@@ -9,6 +9,7 @@ import '../../models/attached_mode.dart';
 import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
+import '../../models/canvas_picture_place.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_camera_room.dart';
@@ -25,6 +26,7 @@ import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
+import '../../models/media_reference.dart';
 import '../../models/new_row_placement.dart' show newRowPlacement;
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
@@ -38,6 +40,7 @@ import '../../models/exposure_memo.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
+import '../bitmap_surface_geometry.dart' show CelTextSetter;
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../command.dart' show Command, WorkAhead, oneStepOf;
@@ -94,6 +97,7 @@ import 'update_track_effects_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
 import 'update_layer_reference_fx_command.dart';
+import 'update_layer_reference_command.dart';
 import 'update_layer_se_sound_command.dart';
 import 'update_layer_timeline_command.dart';
 import 'update_layer_transform_enabled_command.dart';
@@ -154,6 +158,7 @@ class CutCommandCoordinator {
     required this.historyManager,
     this.brushFrameStore,
     this.sheetInkStores = const [],
+    this.setCelText,
   });
 
   final ProjectRepository repository;
@@ -167,6 +172,11 @@ class CutCommandCoordinator {
   /// The sheets' handwriting stores — where a deleted 동기컷 canonical's
   /// handwriting moves to the cut taking its sync over.
   final List<BrushFrameStore> sheetInkStores;
+
+  /// How a canvas resize that fits its picture sets a cel's texts again
+  /// ([ResizeCutCanvasCommand.setText]) — the text tool's own setting,
+  /// handed in from where letters are laid out.
+  final CelTextSetter? setCelText;
 
   // ── the cut commands: their own object, in their own file ───────────
   //
@@ -210,44 +220,24 @@ class CutCommandCoordinator {
       .cut;
   static String nextCutNameAfter(Project project, String? referenceName) =>
       _CutCommands.nextCutNameAfter(project, referenceName);
-  void resizeCutCanvas({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-  }) => _cuts.resizeCutCanvas(
-    cutId: cutId,
-    canvasSize: canvasSize,
-    anchor: anchor,
-  );
-  Future<void> resizeCutCanvasAhead({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-    void Function(double done)? report,
-  }) => _cuts.resizeCutCanvasAhead(
-    cutId: cutId,
-    canvasSize: canvasSize,
-    anchor: anchor,
-    report: report,
-  );
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
+    required CanvasPicturePlace place,
   }) => _cuts.placeCutCanvas(
     cutId: cutId,
     canvasSize: canvasSize,
-    contentOffset: contentOffset,
+    place: place,
   );
   Future<void> placeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
+    required CanvasPicturePlace place,
     void Function(double done)? report,
   }) => _cuts.placeCutCanvasAhead(
     cutId: cutId,
     canvasSize: canvasSize,
-    contentOffset: contentOffset,
+    place: place,
     report: report,
   );
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);
@@ -319,6 +309,7 @@ class CutCommandCoordinator {
   void deleteCut({required CutId cutId}) => _cuts.deleteCut(cutId: cutId);
   void deleteCuts({required List<CutId> cutIds}) =>
       _cuts.deleteCuts(cutIds: cutIds);
+  List<Command> deletionOf(List<CutId> cutIds) => _cuts.deletionOf(cutIds);
   DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,
@@ -1263,6 +1254,33 @@ class CutCommandCoordinator {
         repository: repository,
         layerId: layerId,
         fx: fx,
+        description: description,
+      ),
+    );
+  }
+
+  /// Sets what a reference row shows of its file — its start in the file,
+  /// where it was placed, its fx — to [change] of it
+  /// ([UpdateLayerReferenceCommand]); one undo step, no-op when unchanged.
+  void updateLayerReference({
+    required LayerId layerId,
+    required MediaReference Function(MediaReference reference) change,
+    String description = 'Edit layer reference',
+  }) {
+    final layer = _requireLayerAnywhere(layerId);
+    final reference = layer.mediaReference;
+    if (reference == null) {
+      throw StateError('A reference belongs on a row that shows a file.');
+    }
+    final changed = change(reference);
+    _executeIfChanged<Layer, MediaReference?>(
+      subject: layer,
+      value: changed,
+      read: (layer) => layer.mediaReference,
+      command: (_) => UpdateLayerReferenceCommand(
+        repository: repository,
+        layerId: layerId,
+        reference: changed,
         description: description,
       ),
     );

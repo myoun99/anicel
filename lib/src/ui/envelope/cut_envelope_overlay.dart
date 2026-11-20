@@ -17,10 +17,10 @@ import 'cut_envelope_ink.dart';
 /// the mounted box's it starts in, kept inside it ([sheetInkRegions]).
 /// With the gate the count sits at conte's order of magnitude.
 ///
-/// The gate is applied by the HOST, not here: the page painter has to skip
-/// exactly the boxes this layer mounts, and one shared list is what keeps
-/// the two from ever disagreeing (which would double-composite a stroke,
-/// or lose it).
+/// The gate is applied by the HOST, not here: the ink's screens show what
+/// the views of exactly these boxes draw on ([SheetInkScreens]), and one
+/// shared list is what keeps the two from ever disagreeing (which would
+/// show a stroke on a surface it is not drawn on, or lose it).
 class CutEnvelopeInkOverlay extends StatelessWidget {
   const CutEnvelopeInkOverlay({
     super.key,
@@ -30,6 +30,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
     required this.historyManager,
     required this.viewport,
     required this.strokeActive,
+    required this.strokes,
     this.cacheInvalidationSink,
     this.imageFor,
     this.imageRepaint,
@@ -51,6 +52,9 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
+  /// Forwarded to [SheetInkLayer.strokes].
+  final SheetInkStrokes strokes;
+
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
@@ -68,6 +72,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
+      strokes: strokes,
       history: historyManager.gestures,
       inkChanges: controller,
       // ⛔One plane, so the window's plane stays null and this controller

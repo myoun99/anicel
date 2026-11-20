@@ -11,6 +11,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
     show placedCorners;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -61,12 +62,16 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: EditorCanvasArea(
-            session: s,
-            brushToolState: brushTool,
-            cameraViewEnabled: cameraView,
-            cameraDimOpacity: cameraDim,
-            canvasViewCommands: view,
+          // On the floor, as the editor lays it: the view keys come from there.
+          body: CanvasFloorInsets(
+            insets: EdgeInsets.zero,
+            viewCommands: view,
+            child: EditorCanvasArea(
+              session: s,
+              brushToolState: brushTool,
+              cameraViewEnabled: cameraView,
+              cameraDimOpacity: cameraDim,
+            ),
           ),
         ),
       ),

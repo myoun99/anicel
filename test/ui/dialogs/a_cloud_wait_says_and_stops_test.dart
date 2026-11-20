@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/cloud_wait.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/cloud_wait_line.dart';
 
 /// The one wait the open door and the import window say a cloud file with
@@ -11,10 +12,26 @@ void main() {
     const waited = Duration(seconds: 3);
     const quiet = Duration(seconds: 1);
 
-    wait.report(waited, quiet);
+    wait.report(waited, quiet, fromTheCloud: true);
 
-    expect(wait.status.value, cloudWaitLine(waited, quiet));
+    expect(
+      wait.status.value,
+      cloudWaitLine(waited, quiet, fromTheCloud: true),
+    );
     expect(wait.waiting.value, isTrue);
+  });
+
+  test('🎯a file the device calls here is said as being READ — the wait '
+      'hands the line what the device said (F-621-Q2)', () {
+    final wait = CloudWait();
+    addTearDown(wait.dispose);
+
+    wait.report(const Duration(seconds: 2), Duration.zero, fromTheCloud: false);
+
+    expect(
+      wait.status.value,
+      AppText.strings.openWaitingReadingTemplate.replaceAll('{sec}', '2'),
+    );
   });
 
   test('a wait that begins is live before the provider says anything', () {
@@ -33,7 +50,11 @@ void main() {
     addTearDown(wait.dispose);
     wait
       ..begin()
-      ..report(const Duration(seconds: 12), const Duration(seconds: 12))
+      ..report(
+        const Duration(seconds: 12),
+        const Duration(seconds: 12),
+        fromTheCloud: true,
+      )
       ..cancel()
       ..ended();
 

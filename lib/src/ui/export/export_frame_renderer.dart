@@ -34,6 +34,7 @@ import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_as_output.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/media/still_file_writing.dart' show StillPixels;
 import '../../services/playback/playback_frame_mapping.dart'
     show
         TrackStackContribution,
@@ -80,6 +81,7 @@ import 'export_cel_group_plan.dart';
 import '../timeline/memo_token.dart';
 import 'export_plan.dart';
 import 'held_pictures.dart';
+import 'still_frame_bytes.dart' show straightOf;
 import 'still_image_encoders.dart'
     show ExportLayerFolder, ExportLayerNode, ExportLayerRow;
 import '../text/app_strings.dart';
@@ -569,6 +571,39 @@ class ExportFrameRenderer {
   StoryboardTimelineLayoutEntry? _entryOf(ExportFrameTask task) =>
       _layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
 
+  /// [_layout] as [task] draws it: its cut the one it was handed, where the
+  /// layout holds the project's — a stack or a transition lays every cut
+  /// it reads off the layout, and a film of the Cels tab is its cut with
+  /// the rows it holds shown and the rest hidden (`_filmCutOf`).
+  ///
+  /// 🗣️F-618 ① (유저 2026-11-19): 「캔버스 보이는대로가아니라」 — the film
+  /// is drawn of the rows its label picks. ↩️A camera-size film (its size's
+  /// default) and a transition's frame drew the project's cut, the canvas's
+  /// eyes and all, and only a canvas-size frame of one cut drew the film's
+  /// (F-618 ①, the Surface's release, 2026-11-19).
+  List<StoryboardTimelineLayoutEntry> _layoutOf(ExportFrameTask task) {
+    final own = _entryOf(task);
+    if (own == null || identical(own.cut, task.cut)) {
+      return _layout;
+    }
+    return [
+      for (final entry in _layout)
+        if (identical(entry, own))
+          StoryboardTimelineLayoutEntry(
+            trackId: entry.trackId,
+            cutId: entry.cutId,
+            trackIndex: entry.trackIndex,
+            cutIndex: entry.cutIndex,
+            startFrame: entry.startFrame,
+            endFrame: entry.endFrame,
+            duration: entry.duration,
+            cut: task.cut,
+          )
+        else
+          entry,
+    ];
+  }
+
   /// One composited frame. [ExportSizeMode.canvas] renders the identity
   /// camera over the cut's own canvas size (centered, zoom 1, no rotation),
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
@@ -828,7 +863,7 @@ class ExportFrameRenderer {
       name: AppText.notation.exOnScreen,
       draw: () async {
         await _hydrate(cut, task.frameIndex);
-        return pictureOfShot(_shot(
+        return _pixelsOfShot(_shot(
           cut,
           task.frameIndex,
           [...names, ..._ghostsAlone(task)],
@@ -864,13 +899,13 @@ class ExportFrameRenderer {
     // A picture of the file: what [laid] hands over, by itself on [ground],
     // through the view and cut at the canvas's edge as the frame is
     // ([_shot]).
-    Future<ui.Image> drawn(
+    Future<StillPixels> drawn(
       ui.Color ground, {
       List<CompositeNode<CanvasStackRow>> Function()? laid,
       ProjectBackground? paper,
     }) async {
       await _hydrate(task.cut, frameIndex);
-      return pictureOfShot(_shot(
+      return _pixelsOfShot(_shot(
         task.cut,
         frameIndex,
         laid?.call() ?? const [],
@@ -1585,7 +1620,7 @@ class ExportFrameRenderer {
     // This cut's own TRACK axis: a transition is a track's, so the partner can
     // only come from here.
     final entries = [
-      for (final entry in _layout)
+      for (final entry in _layoutOf(task))
         if (entry.trackId == own.trackId) entry,
     ];
     final globalFrame = own.startFrame + task.frameIndex;
@@ -1671,7 +1706,7 @@ class ExportFrameRenderer {
   /// render and for the run that counts what it shows ([videoRun]).
   List<TrackStackContribution> _stackPositionsOf(ExportFrameTask task) =>
       resolveTrackStackContributions(
-        layout: _layout,
+        layout: _layoutOf(task),
         spansOf: session.transitions.transitionSpansOfTrack,
         globalFrameIndex: (_entryOf(task)?.startFrame ?? 0) + task.frameIndex,
       );
@@ -1952,11 +1987,11 @@ class ExportFrameRenderer {
       return const [];
     }
     final frameIndex = celGroupFirstExposure(task);
-    Future<ui.Image> drawn(
+    Future<StillPixels> drawn(
       ui.Color ground, {
       List<CompositeNode<CanvasStackRow>> nodes = const [],
       CameraOverlayPass? over,
-    }) => pictureOfShot(_shot(
+    }) => _pixelsOfShot(_shot(
       task.cut,
       frameIndex,
       nodes,
@@ -2534,3 +2569,20 @@ Future<void> _layCutInFrame(
         export.lay(into, veils);
       }
     });
+
+/// The frame [shot] makes on the engine read off it straight, as every
+/// still is ([straightOf]) — a row of a layered file ([ExportLayerRow]) —
+/// and the frame let go.
+Future<StillPixels> _pixelsOfShot(Future<GpuShown> shot) async {
+  final laid = await shot;
+  try {
+    return (
+      pixels: straightOf(laid),
+      width: laid.width,
+      height: laid.height,
+      channels: 4,
+    );
+  } finally {
+    laid.free();
+  }
+}

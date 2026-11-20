@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../native/lost_screen.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show AnicelFormatRefused, anicelOldestReadFormatVersion;
 import '../text/app_strings.dart';
@@ -340,7 +341,16 @@ Future<void> showAppNotice(
   /// The lines this notice is ABOUT — see [AppConfirmDialog.details].
   List<NoticeDetails> details = const [],
   Key? windowKey,
+  /// What can be done from here besides closing, before 닫기 — each takes
+  /// the notice down, then does its thing: the uses window's 「동기화」
+  /// (card 「파일마다 배치 기본값」-Q11).
+  List<AppWindowAction> also = const [],
 }) {
+  if (LostScreen.hasGone) {
+    return askedWithWindows(title, message, details, [
+      AppText.strings.commonClose,
+    ]);
+  }
   return showDialog<void>(
     context: context,
     // 🗣️fx-button-first-click-after-install-is-swallowed-Q1 (유저 11-11):
@@ -351,6 +361,22 @@ Future<void> showAppNotice(
       message: message,
       details: details,
       actions: [
+        for (final action in also)
+          AppWindowAction(
+            label: action.label,
+            actionKey: action.actionKey,
+            emphasis: action.emphasis,
+            tooltip: action.tooltip,
+            autofocus: action.autofocus,
+            resets: action.resets,
+            onPressed: switch (action.onPressed) {
+              null => null,
+              final then => () {
+                Navigator.of(context).pop();
+                then();
+              },
+            },
+          ),
         AppWindowAction(
           label: AppText.strings.commonClose,
           actionKey: const ValueKey<String>('app-notice-close'),
@@ -484,11 +510,13 @@ Future<bool?> askConfirm(
   ConfirmQuestion question, {
   required ConfirmChoice accept,
   ConfirmChoice? decline,
-}) => showDialogVerb<bool>(
-  context,
-  (context) =>
-      confirmWindow(context, question, accept: accept, decline: decline),
-);
+}) => LostScreen.hasGone
+    ? _confirmedWithWindows(question, accept, decline)
+    : showDialogVerb<bool>(
+        context,
+        (context) =>
+            confirmWindow(context, question, accept: accept, decline: decline),
+      );
 
 /// [askConfirm] for the question that STANDS UNTIL IT IS ANSWERED: the
 /// barrier, escape and the system's back leave the window where it is, and
@@ -513,12 +541,56 @@ Future<bool?> askUntilAnswered(
   ConfirmQuestion question, {
   required ConfirmChoice accept,
   required ConfirmChoice decline,
-}) => showDialogVerb<bool>(
-  context,
-  (context) =>
-      confirmWindow(context, question, accept: accept, decline: decline),
-  staysUntilAnswered: true,
-);
+}) => LostScreen.hasGone
+    ? _confirmedWithWindows(question, accept, decline)
+    : showDialogVerb<bool>(
+        context,
+        (context) =>
+            confirmWindow(context, question, accept: accept, decline: decline),
+        staysUntilAnswered: true,
+      );
+
+/// 🚨A WINDOW THE APP OPENS ONCE ITS SCREEN WENT IS ASKED BY WINDOWS
+/// ([LostScreen]): nothing Flutter draws is seen any more, and a window
+/// nobody sees answers nothing — the save Q1's 「저장하고 다시 시작」 runs
+/// asks whether to replace a file, and says what it could not carry,
+/// through these doors (a-lost-gpu-leaves-the-window-unpainted-Q1).
+///
+/// The answer is the door's own: the accept pressed `true`, the decline
+/// `false`, and the window closed without either null.
+Future<bool?> _confirmedWithWindows(
+  ConfirmQuestion question,
+  ConfirmChoice accept,
+  ConfirmChoice? decline,
+) async {
+  final pressed = await askedWithWindows(
+    question.title,
+    question.message,
+    question.details,
+    [accept.label, _declineOrCancel(decline).label],
+  );
+  return switch (pressed) {
+    0 => true,
+    1 => false,
+    _ => null,
+  };
+}
+
+/// [title] and [message] — and the lines they are about, under their
+/// heading — asked by Windows with [buttons]: the index of the one pressed,
+/// -1 for none ([LostScreen.askWithWindows]).
+Future<int> askedWithWindows(
+  String title,
+  String message,
+  List<NoticeDetails> details,
+  List<String> buttons,
+) => LostScreen.askWithWindows(title, [
+  message,
+  for (final list in details) ...[
+    if (list.heading case final heading?) '\n$heading',
+    ...list.lines,
+  ],
+].join('\n'), buttons);
 
 /// The two-button confirm window itself, so a verb that wants the window
 /// inside a dialog flow of its own builds it without asking — the delete
@@ -538,10 +610,15 @@ Widget confirmWindow(
   actions: confirmActions(
     context,
     keys: question.keys,
-    decline: decline ?? ConfirmChoice(AppText.strings.commonCancel),
+    decline: _declineOrCancel(decline),
     accept: accept,
   ),
 );
+
+/// A question's way out where its caller names none: Cancel — in the app's
+/// window and in Windows' alike.
+ConfirmChoice _declineOrCancel(ConfirmChoice? decline) =>
+    decline ?? ConfirmChoice(AppText.strings.commonCancel);
 
 /// The two ways out of a yes/no window: the decline action pops `false`,
 /// the accept action pops `true`.

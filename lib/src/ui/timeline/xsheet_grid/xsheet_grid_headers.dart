@@ -154,22 +154,40 @@ class _XSheetGridHeaders {
   /// Every column's [header] where [edges] puts it — the room after a
   /// graph's last lane left empty, and a column of no extent no box, as
   /// the rail leaves them (I-89 ③) — each in its column's BERTH, and named
-  /// for its row as the rail's rows are ([Named]).
+  /// for its row as the rail's rows are ([Named]): kept while its name and
+  /// its header as the memo hands it back hold, as the rail's rows are
+  /// (11-19).
   List<Widget> headers(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
   ) => [
     for (var index = 0; index < entries.length; index += 1) ...[
-      if (edges.extentOf(index) > 0)
-        Named(
-          'xsheet-header-${entries[index].layer.id}-'
-          '${entries[index].lane?.laneId ?? 'row'}',
-          key: _state._berths.keyOf(entries[index]),
-          child: header(entries[index]),
-        ),
+      if (edges.extentOf(index) > 0) _named(entries[index]),
       if (edges.roomOf(index) > 0) SizedBox(width: edges.roomOf(index)),
     ],
   ];
+
+  /// [entry]'s [header] in its berth, named for its row.
+  Widget _named(TimelineDisplayRow entry) {
+    final berths = _state._berths;
+    final facts = (
+      name: 'xsheet-header-${entry.layer.id}-${entry.lane?.laneId ?? 'row'}',
+      header: ByIdentity(header(entry)),
+    );
+    return _namedHeaders.keep(
+      berths,
+      entry,
+      facts,
+      () => Named(
+        facts.name,
+        key: berths.keyOf(entry),
+        child: facts.header.value,
+      ),
+    );
+  }
+
+  /// Each [header] in its berth, named ([_named]).
+  final KeptByBerth<_NamedHeader> _namedHeaders = KeptByBerth();
 
   /// The header strip as its controls rows see it: the rail's record,
   /// turned on its side — each header laid out at the strip's natural
@@ -183,3 +201,7 @@ class _XSheetGridHeaders {
     mainExtent: naturalHeaderExtent,
   );
 }
+
+/// What a header in its berth is built from: the name it is found by, and
+/// the header — its memo's, the same widget while the memo hands it back.
+typedef _NamedHeader = ({String name, ByIdentity<Widget> header});

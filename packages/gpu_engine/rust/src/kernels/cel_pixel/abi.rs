@@ -1,11 +1,11 @@
 //! The cel pixel kernels' C ABI. The verbs' (flip lane ⓒ): the app states
 //! one over tiles named as a plan's tile set is, reads what it took the
 //! pixels from, and has its tiles put in fresh slots. The lift's: what a
-//! selection takes off the same tiles, read back into the app's bytes.
+//! selection takes off the same tiles, kept on the GPU as a stamp's picture.
 //!
 //! The ink scan's (connection round 2, 잉크 상자 ㉢): the app hands
 //! the tiles of a cel that owe a box — on the pool, named as a plan's tile
-//! set is ([`TileSet::from_words`]) — and takes each walked tile's box,
+//! set is ([`Named::from_words`]) — and takes each walked tile's box,
 //! as it takes C's `qa_alpha_bounds_tiles` answer today.
 //!
 //! The scan is no step of a plan: it reads the pool's pages and nothing
@@ -15,16 +15,16 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, Sent, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
-use crate::kernels::composite::TileSet;
-use crate::kernels::dab::abi::reported;
+use crate::kernels::composite::{Named, TileSet};
+use crate::kernels::dab::abi::{StampPicture, kept, reported};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
 use super::ink::Ink;
-use super::lift::Lift;
+use super::lift::{Lift, Lifted};
 use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 
 /// The words a walked tile's answer takes: its column and row, then its
@@ -130,23 +130,28 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_free(kernels: *mut CelKernels) {
     unsafe { let_go(kernels) };
 }
 
-/// Puts what `mask` takes off the cel of `columns` × `rows` tiles whose
-/// top-left is column `x0`, row `y0` — named as
-/// `gpu_engine_cel_pixels_run`'s are — into `out`: its box's pixels, straight
-/// RGBA8 row after row, a pixel it covers at all whole where `whole`.
-/// `Lift::run`. Waits for the GPU.
+/// What `mask` takes off the cel of `columns` × `rows` tiles whose top-left
+/// is column `x0`, row `y0` — named as `gpu_engine_cel_pixels_run`'s are —
+/// kept where the kernel wrote it: a stamp's picture of its box at `out`,
+/// straight RGBA8, a pixel it covers at all whole where `whole`, its bytes
+/// never read back. `Lift::run`. Waits for the GPU to say whether it took
+/// any: 1 where it did, 0 where it took nothing (`out` as it was), -1 on
+/// failure — see the last error.
 ///
-/// 1 where it took anything and `out` holds it, 0 where it took nothing and
-/// `out` is as it was; -1 where `out`'s `capacity` is not the box's bytes
-/// or the lift fails — see the last error.
+/// ↩️The box was read back into the app's bytes, and handed up again as
+/// the float's picture, at every lift — 🔬with the UI thread's GC the big
+/// buffers fed, a share of the 359–422 ms of the transform box's first
+/// press (S5_BA cut 352 · 62 rows × 36 frames, main PC, board
+/// `lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills`). 🔬Kept on the
+/// engine, that press went 353 → 298 ms on a Surface Pro 11 (medians of
+/// five, the same 62 rows); 28 → 26 ms with six rows.
 ///
 /// # Safety
 /// Every pointer is live, the pool, the mask and the kernels made on
-/// `engine`; `tiles` holds `columns × rows` words and `out` `capacity`
-/// bytes.
+/// `engine`; `tiles` holds `columns × rows` words.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
+pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture(
     kernels: *const CelKernels,
     engine: *const Engine,
     pool: *const Pool,
@@ -157,31 +162,87 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift(
     tiles: *const u32,
     mask: *const MaskPlane,
     whole: bool,
-    out: *mut u8,
-    capacity: usize,
+    out: *mut *mut StampPicture,
 ) -> i32 {
     // SAFETY: see the function's contract.
     let (kernels, engine, pool, mask) = unsafe { (&*kernels, &*engine, &*pool, (*mask).mask()) };
     engine.on_thread(|| {
-        let bytes = u64::from(mask.size.width) * u64::from(mask.size.height) * 4;
-        if bytes != capacity as u64 {
-            fail::<()>(format!("room for {capacity} bytes; the box holds {bytes}"));
-            return -1;
-        }
         // SAFETY: see the function's contract.
-        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         let Some(lifted) = kernels.lift.run(engine, pool.pages(), &cel, &mask, whole) else {
             return -1;
         };
         if !lifted.anything {
             return 0;
         }
-        let readback = engine.staged(&lifted.rgba, bytes);
-        // SAFETY: `out` holds the box's bytes.
-        let into = unsafe { std::slice::from_raw_parts_mut(out, capacity) };
-        engine.mapped_into(&readback, into).map_or(-1, |()| 1)
+        let picture = kept(engine, Some(lifted.rgba), (mask.size.width, mask.size.height));
+        if picture.is_null() {
+            return -1;
+        }
+        // SAFETY: see the function's contract.
+        unsafe { *out = picture };
+        1
     })
+}
+
+/// [`gpu_engine_cel_pixels_lift_picture`] with no wait for its caller: the
+/// cel's tiles read where `pool` holds them now, the lift handed to the
+/// engine's thread — which waits for no GPU either (`Lift::lifted_then`) —
+/// and `told` called with `number` from a thread of the engine's once the
+/// GPU has said whether it took any, `out` written first: the picture it
+/// took, its caller's to free, or null where it took nothing — and null
+/// with `told` false where the lift failed.
+///
+/// 🚨WHY UNWAITED: `gpu_engine_stamp_finish_unwaited` has it — a box at
+/// rest cuts its cels ahead of the press, and waits for nothing.
+///
+/// # Safety
+/// As [`gpu_engine_cel_pixels_lift_picture`]'s, `kernels` and `mask` let
+/// go of after this; `out` is live till `told` is called, and `told` is
+/// one any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture_unwaited(
+    kernels: *const CelKernels,
+    engine: *const Engine,
+    pool: *const Pool,
+    x0: i32,
+    y0: i32,
+    columns: u32,
+    rows: u32,
+    tiles: *const u32,
+    mask: *const MaskPlane,
+    whole: bool,
+    out: *mut *mut StampPicture,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &*pool) };
+    // SAFETY: see the function's contract.
+    let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
+    let handed = Sent((engine.clone(), pool.pages().to_vec(), kernels, mask, out, cel));
+    engine.posted(move || {
+        let (engine, pages, kernels, mask, out, cel) = handed.taken();
+        // SAFETY: each is let go of on this thread, after this (the
+        // function's contract).
+        let (kernels, mask) = unsafe { (&*kernels, (*mask).mask()) };
+        let (hands, out, size) = (engine.clone(), Sent(out), (mask.size.width, mask.size.height));
+        let then = move |lifted: Option<Lifted>| {
+            let ran = lifted.is_some();
+            let picture = match lifted {
+                Some(Lifted { rgba, anything: true }) => kept(&hands, Some(rgba), size),
+                _ => std::ptr::null_mut(),
+            };
+            // SAFETY: live till `told` is called (the function's contract).
+            unsafe { *out.taken() = picture };
+            told(number, ran);
+        };
+        kernels.lift.lifted_then(&engine, &pages, &cel, &mask, whole, then);
+        // ⛔Not a body that failed, whatever it lifted: its caller's next
+        // done would fail by it (`Engine::posted`). `told` says it.
+        Some(())
+    });
 }
 
 /// Runs the verb `spec` states over the cel of `columns` × `rows` tiles
@@ -213,8 +274,7 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_run(
     let (kernels, engine, pool, spec) = unsafe { (&*kernels, &*engine, &*pool, &*spec) };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         // SAFETY: see the function's contract.
         let mask = unsafe { mask.as_ref() }.map(MaskPlane::mask);
         // SAFETY: see the function's contract.
@@ -369,8 +429,7 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
     let (ink, engine, pool) = unsafe { (&*ink, &*engine, &*pool) };
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
-        let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
-        let cel = TileSet::from_words(x0, y0, columns, rows, words);
+        let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
         let walked = cel.tiles.iter().flatten().count();
         if walked * TILE_INK_WORDS > capacity {
             fail::<()>(format!(
@@ -394,4 +453,17 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
         }
         inks.len() as isize
     })
+}
+
+/// The cel as the app names it — `tiles` row by row, `columns` × `rows`
+/// from column `x0`, row `y0` —, each tile where it lies on `pool`
+/// ([`Named::lying`]). ⛔ONE: the lift, the verb and the ink scan each
+/// spelled its reading.
+///
+/// # Safety
+/// `tiles` holds `columns × rows` words.
+unsafe fn cel_of(pool: &Pool, (x0, y0, columns, rows): (i32, i32, u32, u32), tiles: *const u32) -> TileSet {
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, columns as usize * rows as usize) };
+    Named::from_words(x0, y0, columns, rows, words).lying(&pool.lying())
 }

@@ -680,6 +680,20 @@ class GuideSettings extends StatelessWidget {
   final CutGuides guides;
   final GuideId? selectedGuideId;
 
+  /// The least width a guide's settings read at: a vanishing
+  /// point's 「평행」 pill in its half of the control column, beside the
+  /// delete ([_VanishingPointRow]'s last line). See
+  /// `ToolSettingsPanel.minPanelWidthIn`.
+  static double minWidthIn(BuildContext context) {
+    final half = PillStrip.evenWidthIn(context, [
+      AppText.strings.guideParallel,
+    ]);
+    return ToolSettingColumns.panelFor(
+      chrome: ToolSettingsSection.chromeIn(context),
+      controls: [half + ToolSettingColumns.gap + half],
+    );
+  }
+
   /// The paper the guides stand over — how far out a family at infinity
   /// comes back as a point ([_vanishingPointReach]). Null in a host that
   /// holds no cut, which holds no guide to pick either.

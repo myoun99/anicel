@@ -29,13 +29,19 @@ void main() {
   // The engine build the Linux shards start from is made by ci.yml's
   // engine-target job running one test file (ci-shards-build-the-engine-
   // cold, 2026-11-17): a rename of that file would turn master's run red
-  // and leave the shards building cold.
-  test('every test file ci.yml runs by name is in the tree', () {
+  // and leave the shards building cold. 🆕The Windows ARM64 release names
+  // the device test it runs first (windows-arm64-runner-engine-tests-stall-
+  // on-a-software-gpu, 2026-11-18) — a rename there turns a release round
+  // red, so every workflow is read, not ci.yml alone.
+  test('every test file a workflow runs by name is in the tree', () {
     final named = [
-      for (final line in File('.github/workflows/ci.yml').readAsLinesSync())
-        if (!line.trimLeft().startsWith('#'))
-          for (final m in RegExp(r'test/[\w/]+_test\.dart').allMatches(line))
-            m[0]!,
+      for (final file in Directory('.github/workflows').listSync())
+        if (file is File && file.path.endsWith('.yml'))
+          for (final line in file.readAsLinesSync())
+            if (!line.trimLeft().startsWith('#'))
+              for (final m
+                  in RegExp(r'test/[\w/]+_test\.dart').allMatches(line))
+                m[0]!,
     ];
     expect(named, isNotEmpty, reason: 'LIVENESS — the engine-target job');
     expect(

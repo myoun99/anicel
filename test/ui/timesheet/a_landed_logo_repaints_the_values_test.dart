@@ -44,8 +44,6 @@ void main() {
     );
     final drag = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(drag.dispose);
-    final stroking = ValueNotifier<bool>(false);
-    addTearDown(stroking.dispose);
     final landed = ValueNotifier<int>(0);
     addTearDown(landed.dispose);
     await tester.pumpWidget(
@@ -61,7 +59,6 @@ void main() {
               words: timesheetWordsIn(AppLanguage.ja),
               dragPreview: drag,
               cutId: cutId,
-              stroking: stroking,
               imageFor: (path, {width}) => null,
               imageRepaint: landed,
             ),

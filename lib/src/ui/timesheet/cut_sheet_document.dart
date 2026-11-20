@@ -16,6 +16,15 @@ String sheetOlWord(EditorSessionManager session) => AppStrings.of(
   session.languageSettings.value.notationLanguage,
 ).tlTransitionCutOl;
 
+/// The words every paper form writes its fixed lines in — the conte's and
+/// the timesheet's alike — in the NOTATION language.
+PaperWords paperWords(EditorSessionManager session) => (
+  ol: sheetOlWord(session),
+  wholeCut: AppStrings.of(
+    session.languageSettings.value.notationLanguage,
+  ).cnWholeCut,
+);
+
 /// THE sheet [cut] prints, wherever it prints — the timesheet panel and the
 /// export alike. [cutStartFrame] is where its conte starts on the active
 /// track, the axis the track's SE rows and transitions are read on.
@@ -64,7 +73,7 @@ TimesheetDocument cutSheetDocument(
           session.repository.requireProject(),
           cut,
           pages: pages,
-          words: (ol: sheetOlWord(session), wholeCut: words.wholeCut),
+          words: paperWords(session),
         ))
           lines.writtenIn(words),
       ];

@@ -290,10 +290,7 @@ class _LinkCommands {
           repository: _coordinator.repository,
           cutId: targetCut.id,
           canvasSize: originCut.canvasSize,
-          contentOffset: CanvasResizeAnchor.center.contentOffset(
-            from: targetCut.canvasSize,
-            to: originCut.canvasSize,
-          ),
+          place: const PictureKeptTo(CanvasResizeAnchor.center),
           brushFrameStore: _coordinator.brushFrameStore,
         );
 

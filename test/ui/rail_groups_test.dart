@@ -397,17 +397,10 @@ void main() {
       // exists: a `SingleChildScrollView` whose content fits has no extent to
       // move and Flutter drops its drag recognizer by itself.
       await pumpApp(tester);
-      Finder railScroll() =>
-          find.byKey(const ValueKey<String>('rail-scroll-left'));
       Finder railThumb() =>
           find.byKey(const ValueKey<String>('rail-scroll-thumb-left'));
-      // The rail's OWN controller — the panels inside carry scrollables of
-      // their own, so a descendant search finds several.
-      double railExtent() => tester
-          .widget<SingleChildScrollView>(railScroll())
-          .controller!
-          .position
-          .maxScrollExtent;
+      double railExtent() =>
+          railPosition(tester, right: false).maxScrollExtent;
 
       expect(railExtent(), 0, reason: 'one group fits — nothing to scroll');
       expect(railThumb(), findsNothing, reason: 'and no bar says otherwise');
@@ -417,7 +410,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Two 320px panels and a gap need 648; the rail has ~589.
-      expect(railScroll(), findsOneWidget);
+      expect(railScroll(right: false), findsOneWidget);
       expect(
         railExtent(),
         greaterThan(0),
@@ -711,18 +704,12 @@ void main() {
     final media = EditorWorkspace.railGroupId(right: true, slot: 3);
     final onion = EditorWorkspace.railGroupId(right: true, slot: 4);
 
-    Finder railScroll() =>
-        find.byKey(const ValueKey<String>('rail-scroll-right'));
     Rect bodyOf(WidgetTester tester, String railId) => tester.getRect(
       find.byKey(ValueKey<String>('rail-group-body-$railId')),
     );
-    ScrollPosition railPosition(WidgetTester tester) => tester
-        .widget<SingleChildScrollView>(railScroll())
-        .controller!
-        .position;
 
     void expectInTheWindow(WidgetTester tester, String railId) {
-      final window = tester.getRect(railScroll());
+      final window = tester.getRect(railScroll(right: true));
       final body = bodyOf(tester, railId);
       expect(
         body.top,
@@ -749,7 +736,7 @@ void main() {
       // The colours and the sheets already run past the window's end.
       expect(
         bodyOf(tester, sheets).bottom,
-        greaterThan(tester.getRect(railScroll()).bottom),
+        greaterThan(tester.getRect(railScroll(right: true)).bottom),
       );
 
       await press(tester, media);
@@ -767,7 +754,7 @@ void main() {
       await press(tester, onion);
       // Back at the top, with room left to scroll past the media pool once
       // it opens between the sheets and the onion.
-      railPosition(tester).jumpTo(0);
+      railPosition(tester, right: true).jumpTo(0);
       await tester.pumpAndSettle();
 
       await press(tester, media);
@@ -775,12 +762,12 @@ void main() {
       expectInTheWindow(tester, media);
       expect(
         bodyOf(tester, media).bottom,
-        closeTo(tester.getRect(railScroll()).bottom, 0.5),
+        closeTo(tester.getRect(railScroll(right: true)).bottom, 0.5),
         reason: 'it came in from below, so it stands at the window\'s end',
       );
       expect(
-        railPosition(tester).pixels,
-        lessThan(railPosition(tester).maxScrollExtent - 1),
+        railPosition(tester, right: true).pixels,
+        lessThan(railPosition(tester, right: true).maxScrollExtent - 1),
         reason: 'the rail could have gone further, and did not',
       );
     });
@@ -790,7 +777,7 @@ void main() {
       tester,
     ) async {
       await pumpApp(tester);
-      final leftRail = find.byKey(const ValueKey<String>('rail-scroll-left'));
+      final leftRail = railScroll(right: false);
 
       await pressToolSettingsButton(tester);
       await tester.pumpAndSettle();
@@ -804,11 +791,7 @@ void main() {
         reason: 'premise: and cut by the window\'s end',
       );
       expect(
-        tester
-            .widget<SingleChildScrollView>(leftRail)
-            .controller!
-            .position
-            .pixels,
+        railPosition(tester, right: false).pixels,
         0,
         reason: 'the rail is where the hand left it',
       );
@@ -822,16 +805,16 @@ void main() {
       await press(tester, onion);
       // Four groups, and the rail between its ends: the colours above the
       // window, the onion below it.
-      railPosition(tester).jumpTo(330);
+      railPosition(tester, right: true).jumpTo(330);
       await tester.pumpAndSettle();
       expect(
         bodyOf(tester, EditorWorkspace.rightGroupId).bottom,
-        lessThan(tester.getRect(railScroll()).top),
+        lessThan(tester.getRect(railScroll(right: true)).top),
         reason: 'premise',
       );
       expect(
         bodyOf(tester, onion).top,
-        greaterThan(tester.getRect(railScroll()).bottom),
+        greaterThan(tester.getRect(railScroll(right: true)).bottom),
         reason: 'premise',
       );
 
@@ -851,12 +834,12 @@ void main() {
       await press(tester, media);
       // The sheets, between the colours and the media pool: all of them in
       // the window, at neither of its edges.
-      railPosition(tester).jumpTo(200);
+      railPosition(tester, right: true).jumpTo(200);
       await tester.pumpAndSettle();
       expectInTheWindow(tester, sheets);
       expect(
         bodyOf(tester, sheets).top,
-        greaterThan(tester.getRect(railScroll()).top + 1),
+        greaterThan(tester.getRect(railScroll(right: true)).top + 1),
       );
 
       // The cut envelope is one of the sheets' three panels: hidden and
@@ -864,7 +847,7 @@ void main() {
       await tapPanelsDrawerRow(tester, 'panels-menu-item-envelope');
       await tapPanelsDrawerRow(tester, 'panels-menu-item-envelope');
 
-      expect(railPosition(tester).pixels, 200);
+      expect(railPosition(tester, right: true).pixels, 200);
     });
 
     testWidgets('an asking the window answers by showing its group is spent: '
@@ -874,7 +857,7 @@ void main() {
       await pumpApp(tester, size: surface);
       await press(tester, EditorWorkspace.rightGroupId);
       await press(tester, media);
-      railPosition(tester).jumpTo(0);
+      railPosition(tester, right: true).jumpTo(0);
       await tester.pumpAndSettle();
       expectInTheWindow(tester, EditorWorkspace.rightGroupId);
 
@@ -882,18 +865,18 @@ void main() {
       // answer.
       await tapPanelsDrawerRow(tester, 'panels-menu-item-color-rgb');
       await tapPanelsDrawerRow(tester, 'panels-menu-item-color-rgb');
-      expect(railPosition(tester).pixels, 0);
+      expect(railPosition(tester, right: true).pixels, 0);
 
       // Scrolled away from by hand — the colours out of the window by its
       // top — and the workspace built again, as a window drawn a pixel
       // shorter builds it.
-      final position = railPosition(tester);
+      final position = railPosition(tester, right: true);
       position.jumpTo(position.maxScrollExtent);
       await tester.pump();
       final left = position.pixels;
       expect(
         bodyOf(tester, EditorWorkspace.rightGroupId).bottom,
-        lessThan(tester.getRect(railScroll()).top),
+        lessThan(tester.getRect(railScroll(right: true)).top),
         reason: '⛔premise: the window shows none of the colours',
       );
       await tester.binding.setSurfaceSize(
@@ -928,7 +911,7 @@ void main() {
       // window by its top.
       expect(
         bodyOf(tester, EditorWorkspace.rightGroupId).top,
-        lessThan(tester.getRect(railScroll()).top),
+        lessThan(tester.getRect(railScroll(right: true)).top),
       );
 
       // The RGB bars are one of the colour group's three panels: hidden,
@@ -945,7 +928,7 @@ void main() {
       await press(tester, EditorWorkspace.rightGroupId);
       await tester.pumpAndSettle();
       // On its way back to the top from as far down as two groups let it go.
-      final position = railPosition(tester);
+      final position = railPosition(tester, right: true);
       position.jumpTo(position.maxScrollExtent);
       await tester.pump();
       unawaited(

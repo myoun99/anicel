@@ -184,7 +184,17 @@ class HistoryVerbs {
   /// moves every cel of the cut, as the first run did. 🗣️F-551-Q1 (유저
   /// 2026-11-04: 「전부 늘 띄운다」): and every step a heavy door took behind
   /// its window, its undo and redo every time.
-  void _stepTheDocument({required bool undo}) {
+  ///
+  /// 🗣️F-615: a session still open lands FIRST, through 확정's own door
+  /// ([CanvasSelectionCommands.landPendingMoveThen]) — behind the window
+  /// where it lands on many cels — and the step is taken once that window
+  /// is down. ↩️The history manager's hook landed it on the UI thread
+  /// inside the press, so a range froze the screen with nothing on it; the
+  /// hook still runs, and finds nothing left to land.
+  void _stepTheDocument({required bool undo}) =>
+      selection.landPendingMoveThen(() => _stepTheLandedDocument(undo: undo));
+
+  void _stepTheLandedDocument({required bool undo}) {
     final step = undo ? session.undo : session.redo;
     final behind = session.historyStepBehind(undo: undo);
     if (behind == null) {

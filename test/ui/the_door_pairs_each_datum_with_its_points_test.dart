@@ -26,17 +26,21 @@ void main() {
   });
 
   /// The book as a reader would have written it: [points] for the message
-  /// handed at [handed] (physical pixels), and nothing for any other.
-  /// Every ask is noted in [asked].
+  /// handed at [handed] (physical pixels) — of a contact of [kind] where
+  /// one is named —, and nothing for any other. Every ask is noted in
+  /// [asked], and its kind in [kinds].
   void book(
     Offset handed,
     List<({Offset at, Duration time, double? force})> points,
     List<Offset> asked, {
     List<double?> driven = const [],
+    PointerDeviceKind? kind,
+    List<PointerDeviceKind>? kinds,
   }) {
-    QaPenPoints.debugTake = (x, y) {
+    QaPenPoints.debugTake = (asking, x, y) {
       asked.add(Offset(x, y));
-      if (Offset(x, y) != handed) {
+      kinds?.add(asking);
+      if (Offset(x, y) != handed || (kind != null && asking != kind)) {
         return null;
       }
       return [
@@ -48,7 +52,7 @@ void main() {
             pressure: point.force,
             tilt: null,
             orientation: null,
-            driven: index < driven.length ? driven[index] : null,
+            driven: _driven(index < driven.length ? driven[index] : null),
           ),
       ];
     };
@@ -207,12 +211,78 @@ void main() {
             ],
           ),
         );
-        return [for (final event in heard) PenPath.drivenPressureOf(event)];
+        return [for (final event in heard) PenPath.drivenOf(event)?.pressure];
       }
 
       expect(driven(PointerDeviceKind.mouse), [0.2, null, 0.7]);
       expect(heard.first.original, isNotNull, reason: 'heard in its frame');
       expect(driven(PointerDeviceKind.stylus), [0.2, null, 0.7]);
+    },
+  );
+
+  testWidgets(
+    "🚨H61 a datum asks for its own kind's points — the cursor that follows "
+    "a pen writes its own on the pen's pixels",
+    (tester) async {
+      final heard = <PointerEvent>[];
+      await tester.pumpWidget(
+        Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerMove: (event) => heard.addAll(PenPath.eventsOf(event)),
+          child: const SizedBox.expand(),
+        ),
+      );
+      const handed = Offset(600, 400);
+      final kinds = <PointerDeviceKind>[];
+      book(
+        handed,
+        [
+          (at: const Offset(500, 380), time: Duration.zero, force: null),
+          (at: handed, time: Duration.zero, force: null),
+        ],
+        [],
+        kind: PointerDeviceKind.stylus,
+        kinds: kinds,
+      );
+      List<Offset> moved(PointerDeviceKind kind) {
+        heard.clear();
+        final buttons = kind == PointerDeviceKind.mouse ? kPrimaryButton : 0;
+        binding.pumpPointerPacket(
+          ui.PointerDataPacket(
+            data: [
+              for (final (change, at, from) in [
+                (ui.PointerChange.down, const Offset(400, 360), null),
+                (ui.PointerChange.move, handed, const Offset(400, 360)),
+                (ui.PointerChange.up, handed, null),
+              ])
+                datum(
+                  tester,
+                  change,
+                  at,
+                  kind: kind,
+                  from: from,
+                  buttons: change == ui.PointerChange.up ? 0 : buttons,
+                ),
+            ],
+          ),
+        );
+        return [for (final event in heard) event.position];
+      }
+
+      expect(
+        moved(PointerDeviceKind.mouse),
+        hasLength(1),
+        reason: "a mouse's move at the pen's pixel is its own point alone",
+      );
+      expect(
+        moved(PointerDeviceKind.stylus),
+        hasLength(2),
+        reason: "the pen's, its batch's",
+      );
+      expect(kinds, [
+        ...List.filled(3, PointerDeviceKind.mouse),
+        ...List.filled(3, PointerDeviceKind.stylus),
+      ]);
     },
   );
 
@@ -271,3 +341,8 @@ void main() {
     expect(asked, isEmpty);
   });
 }
+
+/// The driver's reading of a packet that gave [pressure] alone — none for
+/// none.
+DriverReading? _driven(double? pressure) =>
+    pressure == null ? null : (pressure: pressure, lean: null, twist: null);

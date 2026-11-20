@@ -9,7 +9,8 @@ import '../../models/cut_id.dart';
 import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
+import '../../models/attached_layer_resolve.dart'
+    show attachArrowPlacement, attachGroupRowsBySide;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -41,6 +42,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit, layerRailColumnWidthsIn;
+import 'layer_rail_columns.dart' show LayerKindMenu;
 import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
@@ -111,6 +113,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onToggleLayerTimesheet,
     this.onToggleLayerClip,
     required this.onLayerMarkSelected,
+    this.layerKindMenu,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
     this.layerSyncPartnersOf,
@@ -364,6 +367,10 @@ class TimelinePanel extends StatefulWidget {
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
+
+  /// What a row's type button turns it with (F-613); null leaves every
+  /// row's press a pick of the row.
+  final LayerKindMenu? layerKindMenu;
 
   /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
   /// orientations;
@@ -699,6 +706,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
         attachArrows[layer.id] = placement;
       }
     }
+    // The fold halves read the same order, here for the same reason (I-175).
+    final attachGroups = attachGroupRowsBySide(widget.layers);
     final showToolbar = widget.timelineActionToolbar != null;
 
     // text-scale-rail-rows: the row is as tall as its words need where it
@@ -774,12 +783,14 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onOpenCameraPath: widget.onOpenCameraPath,
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
+      attachGroups: attachGroups,
       onToggleLayerClip: widget.onToggleLayerClip,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      layerKindMenu: widget.layerKindMenu,
       layerFxStateOf: widget.layerFxStateOf,
       layerLinkPartnersOf: widget.layerLinkPartnersOf,
       layerSyncPartnersOf: widget.layerSyncPartnersOf,

@@ -736,7 +736,6 @@ void main() {
             leadingFrameSpacerWidth: 0,
             trailingFrameSpacerWidth: 0,
             metrics: TimelineGridMetrics.defaults,
-            onSelectFrame: (_) {},
             markers: RulerMarkerHooks(
               holder: const RulerMarkerHolder.timeline(),
               markers: RulerMarkers.settled(const [RulerMarker(start: 24)]),
@@ -787,7 +786,6 @@ void main() {
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
           metrics: TimelineGridMetrics.defaults,
-          onSelectFrame: (_) {},
           playhead: playhead,
         ),
       ),

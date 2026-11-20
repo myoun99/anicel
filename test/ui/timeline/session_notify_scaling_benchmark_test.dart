@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
+import '../../helpers/semantics_as_the_app_runs.dart';
+
 /// MEASUREMENT for the scoped-notify round (R27 #20 / #7, R28 #4).
 ///
 /// The complaints are all "it gets slow", and the suspected root is one
@@ -196,7 +198,7 @@ void main() {
       );
       expect(selectLayer, greaterThan(0));
     }
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 
   /// A fixed CPU chunk that touches NOTHING in the app — the internal
   /// control (verify-discipline rule 5). Two other agent sessions build and
@@ -348,7 +350,7 @@ void main() {
       'noise (verify-discipline rules 2 and 5).',
     );
     expect(small1.command, greaterThan(0));
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 
   /// R28 #4 (zoom lag), recorded as "measure first, same root as the scoped
   /// notify". It is NOT the same root, and this is the case that shows it.
@@ -429,7 +431,7 @@ void main() {
       '${ms(large2.control)} / ${ms(small2.control)}ms',
     );
     expect(small1.step, greaterThan(0));
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 
   /// WHERE does a zoom step spend it — per ROW, or per CELL? The fix is a
   /// different shape for each: row-structure cost means the rows must stop
@@ -497,7 +499,7 @@ void main() {
       'not capping the per-cell work on a zoom step.',
     );
     expect(f24, greaterThan(0));
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 
   /// WHICH AXIS? The scaling above cannot say whether the cost is per ROW
   /// (a rebuild of every layer's controls + band) or per CELL (grid
@@ -533,7 +535,7 @@ void main() {
       expect(seek, greaterThan(0));
       await teardown(tester, session);
     }
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 
   /// THE SIZE THE USER ACTUALLY WORKS AT — 100 layers, 1000 frames.
   ///
@@ -675,5 +677,7 @@ void main() {
       'level with the benchmarked one. A REAL SIZE column that runs away from '
       'the benchmarked column is the regression.',
     );
-  }, timeout: const Timeout(Duration(minutes: 15)));
+  },
+      semanticsEnabled: semanticsAsTheAppRuns,
+      timeout: const Timeout(Duration(minutes: 15)));
 }

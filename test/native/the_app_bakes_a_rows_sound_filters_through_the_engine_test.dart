@@ -266,6 +266,104 @@ void main() {
       );
     }
   });
+
+  // 🗣️audio-fx-second-effect-and-presets-Q1 (유저 2026-11-18): ノイズ除去
+  // as a row's effect — RNNoise through the filters' door, as a voice
+  // take's is (board voice-take-denoise-lands-late).
+  group('a noise removal', () {
+    List<SoundFilterSetting> at(double amount) => [
+      (start: 0, filter: AudioDenoiser(amount: amount)),
+    ];
+
+    test('at no amount hands every sample back as it was — alone, and '
+        'before an equalizer', () {
+      final sound = _madeUpSound();
+      expect(
+        filterAudio(samples: sound, channels: 2, rate: 48000, stages: [at(0)]),
+        sound,
+      );
+      expect(
+        filterAudio(
+          samples: sound,
+          channels: 2,
+          rate: 48000,
+          stages: [at(0), settings],
+        ),
+        filterAudio(
+          samples: sound,
+          channels: 2,
+          rate: 48000,
+          stages: [settings],
+        ),
+      );
+    });
+
+    test('between them mixes the sound as it was and the cleaned, by the '
+        'setting its own sample takes', () {
+      final sound = _madeUpSound();
+      Float32List bake(List<SoundFilterSetting> stage) => filterAudio(
+        samples: sound,
+        channels: 2,
+        rate: 48000,
+        stages: [stage],
+      );
+      final cleaned = bake(at(1));
+      final mixed = bake([
+        (start: 0, filter: const AudioDenoiser(amount: 0.25)),
+        (start: 9000, filter: const AudioDenoiser(amount: 1)),
+      ]);
+      for (final i in [0, 1, 2 * 8999 + 1]) {
+        // Mixed in doubles, kept as a float.
+        final expected = Float32List(1)
+          ..[0] = sound[i] * 0.75 + cleaned[i] * 0.25;
+        expect(mixed[i], expected[0], reason: 'sample $i');
+      }
+      expect(
+        Float32List.sublistView(mixed, 2 * 9000),
+        Float32List.sublistView(cleaned, 2 * 9000),
+      );
+    });
+
+    test('is two frames late at the door, and remembers each channel\'s '
+        'model and frames', () {
+      final stretches = FilterStretches(
+        channels: 2,
+        rate: 48000,
+        stages: [at(1), settings],
+      );
+      expect(stretches.latency, 960);
+      // Each channel's model, the frames it holds late, the one it hears
+      // and the cleaned ones waiting to come out; then the equalizer's.
+      expect(stretches.kept, hasLength(2 * (3059 + 960 + 480 + 960) + 2 * 16));
+    });
+
+    // 🗣️audio-fx-second-effect-and-presets-Q2 = 1 (유저 2026-11-18 21:59):
+    // 「레이트를 바꿔서라도 어디서나」 — at another rate RNNoise hears the
+    // span converted to its own, and the cleaned sound comes back; the
+    // sound as it was is never converted.
+    test('at another rate hands every sample back as it was at no amount '
+        'and cleans at the whole — late by nothing', () {
+      final at44 = FilterStretches(channels: 2, rate: 44100, stages: [at(1)]);
+      expect(at44.latency, 1039, reason: 'two frames and the conversions');
+      // Each channel's model, the frames it holds late — as far back as the
+      // conversion up reads —, the one it hears, what the conversion down
+      // reads back, and the cleaned ones waiting: sized at the rate.
+      expect(at44.kept, hasLength(2 * (3059 + 1039 + 480 + 169 + 1039)));
+      final sound = _madeUpSound();
+      for (final rate in [44100, 96000]) {
+        Float32List bake(double amount) => filterAudio(
+          samples: sound,
+          channels: 2,
+          rate: rate,
+          stages: [at(amount)],
+        );
+        expect(bake(0), sound, reason: '$rate Hz');
+        final cleaned = bake(1);
+        expect(cleaned, hasLength(sound.length), reason: '$rate Hz');
+        expect(cleaned, isNot(sound), reason: '$rate Hz: LIVENESS');
+      }
+    });
+  });
 }
 
 /// lowbias32 — a well-mixed u32 — as the engine's test makes its sound.

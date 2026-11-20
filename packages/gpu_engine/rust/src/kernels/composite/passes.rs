@@ -70,7 +70,8 @@ impl Passes {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// `compiled`'s pipeline, once made.
+    /// `compiled`'s pipeline, once made — asked by tests alone.
+    #[cfg(test)]
     pub(super) fn made(&self, compiled: Compiled) -> Option<wgpu::ComputePipeline> {
         let held = self.held();
         let asked = held.passes.iter().find(|(asked, _)| *asked == compiled);

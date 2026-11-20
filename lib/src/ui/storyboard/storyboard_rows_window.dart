@@ -11,7 +11,7 @@ part of '../storyboard_panel.dart';
 /// every row shown, 671 of the panel's 2,375 elements stood in rows nobody
 /// could see.
 ///
-/// 🚨A collaborator of `_StoryboardPanelState`, as [_StoryboardScroll] is.
+/// 🚨A collaborator of `_StoryboardPanelState`.
 /// It reaches the State through `_state`.
 class _StoryboardRowsWindow {
   _StoryboardRowsWindow(this._state);
@@ -27,8 +27,12 @@ class _StoryboardRowsWindow {
   /// mid-drag would drop the drag ([HeldRowPin], the timeline's A5).
   final HeldRowPin held = HeldRowPin();
 
-  /// The window the rows were last laid for ([_tokenOf]).
-  int _laid = -1;
+  /// The window the rows are laid in, walked to where the scroll stands
+  /// ([TimelineRowWindowWalk]) — the timeline's rows' law.
+  late final TimelineRowWindowWalk _walk = TimelineRowWindowWalk(
+    view: _view,
+    relay: () => bucket.value += 1,
+  );
 
   /// What the rail keeps of its rows while only the window moves.
   final WindowMoveKeep railKeep = WindowMoveKeep();
@@ -36,11 +40,20 @@ class _StoryboardRowsWindow {
   /// What each track's strips keep of theirs, by track.
   final Map<int, WindowMoveKeep> _stripKeeps = {};
 
+  /// What the track-global strips — a track's transition row and its S
+  /// rows — keep across the panel's builds, each a pass of its own
+  /// ([WindowMoveKeep.pass]): built outside the strips' lays (R10-③), they
+  /// are handed in as they were while what each is built from holds.
+  final WindowMoveKeep globalStripKeep = WindowMoveKeep();
+
   /// What track [trackIndex]'s strips keep while only the window moves.
   WindowMoveKeep stripKeepOf(int trackIndex) =>
       _stripKeeps.putIfAbsent(trackIndex, WindowMoveKeep.new);
 
-  void dispose() => bucket.dispose();
+  void dispose() {
+    _walk.dispose();
+    bucket.dispose();
+  }
 
   /// [rows] in a column the window lays again when it moves — this call's
   /// pass, kept by [keep] across the moves ([WindowMoveKeep]); [newPass]
@@ -64,16 +77,15 @@ class _StoryboardRowsWindow {
     );
   }
 
-  /// The scroll moved: the rows are laid again when the window they stand
-  /// in did.
+  /// The scroll moved: the rows are laid again in this frame where a row
+  /// the view shows is not laid, else walked there after it
+  /// ([TimelineRowWindowWalk.moved]).
   ///
-  /// ⚠️Compared against the window last LAID, not against the last one
-  /// heard: a pass that lays other rows moves the windows under a scroll
-  /// that stands still.
+  /// ⚠️Asked of the window last LAID, not of the last one heard: a pass
+  /// that lays other rows moves the windows under a scroll that stands
+  /// still.
   void handleScroll() {
-    final token = _tokenOf(_now());
-    if (token != _laid) {
-      _laid = token;
+    if (_walk.moved()) {
       bucket.value += 1;
     }
   }
@@ -81,18 +93,16 @@ class _StoryboardRowsWindow {
   /// Track [trackIndex]'s rows as this lay lays them, kept by [keep].
   _WindowedRows rowsOf(int trackIndex, WindowMoveKeep keep) {
     final table = _state._railRows.windowTable;
-    final window = _now();
-    _laid = _tokenOf(window);
     return _WindowedRows(
       table,
-      window,
+      _walk.laid(),
       held,
       keep,
       table.firstSlots[trackIndex],
     );
   }
 
-  /// The rows the view stands over now, or null while it has no extent —
+  /// Where the rows' view stands now, or null while it has no extent —
   /// before the panel is laid out, when every row is built.
   ///
   /// ↩️The view is the one this pass lays ([_StoryboardPanelState.
@@ -103,7 +113,7 @@ class _StoryboardRowsWindow {
   /// window again, a grown view's new rows stayed unbuilt until the next
   /// resize (검증/서피스 11-08 01:23, card
   /// the-conte-panel-builds-the-rows-its-window-reaches).
-  TimelineVisibleRange? _now() {
+  TimelineRowView? _view() {
     final edges = _state._railRows.windowTable.edges;
     final controller = _state._verticalController;
     final position = controller.hasClients ? controller.position : null;
@@ -114,21 +124,32 @@ class _StoryboardRowsWindow {
     final scrolled = position != null && position.hasPixels
         ? position.pixels
         : _state._keptLayerAxis?.value ?? 0;
-    return edges.window(
+    return (
+      edges: edges,
       scrollOffset: scrolled
           .clamp(0.0, math.max(0.0, edges.total - viewport))
           .toDouble(),
       viewportExtent: viewport,
     );
   }
+}
 
-  int _tokenOf(TimelineVisibleRange? window) {
-    if (window == null) {
-      return -1;
-    }
-    final count = _state._railRows.windowTable.edges.count;
-    return window.startIndex * (count + 1) + window.endIndexExclusive;
-  }
+/// The rows of the conte panel a keep holds that are a [KeptPiece] in a
+/// wrapper — the rail's rows and the strips' alike.
+extension _KeptPieceRows on WindowMoveKeep {
+  /// [piece] in the wrapper [wrap] puts on it, kept as its row [key] while
+  /// the piece's facts and [inputs] — what [wrap] builds the wrapper from
+  /// beside the piece — hold, as a piece keeps its own insides.
+  Widget keptPiece(
+    Object key,
+    KeptPiece piece,
+    Object? inputs,
+    Widget Function(KeptPiece piece) wrap,
+  ) => row(
+    key,
+    () => (inputs, piece.runtimeType, piece.facts),
+    (_) => wrap(piece),
+  );
 }
 
 /// The rail's rows as the window cuts them: [edges] over every track's
@@ -175,7 +196,21 @@ final class _WindowedRows {
           laid.add(SizedBox(height: gap));
           gap = 0;
         }
-        laid.add(_keep.row(first, () => _holdable(head, first, unit())));
+        // Kept across passes while the unit lays the very rows it laid —
+        // each kept by what it is built from — under the same head, as the
+        // timeline's window keeps a row around its kept insides.
+        // ↩️Built from the pass alone until card
+        // the-conte-rail-row-holders-are-new-each-pass (11-19): a rail head
+        // stood in a new [RailEyes] and a strip in no memo at every pass,
+        // so no facts of theirs held (🔬every holder new at every eye
+        // toggle, card an-eye-toggle-holds-the-ui-thread).
+        laid.add(
+          _keep.row(
+            first,
+            () => (head: head, rows: ByList(unit())),
+            (unit) => _holdable(unit.head, first, unit.rows.value),
+          ),
+        );
       } else {
         gap += _table.edges.startOf(last + 1) - _table.edges.startOf(first);
       }
@@ -188,7 +223,17 @@ final class _WindowedRows {
 
   /// [build]'s widget, kept as the rows are while only the window moves —
   /// what stands beside the rows off the pass alone (a section's zone, ④).
-  Widget kept(Object key, Widget Function() build) => _keep.row(key, build);
+  Widget kept(Object key, Widget Function() build) =>
+      _keep.ofThePass(key, build);
+
+  /// [piece] — a strip's row [key] — in the wrapper [wrap] puts on it,
+  /// kept across passes while it and [inputs] hold.
+  Widget piece(
+    Object key,
+    KeptPiece piece, {
+    Object? inputs,
+    Widget Function(KeptPiece piece)? wrap,
+  }) => _keep.keptPiece(key, piece, inputs, wrap ?? (piece) => piece);
 
   bool _builds(int first, int last) => switch (_window) {
     null => true,

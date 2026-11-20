@@ -186,10 +186,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     revision: _session.layerStack.celTintRevision,
   );
 
-  late final Listenable _frameReadySignal = Listenable.merge([
-    _session.playbackRig.prerenderScheduler.progress,
-    _session.renderCaches.brushFrameStore.celPixelRevision,
-  ]);
+  late final Listenable _frameReadySignal =
+      _session.playbackRig.playbackCache.readinessMoved;
 
   late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
     _session.playbackRig.playbackCache.playbackReadyRuns,
@@ -719,6 +717,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
             onToggleLayerClip: _rowPresses.toggleClip,
             onLayerMarkSelected: _rowPresses.pickMark,
+            layerKindMenu: _rowPresses.kindMenu,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,

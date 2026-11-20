@@ -157,6 +157,119 @@ void main() {
 
     expect(read.durations, isEmpty);
     expect(read.gaps, isEmpty);
+    expect(read.removed, isEmpty);
+  });
+
+  // I-179 (유저 2026-11-19): 「컷블록은 앞엣지 조절해서 컷 삭제 되는게 의도」.
+  test('a cut every panel of which went to no length is removed, and the '
+      'gap in front of it joins the next cut that stays', () {
+    const cutC = CutId('c');
+    final before = [
+      cut(cutA, duration: 8),
+      cut(cutB, duration: 6, gap: 2, keys: [0, 3]),
+      cut(cutC, duration: 4, gap: 1),
+    ];
+    final panels = panelSlotsOfCuts(before);
+    // B's front, at 10, pulled back 9: both its panels go whole and the
+    // edge stands two frames into C.
+    final layout = planBlockRunLeadEdge(
+      slots: [for (final panel in panels) panel.slot],
+      targetIndex: 1,
+      frameDelta: 9,
+    );
+    final read = cutsFromPanelLayout(
+      panels: panels,
+      leadingGaps: layout.leadingGaps,
+      lengths: layout.lengths,
+      before: before,
+    );
+
+    expect(read.removed, {cutB});
+    expect(read.durations, {cutC: 2});
+    expect(
+      read.gaps,
+      {cutC: 11},
+      reason: 'B\'s own gap and the frames its panels gave stand in front '
+          'of C, so C ends where it ended',
+    );
+  });
+
+  test('two cuts in a row that left hand the next one both their gaps, and '
+      'the cut after that one says nothing', () {
+    const cutC = CutId('c');
+    const cutD = CutId('d');
+    const cutE = CutId('e');
+    final before = [
+      cut(cutA, duration: 8),
+      cut(cutB, duration: 6, gap: 2),
+      cut(cutC, duration: 4, gap: 3),
+      cut(cutD, duration: 5, gap: 1),
+      cut(cutE, duration: 2),
+    ];
+    final panels = panelSlotsOfCuts(before);
+    // B's front, at 10, pulled back 15: B and C go whole, D starts at 25.
+    final layout = planBlockRunLeadEdge(
+      slots: [for (final panel in panels) panel.slot],
+      targetIndex: 1,
+      frameDelta: 15,
+    );
+
+    final read = cutsFromPanelLayout(
+      panels: panels,
+      leadingGaps: layout.leadingGaps,
+      lengths: layout.lengths,
+      before: before,
+    );
+
+    expect(read.removed, {cutB, cutC});
+    expect(read.durations, {cutD: 4});
+    expect(read.gaps, {cutD: 17}, reason: 'from A\'s end at 8 to 25');
+  });
+
+  test('the cut behind the ones that left says its gap even where the number '
+      'did not change — it stands on a new boundary', () {
+    const cutC = CutId('c');
+    final before = [
+      cut(cutA, duration: 8),
+      cut(cutB, duration: 6),
+      cut(cutC, duration: 4),
+    ];
+    final panels = panelSlotsOfCuts(before);
+    final layout = planBlockRunLeadEdge(
+      slots: [for (final panel in panels) panel.slot],
+      targetIndex: 1,
+      frameDelta: 6,
+    );
+
+    final read = cutsFromPanelLayout(
+      panels: panels,
+      leadingGaps: layout.leadingGaps,
+      lengths: layout.lengths,
+      before: before,
+    );
+
+    expect(read.removed, {cutB});
+    expect(read.durations, {cutA: 14});
+    expect(read.gaps, {cutC: 0});
+  });
+
+  test('a cut that keeps one panel stays — its swept ones are gone from its '
+      'row, the rest laid from the start', () {
+    final row = SplayTreeMap<int, TimelineExposure>.of({
+      0: const TimelineExposure.drawing(FrameId('p0'), length: 3),
+      3: const TimelineExposure.drawing(FrameId('p1'), length: 4),
+      7: const TimelineExposure.drawing(FrameId('p2'), length: 2),
+    });
+
+    final next = conteTimelineFromPanels(
+      timeline: row,
+      panelLengths: [0, 1, 2],
+    );
+
+    expect(next!.keys.toList(), [0, 1]);
+    expect(next[0]!.frameId, const FrameId('p1'));
+    expect(next[0]!.length, 1);
+    expect(next[1]!.frameId, const FrameId('p2'));
   });
 
   test('the conte row reads the panel lengths back as its keys', () {

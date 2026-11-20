@@ -28,7 +28,6 @@ void main() {
             frameCellWidth: 48,
             layerRowHeight: 52,
           ),
-          onSelectFrame: (_) {},
           framesPerSecond: 24,
           rulerView: rulerView,
           pages: pageFrames == null

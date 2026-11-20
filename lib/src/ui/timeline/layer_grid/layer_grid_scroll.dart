@@ -45,37 +45,23 @@ class _LayerGridScroll {
     standAt(offset);
   }
 
-  /// The rows' window cut for the rows standing at [offset].
+  /// The rows standing at [offset]: laid again in this frame where a row
+  /// it shows is not laid, else walked there after it
+  /// ([TimelineRowWindowWalk.moved]).
   ///
-  /// The token is the WINDOW the rows would be cut to, read off the rows the
-  /// pass drew. ↩️It was the row index at the top, which was the window's
-  /// one moving part while every row was one height: a graph's room can
-  /// hold the top still while the bottom crosses rows (I-89 ③).
+  /// ⚠️Asked of the window last LAID, as the storyboard's rows are
+  /// ([_StoryboardRowsWindow.handleScroll]): a pass that lays other rows
+  /// moves the windows under a scroll that stands still. ↩️F-526 (유저
+  /// 11-01): it was compared against the last window this published — a
+  /// fold lays rows without publishing one, so going down again after
+  /// shutting and opening reached the number of a window no longer drawn,
+  /// and the rows it held were never cut.
   void standAt(double offset) {
-    final edges = _state._drawnEdges;
-    final window = windowToken(
-      edges.window(
-        scrollOffset: offset,
-        viewportExtent: _state._rowViewportExtent,
-      ),
-      edges,
-    );
     _state._verticalScrollOffset = offset;
-    // ⚠️Compared against the window last LAID, as the storyboard's rows are
-    // ([_StoryboardRowsWindow.handleScroll]): a pass that lays other rows
-    // moves the windows under a scroll that stands still.
-    // ↩️F-526 (유저 11-01): it was compared against the last token this
-    // published — a fold lays rows without publishing one, so going down
-    // again after shutting and opening reached the number of a window no
-    // longer drawn, and the rows it held were never cut.
-    if (window != _state._rowWindowLaid) {
+    if (_state._rowWalk.moved()) {
       _state._rowWindowBucket.value += 1;
     }
   }
-
-  /// [window] of [edges] as one number, to tell it from another.
-  int windowToken(TimelineVisibleRange window, TimelineRowEdges edges) =>
-      window.startIndex * (edges.count + 1) + window.endIndexExclusive;
 
   double effectiveHorizontalScrollOffset({
     required double requestedOffset,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/item_beside.dart';
@@ -36,8 +38,10 @@ class OpenProjects extends ChangeNotifier {
     required Project first,
     required EditorSessionManager Function(Project project) openSession,
     required void Function(EditorSessionManager session) letGo,
+    void Function(VoidCallback show)? landsFirst,
   }) : _openSession = openSession,
-       _letGo = letGo {
+       _letGo = letGo,
+       _landsFirst = landsFirst {
     final session = _openSession(first);
     _admit(session, untitled: session.projectFile.path == null);
     _shareTheAllowance();
@@ -45,6 +49,12 @@ class OpenProjects extends ChangeNotifier {
 
   final EditorSessionManager Function(Project project) _openSession;
   final void Function(EditorSessionManager session) _letGo;
+
+  /// What lands before another tab shows, and then shows it: the canvas
+  /// selection's open session, through 확정's door — the shell's
+  /// (`CanvasSelectionCommands.landPendingMoveThen`). Null where nothing
+  /// does.
+  final void Function(VoidCallback show)? _landsFirst;
   final List<EditorSessionManager> _sessions = [];
   int _active = 0;
 
@@ -69,7 +79,7 @@ class OpenProjects extends ChangeNotifier {
   /// tab behind ([discard]).
   void adoptNew(EditorSessionManager session) {
     _admit(session, untitled: true);
-    _show(_sessions.length - 1);
+    unawaited(_show(session));
   }
 
   /// A session born for [project] that is NOT in a tab yet — what an opened
@@ -86,7 +96,7 @@ class OpenProjects extends ChangeNotifier {
   /// 이런식인데 파일이름대로」).
   void adopt(EditorSessionManager session) {
     _admit(session, untitled: false);
-    _show(_sessions.length - 1);
+    unawaited(_show(session));
   }
 
   /// Lets a [prepare]d session go without ever showing it.
@@ -95,14 +105,14 @@ class OpenProjects extends ChangeNotifier {
     _letGo(session);
   }
 
-  /// Shows [session]'s tab. A no-op for a session that is not open, or
-  /// already shown.
-  void activate(EditorSessionManager session) {
+  /// Shows [session]'s tab — done once it shows ([_show]). A no-op for a
+  /// session that is not open, or already shown.
+  Future<void> activate(EditorSessionManager session) {
     final index = _indexOf(session);
     if (index < 0 || index == _active) {
-      return;
+      return SynchronousFuture<void>(null);
     }
-    _show(index);
+    return _show(session);
   }
 
   /// Closes [session]'s tab and lets the session go — the shell asked about
@@ -122,7 +132,9 @@ class OpenProjects extends ChangeNotifier {
       return;
     }
     if (_sessions.length == 1) {
-      open(fresh());
+      // Beside it, not shown: what takes its place is shown below, by the
+      // close itself — a tab going away waits for no landing ([_show]).
+      _admit(prepare(fresh()), untitled: true);
       index = _indexOf(session);
     }
     final shown = active;
@@ -209,7 +221,30 @@ class OpenProjects extends ChangeNotifier {
     super.dispose();
   }
 
-  void _show(int index) {
+  /// Shows [session] once the canvas has landed what its box holds
+  /// ([_landsFirst]) — done when it shows: at once, with nothing to land.
+  ///
+  /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): with a range
+  /// moved in the box and not confirmed, another tab lands it first —
+  /// behind the wait window, as 확정 lands it — and shows once the window
+  /// is down. ↩️The tab showed first, and the shell landed the range on
+  /// the UI thread as it followed it (`confirmPendingMove`): no window, no
+  /// share told.
+  Future<void> _show(EditorSessionManager session) {
+    final land = _landsFirst;
+    if (land == null) {
+      _showNow(_indexOf(session));
+      return SynchronousFuture<void>(null);
+    }
+    final shown = Completer<void>();
+    land(() {
+      _showNow(_indexOf(session));
+      shown.complete();
+    });
+    return shown.future;
+  }
+
+  void _showNow(int index) {
     if (index != _active && _active < _sessions.length) {
       _stopBehind(_sessions[_active]);
     }

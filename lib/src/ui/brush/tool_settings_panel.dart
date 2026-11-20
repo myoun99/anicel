@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport;
@@ -24,6 +26,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
+import 'spacing_bar.dart';
 import 'tool_setting_rows.dart';
 import 'tool_settings_section.dart';
 import 'guide_panels.dart';
@@ -199,6 +202,42 @@ class ToolSettingsPanel extends StatelessWidget {
   /// reads another. A host with no answer shows the line empty.
   final List<String>? Function(CanvasReadSource source)? readLayerNames;
 
+  /// The least width this panel stands EVERY tool's settings at — the
+  /// widest of what each tool's section needs for its choices to read
+  /// beside its names and its end column.
+  ///
+  /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
+  /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 — the
+  /// rail holding this panel reads it; Q2 (11-18) 「단추마다 첫 글자는 보이는
+  /// 폭」 is what a choice needs ([PillStrip.evenWidthIn]). ⛔NOT the tool in
+  /// hand's alone: the widest of them all, so the rail does not move when
+  /// the tool changes (관제 11-17: 「가장 넓은 것을 따라 … 흔들리지 않게」).
+  static double minPanelWidthIn(BuildContext context) => [
+    for (final tool in CanvasTool.values) minWidthOf(tool, context),
+  ].reduce(math.max);
+
+  /// What [tool]'s section needs ([minPanelWidthIn]) — the arms of
+  /// [_settingsOfTheTool], tool for tool.
+  static double minWidthOf(CanvasTool tool, BuildContext context) =>
+      switch (tool) {
+        CanvasTool.brush ||
+        CanvasTool.eraser => BrushSettingsPanel.minWidthIn(context),
+        CanvasTool.fill => _FillSettings.minWidthIn(context),
+        CanvasTool.fillShape => _ShapeFillSettings.minWidthIn(context),
+        CanvasTool.shape => _ShapeToolSettings.minWidthIn(context),
+        CanvasTool.eyedropper => _EyedropperSettings.minWidthIn(context),
+        CanvasTool.select => _SelectionSettings.minWidthIn(context),
+        CanvasTool.cut ||
+        CanvasTool.cutWhole => _CutGrabSettings.minWidthIn(context),
+        // Nothing of theirs has words to keep readable.
+        CanvasTool.cutStamp || CanvasTool.move => ToolSettingColumns.panelFor(
+          chrome: ToolSettingsSection.chromeIn(context),
+          controls: const [],
+        ),
+        CanvasTool.text => TextToolSettings.minWidthIn(context),
+        CanvasTool.guide => GuideSettings.minWidthIn(context),
+      };
+
   List<String>? _namesReadBy(CanvasReadSource source) {
     final answer = readLayerNames;
     return answer == null ? const [] : answer(source);
@@ -257,9 +296,18 @@ class ToolSettingsPanel extends StatelessWidget {
     // ⛔The preview is PINNED and the settings scroll under it — 「위치는
     // 도구 설정의 맨 위」. Putting it inside the section would have let it
     // scroll away, which is what the stamp's own copy did.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [preview, Expanded(child: settings)],
+    //
+    // A box shorter than the preview — a group the rail shows a sliver of,
+    // or one dragged to its floor — cuts it from below, as a short box cuts
+    // the rows of a section that does not scroll.
+    return ClipRect(
+      child: CustomSingleChildLayout(
+        delegate: const _NoShorterThan(ToolSettingsPreview.extent),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [preview, Expanded(child: settings)],
+        ),
+      ),
     );
   }
 
@@ -329,6 +377,9 @@ class ToolSettingsPanel extends StatelessWidget {
     ),
     CanvasTool.cutStamp => _CutStampSettings(
       slot: cutPieceSlot,
+      spacing: state.cutStampSpacing,
+      onSpacingChanged: (value) =>
+          onChanged(state.copyWith(cutStampSpacing: value)),
       onPasteAtOrigin: onCutPasteAtOrigin,
       onRegisterAsTip: onRegisterCutPieceAsTip,
     ),
@@ -382,6 +433,12 @@ class _ShapeFillSettings extends StatelessWidget {
   final CanvasShapeKind? shapeKind;
   final CanvasTraces? traces;
 
+  /// See [ToolSettingsPanel.minPanelWidthIn].
+  static double minWidthIn(BuildContext context) => ToolSettingColumns.panelFor(
+    chrome: ToolSettingsSection.chromeIn(context),
+    controls: _gradientWidthsIn(context),
+  );
+
   @override
   Widget build(BuildContext context) {
     return ToolSettingsSection(
@@ -432,6 +489,19 @@ class _ShapeToolSettings extends StatelessWidget {
 
   ShapeToolOptions get _options => state.shapeOptions;
 
+  /// See [ToolSettingsPanel.minPanelWidthIn].
+  static double minWidthIn(BuildContext context) {
+    final strings = AppText.strings;
+    return ToolSettingColumns.panelFor(
+      chrome: ToolSettingsSection.chromeIn(context),
+      controls: [
+        ToolSettingChoiceRow.widthIn(context, _partAnswers(strings)),
+        ToolSettingChoiceRow.widthIn(context, _typeAnswers(strings)),
+        ToolSettingChoiceRow.widthIn(context, _cornersAnswers(strings)),
+      ],
+    );
+  }
+
   /// Whether what is chosen lays a LINE — and whether that line is the
   /// tool's own plain one.
   bool get _laysLine => state.shapePart == ShapePart.line;
@@ -471,12 +541,16 @@ class _ShapeToolSettings extends StatelessWidget {
     name: 'part',
     label: strings.shapeToolDraws,
     current: state.shapePart,
-    answers: [
-      (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
-      (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
-    ],
+    answers: _partAnswers(strings),
     onPick: (part) => () => _set(_options.copyWith(part: part)),
   );
+
+  static List<({ShapePart value, String key, String label})> _partAnswers(
+    AppStrings strings,
+  ) => [
+    (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
+    (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
+  ];
 
   /// 「타입」: what lays the line — there only where a line is laid.
   Widget _typeRow(AppStrings strings) => ToolSettingChoiceRow<ShapeLineType>(
@@ -484,16 +558,19 @@ class _ShapeToolSettings extends StatelessWidget {
     name: 'type',
     label: strings.shapeToolType,
     current: _options.type,
-    answers: [
-      (value: ShapeLineType.brush, key: 'brush', label: strings.toolBrush),
-      (
-        value: ShapeLineType.plain,
-        key: 'plain',
-        label: strings.shapeToolTypePlain,
-      ),
-    ],
+    answers: _typeAnswers(strings),
     onPick: (type) => () => _set(_options.copyWith(type: type)),
   );
+
+  static List<({ShapeLineType value, String key, String label})>
+  _typeAnswers(AppStrings strings) => [
+    (value: ShapeLineType.brush, key: 'brush', label: strings.toolBrush),
+    (
+      value: ShapeLineType.plain,
+      key: 'plain',
+      label: strings.shapeToolTypePlain,
+    ),
+  ];
 
   /// 「모서리」: the plain line's alone.
   Widget _cornersRow(AppStrings strings) => ToolSettingChoiceRow<ShapeCorners>(
@@ -501,20 +578,23 @@ class _ShapeToolSettings extends StatelessWidget {
     name: 'corners',
     label: strings.shapeToolCorners,
     current: _options.corners,
-    answers: [
-      (
-        value: ShapeCorners.sharp,
-        key: 'sharp',
-        label: strings.shapeToolCornersSharp,
-      ),
-      (
-        value: ShapeCorners.round,
-        key: 'round',
-        label: strings.shapeToolCornersRound,
-      ),
-    ],
+    answers: _cornersAnswers(strings),
     onPick: (corners) => () => _set(_options.copyWith(corners: corners)),
   );
+
+  static List<({ShapeCorners value, String key, String label})>
+  _cornersAnswers(AppStrings strings) => [
+    (
+      value: ShapeCorners.sharp,
+      key: 'sharp',
+      label: strings.shapeToolCornersSharp,
+    ),
+    (
+      value: ShapeCorners.round,
+      key: 'round',
+      label: strings.shapeToolCornersRound,
+    ),
+  ];
 }
 
 /// The CUT grab's knobs — and 전체 잘라내기's, which cuts by the same two:
@@ -554,12 +634,21 @@ class _CutGrabSettings extends StatelessWidget {
   /// button keeps its place, greyed.
   final VoidCallback? onCutWhole;
 
+  /// Its few rows never outgrow the panel ([ToolSettingsSection.scrolls]).
+  static const bool _scrolls = false;
+
+  /// See [ToolSettingsPanel.minPanelWidthIn].
+  static double minWidthIn(BuildContext context) => ToolSettingColumns.panelFor(
+    chrome: ToolSettingsSection.chromeIn(context, scrolls: _scrolls),
+    controls: [_ReadSourceControl.widthIn(context)],
+  );
+
   @override
   Widget build(BuildContext context) {
     final whole = state.tool == CanvasTool.cutWhole;
     final section = ToolSettingsSection(
       tool: 'cut-grab',
-      scrolls: false,
+      scrolls: _scrolls,
       children: [
         _ReadSourceControl(
           tool: 'cut',
@@ -663,20 +752,31 @@ class _ClosePolygonButton extends StatelessWidget {
 
 /// The STAMP tile's knobs.
 ///
-/// Deliberately short: spacing, jitter and the rest of the brush
-/// parameters are NOT here (유저 확정 — "스페이싱 같은 거 없애고 … 그건 그냥
-/// 팁으로 등록해서 뭐 할 때만 띄우는 게 낫겠다"). The law that falls out is
-/// **a held piece stays simple, brush parameters belong to a registered
-/// tip** — the same split Photoshop draws between a clipboard piece and a
-/// Define Brush Preset.
+/// Deliberately short: jitter and the rest of the brush parameters are NOT
+/// here (유저 확정 — "스페이싱 같은 거 없애고 … 그건 그냥 팁으로 등록해서 뭐
+/// 할 때만 띄우는 게 낫겠다"). The law that falls out is **a held piece
+/// stays simple, brush parameters belong to a registered tip** — the same
+/// split Photoshop draws between a clipboard piece and a Define Brush
+/// Preset.
+///
+/// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격 지금
+/// 고정이니까 스탬프 도구설정에 간격설정도 두도록」 — the spacing of a drag's
+/// stamps is here, on the brush's own bar ([spacingBar]). ↩️It was left out
+/// with the rest (2026-08-12), and the trail laid them a whole piece apart.
 class _CutStampSettings extends StatelessWidget {
   const _CutStampSettings({
     required this.slot,
+    required this.spacing,
+    required this.onSpacingChanged,
     required this.onPasteAtOrigin,
     required this.onRegisterAsTip,
   });
 
   final CutPieceSlot? slot;
+
+  /// How far apart a drag lays the stamps ([BrushToolState.cutStampSpacing]).
+  final double spacing;
+  final ValueChanged<double> onSpacingChanged;
 
   /// Drop the held piece back where it was cut from. ONE button (TS8): the
   /// pair that used to say Above/Below was spelling a COMPOSITE ORDER, and
@@ -773,6 +873,16 @@ class _CutStampSettings extends StatelessWidget {
                     holder.updatePose(flipVertical: !piece.flipVertical),
               ),
             ),
+            // The drag's, under the piece's own pose: a share of the piece's
+            // size, as a brush's spacing is of its tip's.
+            ToolSettingRow.bar(
+              label: AppText.strings.brSpacing,
+              bar: spacingBar(
+                keyValue: 'cut-stamp-spacing-slider',
+                value: spacing,
+                onChanged: onSpacingChanged,
+              ),
+            ),
             // ↩️The paste stood under the name of the piece, and the reset
             // and the registration in a row of their own under the size —
             // three outlined buttons in two places. They are the tool's
@@ -855,6 +965,12 @@ class _SelectionSettings extends StatelessWidget {
   final CanvasTraces? traces;
   final PasteboardWall? pasteboard;
   final AppLanguage language;
+
+  /// See [ToolSettingsPanel.minPanelWidthIn].
+  static double minWidthIn(BuildContext context) => ToolSettingColumns.panelFor(
+    chrome: ToolSettingsSection.chromeIn(context),
+    controls: [_SelectionModeRow.widthIn(context)],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -982,6 +1098,13 @@ class _SelectionModeRow extends StatelessWidget {
     SelectionCombineMode.subtract: Icons.indeterminate_check_box_outlined,
     SelectionCombineMode.intersect: Icons.join_inner,
   };
+
+  /// What the four need across: a glyph each, their names in tooltips.
+  static double widthIn(BuildContext context) => PillStrip.evenWidthIn(
+    context,
+    [for (final mode in SelectionCombineMode.values) mode.name],
+    glyphs: true,
+  );
 
   /// A CHOICE like every other setting's: the four share the control
   /// column as the app's one grouped choice ([PillStrip.even]), each drawn
@@ -1755,6 +1878,12 @@ class _EyedropperSettings extends StatelessWidget {
   final ValueChanged<CanvasReadSource>? onChanged;
   final List<String>? readLayerNames;
 
+  /// See [ToolSettingsPanel.minPanelWidthIn].
+  static double minWidthIn(BuildContext context) => ToolSettingColumns.panelFor(
+    chrome: ToolSettingsSection.chromeIn(context),
+    controls: [_ReadSourceControl.widthIn(context)],
+  );
+
   @override
   Widget build(BuildContext context) {
     return ToolSettingsSection(
@@ -1802,6 +1931,12 @@ class _ReadSourceControl extends StatelessWidget {
     CanvasReadSource.display => AppText.strings.brDisplay,
     CanvasReadSource.layer => AppText.strings.tlLayer,
   };
+
+  /// What its answers need across ([PillStrip.evenWidthIn]).
+  static double widthIn(BuildContext context) => PillStrip.evenWidthIn(
+    context,
+    [for (final offer in CanvasReadSource.values) _label(offer)],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1868,6 +2003,15 @@ class _FillSettings extends StatelessWidget {
   final FloodFillOptions options;
   final ValueChanged<FloodFillOptions> onChanged;
   final List<String>? readLayerNames;
+
+  /// See [ToolSettingsPanel.minPanelWidthIn].
+  static double minWidthIn(BuildContext context) => ToolSettingColumns.panelFor(
+    chrome: ToolSettingsSection.chromeIn(context),
+    controls: [
+      _ReadSourceControl.widthIn(context),
+      ..._gradientWidthsIn(context),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1986,11 +2130,7 @@ List<Widget> _gradientKnobs(
             for (final end in FillGradientEnd.values)
               PillItem(
                 keyValue: 'fill-gradient-end-${end.name}',
-                label: switch (end) {
-                  FillGradientEnd.sub => AppText.strings.brGradientToSub,
-                  FillGradientEnd.transparent =>
-                    AppText.strings.brGradientToClear,
-                },
+                label: _gradientEndLabel(end),
                 selected: end == gradient.end,
                 onTap: () => change(gradient.copyWith(end: end)),
               ),
@@ -2012,12 +2152,7 @@ List<Widget> _gradientKnobs(
             for (final shape in FillGradientShape.values)
               PillItem(
                 keyValue: 'fill-gradient-shape-${shape.name}',
-                label: switch (shape) {
-                  FillGradientShape.linear =>
-                    AppText.strings.brGradientLinear,
-                  FillGradientShape.radial =>
-                    AppText.strings.brGradientRadial,
-                },
+                label: _gradientShapeLabel(shape),
                 selected: shape == gradient.shape,
                 onTap: () => change(gradient.copyWith(shape: shape)),
               ),
@@ -2026,4 +2161,42 @@ List<Widget> _gradientKnobs(
       ),
     ],
   ];
+}
+
+String _gradientEndLabel(FillGradientEnd end) => switch (end) {
+  FillGradientEnd.sub => AppText.strings.brGradientToSub,
+  FillGradientEnd.transparent => AppText.strings.brGradientToClear,
+};
+
+String _gradientShapeLabel(FillGradientShape shape) => switch (shape) {
+  FillGradientShape.linear => AppText.strings.brGradientLinear,
+  FillGradientShape.radial => AppText.strings.brGradientRadial,
+};
+
+/// What [_gradientKnobs]' choices need across — whether the gradient is on
+/// or not, so turning it on does not move the rail.
+List<double> _gradientWidthsIn(BuildContext context) => [
+  PillStrip.evenWidthIn(context, [
+    for (final end in FillGradientEnd.values) _gradientEndLabel(end),
+  ]),
+  PillStrip.evenWidthIn(context, [
+    for (final shape in FillGradientShape.values) _gradientShapeLabel(shape),
+  ]),
+];
+
+/// Lays its child no shorter than [extent], top down: a shorter box cuts it.
+class _NoShorterThan extends SingleChildLayoutDelegate {
+  const _NoShorterThan(this.extent);
+
+  final double extent;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    final height = math.max(constraints.maxHeight, extent);
+    return constraints.copyWith(minHeight: height, maxHeight: height);
+  }
+
+  @override
+  bool shouldRelayout(_NoShorterThan oldDelegate) =>
+      oldDelegate.extent != extent;
 }

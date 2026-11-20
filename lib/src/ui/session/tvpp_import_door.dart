@@ -14,11 +14,15 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/on_a_worker.dart';
+import '../../core/path_names.dart' show folderOfPath;
+import '../../core/progress_share.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/cut_camera.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/import/tvpp_convert.dart';
 import '../../models/import/tvpp_parse.dart';
 import '../../models/project.dart';
@@ -33,10 +37,13 @@ import '../../services/import/tvp_import_planner.dart';
 import '../../services/import/tile_cutter.dart';
 import '../../services/import/tvpp_raster_decoder.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/media/files_under.dart';
+import '../../services/media/media_moves.dart' show projectWithMediaMoved;
+import '../../services/media/media_relink_matcher.dart';
 import '../../services/persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, freeLaidCel;
 import '../../services/persistence/folder_grant.dart'
-    show FolderPicker, MaterializeCancelled, WaitReport;
+    show FolderPicker, MadeReport, MaterializeCancelled, WaitReport;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import 'media_pool.dart';
@@ -85,6 +92,15 @@ class TvppImportDoor {
   /// lands — a stop is honoured after the cel in hand — and once it says
   /// so no more is read, and what a worker still hands back is given back
   /// unlaid.
+  ///
+  /// 🚨A PICTURE THAT SHOWS THE ONE BEFORE READS AFTER IT (card F-621 ②):
+  /// a tile may be the picture before's ([TvppMakeup]). Every cel is tried
+  /// on its own first, so a layer whose pictures stand alone — every layer
+  /// measured before 2026-11-19 — fans out as it did; a cel that cannot is
+  /// read again once they all were, its stream's pictures over one another
+  /// from the last one that stood alone, streams side by side
+  /// ([_Decoding.inOrder]). A worker is sent a record, or what a picture is
+  /// made of, never a picture's pixels.
   @visibleForTesting
   static Future<void> decodeEach(
     List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> work, {
@@ -94,34 +110,28 @@ class TvppImportDoor {
     landed,
     required bool Function() stopped,
   }) async {
-    final turns = Turns(atOnce);
-    var halted = false;
+    final decoding = _Decoding(
+      Turns(atOnce),
+      windowOf: windowOf,
+      landed: landed,
+      stopped: stopped,
+    );
     await Future.wait([
       for (var i = 0; i < work.length; i += 1)
-        turns.run(() async {
+        decoding.turns.run(() async {
           final (_, cut, _, slot) = work[i];
           final lay = celLayOf(
             picture: cut.canvasSize,
             canvas: cut.canvasSize,
             placement: const LayerPlacement.identity(),
           );
-          if (lay == null || halted) {
-            return;
+          if (lay != null) {
+            await decoding.alone(i, slot, lay);
           }
-          final decoded = await _decodeOnWorker(
-            await windowOf(slot),
-            slot: slot,
-            lay: lay,
-          );
-          if (halted) {
-            if (decoded is AnicelLaidCel) {
-              freeLaidCel(decoded);
-            }
-            return;
-          }
-          await landed(i, lay, decoded);
-          halted = stopped();
         }),
+    ]);
+    await Future.wait([
+      for (final run in decoding.runsInOrder()) decoding.inOrder(run),
     ]);
   }
 
@@ -144,38 +154,88 @@ class TvppImportDoor {
     required TvppSlot slot,
     required CelLay lay,
   }) {
-    // The record's offsets count from the record, so a window rebased to
-    // zero is the same input by a different name.
-    final windowSlot = TvppSlot(
-      kind: slot.kind,
-      chunkOffset: 0,
-      chunkLength: slot.chunkLength,
-      compressed: slot.compressed,
-      v10WholeCanvas: slot.v10WholeCanvas,
-    );
+    final windowSlot = _inTheWindow(slot);
     final size = lay.picture;
-    final width = size.width;
     final layout = lay.layout;
     final cut = tileCutOf(lay.cut);
+    return onAWorker<Object>(
+      () => _cutInto(
+        layout,
+        cut,
+        size.width,
+        (row) => readTvppPicture(
+          recordBytes: window,
+          slot: windowSlot,
+          size: size,
+          row: row,
+        ),
+      ),
+    );
+  }
+
+  /// The picture [sources] make, cut on a worker into the tiles [lay] lays
+  /// it on as [_decodeOnWorker] cuts a record's — no record read again
+  /// ([TvppTileSources.read]). Its own function for the same reason.
+  static Future<Object> _drawOnWorker(
+    TvppTileSources sources, {
+    required CelLay lay,
+  }) {
+    final size = lay.picture;
+    final layout = lay.layout;
+    final cut = tileCutOf(lay.cut);
+    return onAWorker<Object>(
+      () => _cutInto(
+        layout,
+        cut,
+        size.width,
+        (row) => sources.read(size: size, row: row),
+      ),
+    );
+  }
+
+  /// What the record in [window] is made of on its own, no pixel of it made
+  /// ([TvppMakeup.of]) — or why it will not read. Its own function for the
+  /// same reason as [_decodeOnWorker].
+  static Future<Object> _makeupOnWorker(
+    Uint8List window, {
+    required TvppSlot slot,
+    required CanvasSize size,
+  }) {
+    final windowSlot = _inTheWindow(slot);
     return onAWorker<Object>(() {
       try {
-        return laidCelOf(
-          layout,
-          TileCutter.cutting(
-            cut,
-            width,
-            (row) => tvppSlotRows(
-              recordBytes: window,
-              slot: windowSlot,
-              size: size,
-              row: row,
-            ),
-          ),
-        );
+        return TvppMakeup.of(recordBytes: window, slot: windowSlot, size: size);
       } on TvppRasterDecodeException catch (error) {
         return error;
       }
     });
+  }
+
+  /// [slot] as its window holds it: the record's offsets count from the
+  /// record, so a window rebased to zero is the same input by a different
+  /// name. ⛔No [TvppSlot.before] — that is every picture before it, and a
+  /// worker is sent its own.
+  static TvppSlot _inTheWindow(TvppSlot slot) => TvppSlot(
+    kind: slot.kind,
+    chunkOffset: 0,
+    chunkLength: slot.chunkLength,
+    compressed: slot.compressed,
+    v10WholeCanvas: slot.v10WholeCanvas,
+  );
+
+  /// The rows [feed] hands on cut into [layout]'s tiles — or the exception
+  /// that says why the record would not decode.
+  static Object _cutInto(
+    CelLayout layout,
+    TileCut cut,
+    int width,
+    void Function(RowSink row) feed,
+  ) {
+    try {
+      return laidCelOf(layout, TileCutter.cutting(cut, width, feed));
+    } on TvppRasterDecodeException catch (error) {
+      return error;
+    }
   }
 
   /// Lands one decoded cel — or answers why it could not be landed.
@@ -344,11 +404,7 @@ class TvppImportDoor {
       // The staged copy outlives the decode now, because the decode
       // reads FROM it. It was deleted the moment the bytes were in hand
       // back when the whole file was held in memory.
-      if (source.staged) {
-        unawaited(
-          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-        );
-      }
+      unawaited(FolderPicker.letGoOfStagedCopy(source));
     }
   }
 
@@ -375,6 +431,176 @@ class TvppImportDoor {
         );
       }
     }
+  }
+}
+
+/// One bake's decode under way ([TvppImportDoor.decodeEach]): the turns
+/// its workers take, where its records come from and its cels land — and
+/// the cels that read after the picture before, kept for their turn.
+class _Decoding {
+  _Decoding(
+    this.turns, {
+    required this.windowOf,
+    required this.landed,
+    required this.stopped,
+  });
+
+  final Turns turns;
+  final Future<Uint8List> Function(TvppSlot slot) windowOf;
+  final Future<void> Function(int index, CelLay lay, Object decoded) landed;
+  final bool Function() stopped;
+
+  /// A stop was asked for: no more is read, and what a worker still hands
+  /// back is given back unlaid.
+  var _halted = false;
+
+  /// The cels whose pictures show the picture before's tiles, by slot.
+  final _afterTheOneBefore = <TvppSlot, ({int index, CelLay lay})>{};
+
+  /// Cel [index] — [slot]'s picture — read on its own and landed, or kept
+  /// to read after the picture before ([inOrder]).
+  Future<void> alone(int index, TvppSlot slot, CelLay lay) async {
+    if (_halted) {
+      return;
+    }
+    final decoded = await TvppImportDoor._decodeOnWorker(
+      await windowOf(slot),
+      slot: slot,
+      lay: lay,
+    );
+    if (decoded is TvppNeedsThePictureBefore) {
+      _afterTheOneBefore[slot] = (index: index, lay: lay);
+      return;
+    }
+    await _land(index, lay, decoded);
+  }
+
+  /// The kept cels as the runs their streams hold them in, first to last:
+  /// a run starts after a picture that stood alone — or at none, a
+  /// stream's first — and goes on while each is the next one's
+  /// [TvppSlot.before].
+  List<List<TvppSlot>> runsInOrder() {
+    final kept = _afterTheOneBefore.keys.toSet();
+    final next = <TvppSlot, TvppSlot>{
+      for (final slot in kept)
+        if (slot.before case final before? when kept.contains(before))
+          before: slot,
+    };
+    return [
+      for (final slot in kept)
+        if (!kept.contains(slot.before))
+          [for (TvppSlot? at = slot; at != null; at = next[at]) at],
+    ];
+  }
+
+  /// [run]'s pictures, each over the one before: what each is made of on
+  /// its own — and the picture's before the run, which stood alone — worked
+  /// out beside the others ([_makeAhead]), laid over the one before one
+  /// after another here ([_over]), and each picture drawn from that beside
+  /// the others, landed as its worker answers. Where there is no picture
+  /// before, or a picture will not read, the run's cels from there on land
+  /// the error that says so.
+  ///
+  /// ⚡ONLY THE PICTURE BEFORE IS LAID IN ORDER ([TvppMakeup]; bake card
+  /// tvpp-bake-waits-on-the-isolate-that-hands-out-records). ↩️2026-11-19 a
+  /// step of the run read the picture over the one before, pixels and all,
+  /// on a worker — 63–69 ms a step, in order (2026-11-20, the user's file
+  /// on the Surface, in a measurement window). ↩️Its first cut in two read
+  /// the record again to draw the picture over the one before: the bake no
+  /// shorter, its turns all busy, a draw 145–193 ms.
+  ///
+  /// 🚨NO FURTHER AHEAD THAN THERE ARE TURNS: a picture's makeup waiting to
+  /// be laid, and a picture waiting for its worker with what it is made of,
+  /// each hold a record's worth — no more of either than there are turns
+  /// (card F-608 ③).
+  Future<void> inOrder(List<TvppSlot> run) async {
+    final first = run.first.before;
+    final pictures = [?first, ...run];
+    final size = _afterTheOneBefore[run.first]!.lay.picture;
+    final made = <Future<Object?>>[];
+    final drawn = <Future<void>>[];
+    TvppTileSources? before;
+    for (final (i, picture) in pictures.indexed) {
+      _makeAhead(pictures, made, size, upTo: i + turns.atOnce);
+      final shown = _over(await made[i], before);
+      if (_halted) {
+        break;
+      }
+      before = shown is TvppTileSources ? shown : null;
+      final kept = _afterTheOneBefore[picture];
+      if (kept == null) {
+        // The picture before the run: it stood alone and has landed.
+        continue;
+      }
+      final (:index, :lay) = kept;
+      drawn.add(
+        turns.run(() async {
+          if (_halted) {
+            return;
+          }
+          final decoded = shown is TvppTileSources
+              ? await TvppImportDoor._drawOnWorker(shown, lay: lay)
+              : shown ?? const TvppNeedsThePictureBefore();
+          await _land(index, lay, decoded);
+        }),
+      );
+      if (drawn.length > turns.atOnce) {
+        await drawn[drawn.length - 1 - turns.atOnce];
+      }
+    }
+    await Future.wait([...drawn, ...made]);
+  }
+
+  /// [made] grown to the makeups of [pictures]' first [upTo] + 1, each
+  /// worked out in its turn.
+  void _makeAhead(
+    List<TvppSlot> pictures,
+    List<Future<Object?>> made,
+    CanvasSize size, {
+    required int upTo,
+  }) {
+    while (made.length <= upTo && made.length < pictures.length) {
+      final picture = pictures[made.length];
+      made.add(turns.run(() => _makeup(picture, size)));
+    }
+  }
+
+  /// What [slot]'s picture is made of on its own, or why it will not read
+  /// — null once a stop was asked for, when no more is read.
+  Future<Object?> _makeup(TvppSlot slot, CanvasSize size) async {
+    if (_halted) {
+      return null;
+    }
+    return TvppImportDoor._makeupOnWorker(
+      await windowOf(slot),
+      slot: slot,
+      size: size,
+    );
+  }
+
+  /// What [made]'s picture is made of over [before] — null for a hold over
+  /// none — or why it will not read, nor show a picture before there is
+  /// not.
+  static Object? _over(Object? made, TvppTileSources? before) {
+    if (made is! TvppMakeup) {
+      return made;
+    }
+    try {
+      return made.over(before);
+    } on TvppNeedsThePictureBefore catch (error) {
+      return error;
+    }
+  }
+
+  Future<void> _land(int index, CelLay lay, Object decoded) async {
+    if (_halted) {
+      if (decoded is AnicelLaidCel) {
+        freeLaidCel(decoded);
+      }
+      return;
+    }
+    await landed(index, lay, decoded);
+    _halted = stopped();
   }
 }
 
@@ -412,8 +638,20 @@ class TvppProjectRead {
 /// Reads the TVPaint project at [tvppPath] and converts it into the project
 /// it opens as — or null when it is not readable as one ([TvppProjectRead]).
 ///
-/// [onRead] is told how much of the file is in as it is read
-/// ([FolderPicker.readOpenedFile]).
+/// [onRead] is told how far the read is, as its 0–1: how much of the file is
+/// in for the first half ([FolderPicker.readOpenedFileInto]), and how many
+/// of its clips are made for the second — 🗣️the percent follows the work
+/// (F-615), and making a 1.5 GB project's twelve clips is as long as
+/// reading it in (1.6 s against 1.5 s, 서피스 11-19).
+///
+/// The bytes come in under the wait for the file: a file still in the
+/// cloud comes down INSIDE this read, so this read is what the wait's line
+/// has to watch (F-608 ①). They come in on a worker, and the structure is
+/// made of them there ([_structureOf]) — ⛔so the whole-file bytes never
+/// stand on this isolate, and are gone with the worker the moment the
+/// structure is out of them. Everything after reads the file by OFFSET: a
+/// slot knows where its record is, so the long half of an import (decoding
+/// every cel) never needs the file resident.
 Future<TvppProjectRead?> readTvppProject({
   required String tvppPath,
   WaitReport? onWaiting,
@@ -426,31 +664,23 @@ Future<TvppProjectRead?> readTvppProject({
   // chasing a format problem when the real one was access (실측
   // 08-26: Drive on iPhone). Same materializer as the .anicel open;
   // the staged copy is read-and-discard here.
-  final (:source, :parsed) = await _readTvppStructure(
+  final read = await FolderPicker.readOpenedFileInto(
     tvppPath,
+    then: _structureOf,
     onWaiting: onWaiting,
     isCancelled: isCancelled,
-    onRead: onRead,
+    onRead: (fraction) => onRead?.call(runShare(fraction, from: 0, to: 0.5)),
+    onMade: (fraction) => onRead?.call(runShare(fraction, from: 0.5, to: 1)),
   );
-  if (parsed == null) {
+  final source = (path: read.path, staged: read.staged);
+  final structure = read.made;
+  if (structure == null) {
+    unawaited(FolderPicker.letGoOfStagedCopy(source));
     return null;
   }
-  final warnings = [...parsed.warnings];
-  if (source.staged) {
-    // The last resort fired. Said out loud on purpose (유저 2026-08-27:
-    // 「최후 수단이 발동됐다는 걸 표시해줬으면」): the wait is supposed to
-    // make this road unreachable, so a build that still takes it should
-    // be visible rather than quietly slower — and if it never appears
-    // in the field, the road comes out.
-    warnings.add(
-      const ImportWarning(
-        'stagedCopy',
-        'Opened through a temporary copy because the file could not be '
-        'read in place — please report seeing this.',
-      ),
-    );
-  }
-  final plans = _planTvppClips(parsed, warnings: warnings);
+  final parsed = structure.parsed;
+  final warnings = _readWarnings(parsed, staged: source.staged);
+  final plans = _planTvppClips(structure.clips, warnings: warnings);
   // ⛔EQUIVALENT to the parser's own refusal today: a structure with no
   // clip header does not parse at all, so `plans` is empty only when
   // `parsed.clips` is — and mutating this away leaves the suite green
@@ -459,17 +689,77 @@ Future<TvppProjectRead?> readTvppProject({
   if (plans.isEmpty) {
     return null;
   }
+  final sounds = {
+    for (final clip in parsed.clips)
+      for (final track in clip.audioTracks) track.filePath,
+  };
+  final found = source.staged
+      ? const <String, String>{}
+      : await _soundsBesideTheFile(sounds, tvppPath);
   return TvppProjectRead._(
-    project: _projectOf(tvppPath, parsed, plans),
+    project: projectWithMediaMoved(_projectOf(tvppPath, parsed, plans), found),
     plans: plans,
     source: source,
     warnings: warnings,
     audioPaths: {
-      for (final clip in parsed.clips)
-        for (final track in clip.audioTracks) track.filePath,
+      for (final path in sounds) found[normalizedMediaPath(path)] ?? path,
     },
   );
 }
+
+/// The sounds of [recorded] that are not where the file says, found under
+/// the folder of the .tvpp at [tvppPath] by the relink's own rule
+/// ([planMediaRelink]: by name, split by tail, taken only where that
+/// forces one) — each one's path as recorded, in the pool's spelling, to
+/// where it is.
+///
+/// 🗣️F-621 ① (유저 2026-11-19: 「사운드파일 해당 위치에 있었는데 인식안됨」 ·
+/// 「tvp임포트에서 상대경로로 파일 찾는게 가능하려나? … 쉽게 가능하면하고」):
+/// a .tvpp records a sound's absolute path and no other, and Google Drive
+/// names its root 「My Drive」 on one machine and 「マイドライブ」 on another
+/// — the user's sounds stood beside the file, under a root this machine
+/// does not have. A .anicel looks beside itself by the relative path it
+/// records (`AnicelFileService`); a .tvpp records none, so the folder
+/// is walked for it. 🔬The user's folder on the Surface: 360 files, 0.4 s.
+///
+/// A staged copy's folder is not the file's ([FolderPicker]), so it is not
+/// walked.
+Future<Map<String, String>> _soundsBesideTheFile(
+  Set<String> recorded,
+  String tvppPath,
+) async {
+  final missing = [
+    for (final path in recorded)
+      if (!await File(path).exists()) path,
+  ];
+  if (missing.isEmpty) {
+    return const {};
+  }
+  return planMediaRelink(
+    missingPaths: missing,
+    candidatePaths: await filesUnder(folderOfPath(tvppPath)),
+  ).matched;
+}
+
+/// What the read of [parsed] has to say: the parser's warnings, and — when
+/// the file was read out of a [staged] copy — that it was.
+List<ImportWarning> _readWarnings(
+  TvppParseResult parsed, {
+  required bool staged,
+}) => [
+  ...parsed.warnings,
+  // The last resort fired. Said out loud on purpose (유저 2026-08-27:
+  // 「최후 수단이 발동됐다는 걸 표시해줬으면」): the wait is supposed to
+  // make this road unreachable, so a build that still takes it should
+  // be visible rather than quietly slower — and if it never appears
+  // in the field, the road comes out.
+  if (staged)
+    const ImportWarning(
+      'stagedCopy',
+      'Opened through a temporary copy because the file could not be '
+      'read in place — please report seeing this.',
+    ),
+];
 
 /// The project the .tvpp at [tvppPath] becomes — every clip of [parsed] a
 /// cut, as [plans] made them, under the file's own name.
@@ -519,59 +809,59 @@ Project _projectOf(
   );
 }
 
-/// The structure of the .tvpp at [tvppPath] — null when it is not one — and
-/// where its bytes stand for the bake.
-///
-/// The bytes come in under the wait for the file
-/// ([FolderPicker.readOpenedFile]): a file still in the cloud comes down
-/// INSIDE this read, so this read is what the wait's line has to watch
-/// (F-608 ①).
-///
-/// ⛔SCOPED, so the whole-file bytes are collectable the moment the
-/// structure is out of them. Everything after this reads the file by
-/// OFFSET — a slot knows where its record is, so the long half of an
-/// import (decoding every cel) never needs the file resident. Before
-/// this the bytes stayed reachable for the entire import, which on a
-/// 200MB project is 200MB held for minutes next to everything the
-/// decode is building.
-Future<({({String path, bool staged}) source, TvppParseResult? parsed})>
-_readTvppStructure(
-  String tvppPath, {
-  WaitReport? onWaiting,
-  bool Function()? isCancelled,
-  void Function(double fraction)? onRead,
-}) async {
-  final read = await FolderPicker.readOpenedFile(
-    tvppPath,
-    onWaiting: onWaiting,
-    onRead: onRead,
-    isCancelled: isCancelled,
-  );
-  final source = (path: read.path, staged: read.staged);
+/// What the worker that read a .tvpp makes of its bytes ([_structureOf]).
+typedef _TvppStructure = ({
+  TvppParseResult parsed,
+  List<(TvppClipConversion, CutCamera)> clips,
+});
+
+/// The structure of a .tvpp's [bytes] — null when they are not one — with
+/// each clip converted and its camera fitted: everything of an open that
+/// names no drawing. Runs on the worker that read them
+/// ([FolderPicker.readOpenedFileInto]); the plans, which name drawings
+/// from the run's one count, are made back on the run's isolate
+/// ([planTvpImport]'s camera).
+_TvppStructure? _structureOf(Uint8List bytes, MadeReport report) {
+  final TvppParseResult parsed;
   try {
-    return (source: source, parsed: parseTvppStructure(read.bytes));
+    parsed = parseTvppStructure(bytes);
   } on TvppParseException {
-    if (source.staged) {
-      unawaited(
-        File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-      );
-    }
-    return (source: source, parsed: null);
+    return null;
   }
+  final clips = <(TvppClipConversion, CutCamera)>[];
+  for (var c = 0; c < parsed.clips.length; c++) {
+    clips.add(_convertedWithItsCamera(parsed.clips[c], c));
+    report(c + 1, parsed.clips.length);
+  }
+  return (parsed: parsed, clips: clips);
+}
+
+(TvppClipConversion, CutCamera) _convertedWithItsCamera(
+  TvppClip clip,
+  int clipIndex,
+) {
+  final conversion = convertTvppClip(clip, clipIndex: clipIndex);
+  return (
+    conversion,
+    planTvpCamera(
+      camera: conversion.result.camera,
+      frameCount: conversion.result.frameCount,
+    ),
+  );
 }
 
 /// One import plan per clip, with the slots its bakes will read from.
 /// Every plan's warnings join [warnings] as they are made.
 List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
-  TvppParseResult parsed, {
+  List<(TvppClipConversion, CutCamera)> clips, {
   required List<ImportWarning> warnings,
 }) {
   final mint = ImportIdMint.forANewProject();
   final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
-  for (var c = 0; c < parsed.clips.length; c++) {
-    final conversion = convertTvppClip(parsed.clips[c], clipIndex: c);
+  for (final (conversion, camera) in clips) {
     final plan = planTvpImport(
       parsed: conversion.result,
+      camera: camera,
       // Block files are synthetic slot keys, resolved against
       // [conversion.slotsByFile] at bake time — not paths.
       resolveFile: (key) => key,

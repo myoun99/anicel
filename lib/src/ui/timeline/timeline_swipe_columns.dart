@@ -165,7 +165,7 @@ RailSwipeHooks timelineRailSwipeHooks(
   hands: handsEveryRow,
   foldOf: (row) => timelineGroupFoldFor(
     row: row,
-    layers: layers,
+    attachGroups: hooks.attachGroups,
     onToggle: hooks.onToggleGroupFold,
   ),
   groupFoldOpenOf: hooks.groupFoldOpenOf,

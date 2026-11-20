@@ -3,12 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart'
     show Listenable, ValueListenable, listEquals;
 import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PointerHoverEvent, kPrimaryButton;
+    show PointerHoverEvent, kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../models/attached_layer_resolve.dart'
     show
         attachArrowPlacement,
+        attachGroupRowsBySide,
         attachRowWearsBaseComposite,
         isSyncedAttachedLayer;
 import '../models/attached_placement.dart' show AttachedPlacement;
@@ -75,7 +76,7 @@ import 'timeline/timeline_cut_end_handle.dart'
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
 import 'timeline/rail_eyes.dart'
-    show RailEye, RailEyeShown, RailEyes, railEyesOf;
+    show RailEye, RailEyeShown, RailEyes, railEyesOf, railSidesShownOf;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'timeline/frame_ruler_view.dart';
@@ -113,6 +114,7 @@ import 'timeline/property_lane_model.dart'
         previewedLaneRow;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
+import 'timeline/timeline_row_window_walk.dart';
 import 'timeline/timeline_visible_range.dart';
 import 'timeline/held_row_pin.dart';
 import 'timeline/still_row.dart';
@@ -252,7 +254,7 @@ import 'timeline/timeline_frame_span_layout.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_coordinate_policy.dart'
-    show FrameScrubDedupe, frameIndexFromLocalX, timelineFrameEdge;
+    show timelineFrameEdge;
 import 'timeline/timeline_frame_range_policy.dart'
     show TimelineFrameRange, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
@@ -264,7 +266,9 @@ import 'timeline/timeline_instruction_row_visual.dart'
         timelineRowInstructionOverlays;
 import 'timeline/ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline/timeline_frame_ruler.dart';
-import 'timeline/timeline_frame_scrub.dart' show rulerPressScrubs;
+import 'timeline/timeline_edge_auto_pan.dart';
+import 'timeline/timeline_frame_scrub.dart'
+    show TimelineFrameScrub, TimelineFrameScrubArea;
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
@@ -278,9 +282,8 @@ import 'timeline/timeline_cell_exposure_state.dart'
 import 'timeline/timeline_frame_window.dart'
     show timelineFrameWindowReachFor, visibleFrameWindowFor;
 import 'timeline/memo_token.dart'
-    show ByIdentity, ByList, BySet, Kept, KeptPiece, keptWhileSame;
+    show ByIdentity, ByList, ByMap, BySet, KeptPiece;
 import 'repaint_props.dart';
-import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
@@ -321,7 +324,6 @@ part 'storyboard/storyboard_conte_row.dart';
 part 'storyboard/storyboard_cut_starts.dart';
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
-part 'storyboard/storyboard_scroll.dart';
 part 'storyboard/storyboard_rows_window.dart';
 part 'storyboard/storyboard_rail_rows.dart';
 part 'storyboard/storyboard_rail_sweep.dart';
@@ -757,6 +759,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
+    this.layerKindMenu,
     this.onToggleLayerTimesheet,
     this.layerOnTimesheetOf,
     this.onToggleLayerOnionSkin,
@@ -1416,6 +1419,10 @@ class StoryboardPanel extends StatefulWidget {
 
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
 
+  /// What a conte row's type button turns it with, as the timeline's
+  /// (F-613).
+  final LayerKindMenu? layerKindMenu;
+
   /// B5③ (2026-08-17, ordered twice before): the timeline rows' timesheet
   /// toggle on this rail's rows too — the SAME session verb the timeline
   /// wires, flipping [Layer.onTimesheet].
@@ -1797,11 +1804,26 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// cannot answer from two contexts ([_storyboardRowHeightsIn]).
   _StoryboardRowHeights get _rowHeights => _storyboardRowHeightsIn(context);
 
-  // ── the horizontal scroll: its own object, in its own file ──────────
+  // ── the ruler scrub: the SHARED object ──────────────────────────────
   //
-  // A collaborator (storyboard/storyboard_scroll.dart, a part of this library). The
-  // State keeps the entry points its build tree calls.
-  late final _StoryboardScroll _scroll = _StoryboardScroll(this);
+  // [TimelineFrameScrub], the one the timeline's ruler and the X-sheet's
+  // rail hold — in the track's frames here, the axis this panel's own.
+  final GlobalKey _rulerViewportKey = GlobalKey();
+  late final TimelineFrameScrub _rulerScrub = TimelineFrameScrub(
+    axis: Axis.horizontal,
+    viewportKey: _rulerViewportKey,
+    controller: _horizontalController,
+    sinks: () => (
+      selected: widget.onSeekGlobalFrame,
+      scrubbed: widget.onScrubGlobalFrame,
+      ended: widget.onScrubEnd,
+    ),
+    frameCellExtent: () => _scale.pixelsPerFrame,
+    renderedFrameCount: () => _renderedFrames,
+    scrolledFrameOffset: () => _frameAxis.paintedOffset,
+    hold: () => _frameAxis.hold(),
+    letGo: () => _frameAxis.letGo(),
+  );
 
   // ── the rows' window: its own object ────────────────────────────────
   //
@@ -2846,56 +2868,56 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           builder: (context, constraints) {
             final viewportWidth = constraints.maxWidth;
             _frameAxis.rereadAfterLayout();
-            return ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.topLeft,
-                minWidth: frame.contentWidth,
-                maxWidth: frame.contentWidth,
-                minHeight: bandHeight,
-                maxHeight: bandHeight,
-                // UI-R15: scroll moves ONLY this translate — the
-                // ruler strip itself builds once (full bounds)
-                // and its painters window off the live offset.
-                //
-                // 🚨★★★F-32, the THIRD grid with this exact
-                // shape: the cells below sit inside
-                // `DeviceGridScrollBody` (which cancels the
-                // scroll offset's sub-device-pixel fraction)
-                // and this ruler translated raw, so it kept
-                // the fraction they had cancelled.
-                //
-                // 🧪Measured at ratio 1.5, offset 1.5: ruler
-                // 453.5 vs cells 453.667 — the same numbers
-                // the horizontal timeline gave.
-                //
-                // ↩️F-95: the translate read a NOTIFIER that a
-                // resize past the end never reached; the
-                // follower reads the position when it paints.
-                child: ScrollFollower(
-                  controller: _horizontalController,
-                  axisDirection: AxisDirection.right,
-                  child: _StoryboardRuler(
-                    width: frame.contentWidth,
-                    renderedFrames: frame.renderedFrames,
-                    contentFrames: frame.totalFrames,
-                    movieEndUnder: _movieEndUnder,
-                    dragPreview: widget.dragPreview,
-                    markers: widget.rulerMarkers,
-                    playhead: frame.playheadListenable,
-                    frameReadySignal: widget.frameReadySignal,
-                    viewportOffset: _horizontalScrollOffset,
-                    windowBucket: _horizontalWindowBucket,
-                    viewportWidth: viewportWidth,
-                    geometry: _windowedFrameGeometry,
-                    timelineScale: frame.scale,
-                    onSeekGlobalFrame: widget.onSeekGlobalFrame,
-                    onScrubGlobalFrame: widget.onScrubGlobalFrame,
-                    onScrubEnd: _scroll.endRulerScrub,
-                    readyRunsIn: widget.readyRunsIn,
-                    onEdgeAutoPan: _scroll.autoPanRulerEdge,
-                    framesPerSecond: _countingFps,
-                    rulerView: widget.rulerView,
-                    rulerPages: widget.rulerPages,
+            return TimelineFrameScrubArea(
+              scrub: _rulerScrub,
+              child: ClipRect(
+                key: _rulerViewportKey,
+                child: OverflowBox(
+                  alignment: Alignment.topLeft,
+                  minWidth: frame.contentWidth,
+                  maxWidth: frame.contentWidth,
+                  minHeight: bandHeight,
+                  maxHeight: bandHeight,
+                  // UI-R15: scroll moves ONLY this translate — the
+                  // ruler strip itself builds once (full bounds)
+                  // and its painters window off the live offset.
+                  //
+                  // 🚨★★★F-32, the THIRD grid with this exact
+                  // shape: the cells below sit inside
+                  // `DeviceGridScrollBody` (which cancels the
+                  // scroll offset's sub-device-pixel fraction)
+                  // and this ruler translated raw, so it kept
+                  // the fraction they had cancelled.
+                  //
+                  // 🧪Measured at ratio 1.5, offset 1.5: ruler
+                  // 453.5 vs cells 453.667 — the same numbers
+                  // the horizontal timeline gave.
+                  //
+                  // ↩️F-95: the translate read a NOTIFIER that a
+                  // resize past the end never reached; the
+                  // follower reads the position when it paints.
+                  child: ScrollFollower(
+                    controller: _horizontalController,
+                    axisDirection: AxisDirection.right,
+                    child: _StoryboardRuler(
+                      key: const ValueKey<String>('storyboard-ruler'),
+                      width: frame.contentWidth,
+                      renderedFrames: frame.renderedFrames,
+                      contentFrames: frame.totalFrames,
+                      movieEndUnder: _movieEndUnder,
+                      dragPreview: widget.dragPreview,
+                      markers: widget.rulerMarkers,
+                      playhead: frame.playheadListenable,
+                      frameReadySignal: widget.frameReadySignal,
+                      windowBucket: _horizontalWindowBucket,
+                      viewportWidth: viewportWidth,
+                      geometry: _windowedFrameGeometry,
+                      timelineScale: frame.scale,
+                      readyRunsIn: widget.readyRunsIn,
+                      framesPerSecond: _countingFps,
+                      rulerView: widget.rulerView,
+                      rulerPages: widget.rulerPages,
+                    ),
                   ),
                 ),
               ),
@@ -2907,20 +2929,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 }
 
-/// The compact cut-management toolbar at the top of the storyboard: the
-/// storyboard owns the cut lifecycle, so new/rename/note/canvas/duplicate/
-/// move/delete live here (icon-only with tooltips, acting on the active
-/// cut). Zoom lives in the panel header's shared slider.
-/// The Premiere-style frame ruler across the top of the track area: frame
-/// ticks and 1-based labels on the shared [TimelineScale], scrolling with
-/// the blocks. Tapping or dragging seeks via [onSeekGlobalFrame].
-/// The storyboard's frame ruler IS the timeline's ([TimelineFrameRuler] with
-/// the cell extent carrying the storyboard zoom): identical header cells,
-/// adaptive labels, runway dimming and the cut-end boundary line. The row is
-/// windowed to the scrolled viewport because the storyboard's scroll content
-/// is not otherwise virtualized.
-class _StoryboardRuler extends StatefulWidget {
+/// The conte's frame ruler: the timeline's ([TimelineFrameRuler], the cell
+/// extent carrying the storyboard zoom) — identical header cells, adaptive
+/// labels, runway dimming and the cut-end boundary line — scrolling with the
+/// blocks, under the panel's scrub area (`_rulerScrub`, the one the
+/// timeline's ruler and the X-sheet's rail press and drag through).
+///
+/// ↩️It scrubbed by a press-drag-release of its own till 2026-11-18 (board
+/// the-conte-ruler-scrubs-through-the-one-area): the same policy functions,
+/// assembled apart.
+class _StoryboardRuler extends StatelessWidget {
   const _StoryboardRuler({
+    super.key,
     required this.width,
     required this.renderedFrames,
     required this.contentFrames,
@@ -2929,16 +2949,11 @@ class _StoryboardRuler extends StatefulWidget {
     this.markers,
     required this.playhead,
     required this.frameReadySignal,
-    required this.viewportOffset,
     required this.windowBucket,
     required this.viewportWidth,
     required this.geometry,
     required this.timelineScale,
-    required this.onSeekGlobalFrame,
-    required this.onScrubGlobalFrame,
-    required this.onScrubEnd,
     required this.readyRunsIn,
-    this.onEdgeAutoPan,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
     this.rulerPages,
@@ -2946,8 +2961,7 @@ class _StoryboardRuler extends StatefulWidget {
 
   final double width;
 
-  /// Rendered range — includes the endless-axis runway past the cuts;
-  /// seeks may land anywhere in it (over-end selection like the timeline).
+  /// Rendered range — includes the endless-axis runway past the cuts.
   final int renderedFrames;
 
   /// The cuts' actual end (runway dimming + the cut-end boundary line).
@@ -2971,12 +2985,10 @@ class _StoryboardRuler extends StatefulWidget {
   final ValueListenable<int?>? playhead;
   final Listenable? frameReadySignal;
 
-  /// The live horizontal offset (UI-R15): the strip builds ONCE with the
-  /// full frame bounds; the edge-pan test reads the live offset, while
-  /// the shared ruler painter and the cursor overlay window themselves
-  /// off the QUANTIZED [windowBucket] (UI-R16) — a scroll repaints once
-  /// per span crossing, never rebuilds.
-  final ValueListenable<double> viewportOffset;
+  /// The strip builds ONCE with the full frame bounds (UI-R15); the shared
+  /// ruler painter and the cursor overlay window themselves off the
+  /// QUANTIZED [windowBucket] (UI-R16) — a scroll repaints once per span
+  /// crossing, never rebuilds.
   final ValueListenable<int> windowBucket;
   final double viewportWidth;
 
@@ -2984,20 +2996,8 @@ class _StoryboardRuler extends StatefulWidget {
   /// them ([TimelineRulerScale.geometry]).
   final TimelineFrameGeometryHandle geometry;
   final TimelineScale timelineScale;
-  final ValueChanged<int>? onSeekGlobalFrame;
-
-  /// Drag-scrub path (cursor-only per move + one commit on release); null
-  /// falls back to per-move seeks.
-  final ValueChanged<int>? onScrubGlobalFrame;
-  final VoidCallback? onScrubEnd;
 
   final ReadyRunsIn? readyRunsIn;
-
-  /// Edge auto-pan sink (UI-R12 #16, unified with the timeline ruler): a
-  /// scrub within 24px of the viewport edge reports a pan delta; the
-  /// panel jumps the horizontal axis (overshooting rightward so growth
-  /// materializes frames past the built extent).
-  final ValueChanged<double>? onEdgeAutoPan;
 
   /// The two-line ruler's parameters (UI-R10 #27, unified: the seconds
   /// display cycles 1..fps here exactly like the timeline — UI-R11 #10).
@@ -3006,170 +3006,61 @@ class _StoryboardRuler extends StatefulWidget {
   final TimelineRulerPages? rulerPages;
 
   @override
-  State<_StoryboardRuler> createState() => _StoryboardRulerState();
-}
-
-class _StoryboardRulerState extends State<_StoryboardRuler> {
-  /// Per-gesture dedupe (the timeline's `_lastRulerScrubbedFrameIndex`):
-  /// same-frame moves report once.
-  final FrameScrubDedupe _scrubbedFrame = FrameScrubDedupe();
-
-  void _resetScrubTracking() => _scrubbedFrame.reset();
-
-  /// The scrub's VIEWPORT-local x for a pointer at [globalPosition], or
-  /// null before this row has a box (the timeline's
-  /// `_rulerViewportLocalXFromGlobal`).
-  ///
-  /// Resolved LIVE, through the render object, every event — which is the
-  /// whole of feedback #13. A gesture's `localPosition` is transformed by
-  /// what was captured when the pointer went DOWN, and this strip is
-  /// translated by the scroll: the moment an edge auto-pan moves it, that
-  /// captured transform is stale and every later move reports a frame
-  /// that has drifted by however far the axis has panned. Leaving the
-  /// viewport and coming back is exactly how a drag accumulates that pan.
-  double? _viewportLocalX(Offset globalPosition) {
-    final box = context.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      return null;
-    }
-    // This row IS the content strip, so its own local x is content-local;
-    // the viewport-local one the edge test and the shared frame policy
-    // both speak is that minus the live offset.
-    return box.globalToLocal(globalPosition).dx - widget.viewportOffset.value;
-  }
-
-  void _scrubAtGlobal(Offset globalPosition) {
-    if (widget.contentFrames <= 0 || widget.renderedFrames <= 0) {
-      return;
-    }
-    final localX = _viewportLocalX(globalPosition);
-    if (localX == null) {
-      return;
-    }
-    _autoPanAt(localX);
-    // THE shared frame policy, the one the timeline ruler and the X-sheet
-    // already call — viewport-local x plus the live offset (feedback #13:
-    // "로직도 똑같이 통일하라는거니까").
-    final frame = _scrubbedFrame.next(
-      frameIndexFromLocalX(
-        localX: localX,
-        horizontalScrollOffset: widget.viewportOffset.value,
-        frameCellWidth: widget.timelineScale.pixelsPerFrame,
-        visibleFrameCount: widget.renderedFrames,
-      ),
-    );
-    if (frame == null) {
-      return;
-    }
-    (widget.onScrubGlobalFrame ?? widget.onSeekGlobalFrame)?.call(frame);
-  }
-
-  /// [viewportX] is VIEWPORT-relative — what the edge test needs.
-  void _autoPanAt(double viewportX) {
-    final onEdgeAutoPan = widget.onEdgeAutoPan;
-    if (onEdgeAutoPan == null || widget.viewportWidth <= 0) {
-      return;
-    }
-    final delta = edgeAutoPanDelta(viewportX, widget.viewportWidth);
-    if (delta != 0) {
-      onEdgeAutoPan(delta);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final cellWidth = widget.timelineScale.pixelsPerFrame;
+    final cellWidth = timelineScale.pixelsPerFrame;
     final metrics = TimelineGridMetrics(
       frameCellWidth: cellWidth,
       layerRowHeight: StoryboardPanel._rulerHeightIn(context),
       layerControlsWidth: 0,
       verticalScrollbarWidth: 0,
     );
-
-    // The TIMELINE ruler's scrub scheme verbatim (UI-R18 #13): the RAW
-    // pointer layer scrubs on the press itself (the cursor comes to the
-    // finger immediately — taps included) and commits on the raw
-    // up/cancel, wherever the pointer ends up; the gesture layer below
-    // only claims the horizontal drag from the pan arena and feeds the
-    // moves. The old drag-only GestureDetector waited for arena
-    // recognition, so presses did nothing and taps never committed.
-    return Listener(
-      key: const ValueKey<String>('storyboard-ruler'),
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        // R26 #34: a press that pans is the pan's, not a scrub — and a
-        // marker's is the marker's (I-169).
-        if (!rulerPressScrubs(event)) {
-          return;
-        }
-        _resetScrubTracking();
-        _scrubAtGlobal(event.position);
-      },
-      onPointerUp: (_) => widget.onScrubEnd?.call(),
-      onPointerCancel: (_) => widget.onScrubEnd?.call(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        dragStartBehavior: DragStartBehavior.down,
-        // GLOBAL positions, resolved live against this row's box — a
-        // gesture's own localPosition rides a transform captured at
-        // pointer-down, which the edge auto-pan invalidates mid-drag
-        // (feedback #13).
-        onHorizontalDragStart: (details) =>
-            _scrubAtGlobal(details.globalPosition),
-        onHorizontalDragUpdate: (details) =>
-            _scrubAtGlobal(details.globalPosition),
-        onHorizontalDragEnd: (_) => _resetScrubTracking(),
-        onHorizontalDragCancel: _resetScrubTracking,
-        child: SizedBox(
-          width: widget.width,
-          height: StoryboardPanel._rulerHeightIn(context),
-          child: Stack(
-            children: [
-              // STATIC header cells: cursor- and cache-independent — ticks
-              // and warming frames never rebuild them. Full bounds (UI-R15):
-              // the shared painter self-windows off the live offset.
-              TimelineFrameRuler(
-                key: const ValueKey<String>('storyboard-frame-ruler'),
-                frameStartIndex: 0,
-                frameEndIndexExclusive: widget.renderedFrames,
-                playhead: widget.playhead,
-                playbackFrameCount: widget.contentFrames,
-                // F-18: the ruler's end line follows the drag with the
-                // strip's line and grip — the same reader (F-119: every drag
-                // that moves the movie's end, not the end line's alone).
-                dragPreview: widget.dragPreview,
-                movieEndUnder: widget.movieEndUnder,
-                markers: widget.markers,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                metrics: metrics,
-                onSelectFrame: (_) {},
-                framesPerSecond: widget.framesPerSecond,
-                rulerView: widget.rulerView,
-                pages: widget.rulerPages,
-                windowBucket: widget.windowBucket,
-                viewportMainExtent: widget.viewportWidth,
-                geometry: widget.geometry,
-              ),
-              // The moving parts REPAINT only: current-frame tint + green
-              // ready bar, one thin isolated layer. Shared with the
-              // timeline ruler, which needs the very same split.
-              Positioned.fill(
-                child: TimelineRulerCursorOverlay(
-                  keyValue: 'storyboard-ruler-cursor-overlay',
-                  playhead: widget.playhead,
-                  repaintSignal: widget.frameReadySignal,
-                  windowBucket: widget.windowBucket,
-                  viewportMainExtent: widget.viewportWidth,
-                  geometry: widget.geometry,
-                  renderedFrames: widget.renderedFrames,
-                  cellWidth: cellWidth,
-                  readyRunsIn: widget.readyRunsIn,
-                ),
-              ),
-            ],
+    return SizedBox(
+      width: width,
+      height: StoryboardPanel._rulerHeightIn(context),
+      child: Stack(
+        children: [
+          // STATIC header cells: cursor- and cache-independent — ticks and
+          // warming frames never rebuild them. Full bounds (UI-R15): the
+          // shared painter self-windows off the live offset.
+          TimelineFrameRuler(
+            key: const ValueKey<String>('storyboard-frame-ruler'),
+            frameStartIndex: 0,
+            frameEndIndexExclusive: renderedFrames,
+            playhead: playhead,
+            playbackFrameCount: contentFrames,
+            // F-18: the ruler's end line follows the drag with the strip's
+            // line and grip — the same reader (F-119: every drag that moves
+            // the movie's end, not the end line's alone).
+            dragPreview: dragPreview,
+            movieEndUnder: movieEndUnder,
+            markers: markers,
+            leadingFrameSpacerWidth: 0,
+            trailingFrameSpacerWidth: 0,
+            metrics: metrics,
+            framesPerSecond: framesPerSecond,
+            rulerView: rulerView,
+            pages: rulerPages,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportWidth,
+            geometry: geometry,
           ),
-        ),
+          // The moving parts REPAINT only: current-frame tint + green ready
+          // bar, one thin isolated layer. Shared with the timeline ruler,
+          // which needs the very same split.
+          Positioned.fill(
+            child: TimelineRulerCursorOverlay(
+              keyValue: 'storyboard-ruler-cursor-overlay',
+              playhead: playhead,
+              repaintSignal: frameReadySignal,
+              windowBucket: windowBucket,
+              viewportMainExtent: viewportWidth,
+              geometry: geometry,
+              renderedFrames: renderedFrames,
+              cellWidth: cellWidth,
+              readyRunsIn: readyRunsIn,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3569,6 +3460,7 @@ class _StoryboardRailHead extends KeptPiece {
     this.onToggleLayerVisibility,
     this.onLayerOpacityChanged,
     this.onLayerMarkSelected,
+    this.kindMenu,
     this.onToggleLayerTimesheet,
     this.onToggleLayerOnionSkin,
     this.onionSkinEnabled = false,
@@ -3630,6 +3522,7 @@ class _StoryboardRailHead extends KeptPiece {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
+  final LayerKindMenu? kindMenu;
 
   /// The sheet toggle, where the row is handed one
   /// ([_StoryboardRailSweep.handsSheetToggle]): a conte row's writes its
@@ -3693,6 +3586,7 @@ class _StoryboardRailHead extends KeptPiece {
     onLayerOpacityChanged != null,
     onLayerOpacityChangeEnd != null,
     onLayerMarkSelected != null,
+    kindMenu != null,
     onToggleLayerTimesheet != null,
     onToggleLayerOnionSkin != null,
     onionSkinEnabled,
@@ -3742,6 +3636,13 @@ class _StoryboardRailHead extends KeptPiece {
       opacityDragPreview: opacityDragPreview,
       onLayerMarkSelected: (_, edit) =>
           onLayerMarkSelected?.call(rowId, edit),
+      kindMenu: switch (kindMenu) {
+        final menu? => (
+          takes: (_, kind) => menu.takes(rowId, kind),
+          pick: (_, kind) => menu.pick(rowId, kind),
+        ),
+        null => null,
+      },
       onToggleLayerTimesheet: toggleSheet == null
           ? null
           : (_) => toggleSheet(rowId),

@@ -69,7 +69,7 @@ void main() {
       temporaryTool: TemporaryTool(
         memory: memory,
         current: () => tool.value,
-        change: (next) => tool.value = next,
+        bring: (held) => tool.value = tool.value.copyWith(tool: held),
       ),
       strokeLive: strokeLive,
     );
@@ -385,7 +385,7 @@ void main() {
     final penButton = TemporaryTool(
       memory: memory,
       current: () => tool.value,
-      change: (next) => tool.value = next,
+      bring: (held) => tool.value = tool.value.copyWith(tool: held),
     );
     penButton.hold(CanvasTool.eraser);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);

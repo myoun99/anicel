@@ -6,7 +6,6 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuMask;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -16,8 +15,6 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/engine_cel_pixels.dart';
 import 'package:anicel/src/native/engine_selection_masks.dart';
 import 'package:anicel/src/native/engine_stamp_pictures.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
@@ -74,15 +71,6 @@ void main() {
     },
   );
 
-  Uint8List maskOf(int width, int height) => Uint8List.fromList([
-    for (var i = 0; i < width * height; i += 1)
-      switch (i % 5) {
-        0 => 0,
-        1 => 255,
-        _ => (i * 37) % 256,
-      },
-  ]);
-
   CanvasSelectionRegion rect(int left, int top, int right, int bottom) =>
       CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(
@@ -129,6 +117,7 @@ void main() {
       test('${labelOf(name, options)}: as the gather in Dart', () {
         final surface = artwork();
         SelectionPixels? lifted() => liftSelectionPixels(
+          stampId: 'lifted',
           region: region,
           surface: surface,
           options: options,
@@ -140,7 +129,7 @@ void main() {
         final onEngine = lifted();
         expect(inDart, isNotNull, reason: '⛔premise: it takes something');
         expect(onEngine!.box, inDart!.box);
-        expect(onEngine.rgba, inDart.rgba);
+        expect(onEngine.stamp.rgba, inDart.stamp.rgba);
         expect(ledger.debugTileReads, reads, reason: 'no tile read back');
       });
     }
@@ -155,6 +144,7 @@ void main() {
     required bool asPicture,
   }) {
     final lifted = liftSelectionPixels(
+      stampId: 'lifted',
       region: region,
       surface: surface,
       options: options,
@@ -211,12 +201,37 @@ void main() {
     }
   }
 
+  test('🚨a lift keeps what it took on the engine: the picture its float and '
+      'its landing ask for is the one it took — handed up never, read back '
+      'never (lifting-a-cel-goes-gpu-cpu-gpu-and-zero-fills)', () {
+    final surface = artwork();
+    final handedUp = EngineStampPictures.debugHandedUp;
+    final readBack = EngineStampPictures.debugReadBack;
+    final reads = ledger.debugTileReads;
+
+    final lift = buildSelectionLiftDabs(
+      region: rect(5, 9, 200, 150),
+      surface: surface,
+      liftId: 'kept',
+    );
+    final picture = EngineStampPictures.of(lift!.stampDab.stamp!);
+
+    expect(
+      (picture.width, picture.height),
+      (lift.stampDab.stamp!.width, lift.stampDab.stamp!.height),
+    );
+    expect(EngineStampPictures.debugHandedUp, handedUp, reason: 'handed up');
+    expect(EngineStampPictures.debugReadBack, readBack, reason: 'read back');
+    expect(ledger.debugTileReads, reads, reason: 'no tile read back');
+  });
+
   test('a lift on the engine reads the selection nowhere but there', () {
     for (final options in softnesses) {
       final asked = <int>[];
       final region = SelectionReadsSpied(rect(100, 20, 160, 40), asked);
       final surface = artwork();
       final lifted = liftSelectionPixels(
+        stampId: 'lifted',
         region: region,
         surface: surface,
         options: options,
@@ -233,6 +248,7 @@ void main() {
       () {
     final surface = artwork();
     final lifted = liftSelectionPixels(
+      stampId: 'lifted',
       region: rect(100, 20, 160, 40),
       surface: surface,
       options: SelectionMaskOptions.none,
@@ -282,76 +298,34 @@ void main() {
     );
   });
 
-  test('a lift refuses a box its room is not the size of', () {
-    final plane = GpuMask(
-      appGpuComposite,
-      maskOf(4, 4),
-      x: 0,
-      y: 0,
-      width: 4,
-      height: 4,
-    );
-    addTearDown(plane.free);
-    final tile = tileOf(0);
-
-    expect(
-      () => ledger.held(
-        (hold) => EngineCelPixels.pass.lift(
-          ledger.pool,
-          0,
-          0,
-          1,
-          1,
-          hold.slotsOf(Object(), [tile]),
-          mask: plane,
-          whole: false,
-          into: Uint8List(4 * 4 * 4 - 1),
-        ),
-      ),
-      throwsStateError,
-    );
-  });
-
   test('a selection over no tile lifts nothing, and asks the engine nothing',
       () {
     final surface = artwork();
     final made = EngineSelectionMasks.debugMade;
     expect(
       liftSelectionPixels(
+        stampId: 'lifted',
         region: rect(300, 300, 310, 310),
         surface: surface,
         options: SelectionMaskOptions.none,
       ),
       isNull,
     );
-    final lifted = gatherMaskedSurfacePixels(
-      surface: surface,
-      clip: SelectionClip.of(
-        rect(300, 300, 310, 310),
-        wall: surface.pasteboard,
-        options: SelectionMaskOptions.none,
-      ),
-      takeWholePixels: true,
-    );
-    expect(lifted.liftedAnything, isFalse);
-    expect(lifted.rgba, everyElement(0));
     expect(EngineSelectionMasks.debugMade, made, reason: 'no mask made');
   });
 
   test('a selection over nothing painted lifts nothing', () {
     // tileOf(0) leaves every fifth pixel clear, its first among them.
     final surface = artwork();
-    final lifted = gatherMaskedSurfacePixels(
-      surface: surface,
-      clip: SelectionClip.of(
-        rect(0, 0, 1, 1),
-        wall: surface.pasteboard,
+    expect(
+      liftSelectionPixels(
+        stampId: 'lifted',
+        region: rect(0, 0, 1, 1),
+        surface: surface,
         options: SelectionMaskOptions.none,
       ),
-      takeWholePixels: true,
+      isNull,
     );
-    expect(lifted.liftedAnything, isFalse);
-    expect(lifted.rgba, everyElement(0));
   });
 
   test('the gather in Dart is the one those compare against: it reads the '
@@ -366,6 +340,7 @@ void main() {
     debugSelectionLiftInDart = true;
     final reads = ledger.debugTileReads;
     liftSelectionPixels(
+      stampId: 'lifted',
       region: rect(1, 0, 3, 2),
       surface: verbed,
       options: SelectionMaskOptions.none,
@@ -383,11 +358,12 @@ void main() {
     ).surface;
     final reads = ledger.debugTileReads;
     final lifted = liftSelectionPixels(
+      stampId: 'lifted',
       region: rect(1, 0, 3, 2),
       surface: verbed,
       options: SelectionMaskOptions.none,
     )!;
     expect(ledger.debugTileReads, reads);
-    expect(lifted.rgba.sublist(0, 3), [1, 2, 3]);
+    expect(lifted.stamp.rgba.sublist(0, 3), [1, 2, 3]);
   });
 }

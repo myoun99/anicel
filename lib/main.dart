@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
+import 'package:gpu_engine/gpu_engine.dart' show GpuEngine;
 
 import 'src/models/app_language.dart';
 import 'src/models/app_workspace_colors.dart';
@@ -13,6 +14,7 @@ import 'src/native/device_battery.dart';
 import 'src/native/engine_refusals.dart';
 import 'src/native/engine_tile_ledger.dart';
 import 'src/native/launch_splash.dart';
+import 'src/native/lost_screen.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/crate_licences.dart';
 import 'src/services/licence_entry.dart';
@@ -214,6 +216,10 @@ Future<void> main(List<String> handedAtLaunch) async {
   // the reason of the three above: wrapped anywhere that re-runs, a door
   // would tell once a wrap.
   EngineRefusals.install();
+  // The screen's own device going, heard from the runner from before the
+  // first frame (a-lost-gpu-leaves-the-window-unpainted): what the shell
+  // does then reads it whenever the shell is up to.
+  LostScreen.listen();
   // AWAITED, unlike every other settings restore. The rest land late and
   // the app repaints; this one decides how large the window's contents are
   // laid out, so restoring it after the first frame would show 100% and
@@ -257,6 +263,16 @@ Future<void> main(List<String> handedAtLaunch) async {
   // 유지한다」 — what the engine alone holds is copied here whenever the
   // hand rests, from this launch's first landing on.
   EngineTileLedger.copiesAtRest = true;
+  // 🗣️F-610-Q5 (유저 2026-11-19, 채팅): 「압축은 일단 중복줄이면서 하는데
+  // 결국은 3번대로 하자. 결과가 제일 좋으니까. 할수있는거 다하면서」 — the
+  // engine's tiles are folded a rest after they come, and after the
+  // hand's last landing; the pages no tile lies on then go back.
+  EngineTileLedger.foldsAtRest = true;
+  // 🗣️유저 2026-11-20 (a-transform-drag-over-folder-rows-draws-a-frame-in-
+  // a-third-of-a-second-Q1 = b): 「손을 떼면 바로 놓는다」 — the buffers the
+  // engine's composes run in are let go a rest after the last compose, the
+  // rest the hand's landings are taken to rest by.
+  GpuEngine.restsAfter = EngineTileLedger.rest;
   runApp(
     AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),
   );

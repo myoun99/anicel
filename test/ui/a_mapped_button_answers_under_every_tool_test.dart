@@ -1372,7 +1372,7 @@ class _Shell {
     final temporary = TemporaryTool(
       memory: ToolHoldMemory(),
       current: () => brush.value,
-      change: (next) => brush.value = next,
+      bring: (tool) => brush.value = brush.value.copyWith(tool: tool),
     );
     // The pick's colour is the pixel's place, so a pick says where it read.
     final sampled = <int, Offset>{};

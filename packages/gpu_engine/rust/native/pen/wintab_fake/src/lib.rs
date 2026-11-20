@@ -57,6 +57,11 @@ pub const PACKET_DATA: usize = 26;
 pub const PACKET_MODE: usize = 27;
 pub const MOVE_MASK: usize = 28;
 
+/// The words of [`Context`] the pen reads: where it lays its packets, x then
+/// y.
+pub const OUT_ORIGIN: usize = 37;
+pub const OUT_EXTENT: usize = 40;
+
 const _: () = assert!(size_of::<Axis>() == 16);
 const _: () = assert!(size_of::<Packet>() == 36);
 const _: () = assert!(size_of::<Context>() == 212);

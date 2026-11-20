@@ -91,19 +91,21 @@ class _WorkspaceBrushGroups {
   /// reading of that sentence (board F-319-Q1) — a key that changed what a
   /// tool not in hand holds would do nothing anyone could see.
   void openGroup(CanvasTool tool, BrushGroupId? group) {
-    final presets = _state._brushPresets;
-    final inside = _tabHeldBy(tool) == (group: group);
-    final taking = inside ? null : entering(tool, group);
-    final preset = taking == null ? null : presets._presetNamed(taking);
-    if (preset != null) {
-      takeUp(tool, preset);
-    } else {
-      // Inside already, or a tab with no brush to hand it: the tool comes
-      // to hand holding what it holds.
-      final tools = _state._brushTool;
-      tools.value = tools.value.copyWith(tool: tool);
-    }
-    look.settle(group, held: _tabHeldBy(tool));
+    final tools = _state._brushTool;
+    tools.bring(tool, () {
+      final presets = _state._brushPresets;
+      final inside = _tabHeldBy(tool) == (group: group);
+      final taking = inside ? null : entering(tool, group);
+      final preset = taking == null ? null : presets._presetNamed(taking);
+      if (preset != null) {
+        takeUp(tool, preset);
+      } else {
+        // Inside already, or a tab with no brush to hand it: the tool comes
+        // to hand holding what it holds.
+        tools.value = tools.value.copyWith(tool: tool);
+      }
+      look.settle(group, held: _tabHeldBy(tool));
+    });
   }
 
   /// The brush [tool] takes up entering [group]'s tab from outside: the one
@@ -137,13 +139,15 @@ class _WorkspaceBrushGroups {
   /// (F-181).
   void takeUp(CanvasTool tool, BrushPreset preset) {
     final tools = _state._brushTool;
-    tools.holdBrush(
-      _state._brushPresets._brushFromPreset(tools.value, preset, tool),
-    );
-    // The library shows the brush taken up — also when it is the one
-    // already in hand, which moves no state for [followHand] to hear:
-    // 「브러시 누르면 그룹 바껴야함」 (F-319).
-    look.end();
+    tools.bring(tool, () {
+      tools.holdBrush(
+        _state._brushPresets._brushFromPreset(tools.value, preset, tool),
+      );
+      // The library shows the brush taken up — also when it is the one
+      // already in hand, which moves no state for [followHand] to hear:
+      // 「브러시 누르면 그룹 바껴야함」 (F-319).
+      look.end();
+    });
   }
 
   /// The brush row's press in each paint tool's library, for that tool's

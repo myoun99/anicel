@@ -87,6 +87,13 @@ base class GpuRefused extends StateError {
 /// ([GpuRefused.ofAGoneDevice]).
 const _aGoneDevice = 'the graphics device is gone';
 
+/// A refusal a thread of the engine's told this isolate with no word of
+/// its own — a body handed over unwaited tells only whether it worked —:
+/// [what], and that the device is gone where [engine]'s is, in the
+/// engine's words ([GpuRefused.ofAGoneDevice] reads them).
+GpuRefused _toldRefused(GpuEngine engine, String what) =>
+    GpuRefused(engine.isGone ? '$what: $_aGoneDevice' : what);
+
 /// WHY A DEVICE WENT, as far as its engine can tell ([GpuEngine.wentBy]):
 /// what the app says of it to the person once it stands on another.
 ///
@@ -259,8 +266,9 @@ class GpuEngine {
 
   /// Names [folder] as where each engine opened from now on keeps the
   /// shaders it compiles, for the next launch to hand its driver instead
-  /// of compiling them again — on Windows what DXC made
-  /// (rust/vendor/wgpu-hal, dxil_cache.rs). 🗣️유저 2026-11-13,
+  /// of compiling them again — on Windows what DXC made, and what the
+  /// driver made of each pipeline on it (rust/vendor/wgpu-hal,
+  /// compile_cache.rs). 🗣️유저 2026-11-13,
   /// the-wait-window-stands-seven-seconds-on-the-surface-Q1 「디스크 캐시」.
   static void keepShadersIn(String folder) => using((arena) {
     final bytes = utf8.encode(folder);
@@ -312,20 +320,65 @@ class GpuEngine {
   });
 
   /// The bytes the engine keeps for pictures that are no picture's. Every
-  /// [GpuScreen]'s canvas and halvings lie in slots of one pool of the
-  /// engine's, as a cel's tiles do in a [GpuPool]'s, and a page of it
-  /// stays made for the next picture: its slots nobody holds are these —
-  /// and the composite's work buffer, kept from one run to the next. Till
-  /// they are given back ([givePicturesBackPast]).
+  /// [GpuScreen]'s canvas lies in slots of one pool of the engine's, as a
+  /// cel's tiles do in a [GpuPool]'s, and a page of it stays made for the
+  /// next picture: its slots nobody holds are these —
+  /// and the composite's work buffer, kept from one run to the next, and
+  /// the buffers its composes run in, kept from one compose to the next
+  /// while a hand is at work and none at rest ([restsAfter]). Till they
+  /// are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
+
+  /// The bytes of the tiles the engine's pictures hold that none of them
+  /// weighs. Screens composed of the same hold one tile for it, weighed by
+  /// the screen that made it ([GpuScreen.bytes]); that one let go while
+  /// others hold the tile, none of them weighs it — these, till the last
+  /// of them lets it go. What a budget and the memory census count beside
+  /// the screens' own bytes; read off no lock, on any thread.
+  int get unownedPictureBytes => rust.picturesUnownedBytes(_engine);
 
   /// Gives back what the engine keeps for pictures nobody holds till it is
   /// [mostIdle] bytes: the pages of their pool with every slot free, the
-  /// last first, and then the composite's work buffer — what only makes
-  /// the next picture cheaper, as a [GpuPool]'s free pages are
+  /// last first, then the buffers a compose's rows run first are made in
+  /// and then the composite's work buffer — what only makes the next
+  /// picture cheaper, as a [GpuPool]'s free pages are
   /// ([GpuPool.giveBackPast]). A page a picture is on stays.
   void givePicturesBackPast(int mostIdle) =>
       rust.picturesGiveBack(_engine, mostIdle);
+
+  /// How long after the last compose handed to an engine the hand is
+  /// taken to rest: the engine then lets go of the buffers its composes
+  /// ran in and kept for the next (rust/src/kernels/composite/spares.rs,
+  /// `gpu_engine_pictures_rest`). Null where no launch said so — a
+  /// test's engine arms no timer, which a widget test's clock would not
+  /// end (as the app's `EngineTileLedger.copiesAtRest`).
+  ///
+  /// 🗣️유저 2026-11-20 23:20 (a-transform-drag-over-folder-rows-draws-a-
+  /// frame-in-a-third-of-a-second-Q1 = b): 「손을 떼면 바로 놓는다」 —
+  /// 「들고있는게 너무 비효율적인거같은데」. What a drag takes again from
+  /// one compose to the next is kept through no rest.
+  static Duration? restsAfter;
+
+  /// What lets go once the hand rests ([_composed]).
+  Timer? _atRest;
+
+  /// A compose was handed over — [GpuComposite.run], [GpuComposite.show],
+  /// [GpuScreen.compose], [GpuScreen.composeOver] —: a hand is at work,
+  /// and rests once none is for [restsAfter]. The engine takes the rest
+  /// in turn behind what it was handed before, this isolate waiting for
+  /// none of it.
+  void _composed() {
+    final rest = restsAfter;
+    if (rest == null) {
+      return;
+    }
+    _atRest?.cancel();
+    _atRest = Timer(rest, () => rust.picturesRest(_engine));
+  }
+
+  /// Test seam: whether a rest is on its way ([_composed]).
+  @visibleForTesting
+  bool get debugRestOnItsWay => _atRest?.isActive ?? false;
 
   /// Whether the device is gone — the driver took it away (a reset, an
   /// update, a wake from sleep), or the engine's thread ended under it
@@ -341,6 +394,21 @@ class GpuEngine {
   /// Why the device went, as far as anything says ([GpuDeviceWent]) —
   /// unsaid while it is there.
   GpuDeviceWent get wentBy => GpuDeviceWent.of(rust.engineWentBy(_engine));
+
+  /// What this engine submitted that the GPU has not said it finished, the
+  /// oldest first, after the newest it has — a line each:
+  /// `submit #N at MICROS FILE:LINE dispatches=N groups=N STATE`, STATE
+  /// `unfinished` or `last-done` — its MICROS on the clock [DateTime.now]'s
+  /// `microsecondsSinceEpoch` reads.
+  /// Asks nothing of the engine's thread or the device: what the app
+  /// writes down as a device goes (H63).
+  String get unfinishedSubmits => using((arena) {
+    const capacity = 16384;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.engineUnfinished(_engine, buffer, capacity);
+    final count = length < capacity ? length : capacity;
+    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  });
 
   /// Test seam: the error the device raised that no job has been refused
   /// by yet, or null — taken, so no job is refused by it after. An error
@@ -386,39 +454,30 @@ class GpuEngine {
   /// a screen's frame is put up as the GPU finishes it, the thread that
   /// builds the app's frames waiting for none of it ([debugWaitsHere]).
   ///
-  /// ⚠️[GpuReadout.mapping]'s twin — a number a wait, one listener for
-  /// every wait — kept apart while there are two (the rule of three): that
-  /// one maps its bytes in the same turn of the engine's thread for waits.
   Future<void> done() {
     final ended = Completer<void>();
-    final wait = _asked++;
-    _ending[wait] = (ended: ended, engine: this);
-    _ended.keepIsolateAlive = true;
-    rust.doneThen(_engine, _ended.nativeFunction, wait);
+    rust.doneThen(
+      _engine,
+      _waits.told,
+      _waits.kept((ended: ended, engine: this)),
+    );
     return ended.future;
   }
 
-  /// The waits on their way ([done]), each under the number it was asked
-  /// by.
-  static final Map<int, ({Completer<void> ended, GpuEngine engine})>
-  _ending = {};
-  static int _asked = 0;
-
-  /// How a thread of the engine's tells this isolate that a wait has ended, by
-  /// its number and whether the GPU finished: one for every [done] of the
-  /// isolate, kept alive while a wait is on its way and no longer.
-  static final NativeCallable<Void Function(Uint64, Bool)> _ended =
-      NativeCallable<Void Function(Uint64, Bool)>.listener(_end);
-
-  static void _end(int wait, bool finished) {
-    final (:ended, :engine) = _ending.remove(wait)!;
-    _ended.keepIsolateAlive = _ending.isNotEmpty;
+  /// The waits on their way ([done]), and how a thread of the engine's
+  /// tells this isolate one has ended: by its number, and whether the GPU
+  /// finished.
+  static final _waits = _Told<({Completer<void> ended, GpuEngine engine})>((
+    wait,
+    asked,
+    finished,
+  ) {
     if (finished) {
-      ended.complete();
+      asked.ended.complete();
     } else {
-      ended.completeError(GpuRefused(engine._whyNotDone(wait)));
+      asked.ended.completeError(GpuRefused(asked.engine._whyNotDone(wait)));
     }
-  }
+  });
 
   /// Why the wait [wait] did not end with the GPU done — taken. 🚨Of an
   /// engine closed meanwhile nothing is read: its thread tells the waits
@@ -536,6 +595,8 @@ class GpuEngine {
   /// Frees the device; every surface must be freed first.
   void close() {
     _closed = true;
+    // A rest on its way would be taken on an engine freed.
+    _atRest?.cancel();
     final fill = _fill;
     if (fill != null) {
       rust.fillFree(fill);
@@ -703,9 +764,17 @@ final class GpuReadFailed extends GpuRefused {
 /// The engine's pages of tiles (rust/src/kernels/pool): each tile stored
 /// lands in a fresh slot of its cel and stays there until let go.
 class GpuPool implements _OfAnEngine {
-  /// A pool on [engine] that makes no page past [mostBytes].
-  factory GpuPool(GpuEngine engine, int mostBytes) {
-    final pool = rust.poolNew(engine._engine, mostBytes);
+  /// A pool on [engine] that makes no page past [mostBytes] — of pages of
+  /// [debugTilesAPage] tiles where a test says so, which fills one with
+  /// a few; as large as the engine makes them else
+  /// (rust/src/kernels/pool/mod.rs, `gpu_engine_pool_new`, has why a
+  /// test asks).
+  factory GpuPool(GpuEngine engine, int mostBytes, {int? debugTilesAPage}) {
+    final pool = rust.poolNew(
+      engine._engine,
+      debugTilesAPage == null ? _anyPage : debugTilesAPage * gpuTileBytes,
+      mostBytes,
+    );
     if (pool == nullptr) {
       throw GpuRefused(_lastError());
     }
@@ -713,6 +782,10 @@ class GpuPool implements _OfAnEngine {
   }
 
   GpuPool._(this._engine, this._pool);
+
+  /// Past any page: what leaves a pool's pages as large as the engine
+  /// makes them.
+  static const int _anyPage = 0x7fffffffffffffff;
 
   @override
   final GpuEngine _engine;
@@ -743,27 +816,24 @@ class GpuPool implements _OfAnEngine {
       }
       final pages = arena<Uint16>(_held(count));
       final slots = arena<Uint16>(_held(count));
-      final number = _numbered++;
-      final stored = rust.poolStore(
-        _pool,
-        _engine._engine,
-        cel,
-        at,
-        count,
-        pages,
-        slots,
-        _read.nativeFunction,
-        number,
+      // 🚨A REAL HOLD, in what is kept till its copy is told of: a pointer
+      // [bytesOf] read keeps nothing alive, and a tile collected meanwhile
+      // hands its block to the next tile made (BitmapTile.readPixels).
+      // ⛔No assert: it goes from a release build, and so would the hold.
+      final stored = _stores.handing(
+        (pool: this, held: tiles),
+        (number) => rust.poolStore(
+          _pool,
+          _engine._engine,
+          cel,
+          at,
+          count,
+          pages,
+          slots,
+          _stores.told,
+          number,
+        ),
       );
-      if (stored > 0) {
-        // 🚨A REAL HOLD, in a map no tile is let out of before its copy is
-        // told of ([_readThen]): a pointer [bytesOf] read keeps nothing
-        // alive, and a tile collected meanwhile hands its block to the next
-        // tile made (BitmapTile.readPixels). ⛔No assert: it goes from a
-        // release build, and so would the hold.
-        _reading[number] = (pool: this, held: tiles.sublist(0, stored));
-        _read.keepIsolateAlive = true;
-      }
       return [
         for (var tile = 0; tile < stored; tile++)
           (page: pages[tile], slot: slots[tile]),
@@ -775,20 +845,15 @@ class GpuPool implements _OfAnEngine {
   /// ([store]): theirs to let go, whose tiles are not there.
   void Function(List<GpuTile> unwritten)? onUnwritten;
 
-  /// What the stores on their way hold ([store]), each under the number it
-  /// was handed over by, till its copy has read them.
-  static final Map<int, ({GpuPool pool, List<Object> held})> _reading = {};
-  static int _numbered = 0;
-
-  /// How the engine's thread tells this isolate a store's copy has read
-  /// its tiles, by its number and whether it wrote them: one for every
-  /// store of the isolate, kept alive while one is on its way.
-  static final NativeCallable<Void Function(Uint64, Bool)> _read =
-      NativeCallable<Void Function(Uint64, Bool)>.listener(_readThen);
-
-  static void _readThen(int number, bool written) {
-    final (:pool, held: _) = _reading.remove(number)!;
-    _read.keepIsolateAlive = _reading.isNotEmpty;
+  /// What the stores on their way hold ([store]) till their copy has read
+  /// them, and how the engine's thread tells this isolate one has: by its
+  /// number, and whether it wrote them.
+  static final _stores = _Told<({GpuPool pool, List<Object> held})>((
+    _,
+    stored,
+    written,
+  ) {
+    final pool = stored.pool;
     if (written || pool._freed) {
       return;
     }
@@ -796,7 +861,7 @@ class GpuPool implements _OfAnEngine {
     if (unwritten.isNotEmpty) {
       pool.onUnwritten?.call(unwritten);
     }
-  }
+  });
 
   /// The places stores handed over held and did not write, taken.
   List<GpuTile> _unwritten() => using((arena) {
@@ -815,6 +880,50 @@ class GpuPool implements _OfAnEngine {
 
   /// Lets [tile] go; false where no tile is held there.
   bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
+
+  /// Hands the engine's thread a fold of the tiles next to fold — [most]
+  /// at most, by [kernels] — and gives them their places once it is told,
+  /// this isolate waiting for none of it
+  /// (rust/src/kernels/pool/folded.rs): a tile folded keeps the place
+  /// that names it, and reads as it was. How many it folded — none
+  /// where no tile of the pool's is left to fold as it stands, and none
+  /// where the fold failed: its tiles stay as they are, the next fold's
+  /// to take again.
+  ///
+  /// [kernels] are handed in compiled, so no fold compiles where it is
+  /// asked (`Pool::folds_unwaited` has why); let go meanwhile, they go
+  /// behind the fold on the engine's thread.
+  Future<int> fold(GpuFold kernels, int most) async {
+    final told = Completer<bool>();
+    final handed = _folds.handing(
+      told,
+      (number) => rust.poolFold(
+        _pool,
+        _engine._engine,
+        _engine._its(kernels)._fold,
+        most,
+        _folds.told,
+        number,
+      ),
+    );
+    if (handed == 0) {
+      return 0;
+    }
+    final folded = await told.future;
+    // Freed meanwhile, its books went with it — what was folded too. A
+    // fold that failed is settled as well: its tiles are the next's.
+    if (!_freed) {
+      rust.poolSettle(_pool, _engine._engine);
+    }
+    return folded ? handed : 0;
+  }
+
+  /// The folds on their way ([fold]), each told by its number once its
+  /// tiles are folded — or not, which leaves them as they are: the
+  /// settle gives a place to what there is.
+  static final _folds = _Told<Completer<bool>>(
+    (_, told, folded) => told.complete(folded),
+  );
 
   /// Reads [tiles], each held, back into [into] — [gpuTileBytes] each, in
   /// order: waits for the GPU (rust/src/kernels/pool/mod.rs `Pool::read`).
@@ -846,7 +955,10 @@ class GpuPool implements _OfAnEngine {
   });
 
   /// Makes no page more past [mostBytes]: the pages made stay — till
-  /// [giveBackPast] — and the next is made only within it.
+  /// [giveBackPast] — and the next is made only within it, but the page
+  /// a fold's tiles need ([fold]): a pool at its line folds on, and
+  /// comes under it (rust/src/kernels/pool/folded.rs,
+  /// `Pool::folded_page_to_come`).
   void makeNoPagePast(int mostBytes) => rust.poolMostBytes(_pool, mostBytes);
 
   /// Keeps to [bytes] in place of the budget the OS gives this process;
@@ -1070,16 +1182,9 @@ List<GpuLanded> _landed(
   call,
 ) => using((arena) {
   final count = asks.length;
-  final coordinates = arena<Int32>(_held(2 * count));
-  final under = arena<Uint32>(_held(count));
+  final (:coordinates, :under) = _asked(arena, asks);
   final places = arena<Uint32>(_held(count));
   final changes = arena<Uint8>(_held(count));
-  for (var at = 0; at < count; at++) {
-    final (:column, :row, under: tile) = asks[at];
-    coordinates[2 * at] = column;
-    coordinates[2 * at + 1] = row;
-    under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
-  }
   final landed = call(arena, coordinates, under, places, changes);
   if (landed < 0) {
     throw GpuRefused(_lastError());
@@ -1094,6 +1199,152 @@ List<GpuLanded> _landed(
       ),
   ];
 });
+
+/// [asks] as a landing's call takes them, in [arena]'s: each one's
+/// column and row, and the word of the cel's tile under it.
+({Pointer<Int32> coordinates, Pointer<Uint32> under}) _asked(
+  Arena arena,
+  List<GpuTileAsk> asks,
+) {
+  final count = asks.length;
+  final coordinates = arena<Int32>(_held(2 * count));
+  final under = arena<Uint32>(_held(count));
+  for (var at = 0; at < count; at++) {
+    final (:column, :row, under: tile) = asks[at];
+    coordinates[2 * at] = column;
+    coordinates[2 * at + 1] = row;
+    under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+  }
+  return (coordinates: coordinates, under: under);
+}
+
+/// A LANDING FINISHED AND YET TO LAND ([GpuStampLanding.finished],
+/// [GpuStampLanding.finishedMask]): what each tile asked is beside the
+/// one under it, and the tiles made, kept on the GPU till it is freed —
+/// its maker's to land ([landOnItsWay]) and to free.
+///
+/// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second (브러시/렌더링
+/// 2026-11-20): TWO STEPS, the slots taken at the second. A landing
+/// compared gives a slot to the inked alone, and which are inked is the
+/// GPU's word, told later; the pool's books are this isolate's, so they
+/// are written here once it is told. ⛔Not every tile asked given a slot
+/// ahead and the others let go once told: a box of tiles mostly the
+/// same would take a page of the pool's for a moment, and a full pool
+/// would let go of tiles to make room for slots nothing keeps.
+final class GpuFinished {
+  GpuFinished._(this._engine, this._finished, this.changes) {
+    debugKept += 1;
+  }
+
+  /// How many are kept on the GPU, finished and not freed: a test's
+  /// count of what a landing leaves behind it.
+  static int debugKept = 0;
+
+  final GpuEngine _engine;
+  final Pointer<rust.Finished> _finished;
+
+  /// What each tile asked is, in the order they were asked.
+  final List<GpuChange> changes;
+
+  /// How many of its tiles take a slot: the inked.
+  int get inked => changes.where((one) => one == GpuChange.inked).length;
+
+  /// Gives each inked tile from the [first] inked on a fresh slot of
+  /// [cel] of [pool], and hands their putting there to the engine's
+  /// thread, this isolate waiting for none of it: the places, in the
+  /// inked's order — all, or the first few where [pool] is full at the
+  /// next. [unput] is called where they were not put.
+  List<GpuTile> landOnItsWay(
+    GpuPool pool,
+    int cel, {
+    int first = 0,
+    required void Function() unput,
+  }) => using((arena) {
+    final places = arena<Uint32>(_held(inked - first));
+    final landed = _putsOnTheirWay.handing(
+      unput,
+      (number) => rust.finishedLandUnwaited(
+        _finished,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        cel,
+        first,
+        places,
+        _putsOnTheirWay.told,
+        number,
+      ),
+    );
+    return [
+      for (var at = 0; at < landed; at++)
+        (page: places[at] >> 16, slot: places[at] & 0xFFFF),
+    ];
+  });
+
+  void free() {
+    debugKept -= 1;
+    rust.finishedFree(_finished);
+  }
+
+  /// The finishes on their way, each told by its number once the GPU has
+  /// said what its tiles are — or that it failed —, what it finished
+  /// written to [out] first.
+  static final _told =
+      _Told<
+        ({
+          Completer<GpuFinished> told,
+          GpuEngine engine,
+          Pointer<Pointer<rust.Finished>> out,
+        })
+      >((_, finish, finished) {
+        final made = finish.out.value;
+        malloc.free(finish.out);
+        if (!finished) {
+          finish.told.completeError(
+            _toldRefused(finish.engine, 'a landing was not finished'),
+          );
+          return;
+        }
+        finish.told.complete(
+          GpuFinished._(finish.engine, made, _changesOf(made)),
+        );
+      });
+
+  static List<GpuChange> _changesOf(Pointer<rust.Finished> finished) =>
+      using((arena) {
+        final count = rust.finishedChanges(finished, nullptr);
+        final changes = arena<Uint8>(_held(count));
+        rust.finishedChanges(finished, changes);
+        return [
+          for (var at = 0; at < count; at++) GpuChange.values[changes[at]],
+        ];
+      });
+
+  /// What [handOver] hands the engine's thread — given where to write
+  /// what it finished, by what it is told and under what number; false
+  /// where it handed nothing over —, finished: told on this isolate,
+  /// which waits for none of it.
+  static Future<GpuFinished> _of(
+    GpuEngine engine,
+    bool Function(
+      Pointer<Pointer<rust.Finished>> out,
+      Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+      int number,
+    )
+    handOver,
+  ) {
+    final told = Completer<GpuFinished>();
+    final out = malloc<Pointer<rust.Finished>>()..value = nullptr;
+    final handed = _told.handing(
+      (told: told, engine: engine, out: out),
+      (number) => handOver(out, _told.told, number) ? 1 : 0,
+    );
+    if (handed == 0) {
+      malloc.free(out);
+      throw GpuRefused(_lastError());
+    }
+    return told.future;
+  }
+}
 
 /// The blur brush's kernels (rust/src/kernels/dab/blur.rs): one set for
 /// every stroke — what a stroke cannot go without; the kernels a dab goes
@@ -1258,8 +1509,11 @@ class GpuStroke {
 
   /// Piles [dabs], in their order, over [paper] — at [paperScale] px a
   /// texel, 高さ where [paperHeight] — with a second tip shown by
-  /// [secondMode] at [secondDensity] where the stroke has one. Submits the
-  /// work.
+  /// [secondMode] at [secondDensity] where the stroke has one. Hands the
+  /// work to the engine's thread, waiting for none of it
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stroke_pile`, has why): a
+  /// pile that fails is told by what reads the stroke next — [land],
+  /// [landOnItsWay], [mixed].
   ///
   /// A mixing brush's [mixing] runs first — its steps over the cel, in
   /// their order, the stroke's reservoir carried from the pile before —
@@ -1277,7 +1531,7 @@ class GpuStroke {
     final ground = mixing == null ? null : _groundOf(arena, mixing);
     final composite = mixing?.composite;
     final pool = mixing?.pool;
-    if (!rust.strokePile(
+    rust.strokePile(
       _stroke,
       _engine._engine,
       _specsOf(arena, dabs),
@@ -1287,38 +1541,35 @@ class GpuStroke {
       paperHeight,
       secondMode ?? -1,
       secondDensity,
+      ground?.steps ?? nullptr,
+      mixing?.steps.length ?? 0,
+      mixing?.first ?? 0,
       composite == null ? nullptr : _engine._its(composite)._composite,
       pool == null ? nullptr : _engine._its(pool)._pool,
+      ground?.coordinates ?? nullptr,
       ground?.under ?? nullptr,
       ground?.count ?? 0,
-    )) {
-      throw GpuRefused(_lastError());
-    }
+    );
   });
 
-  /// [mixing]'s steps handed to the stroke, and the cel's tile under each
-  /// ground tile they read, as the pile takes them.
-  ({Pointer<Uint32> under, int count}) _groundOf(
-    Arena arena,
-    GpuMixing mixing,
-  ) {
+  /// [mixing]'s steps as the pile hands them over, each ground tile they
+  /// read — reckoned here of the steps alone (rust/src/kernels/dab/abi.rs,
+  /// `gpu_engine_mix_ground`), no turn of the engine's waited for — and
+  /// the cel's tile under each.
+  ({
+    Pointer<rust.StepSpec> steps,
+    Pointer<Int32> coordinates,
+    Pointer<Uint32> under,
+    int count,
+  })
+  _groundOf(Arena arena, GpuMixing mixing) {
     final steps = mixing.steps;
-    if (steps.isEmpty) {
-      return (under: arena<Uint32>(1), count: 0);
-    }
+    final specs = _stepsOf(arena, steps);
     // A step reads 64 tiles at most.
-    final coordinates = arena<Int32>(128 * steps.length);
-    final count = rust.strokeHandSteps(
-      _stroke,
-      _engine._engine,
-      _stepsOf(arena, steps),
-      steps.length,
-      mixing.first,
-      coordinates,
-    );
-    if (count < 0) {
-      throw GpuRefused(_lastError());
-    }
+    final coordinates = arena<Int32>(_held(128 * steps.length));
+    final count = steps.isEmpty
+        ? 0
+        : rust.mixGround(specs, steps.length, coordinates);
     final found = mixing.under([
       for (var at = 0; at < count; at++)
         (column: coordinates[2 * at], row: coordinates[2 * at + 1]),
@@ -1328,7 +1579,12 @@ class GpuStroke {
       final tile = found[at];
       under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
     }
-    return (under: under, count: count);
+    return (
+      steps: specs,
+      coordinates: coordinates,
+      under: under,
+      count: count,
+    );
   }
 
   /// The colour each of the stroke's first [count] mixing steps laid,
@@ -1344,14 +1600,19 @@ class GpuStroke {
   /// Rubs [rubs], in their order, into the blur brush's picture on this
   /// stroke, over [paper] as [pile]'s: the tiles their blur reads and the
   /// stroke has not read yet are made first of the cel's, which [under]
-  /// tells of — in the order it is asked, null where the cel has none.
-  /// Submits the work.
+  /// tells of — asked of every tile the blur reads, reckoned here of the
+  /// rubs alone, in the order asked, null where the cel has none. Hands the
+  /// work to the engine's thread, waiting for none of it
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stroke_rub`, has why): a rub
+  /// that fails is told by what reads the stroke next — [landBlur],
+  /// [landBlurOnItsWay].
   void rub(
     GpuBlurs blurs,
     GpuComposite composite,
     GpuPool pool,
     List<GpuRub> rubs, {
-    required List<GpuTile?> Function(List<({int column, int row})> met) under,
+    required List<GpuTile?> Function(List<({int column, int row})> read)
+    under,
     GpuDabTexture? paper,
     double paperScale = 1,
     bool paperHeight = false,
@@ -1361,45 +1622,56 @@ class GpuStroke {
     radii.asTypedList(rubs.length).setAll(0, [
       for (final rub in rubs) rub.radius,
     ]);
-    final met = rust.strokeReachBlur(
-      _stroke,
-      _engine._engine,
-      specs,
-      radii,
-      rubs.length,
-    );
-    if (met < 0) {
-      throw GpuRefused(_lastError());
-    }
-    final coordinates = arena<Int32>(_held(2 * met));
-    rust.strokeMet(_stroke, coordinates);
+    final (:coordinates, :count) = _rubGround(arena, specs, radii, rubs.length);
     final found = under([
-      for (var at = 0; at < met; at++)
+      for (var at = 0; at < count; at++)
         (column: coordinates[2 * at], row: coordinates[2 * at + 1]),
     ]);
-    final words = arena<Uint32>(_held(met));
-    for (var at = 0; at < met; at++) {
+    final words = arena<Uint32>(_held(count));
+    for (var at = 0; at < count; at++) {
       final tile = found[at];
       words[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
     }
-    if (!rust.strokeRub(
+    rust.strokeRub(
       _stroke,
       _engine._engine,
       _engine._its(blurs)._blurs,
       _engine._its(composite)._composite,
       _engine._its(pool)._pool,
+      coordinates,
       words,
-      met,
+      count,
       specs,
       radii,
       rubs.length,
       paper?._texture ?? nullptr,
       paperScale,
       paperHeight,
-    )) {
-      throw GpuRefused(_lastError());
-    }
+    );
   });
+
+  /// Every tile the blur of the [count] rubs [specs], at [radii], reads,
+  /// as columns and rows — reckoned here of the rubs alone
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_rub_ground`), no turn of the
+  /// engine's waited for — and how many.
+  static ({Pointer<Int32> coordinates, int count}) _rubGround(
+    Arena arena,
+    Pointer<rust.DabSpec> specs,
+    Pointer<Uint32> radii,
+    int count,
+  ) {
+    var room = 64;
+    while (true) {
+      final coordinates = arena<Int32>(2 * room);
+      final read = _checked(
+        rust.rubGround(specs, radii, count, coordinates, room),
+      );
+      if (read <= room) {
+        return (coordinates: coordinates, count: read);
+      }
+      room = read;
+    }
+  }
 
   /// The picture [rub] left, finished on the tiles [asks]: each pixel of
   /// the cel moved toward it by [opacity] (65535 whole), under [mask] if
@@ -1431,6 +1703,45 @@ class GpuStroke {
       compared,
       places,
       changes,
+    ),
+  );
+
+  /// [landBlur] uncompared — each result [GpuChange.inked], in a fresh slot
+  /// — with no wait for the engine's turn, as [landOnItsWay] lands a
+  /// stroke: the slots are given here, and the picture finished in them on
+  /// the engine's thread, behind its rubs (rust/src/kernels/dab/abi.rs,
+  /// `gpu_engine_stroke_land_blur_unwaited`, has why). [unput] is called
+  /// where its picture was not put.
+  List<GpuLanded> landBlurOnItsWay(
+    GpuBlurs blurs,
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    int opacity = 65535,
+    GpuMask? mask,
+    required void Function() unput,
+  }) => _landed(
+    asks,
+    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+      unput,
+      (number) => rust.strokeLandBlurUnwaited(
+        _stroke,
+        _engine._engine,
+        _engine._its(blurs)._blurs,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        cel,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        places,
+        changes,
+        _putsOnTheirWay.told,
+        number,
+      ),
     ),
   );
 
@@ -1466,6 +1777,45 @@ class GpuStroke {
       compared,
       places,
       changes,
+    ),
+  );
+
+  /// [land] uncompared — each result [GpuChange.inked], in a fresh slot —
+  /// with no wait for the engine's turn: the slots are given here, and the
+  /// stroke laid in them on the engine's thread, behind its pile
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stroke_land_unwaited`, has
+  /// why): a stroke on its way, whose frame waits for nothing. [unput] is
+  /// called where its picture was not put.
+  List<GpuLanded> landOnItsWay(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+    required void Function() unput,
+  }) => _landed(
+    asks,
+    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+      unput,
+      (number) => rust.strokeLandUnwaited(
+        _stroke,
+        _engine._engine,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        cel,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        places,
+        changes,
+        _putsOnTheirWay.told,
+        number,
+      ),
     ),
   );
 
@@ -1532,35 +1882,7 @@ final class GpuStampPicture implements Finalizable, _OfAnEngine {
   /// ([GpuStampLanding.carried]'s). Waits for the GPU.
   Uint8List pixels() => _stampPixels(_engine._engine, _picture, _count);
 
-  /// It as any isolate asks it ([GpuStampPictureReader]) — for as long as
-  /// it is alive: what reads it on a worker holds it till the read is
-  /// done.
-  GpuStampPictureReader get reader => GpuStampPictureReader._(
-    _engine._engine.address,
-    _picture.address,
-    _count,
-  );
-
   int get _count => width * height * 4;
-}
-
-/// A [GpuStampPicture] as any isolate asks it: plain numbers, the engine's
-/// address, the picture's and its size, so it crosses to a worker — where
-/// the wait for the GPU is that worker's, not the asker's ([debugWaitsHere]),
-/// as a [GpuChainReader]'s is.
-final class GpuStampPictureReader {
-  const GpuStampPictureReader._(this._engine, this._picture, this._count);
-
-  final int _engine;
-  final int _picture;
-  final int _count;
-
-  /// [GpuStampPicture.pixels], asked here. ⚠️Waits for the GPU.
-  Uint8List pixels() => _stampPixels(
-    Pointer.fromAddress(_engine),
-    Pointer.fromAddress(_picture),
-    _count,
-  );
 }
 
 /// The [bytes] of [picture] on [engine], once the GPU has made them.
@@ -1575,6 +1897,79 @@ Uint8List _stampPixels(
   }
   return Uint8List.fromList(into.asTypedList(bytes));
 });
+
+/// A [GpuStampLanding] as any isolate asks it: plain numbers, its engine's
+/// address and its kernels', so a picture's whole carriage crosses to a
+/// worker — handed up, carried and read there, every wait for the engine's
+/// turn and for the GPU that worker's, not the asker's.
+///
+/// 🗣️tip-coverage-is-a-second-r1-Q1 (유저 2026-11-12: 「미리 만들어 둔다 —
+/// 엔진이 열리면 기다리지 않고 받아 둔다」). ↩️Only the read crossed: the
+/// asker handed the picture up and carried it itself, each a turn of the
+/// engine's thread it waited for — 🔬behind the band's fill, 77 ms of
+/// hands-up and 15 of carriage over the tips' thumbnails a launch makes,
+/// as the first stroke went (S5_BA cut 352, main PC, 2026-11-18, board
+/// a-tip-thumbnail-waits-for-the-engines-turn).
+final class GpuStampCarrier {
+  const GpuStampCarrier._(this._engine, this._landing);
+
+  final int _engine;
+  final int _landing;
+
+  /// [rgba] — [width] × [height], straight — carried as
+  /// [GpuStampLanding.carried] carries a picture of it over a whole output
+  /// [columns] × [rows], read. ⚠️Waits for the engine and the GPU.
+  Uint8List carriedPixels(
+    Uint8List rgba,
+    int width,
+    int height, {
+    required List<double> inverse,
+    required double radiusFloor,
+    required GpuSampling sampling,
+    required int columns,
+    required int rows,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    final engine = Pointer<rust.Engine>.fromAddress(_engine);
+    final source = using(
+      (arena) =>
+          rust.stampPictureNew(engine, _bytes(arena, rgba), width, height),
+    );
+    if (source == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    try {
+      final carried = using(
+        (arena) => rust.stampPictureCarried(
+          Pointer.fromAddress(_landing),
+          engine,
+          source,
+          _doubles(arena, inverse),
+          radiusFloor,
+          sampling.id,
+          columns,
+          rows,
+          0,
+          0,
+          columns,
+          rows,
+        ),
+      );
+      if (carried == nullptr) {
+        throw GpuRefused(_lastError());
+      }
+      try {
+        return _stampPixels(engine, carried, columns * rows * 4);
+      } finally {
+        rust.stampPictureFree(carried);
+      }
+    } finally {
+      rust.stampPictureFree(source);
+    }
+  }
+}
 
 /// What lands a stamp on a cel (rust/src/kernels/dab/stamp.rs).
 class GpuStampLanding {
@@ -1601,6 +1996,12 @@ class GpuStampLanding {
 
   /// The engine it lands and carries on.
   GpuEngine get engine => _engine;
+
+  /// It as any isolate asks it ([GpuStampCarrier]) — for as long as it and
+  /// its engine are alive: what carries on a worker holds it till that is
+  /// done.
+  GpuStampCarrier get carrier =>
+      GpuStampCarrier._(_engine._engine.address, _landing.address);
 
   /// [picture] carried through [inverse] — a point of the output to
   /// [picture]'s, the nine of the app's `ResampleTransform` row after row,
@@ -1776,6 +2177,95 @@ class GpuStampLanding {
       places,
       changes,
     ),
+  );
+
+  /// [land] as far as it asks the GPU, with no wait and no slot taken:
+  /// [picture] laid on the tiles [asks] — one at least — over the cel's
+  /// as [pool] holds them now, handed to the engine's thread, and what
+  /// each is beside the tile under it told once the GPU has said
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stamp_finish_unwaited`,
+  /// has why): the landing finished, its caller's to land
+  /// ([GpuFinished.landOnItsWay]) and to free. Fails as [GpuRefused]
+  /// where it was not finished.
+  Future<GpuFinished> finished(
+    GpuComposite composite,
+    GpuPool pool,
+    GpuStampPicture picture, {
+    required int left,
+    required int top,
+    required (int, int, int, int) within,
+    required List<GpuTileAsk> asks,
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => GpuFinished._of(
+    _engine,
+    (out, told, number) => using((arena) {
+      final (l, t, r, b) = within;
+      final box = arena<Int32>(4);
+      box[0] = l;
+      box[1] = t;
+      box[2] = r;
+      box[3] = b;
+      final (:coordinates, :under) = _asked(arena, asks);
+      rust.stampFinishUnwaited(
+        _landing,
+        _engine._engine,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        _engine._its(picture)._picture,
+        left,
+        top,
+        box,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        out,
+        told,
+        number,
+      );
+      return true;
+    }),
+  );
+
+  /// [finished] of [coverage] under [paint], as [landMask] lays one: a
+  /// selection's erase, its own mask laid by the eraser.
+  Future<GpuFinished> finishedMask(
+    GpuComposite composite,
+    GpuPool pool,
+    GpuMask coverage, {
+    required GpuPaint paint,
+    required bool whole,
+    required List<GpuTileAsk> asks,
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => GpuFinished._of(
+    _engine,
+    (out, told, number) => using((arena) {
+      final (:coordinates, :under) = _asked(arena, asks);
+      return rust.stampFinishMaskUnwaited(
+        _landing,
+        _engine._engine,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        _engine._its(coverage)._mask,
+        _doubles(arena, paint._numbers),
+        whole,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        out,
+        told,
+        number,
+      );
+    }),
   );
 
   /// Frees it; before its engine is closed.
@@ -2144,6 +2634,72 @@ class GpuPlan implements _OfAnEngine {
   /// from begin ([mapDrawn]).
   int get steps => rust.planSteps(_plan);
 
+  /// The tiles a screen makes of the plan laid afresh on [pool]'s tiles
+  /// over the pixels [extent] — [left, top, right, bottom) —: of those it
+  /// lays anything on, each the engine's pictures keep none for yet —
+  /// what the picture will weigh in tiles ([GpuScreen.compose],
+  /// [GpuScreen.bytes]). One tile for the same input: a frame's paper is
+  /// one, and what a kept picture of its cut was made of is none.
+  ///
+  /// 🚨WEIGHED ON THE ENGINE'S THREAD, IN ITS TURN (F-610, 2026-11-19):
+  /// this isolate waits for none of it — the pictures' books are that
+  /// thread's to wait for —, and behind the composes handed over before
+  /// it, it is weighed against their pictures as kept: a cut's second
+  /// against its first, on its way still as this is asked. ↩️Counted on
+  /// this isolate till then, every tile the plan lays on: several times
+  /// what a picture weighs once a tile is kept once (rust/src/kernels/
+  /// composite/kept.rs, `Kept::tiles_made`).
+  ///
+  /// The plan is read as it is weighed, and its answer off it: [free]d
+  /// meanwhile, it is let go of once that has come.
+  Future<int> tilesMade(GpuPool pool, (int, int, int, int) extent) {
+    final weighed = Completer<int>();
+    using(
+      (arena) => rust.planWeigh(
+        _plan,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        _rect(arena, extent),
+        _weighs.told,
+        _weighs.kept((weighed: weighed, plan: this)),
+      ),
+    );
+    _weighing += 1;
+    return weighed.future;
+  }
+
+  /// The weighs on their way ([tilesMade]), and how the engine's thread
+  /// tells this isolate one has been weighed: its plan reads the answer
+  /// off itself ([_weighed]).
+  static final _weighs = _Told<({Completer<int> weighed, GpuPlan plan})>(
+    (_, asked, told) => asked.plan._weighed(asked.weighed, told: told),
+  );
+
+  /// A weigh of this plan has run ([tilesMade]): [weighed] answered with
+  /// the tiles it counted where it was [told] so, with a refusal where it
+  /// was not — and the plan let go of where it was [free]d meanwhile and
+  /// this was the last on its way.
+  void _weighed(Completer<int> weighed, {required bool told}) {
+    final tiles = rust.planWeighed(_plan);
+    _weighing -= 1;
+    if (_freed && _weighing == 0) {
+      rust.planFree(_plan);
+    }
+    if (told) {
+      weighed.complete(tiles);
+    } else {
+      weighed.completeError(
+        GpuRefused('a plan is weighed over pixels past the grid'),
+      );
+    }
+  }
+
+  /// How many weighs of it are on their way ([tilesMade]).
+  int _weighing = 0;
+
+  /// Whether it was [free]d while one was.
+  bool _freed = false;
+
   /// Takes the plan's steps from step [first] on as the steps a blur map is
   /// drawn from — drawn alone over the blur's rectangle, as they show by
   /// themselves —, read as [mapLaid]'s; returns the index a lens blur
@@ -2305,7 +2861,15 @@ class GpuPlan implements _OfAnEngine {
     return _checked(added) == 1;
   }
 
-  void free() => rust.planFree(_plan);
+  /// Lets go of the plan — once its weighs on their way have told, where
+  /// any is ([tilesMade]): each reads its answer off the plan.
+  void free() {
+    if (_weighing == 0) {
+      rust.planFree(_plan);
+    } else {
+      _freed = true;
+    }
+  }
 }
 
 /// The picture an effect chain had come to at a plug-in's step, and the
@@ -2382,7 +2946,8 @@ class GpuHeldChains implements _OfAnEngine {
   GpuHeldChains(this._engine) : _held = rust.heldNew(_engine._engine);
 
   /// The bytes every hold keeps, counted by the engine where a hold keeps
-  /// and lets go.
+  /// and lets go — on its thread, so one let go of ([letGo]) is counted
+  /// off once a [GpuEngine.done] asked after it is told.
   static int get liveBytes => rust.heldBytes();
 
   @override
@@ -2396,7 +2961,11 @@ class GpuHeldChains implements _OfAnEngine {
   /// The bytes it keeps under [id] — none where it keeps nothing.
   int bytesOf(int id) => rust.heldBytesOf(_held, id);
 
-  /// Lets go of what it keeps under [id], if anything.
+  /// Lets go of what it keeps under [id], if anything: on the engine's
+  /// thread, in turn behind every run handed there before it, this
+  /// isolate waiting for none of it (rust/src/device.rs, `posted_of` —
+  /// 🔬waited for, each value of a blur dragged held the UI 48–63 ms for
+  /// the driver to let one put go, the Surface, 2026-11-20).
   void letGo(int id) => rust.heldLetGo(_held, id);
 
   /// Frees it; a plan that names it keeps its own hold.
@@ -2597,6 +3166,7 @@ class GpuComposite implements _OfAnEngine {
         _rect(arena, extent),
       );
     });
+    _engine._composed();
     if (out == nullptr) {
       throw GpuRefused(_lastError());
     }
@@ -2612,8 +3182,8 @@ class GpuComposite implements _OfAnEngine {
     GpuPlan plan,
     GpuTarget target,
     (int, int, int, int) rect,
-  ) => _checked(
-    using(
+  ) {
+    final passes = using(
       (arena) => rust.compositeShow(
         _composite,
         _engine._engine,
@@ -2622,8 +3192,10 @@ class GpuComposite implements _OfAnEngine {
         _engine._its(target)._texture,
         _edges(arena, rect),
       ),
-    ),
-  );
+    );
+    _engine._composed();
+    return _checked(passes);
+  }
 
   /// Lays [picture] — [pool]'s tiles over a box of canvas tiles as
   /// [GpuPlan.set] takes a set: its top-left column [x0] and row [y0], how
@@ -2740,6 +3312,7 @@ class GpuScreen implements _OfAnEngine {
         _rect(arena, changed),
       ),
     );
+    _engine._composed();
     return _engine.done();
   }
 
@@ -2764,6 +3337,7 @@ class GpuScreen implements _OfAnEngine {
         _rect(arena, fresh),
       ),
     );
+    _engine._composed();
     return _engine.done();
   }
 
@@ -2771,8 +3345,10 @@ class GpuScreen implements _OfAnEngine {
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
   /// was, and submits the work as [compose] does. The camera is [inverse]
   /// — a screen pixel to the canvas's, the affine `[a, b, c, d, e, f]` —
-  /// at display [scale], device pixels a canvas pixel, sampled by
-  /// [sampling].
+  /// sampled by [sampling]: the one composite at every scale (F-610-Q4,
+  /// 유저 2026-11-19 — the engine's `Screen::show` has what a far
+  /// reduction costs). ↩️It took the display's scale too till then, for
+  /// the halving stage it read under 1/16.
   ///
   /// 🚨WHY IT DID NOT SHOW IS THE NEXT [GpuEngine.done]'S of this isolate
   /// — the one its frame is put up by (`ScreenTexture.present`), asked in
@@ -2781,7 +3357,6 @@ class GpuScreen implements _OfAnEngine {
   void show(
     GpuTarget target, {
     required List<double> inverse,
-    required double scale,
     required GpuSampling sampling,
     required (int, int, int, int) rect,
   }) {
@@ -2794,7 +3369,6 @@ class GpuScreen implements _OfAnEngine {
         _engine._its(_composite)._composite,
         _engine._engine,
         _doubles(arena, inverse),
-        scale,
         sampling.id,
         _engine._its(target)._texture,
         _edges(arena, rect),
@@ -2802,14 +3376,20 @@ class GpuScreen implements _OfAnEngine {
     );
   }
 
-  /// The bytes the screen keeps on the GPU — its canvas's and the halvings
-  /// it shows under 1/16 through: what a budget and the memory census weigh
-  /// it by. As of the last of its verbs the engine has run: one handed over
-  /// is counted by the time its done is told ([compose]).
+  /// The bytes the screen keeps on the GPU — its canvas's: what a budget
+  /// and the memory census weigh it by. As of the last of its verbs the
+  /// engine has run: one handed over is counted by the time its done is
+  /// told ([compose]).
+  ///
+  /// The tiles it MADE, of those it holds (F-610, 유저 2026-11-18 「같은
+  /// 타일은 한 벌만」): a tile another screen made of the same input — a
+  /// cut's paper, a row no frame of it changes — is held, not made, and is
+  /// that screen's to weigh; nobody's once that one is let go
+  /// ([GpuEngine.unownedPictureBytes]).
   int get bytes => rust.screenBytes(_screen);
 
-  /// The bytes of every screen's canvas and halvings the engine keeps: each
-  /// screen's [bytes], counted off as its [free] returns.
+  /// The bytes of every screen's canvas the engine keeps: each screen's
+  /// [bytes], counted off as its [free] returns.
   static int get liveBytes => rust.keptBytes();
 
   /// Frees the screen; before its executor is. Waits for none of the verbs
@@ -3339,41 +3919,21 @@ class GpuReadout implements _OfAnEngine {
   Future<void> mapping() {
     debugBeforeMapping?.call();
     final ended = Completer<void>();
-    final wait = _asked++;
-    _ending[wait] = ended;
-    _ended.keepIsolateAlive = true;
     rust.readoutMapThen(
       _engine._engine,
       _readout,
-      _ended.nativeFunction,
-      wait,
+      _maps.told,
+      _maps.kept(ended),
     );
     return ended.future;
   }
 
-  /// The waits on their way ([mapping]), each under the number it was
-  /// asked by.
-  static final Map<int, Completer<void>> _ending = {};
-  static int _asked = 0;
-
-  /// How a thread of the engine's tells this isolate that a wait has ended, by
-  /// its number: one for every readout of the isolate, for as long as it
-  /// lives. ⛔Not one a wait: nothing is made for a wait, so no wait leaves
-  /// anything to close (↩️one each, closed as its wait ended — a close
-  /// gone showed in no test, 2026-11-12).
-  ///
-  /// 🚨It keeps its isolate for as long as a wait is on its way, and no
-  /// longer: an isolate with nothing else to do stays for the bytes it
-  /// asked for — let go, it ended under the wait with its readout never
-  /// freed — and ends once they have come.
-  static final NativeCallable<Void Function(Uint64)> _ended =
-      NativeCallable<Void Function(Uint64)>.listener(_end);
-
-  static void _end(int wait) {
-    final ended = _ending.remove(wait)!;
-    _ended.keepIsolateAlive = _ending.isNotEmpty;
-    ended.complete();
-  }
+  /// The waits on their way ([mapping]), and how a thread of the engine's
+  /// tells this isolate one has ended — mapped or not alike: [rows] says
+  /// which.
+  static final _maps = _Told<Completer<void>>(
+    (_, ended, _) => ended.complete(),
+  );
 
   /// Test seam: called before a thread of the engine's is handed the wait
   /// ([mapping]) — how a test has the device go between a copy's submit
@@ -3423,6 +3983,35 @@ typedef GpuTileInk = ({
 /// TILE_INK_WORDS): its column and row, then its box's four edges — four 0s
 /// where it holds no ink.
 const _tileInkWords = 6;
+
+/// The fold and the unfold (rust/src/kernels/fold), compiled: what a pool
+/// folds its tiles by ([GpuPool.fold]) — and, kept by the engine, what a
+/// read of a tile that lies folded finds there.
+class GpuFold implements _OfAnEngine {
+  /// Compiled on [engine], the caller waiting.
+  factory GpuFold(GpuEngine engine) =>
+      GpuFold._(engine, _compiled(engine._engine));
+
+  /// Compiled on [engine] off this isolate, which goes on meanwhile.
+  static Future<GpuFold> opening(GpuEngine engine) async =>
+      GpuFold._(engine, await _compiledOff(engine, _compiled));
+
+  static Pointer<rust.Fold> _compiled(Pointer<rust.Engine> on) {
+    final fold = rust.foldNew(on);
+    if (fold == nullptr) {
+      throw GpuRefused(_lastError());
+    }
+    return fold;
+  }
+
+  GpuFold._(this._engine, this._fold);
+
+  @override
+  final GpuEngine _engine;
+  final Pointer<rust.Fold> _fold;
+
+  void free() => rust.foldFree(_fold);
+}
 
 /// The ink scan (rust/src/kernels/cel_pixel/ink.rs): where each of a cel's
 /// tiles on the pool holds ink, as the app's `TileInkBounds` says it.
@@ -3625,12 +4214,12 @@ final class GpuCelPixels {
     return GpuCelPassed._(_engine, passed);
   });
 
-  /// What [mask] takes off the cel [run] would walk, put in [into] — its
-  /// box's pixels, straight RGBA8 row after row, as long as the box's bytes
-  /// — a pixel it covers at all whole where [whole], else its alpha scaled
-  /// by the coverage: whether it took any, [into] as it was where not.
-  /// Waits for the GPU.
-  bool lift(
+  /// What [mask] takes off the cel [run] would walk — a pixel it covers at
+  /// all whole where [whole], else its alpha scaled by the coverage —, kept
+  /// on the GPU as the picture of its box, [width] × [height], straight
+  /// RGBA8: its bytes never read back. Null where it took nothing. Waits for
+  /// the GPU to say whether it took any.
+  GpuStampPicture? liftPicture(
     GpuPool pool,
     int x0,
     int y0,
@@ -3639,10 +4228,11 @@ final class GpuCelPixels {
     List<GpuTile?> tiles, {
     required GpuMask mask,
     required bool whole,
-    required Uint8List into,
+    required int width,
+    required int height,
   }) => using((arena) {
-    final out = arena<Uint8>(_held(into.length));
-    final lifted = rust.celPixelsLift(
+    final out = arena<Pointer<rust.StampPicture>>();
+    final lifted = rust.celPixelsLiftPicture(
       _pixels,
       _engine._engine,
       _engine._its(pool)._pool,
@@ -3654,17 +4244,92 @@ final class GpuCelPixels {
       _engine._its(mask)._mask,
       whole,
       out,
-      into.length,
     );
     if (lifted < 0) {
       throw GpuRefused(_lastError());
     }
     if (lifted == 0) {
-      return false;
+      return null;
     }
-    into.setAll(0, out.asTypedList(into.length));
-    return true;
+    return GpuStampPicture._kept(_engine, out.value, width, height);
   }, malloc);
+
+  /// [liftPicture] with no wait: the cel's tiles read where [pool] holds
+  /// them now, the lift handed to the engine's thread, and its picture
+  /// told once the GPU has said whether it took any — null where it
+  /// took nothing (rust/src/kernels/cel_pixel/abi.rs,
+  /// `gpu_engine_cel_pixels_lift_picture_unwaited`). Fails as
+  /// [GpuRefused] where the lift failed.
+  Future<GpuStampPicture?> lifted(
+    GpuPool pool,
+    int x0,
+    int y0,
+    int columns,
+    int rows,
+    List<GpuTile?> tiles, {
+    required GpuMask mask,
+    required bool whole,
+    required int width,
+    required int height,
+  }) {
+    final told = Completer<GpuStampPicture?>();
+    final out = malloc<Pointer<rust.StampPicture>>()..value = nullptr;
+    _lifts.handing(
+      (told: told, engine: _engine, out: out, width: width, height: height),
+      (number) => using((arena) {
+        rust.celPixelsLiftPictureUnwaited(
+          _pixels,
+          _engine._engine,
+          _engine._its(pool)._pool,
+          x0,
+          y0,
+          columns,
+          rows,
+          _tileWords(arena, columns, rows, tiles),
+          _engine._its(mask)._mask,
+          whole,
+          out,
+          _lifts.told,
+          number,
+        );
+        return 1;
+      }),
+    );
+    return told.future;
+  }
+
+  /// The lifts on their way ([lifted]), each told by its number once the
+  /// GPU has said whether it took any — or that it failed —, its picture
+  /// written to [out] first.
+  static final _lifts =
+      _Told<
+        ({
+          Completer<GpuStampPicture?> told,
+          GpuEngine engine,
+          Pointer<Pointer<rust.StampPicture>> out,
+          int width,
+          int height,
+        })
+      >((_, lift, lifted) {
+        final made = lift.out.value;
+        malloc.free(lift.out);
+        if (!lifted) {
+          lift.told.completeError(
+            _toldRefused(lift.engine, 'a lift failed'),
+          );
+          return;
+        }
+        lift.told.complete(
+          made == nullptr
+              ? null
+              : GpuStampPicture._kept(
+                  lift.engine,
+                  made,
+                  lift.width,
+                  lift.height,
+                ),
+        );
+      });
 
   void free() => rust.celPixelsFree(_pixels);
 }
@@ -4203,36 +4868,148 @@ class GpuLetters {
   );
 
   /// The letters set in [faces] and laid on the grid by [toGrid] — the
-  /// layout's space to the grid's — by [composite]; the work submitted.
-  /// Null for letters that cover no pixel.
-  GpuLettered? set(
-    GpuComposite composite,
+  /// layout's space to the grid's —, on this isolate's thread, the CPU's
+  /// work alone: the rectangle of tiles they cover — its first tile's
+  /// column and row, and how many columns and rows of tiles it spans —,
+  /// their covers kept for [land]. Null for letters that cover no pixel.
+  ({int x0, int y0, int columns, int rows})? cover(
     GpuFaces faces,
     List<double> toGrid,
   ) => using((arena) {
     final rect = arena<Int32>(4)..asTypedList(4).fillRange(0, 4, -1);
-    final engine = composite._engine;
-    final lettered = rust.lettersSet(
-      _letters,
-      engine._engine,
-      engine._its(composite)._composite,
-      faces._faces,
-      _floats(arena, _six(toGrid)),
-      rect,
+    _done(
+      rust.lettersCover(
+        _letters,
+        faces._faces,
+        _floats(arena, _six(toGrid)),
+        rect,
+      ),
     );
     final [x0, y0, columns, rows] = rect.asTypedList(4).toList();
-    if (lettered == nullptr) {
-      return columns == 0 ? null : throw GpuRefused(_lastError());
-    }
-    return GpuLettered._(engine, lettered, (
-      x0: x0,
-      y0: y0,
-      columns: columns,
-      rows: rows,
-    ));
+    return columns == 0
+        ? null
+        : (x0: x0, y0: y0, columns: columns, rows: rows);
   });
 
+  /// Gives each tile of what was covered last ([cover]) that [asks] names
+  /// — by its column and row on the grid — a fresh slot of [cel] of
+  /// [pool], and hands the laying of their picture by [composite] and its
+  /// putting there to the engine's thread, this isolate waiting for none
+  /// of it (rust/src/kernels/letters/abi.rs, `gpu_engine_letters_land`,
+  /// has why): the engine's alone, as a landing puts what it made. Each
+  /// landed is [GpuChange.inked]; as many of [asks], the first, as [pool]
+  /// has room for. [unput] is called where their picture was not put.
+  List<GpuLanded> land(
+    GpuComposite composite,
+    GpuPool pool,
+    int cel,
+    List<GpuTileAsk> asks, {
+    required void Function() unput,
+  }) {
+    final engine = composite._engine;
+    return _landed(
+      asks,
+      (_, coordinates, _, places, changes) => _putsOnTheirWay.handing(
+        unput,
+        (number) => rust.lettersLand(
+          _letters,
+          engine._engine,
+          engine._its(composite)._composite,
+          engine._its(pool)._pool,
+          cel,
+          coordinates,
+          asks.length,
+          places,
+          changes,
+          _putsOnTheirWay.told,
+          number,
+        ),
+      ),
+    );
+  }
+
   void free() => rust.lettersFree(_letters);
+}
+
+/// What is called where the picture of a land on its way was not put —
+/// the letters' ([GpuLetters.land]), a stroke's ([GpuStroke.landOnItsWay])
+/// —, and how the engine's thread tells this isolate whether it was.
+final _putsOnTheirWay = _Told<void Function()>((_, unput, put) {
+  if (!put) {
+    unput();
+  }
+});
+
+/// What a thread of the engine's tells this isolate by a number — a
+/// wait ended, a copy written, a picture put — and whether it went well:
+/// each [kept] till it is told, and one listener for every number of the
+/// kind, [told].
+///
+/// 🚨It keeps its isolate for as long as one is on its way, and no longer:
+/// an isolate with nothing else to do stays for what it asked — let go, it
+/// ended under a wait with its readout never freed — and ends once all
+/// have come. ⛔Not one listener a number: nothing is made for a number, so
+/// none leaves anything to close (↩️one each, closed as its wait ended —
+/// a close gone showed in no test, 2026-11-12).
+///
+/// ↩️Till 2026-11-18 each kind held its map and listener itself — the
+/// engine's waits, a pool's stores, a readout's maps and the letters'
+/// lands, four of one, the fourth added that morning (rule of three).
+final class _Told<T> {
+  _Told(this._then);
+
+  /// What is done with what was [kept] under a number once it is told:
+  /// the number, what was kept, and whether it went well.
+  final void Function(int number, T kept, bool ok) _then;
+  final Map<int, T> _waiting = {};
+  int _numbered = 0;
+
+  /// The function a thread of the engine's tells by.
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> get told =>
+      _listener.nativeFunction;
+
+  late final _listener = NativeCallable<Void Function(Uint64, Bool)>.listener(
+    _told,
+  );
+
+  /// [waiting] kept till its number is told: the number. Kept before it
+  /// is handed over — the engine's thread may tell it before the call that
+  /// handed it returns, and its word comes after this isolate's turn.
+  int kept(T waiting) {
+    final number = _numbered++;
+    _waiting[number] = waiting;
+    _listener.keepIsolateAlive = true;
+    return number;
+  }
+
+  /// What [handOver] answers — how many it handed over under the number
+  /// it is given, [waiting] [kept] under that number till it is told —, the
+  /// number forgotten where none went: a call that handed none over, or
+  /// failed (below none, or thrown), is told of by nothing
+  /// (`Pool::lands_unwaited`).
+  ///
+  /// 🚨ONE ROAD (rule of three, 2026-11-18): a pool's store, the letters'
+  /// land and a stroke's on its way each kept, handed over and forgot alike
+  /// — the third came. ↩️Till then one that threw kept its number, and the
+  /// isolate, for good.
+  int handing(T waiting, int Function(int number) handOver) {
+    final number = kept(waiting);
+    var handed = 0;
+    try {
+      return handed = handOver(number);
+    } finally {
+      if (handed <= 0) {
+        _waiting.remove(number);
+        _listener.keepIsolateAlive = _waiting.isNotEmpty;
+      }
+    }
+  }
+
+  void _told(int number, bool ok) {
+    final waiting = _waiting.remove(number) as T;
+    _listener.keepIsolateAlive = _waiting.isNotEmpty;
+    _then(number, waiting, ok);
+  }
 }
 
 /// [clusters] as a run is handed them, in [arena]'s: their letters as
@@ -4938,39 +5715,6 @@ void _done(bool done) {
   }
 }
 
-/// A picture of letters set ([GpuLetters.set]): the straight RGBA8 tiles of
-/// [rect] — its first tile's column and row, and how many columns and rows
-/// of tiles it spans — on the GPU.
-class GpuLettered {
-  GpuLettered._(this._engine, this._lettered, this.rect);
-
-  final GpuEngine _engine;
-  final Pointer<rust.Lettered> _lettered;
-  final ({int x0, int y0, int columns, int rows}) rect;
-
-  /// Puts each of its tiles [asks] names — by their column and row on the
-  /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing
-  /// puts what it made: the engine's alone, with no wait for the GPU. Each
-  /// landed is [GpuChange.inked]. As many of [asks], the first, as [pool]
-  /// has room for.
-  List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
-      _landed(
-        asks,
-        (_, coordinates, _, places, changes) => rust.letteredLand(
-          _engine._engine,
-          _lettered,
-          _engine._its(pool)._pool,
-          cel,
-          coordinates,
-          asks.length,
-          places,
-          changes,
-        ),
-      );
-
-  void free() => rust.letteredFree(_lettered);
-}
-
 /// The walked tile whose words start at [at] of [words].
 GpuTileInk _walkedAt(Int32List words, int at) {
   final [column, row, left, top, right, bottom] = words.sublist(
@@ -5357,9 +6101,7 @@ class GpuPluginMade {
   /// grid, in [rect] — in a fresh slot of [cel] of [pool], as a landing
   /// puts what it made: the engine's alone, with no wait for the GPU. Each
   /// landed is [GpuChange.inked]. As many of [asks], the first, as [pool]
-  /// has room for. ⚠️[GpuLettered.land]'s like: the second picture landed
-  /// as it lies on the device — a third makes the three one (rule of
-  /// three).
+  /// has room for.
   List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
       _landed(
         asks,

@@ -545,6 +545,13 @@ List<CompositeNode<L>> onUnderlay<L>(
 /// where it stood — in its clip, over its backdrop — and what points back
 /// at it ([CompositeOpaque.of]) points at it still. A cel number's row
 /// ([CompositeCelNumber.on]) stays the leaf: the letters lie where it does.
+///
+/// A node that reads nothing, and all of whose parts come back as they
+/// were, comes back itself: a tree no chain of which reads a row is the
+/// tree it was handed. 🔬Laid afresh node by node, every frame of a cut a
+/// ruler's bar finds its spans in copied its whole tree after each edit —
+/// the copies about a quarter of laying the trees, on the Surface (F-620,
+/// S5_BA cut 352 · 68 rows, a cel number's size changed 40 times).
 List<CompositeNode<L>> withTheRowsTheyRead<L>(
   List<CompositeNode<L>> nodes, {
   required List<ResolvedLayerEffect> Function(L row) effectsOf,
@@ -568,7 +575,23 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
         : CompositeReadsRows<L>(node: node, rows: frozenMap(rows));
   }
 
-  CompositeNode<L> lay(CompositeNode<L> node) => laid[node] ??= switch (node) {
+  late final CompositeNode<L> Function(CompositeNode<L> node) lay;
+
+  // [nodes] laid, given back themselves where each comes back so.
+  List<CompositeNode<L>> layEach(List<CompositeNode<L>> nodes) {
+    List<CompositeNode<L>>? changed;
+    for (var at = 0; at < nodes.length; at += 1) {
+      final node = nodes[at];
+      final laidNode = lay(node);
+      if (changed == null && !identical(laidNode, node)) {
+        changed = [...nodes.take(at)];
+      }
+      changed?.add(laidNode);
+    }
+    return changed == null ? nodes : frozenList(changed);
+  }
+
+  lay = (node) => laid[node] ??= switch (node) {
     CompositeLeaf<L>(:final payload) => reading(
       node,
       effectsOf(payload),
@@ -582,44 +605,63 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
       :final tint,
     ) =>
       reading(
-        CompositeGroup<L>(
-          children: frozenList(children.map(lay)),
-          opacity: opacity,
-          blendMode: blendMode,
-          effects: effects,
-          tint: tint,
-        ),
+        switch (layEach(children)) {
+          final same when identical(same, children) => node,
+          final laidChildren => CompositeGroup<L>(
+            children: laidChildren,
+            opacity: opacity,
+            blendMode: blendMode,
+            effects: effects,
+            tint: tint,
+          ),
+        },
         effects,
         null,
       ),
     CompositeAdjustment<L>(:final children, :final effects, :final mix) =>
       reading(
-        CompositeAdjustment<L>(
-          children: frozenList(children.map(lay)),
-          effects: effects,
-          mix: mix,
-        ),
+        switch (layEach(children)) {
+          final same when identical(same, children) => node,
+          final laidChildren => CompositeAdjustment<L>(
+            children: laidChildren,
+            effects: effects,
+            mix: mix,
+          ),
+        },
         effects,
         null,
       ),
     CompositeBackdropBlend<L>(:final backdrop, :final source, :final blendMode) =>
-      CompositeBackdropBlend<L>(
-        backdrop: frozenList(backdrop.map(lay)),
-        source: lay(source),
-        blendMode: blendMode,
-      ),
+      switch ((layEach(backdrop), lay(source))) {
+        (final under, final over)
+            when identical(under, backdrop) && identical(over, source) =>
+          node,
+        (final under, final over) => CompositeBackdropBlend<L>(
+          backdrop: under,
+          source: over,
+          blendMode: blendMode,
+        ),
+      },
     CompositeClip<L>(:final base, :final scope, :final opacity, :final blendMode) =>
-      CompositeClip<L>(
-        base: lay(base),
-        scope: frozenList(scope.map(lay)),
-        opacity: opacity,
-        blendMode: blendMode,
-      ),
-    CompositeOpaque<L>(:final of) => CompositeOpaque<L>(lay(of)),
+      switch ((lay(base), layEach(scope))) {
+        (final laidBase, final laidScope)
+            when identical(laidBase, base) && identical(laidScope, scope) =>
+          node,
+        (final laidBase, final laidScope) => CompositeClip<L>(
+          base: laidBase,
+          scope: laidScope,
+          opacity: opacity,
+          blendMode: blendMode,
+        ),
+      },
+    CompositeOpaque<L>(:final of) => switch (lay(of)) {
+      final same when identical(same, of) => node,
+      final laidOf => CompositeOpaque<L>(laidOf),
+    },
     // Already laid: what it reads is beside it.
     CompositeCelNumber<L>() || CompositeReadsRows<L>() => node,
   };
-  return frozenList(nodes.map(lay));
+  return frozenList(layEach(nodes));
 }
 
 /// THE FOLD: [nodes] with every leaf run through [map], keeping the

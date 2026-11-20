@@ -27,6 +27,8 @@ mod apple;
 mod hid_axis;
 #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
 mod ledger;
+#[cfg(windows)]
+mod mouse_kept;
 // And so has the book of the points the OS saw (H56): every platform's
 // reader writes it but Linux's, where each motion is its own event
 // (`linux/runner/my_application.cc` turns GTK's compression off).
@@ -37,6 +39,11 @@ mod points_win;
 mod report;
 #[cfg(windows)]
 mod raw;
+// 🚨The one thread that receives the pen and the mouse off the UI's
+// (pen-receive-threads-are-one): raw.rs, wintab.rs and mouse_kept.rs hand
+// their work to it.
+#[cfg(windows)]
+mod receiver;
 #[cfg(test)]
 mod tests;
 #[cfg(windows)]
@@ -83,8 +90,8 @@ pub extern "C" fn qat_open(within_ms: i32) -> i32 {
     i32::from(wintab::open(within_ms.max(0) as u32))
 }
 
-/// Hands `out` the newest packets heard and not handed yet — the reader's
-/// own thread drains the driver's queue, and this asks it nothing — as
+/// Hands `out` the newest packets heard and not handed yet — the receiver
+/// drains the driver's queue, and this asks it nothing — as
 /// records of 8 floats — pressure 0..1, bearing, altitude, time in ms,
 /// buttons, oriented, twist, twisted (see `wintab::Scales::record`) — at
 /// most `cap` of them. The record count; 0 with nothing new, or no context
@@ -144,8 +151,9 @@ pub extern "C" fn qpr_abi_version() -> i32 {
     3
 }
 
-/// Starts the HID observer thread. 1 when raw pen reports will flow;
-/// idempotent. 0 without hid.dll, or with no digitizer registered.
+/// Listens to the pen's HID reports, on the receiver's thread. 1 when raw
+/// pen reports will flow; idempotent. 0 without hid.dll, or with no
+/// digitizer registered.
 #[cfg(windows)]
 #[unsafe(no_mangle)]
 pub extern "C" fn qpr_start() -> i32 {
@@ -261,18 +269,19 @@ pub extern "system" fn Java_com_myoun_gpu_1engine_PenPoints_point(
     points::book().point(point);
 }
 
-/// The end of that message: its points as the batch of `contact`, handed
-/// at (`x`, `y`).
+/// The end of that message: its points as the batch of `contact`, the
+/// pointer of `tool` (`MotionEvent.getToolType`), handed at (`x`, `y`).
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_myoun_gpu_1engine_PenPoints_end(
     _env: *mut std::ffi::c_void,
     _class: *mut std::ffi::c_void,
     contact: i64,
+    tool: i32,
     x: f64,
     y: f64,
 ) {
-    points::book().end(contact as u64, (x, y));
+    points::book().end(contact as u64, points::Kind::of_android_tool(tool), (x, y));
 }
 
 /// The batch [`qa_pen_points_take`] took last, till the app reads it
@@ -283,20 +292,28 @@ fn taken() -> std::sync::MutexGuard<'static, Vec<points::Point>> {
     TAKEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Takes the points of the datum Flutter was handed at (`x`, `y`), in the
-/// shape the embedder hands it (`points::Batch::handed`) — every point the
-/// reader wrote of its message —, and holds them for
-/// [`qa_pen_points_taken`]: their count; -1 where no batch ends there.
+/// Takes the points of the datum of `kind` (`points::Kind`'s number)
+/// Flutter was handed at (`x`, `y`), in the shape the embedder hands it
+/// (`points::Batch::handed`) — every point the reader wrote of its
+/// message —, and holds them for [`qa_pen_points_taken`]: their count; -1
+/// where no batch of that kind ends there, or no kind has that number. A
+/// point the tablet driver's packet was not heard for at its message is
+/// given it here where it is heard now (wintab.rs `pair`).
 ///
 /// ↩️It wrote the newest `cap` into the app's buffer, which held 512 —
 /// H56's guess at a stall of two seconds of a 240 Hz pen — and the book cut
 /// every batch to as many: no one asked for the cut (H59 법 A, card
 /// pen-points-are-taken-off-the-ui-thread, 11-17).
 #[unsafe(no_mangle)]
-pub extern "C" fn qa_pen_points_take(x: f64, y: f64) -> i32 {
-    let Some(points) = points::book().take((x, y)) else {
+pub extern "C" fn qa_pen_points_take(kind: i32, x: f64, y: f64) -> i32 {
+    let Some(kind) = points::Kind::named(kind) else {
         return -1;
     };
+    let Some(mut points) = points::book().take(kind, (x, y)) else {
+        return -1;
+    };
+    #[cfg(windows)]
+    wintab::pair(&mut points);
     let count = points.len() as i32;
     *taken() = points;
     count

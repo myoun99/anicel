@@ -497,6 +497,7 @@ void main() {
     }
     final before = [for (final row in pressed) current(s, row)];
     final menuContext = await hostedContext(tester);
+    final depth = s.historyManager.undoCount;
 
     unawaited(rasterizeReferenceRows(menuContext, s, before));
     await settle(
@@ -505,10 +506,16 @@ void main() {
           waitWindow.evaluate().isEmpty &&
           pressed.every((row) => current(s, row).mediaReference == null),
     );
+    await tester.pumpAndSettle();
     expect(
       current(s, pressed.last).kind,
       LayerKind.animation,
       reason: '⛔premise: a moving row was baked a cel a frame',
+    );
+    expect(
+      (s.historyManager.undoCount, s.historyManager.gestures.heldSteps),
+      (depth + 1, 0),
+      reason: 'the press\'s line is up once the press is over',
     );
 
     s.undo();

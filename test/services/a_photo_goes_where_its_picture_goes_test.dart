@@ -3,6 +3,8 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_photo.dart';
+import 'package:anicel/src/models/cut_content_translation.dart'
+    show resizeWalk;
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -184,6 +186,25 @@ void main() {
         gone.photos.single.reference.pose.center,
         CanvasPoint(x: 10, y: 16006),
       );
+    });
+
+    // I-180: a fit scales the picture, and a photo on it goes by the same
+    // map — its centre carried, its size by each axis's factor.
+    test('🚨a fit carries a photo by its scale as well as its offset', () {
+      final carried = celPhotosCarried(
+        [photoOf(1, center: center, scale: 0.5)],
+        resizeWalk(
+          sx: 2,
+          sy: 3,
+          dx: 7,
+          dy: -1,
+          centreDx: 7,
+          centreDy: -1,
+        ),
+      ).single.reference.pose;
+
+      expect(carried.center, CanvasPoint(x: 27, y: 17));
+      expect((carried.scaleX, carried.scaleY), (1.0, 1.5));
     });
   });
 

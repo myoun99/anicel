@@ -12,7 +12,7 @@ use super::abi::{
 use super::tests::hashed;
 use crate::kernels::chain::tests::put_over;
 use crate::kernels::chain::{ChainRead, Kept, each_pixel, picture_bytes};
-use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
+use crate::kernels::composite::{Lent, TILE, TILE_BYTES, TileAt};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::{le_bytes, le_words};
@@ -133,10 +133,11 @@ impl Opened {
         let Some(tiles) = laid(&pictures[0]) else {
             return Err(last_error());
         };
-        let rows = pictures[1..].iter().map(laid).collect::<Option<Vec<_>>>().ok_or_else(last_error)?;
+        let rows = pictures[1..].iter().map(|row| laid(row).map(Lent::alone));
+        let rows = rows.collect::<Option<Vec<_>>>().ok_or_else(last_error)?;
         let [left, top, width, height] = pictures[0].0;
         let told = [left - at[0], top - at[1], width, height];
-        let read = ChainRead::kept_as(Kept { tiles, rect, rows });
+        let read = ChainRead::kept_as(Kept { tiles: Lent::alone(tiles), rect, rows });
         let mut made_rect = [0; 4];
         // SAFETY: each holds what its count says, the engine is live and
         // the plugin was opened on it.
@@ -393,7 +394,7 @@ fn what_it_made_lands_tile_by_tile_where_it_lies() {
     let [left, top, width, height] = picture;
     let edges = [left, top, left + width, top + height];
     let tiles = put_over(engine, rect, edges, &le_bytes(&hashed(63, 8))).expect("laid");
-    let read = ChainRead::kept_as(Kept { tiles, rect, rows: Vec::new() });
+    let read = ChainRead::kept_as(Kept { tiles: Lent::alone(tiles), rect, rows: Vec::new() });
     let invert = Opened::of(INVERT);
     let mut at = [0; 4];
     // SAFETY: each holds what its count says, the engine is live and the

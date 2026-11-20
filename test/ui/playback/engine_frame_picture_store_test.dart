@@ -21,6 +21,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
@@ -237,6 +238,36 @@ void main() {
     expect(await left, same(await stays));
   });
 
+  // 🔬F-620 (S5_BA cut 352, Surface Pro 11, 2026-11-20): a lay the screen
+  // asked for went past the one on its way and was laid beside it — a
+  // blur's value dragged laid the frame at each value, about six at once,
+  // none given up.
+  test('🚨a lay the screen asks for while one is on its way waits for it '
+      '— and is given up there, where its asker left it meanwhile', () async {
+    final store = storeOf();
+    final ahead = store.lay('ahead', frameOf(cel(5)));
+    await store.tools;
+    var left = false;
+    final passed = store.lay(
+      'passed',
+      frameOf(cel(6)),
+      shownNow: true,
+      gone: () => left,
+    );
+    for (var hop = 0; hop < 8; hop += 1) {
+      await Future<void>.value();
+    }
+    expect(store.holds('ahead'), isFalse, reason: '⛔premise: on its way');
+
+    left = true;
+    final latest = store.lay('latest', frameOf(cel(7)), shownNow: true);
+
+    expect(await passed, isNull);
+    expect(store.holds('passed'), isFalse);
+    expect(shownBy((await latest)!), laidBy(cel(7)));
+    expect(await ahead, isNotNull);
+  });
+
   test('a frame the engine refuses is answered with its reason, and the lays '
       'after it are laid', () async {
     final store = storeOf();
@@ -261,6 +292,53 @@ void main() {
     await expectLater(failing, throwsStateError);
     expect(await next, isNotNull);
     expect(store.holds('refused'), isFalse);
+  });
+
+  // 🗣️the-screen-shows-a-frame-the-green-band-leaves-empty (유저
+  // 2026-11-15): a frame a canvas made was on the screen, and the green
+  // band filled there only once the walk moved on — it heard the pictures
+  // the walk laid, and no other.
+  test('🚨a picture laid, let go of, or let go with the tools is told — '
+      'once the code on its way is through; ⛔not one moved to another key '
+      'or patched there: a stroke would tell it at every step', () async {
+    final store = storeOf();
+    var told = 0;
+    store.laidOrLetGo.addListener(() => told += 1);
+    Future<void> through() => Future<void>.delayed(Duration.zero);
+
+    await store.lay('a', frameOf(cel(5)));
+    await through();
+    expect(told, 1, reason: 'laid');
+
+    told = 0;
+    expect(store.move(from: 'a', to: 'b'), isTrue, reason: '⛔premise');
+    expect(
+      store.patch(
+        from: 'b',
+        to: 'c',
+        rect: const Rect.fromLTRB(-20, 10, 40, 50),
+        frame: frameOf(cel(5, marked: (-20, 10, 40, 50))),
+      ),
+      isTrue,
+      reason: '⛔premise',
+    );
+    await through();
+    expect(told, 0, reason: 'moved, and patched');
+
+    store.letGo('c');
+    expect(told, 0, reason: 'a view may let go of it as it paints');
+    await through();
+    expect(told, 1, reason: 'let go of');
+
+    await store.lay('d', frameOf(cel(6)));
+    await through();
+    told = 0;
+    store.letGoWithItsTools();
+    await through();
+    expect(told, 1, reason: 'let go with the tools');
+    store.letGoWithItsTools();
+    await through();
+    expect(told, 1, reason: 'nothing held, nothing let go of');
   });
 
   test('a key a picture moves to while its lay waits answers with that '
@@ -542,7 +620,45 @@ void main() {
 
     final mixed = cel(5, seedAt: (column) => column == 0 ? 6 : 5);
     expect(shownBy(laid!), laidBy(mixed));
-    expect(store.bytesOf('ghosts'), picture);
+    // A tile is weighed once (F-610): the film's two it holds are the
+    // film's to weigh — ↩️counted in both till 2026-11-18.
+    expect(store.bytesOf('ghosts'), picture ~/ 3, reason: 'its fresh tile');
+    expect(store.bytesOf('film'), picture);
+  });
+
+  // 🗣️유저 2026-11-18 (F-610-Q2 「같은 타일은 한 벌만」): pictures made of the
+  // same hold one tile. Each weighing every tile it held, a cut's forty
+  // pictures read forty times what the GPU kept, and the line let go of
+  // pictures that cost next to nothing.
+  test('🚨a tile pictures of one frame hold is weighed once — by the '
+      'picture that made it, and by the line still once that one is let '
+      'go', () async {
+    final store = storeOf();
+    final frame = frameOf(cel(5));
+    final unowned = EnginePictures.unownedPictureBytes;
+    await store.lay('made', frame);
+    final holding = await store.lay('holding', frame);
+
+    expect(store.bytesOf('made'), picture);
+    expect(store.bytesOf('holding'), 0, reason: 'every tile of it is held');
+    expect(shownBy(holding!), laidBy(cel(5)));
+    expect(store.estimatedBytes - unowned, picture);
+
+    store.letGo('made');
+    expect(
+      await pollUntil(
+        () => EnginePictures.unownedPictureBytes - unowned == picture,
+      ),
+      isTrue,
+      reason: 'the engine lets go of it behind what it was handed',
+    );
+    expect(store.madeBytes, 0, reason: 'no picture weighs them');
+    expect(
+      store.estimatedBytes - unowned,
+      picture,
+      reason: 'held still: the line counts them',
+    );
+    expect(shownBy(holding), laidBy(cel(5)));
   });
 
   test('a frame laid over a film not there is laid whole', () async {

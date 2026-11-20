@@ -64,19 +64,23 @@
 //! output's extent, a page a later run can lay as a row — or on a surface
 //! Flutter shows, premultiplied, inside a rectangle of it
 //! ([`Composite::show`]). The screen is the second with one row: the
-//! canvas's composite tiles posed by the camera — under 1/16 a halving
-//! stage of them ([`halvings`]). The canvas is composited
-//! on its own grid first, so a magnified screen shows the canvas's pixels
-//! — the result's — and a pan or a zoom runs the screen alone
-//! (gpu-canonical-store ④⑤).
+//! canvas's composite tiles posed by the camera, at every scale
+//! ([`screen`]). The canvas is composited on its own grid first, so a
+//! magnified screen shows the canvas's pixels — the result's — and a pan
+//! or a zoom runs the screen alone (gpu-canonical-store ④⑤).
 
 pub(crate) mod abi;
 #[cfg(test)]
 mod chained_tests;
-pub(crate) mod halvings;
 pub(crate) mod held;
+pub(crate) mod kept;
+#[cfg(test)]
+mod made_of_tests;
 mod passes;
 pub(crate) mod screen;
+pub(crate) mod spares;
+#[cfg(test)]
+mod spares_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -92,6 +96,7 @@ use crate::kernels::chain::{Chain, Chained, Stored, laid_as, tiles_of, with_draw
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
+use crate::kernels::pool::{Lying, Stamps};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     ResampleModes, WIDE_WGSL, encode_on, kept_or_made, le_bytes, page_table, pipeline_with, room,
@@ -99,7 +104,8 @@ use crate::kernels::shared::{
 };
 use crate::platform::stores;
 
-use held::Made;
+use held::{HeldChains, Made};
+pub(crate) use spares::{Lent, Spares};
 use passes::{Fulls, Passes};
 
 /// A tile's side in pixels (1a ①).
@@ -131,8 +137,19 @@ pub(crate) const WHOLE: u32 = 65535;
 /// compile a pass binding twenty.
 const OWN_BUFFERS: u32 = 2;
 
-/// Where a stored tile is: a page of the pool, a slot in it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// The bit of a slot's number that says its tile is kept folded
+/// (stored.wgsl's STORED_FOLDED; `kernels/fold` folds one): the rest of
+/// the number is then the granule of the page its words begin at
+/// ([`GRANULE_BYTES`]), not its place among tiles as they are. No page of
+/// tiles as they are has so many slots (`Pool::sized`).
+pub(crate) const FOLDED: u16 = 0x8000;
+/// A granule — what a folded tile's place on its page and its size are
+/// counted in (stored.wgsl's FOLD_GRANULE) — in bytes.
+pub(crate) const GRANULE_BYTES: u64 = 256 * 4;
+
+/// Where a stored tile is: a page of the pool, a slot in it — or, kept
+/// folded, a granule of it ([`FOLDED`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TileAt {
     pub(crate) page: u16,
     pub(crate) slot: u16,
@@ -141,7 +158,7 @@ pub(crate) struct TileAt {
 impl TileAt {
     /// The one word this tile is named by — `page << 16 | slot` — wherever
     /// a tile set travels as words: from the app over the C ABI
-    /// ([`TileSet::from_words`]) and to a pass in its plan (composite.wgsl).
+    /// ([`Named::from_words`]) and to a pass in its plan (composite.wgsl).
     pub(crate) fn word(self) -> u32 {
         u32::from(self.page) << 16 | u32::from(self.slot)
     }
@@ -149,6 +166,40 @@ impl TileAt {
     /// The tile `word` names ([`Self::word`]) — none for [`NO_TILE`].
     pub(crate) fn of_word(word: u32) -> Option<Self> {
         (word != NO_TILE).then(|| Self { page: (word >> 16) as u16, slot: word as u16 })
+    }
+
+    /// Where on its page the tile's bytes begin, kept as it is — none for
+    /// a folded one ([`FOLDED`]), whose words are no tile's bytes.
+    ///
+    /// ⏳The pool's gather and a picture's placing still spell a slot's
+    /// first byte themselves: no book hands them a folded place yet. Theirs
+    /// to take from here in the lane whose books do (F-610).
+    pub(crate) fn as_it_is(self) -> Option<u64> {
+        (self.slot & FOLDED == 0).then(|| u64::from(self.slot) * TILE_BYTES)
+    }
+
+    /// Where on its page the tile's words begin, kept folded — none for
+    /// one kept as it is.
+    pub(crate) fn folded(self) -> Option<u64> {
+        (self.slot & FOLDED != 0).then(|| u64::from(self.slot ^ FOLDED) * GRANULE_BYTES)
+    }
+
+    /// Fails unless this is a tile's place on one of the pool's `pool`
+    /// pages: its page one of them, and what is surely the tile's — its
+    /// bytes as it is, a folded one's table — within the page.
+    pub(crate) fn stored_on(self, pool: &[wgpu::Buffer]) -> Option<()> {
+        let Some(page) = pool.get(usize::from(self.page)) else {
+            return fail(format!("page {} of a pool of {}", self.page, pool.len()));
+        };
+        let ends = match self.folded() {
+            Some(first) => first + GRANULE_BYTES,
+            None => (u64::from(self.slot) + 1) * TILE_BYTES,
+        };
+        if ends > page.size() {
+            let (slot, page, bytes) = (self.slot, self.page, page.size());
+            return fail(format!("slot {slot:#x} past page {page}'s {bytes} bytes"));
+        }
+        Some(())
     }
 }
 
@@ -164,16 +215,33 @@ pub(crate) struct TileSet {
     pub(crate) tiles: Vec<Option<TileAt>>,
 }
 
-impl TileSet {
+/// A tile set as the app names it over the C ABI — a plan's tile sets, the
+/// cel a verb walks and the row a landing lays alike —: each tile by the
+/// slot it was handed out at, whatever it lies as (`pool/folded.rs`).
+///
+/// 🚨NOTHING IS LAID ON A NAME (F-610, 2026-11-19): the one way from here
+/// to a set a pass binds is through where each tile lies
+/// ([`Named::lying`]). ↩️Till then the app's words were read to a
+/// [`TileSet`] at once, a tile's name and its place being one.
+pub(crate) struct Named(TileSet);
+
+impl Named {
     /// The set of `columns` × `rows` tiles whose top-left is column `x0`,
     /// row `y0`, named by `words` row by row — each a tile's
-    /// [`TileAt::word`], or [`NO_TILE`] — as the app hands one over the C
-    /// ABI: the plan's tile sets and the ink scan's cel alike.
+    /// [`TileAt::word`], or [`NO_TILE`].
     pub(crate) fn from_words(x0: i32, y0: i32, columns: u32, rows: u32, words: &[u32]) -> Self {
         let tiles = words.iter().copied().map(TileAt::of_word).collect();
-        Self { x0, y0, columns, rows, tiles }
+        Self(TileSet { x0, y0, columns, rows, tiles })
     }
 
+    /// The set a pass is laid on: each tile where it lies by `lying`.
+    pub(crate) fn lying(&self, lying: &Lying) -> TileSet {
+        let tiles = self.0.tiles.iter().map(|tile| tile.map(|at| lying.of(at))).collect();
+        TileSet { tiles, ..self.0 }
+    }
+}
+
+impl TileSet {
     /// The tiles a box `size` across and down from `at` meets, row after
     /// row, `per_page` to a page from page `first_page` on: a stamp's
     /// (dab/stamp.rs).
@@ -195,7 +263,7 @@ impl TileSet {
 
     /// The grid of the tiles a box `size` across and down from `at` meets,
     /// none of them placed yet: a kept picture's, whose tiles the pool it
-    /// is kept in places ([`TileSet::place`]; halvings.rs).
+    /// is kept in places ([`TileSet::place`]; kept.rs).
     pub(crate) fn unplaced(at: (i32, i32), size: (u32, u32)) -> Option<Self> {
         let side = i64::from(TILE);
         let (left, top) = (i64::from(at.0), i64::from(at.1));
@@ -225,50 +293,83 @@ impl TileSet {
             .collect()
     }
 
-    /// The grid's tile at `column`, `row` placed at `at`. Nothing for a
+    /// The grid's tile `tile` placed at `at`. Nothing for a
     /// tile past the grid.
-    fn place(&mut self, (column, row): (i32, i32), at: TileAt) {
-        let (c, r) = (column - self.x0, row - self.y0);
-        if c >= 0 && r >= 0 && (c as u32) < self.columns && (r as u32) < self.rows {
-            self.tiles[(r as u32 * self.columns + c as u32) as usize] = Some(at);
+    fn place(&mut self, tile: (i32, i32), at: TileAt) {
+        if let Some(index) = self.index_of(tile) {
+            self.tiles[index] = Some(at);
+        }
+    }
+
+    /// The grid's tile `tile` placed nowhere again. Nothing for
+    /// a tile past the grid.
+    fn unplace(&mut self, tile: (i32, i32)) {
+        if let Some(index) = self.index_of(tile) {
+            self.tiles[index] = None;
         }
     }
 
     fn at(&self, column: i32, row: i32) -> Option<TileAt> {
+        self.tiles[self.index_of((column, row))?]
+    }
+
+    /// Where in `tiles` the grid's tile at `column`, `row` is — none past
+    /// the grid.
+    fn index_of(&self, (column, row): (i32, i32)) -> Option<usize> {
         let (c, r) = (column - self.x0, row - self.y0);
         if c < 0 || r < 0 || c as u32 >= self.columns || r as u32 >= self.rows {
             return None;
         }
-        self.tiles[(r as u32 * self.columns + c as u32) as usize]
+        Some((r as u32 * self.columns + c as u32) as usize)
     }
 
     /// The tiles of the set under the pixels `[left, top, right, bottom)`,
-    /// or all of them for `None`.
-    fn under(&self, pixels: Option<[i64; 4]>) -> impl Iterator<Item = TileAt> + '_ {
-        self.placed_under(pixels).map(|(_, at)| at)
-    }
-
-    /// `under`'s tiles, each at its column and row, row after row.
+    /// or all of them for `None`, each at its column and row, row after row.
     fn placed_under(
         &self,
         pixels: Option<[i64; 4]>,
     ) -> impl Iterator<Item = ((i32, i32), TileAt)> + '_ {
-        let side = i64::from(TILE);
-        // In tiles, ends excluded.
-        let first = (i64::from(self.x0), i64::from(self.y0));
-        let end = (first.0 + i64::from(self.columns), first.1 + i64::from(self.rows));
-        let [left, top, right, bottom] = match pixels {
-            None => [first.0, first.1, end.0, end.1],
-            Some([l, t, r, b]) => [
-                l.div_euclid(side).max(first.0),
-                t.div_euclid(side).max(first.1),
-                (r.saturating_sub(1).div_euclid(side) + 1).min(end.0),
-                (b.saturating_sub(1).div_euclid(side) + 1).min(end.1),
-            ],
-        };
+        let grid = TileRect { x0: self.x0, y0: self.y0, columns: self.columns, rows: self.rows };
+        let [left, top, right, bottom] = tiles_under(grid, pixels);
         (top..bottom)
             .flat_map(move |row| (left..right).map(move |column| (column as i32, row as i32)))
             .filter_map(|(column, row)| Some(((column, row), self.at(column, row)?)))
+    }
+
+    /// `placed_under`'s tiles a row of the set posed by `map` reads for the
+    /// output tile at `column`, `row` — all of them where `map` lands no
+    /// rectangle there ([`ResampleMap::reads`]): what the walk lays a row
+    /// from ([`lay`]), and what a kept picture is made of
+    /// ([`Plan::lays_on`]).
+    fn read_for(
+        &self,
+        map: ResampleMap,
+        (column, row): (i32, i32),
+    ) -> impl Iterator<Item = ((i32, i32), TileAt)> + '_ {
+        let side = i64::from(TILE);
+        let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+        self.placed_under(map.reads(x0, y0, x0 + side, y0 + side))
+    }
+}
+
+/// The tiles of the grid `grid` under the pixels `[left, top, right,
+/// bottom)`, or all of them for `None` — [left, top, right, bottom) in
+/// tiles, ends excluded, none where an end is not past its start: the tiles
+/// a row of the grid is laid from ([`TileSet::read_for`]), and whether
+/// what a chain put over the grid is laid on a tile at all
+/// ([`Telling::put`]).
+fn tiles_under(grid: TileRect, pixels: Option<[i64; 4]>) -> [i64; 4] {
+    let side = i64::from(TILE);
+    let first = (i64::from(grid.x0), i64::from(grid.y0));
+    let end = (first.0 + i64::from(grid.columns), first.1 + i64::from(grid.rows));
+    match pixels {
+        None => [first.0, first.1, end.0, end.1],
+        Some([l, t, r, b]) => [
+            l.div_euclid(side).max(first.0),
+            t.div_euclid(side).max(first.1),
+            (r.saturating_sub(1).div_euclid(side) + 1).min(end.0),
+            (b.saturating_sub(1).div_euclid(side) + 1).min(end.1),
+        ],
     }
 }
 
@@ -465,6 +566,282 @@ pub(crate) struct Plan<'a> {
     pub(crate) chains: &'a [Chained<'a>],
     pub(crate) steps: &'a [Step],
     pub(crate) mask: Option<&'a Mask<'a>>,
+    /// What names the bytes of the tiles on `pages` ([`Stamps`]), taken
+    /// with them — none where they are not a pool's as it stood, or nobody
+    /// took them: a picture kept of such a plan is told by nothing
+    /// ([`Plan::made_of`]), and every tile of it is made.
+    pub(crate) stamps: Option<&'a Stamps>,
+}
+
+/// What a picture's tile is made of: every word the pass that makes it is
+/// told by — the pool its rows' tiles are stored in, the part of the
+/// picture's extent on the tile, and the steps laid on it in their order,
+/// each row's with the stamp of every stored tile it reads there
+/// ([`Stamps`]), each held chain's with the number what it put is kept
+/// under ([`Telling::put`]). Two tiles made of the same are the same
+/// bytes, so the pictures' pool keeps one of them (`pool::Pictures`;
+/// F-610, 유저 2026-11-18 「같은 타일은 한 벌만」).
+///
+/// ⛔The words themselves, never a hash of them alone: two tellings taken
+/// for one by chance would show one picture's pixels in another.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct MadeOf(Arc<[u32]>);
+
+/// The word each step of a telling opens with ([`Telling::step`]) — a
+/// step's words are as many as its own say, so no two tellings read alike.
+const TOLD_ROW: u32 = 1;
+const TOLD_SOLID: u32 = 2;
+const TOLD_OPEN: u32 = 3;
+const TOLD_OPEN_OPAQUE: u32 = 4;
+const TOLD_CLOSE: u32 = 5;
+const TOLD_CLOSE_ATOP: u32 = 6;
+const TOLD_PUT: u32 = 9;
+/// The word a telling ends on ([`Telling::told`]): a tile a row is laid on
+/// is told with its own place after it — a row's pose reads by where the
+/// tile lies —, and a tile of solids and buffers alone with none: the same
+/// bytes wherever it lies, a page's paper kept once for every tile of it.
+const TOLD_HERE: u32 = 7;
+const TOLD_ANYWHERE: u32 = 8;
+
+/// A telling under way ([`Plan::made_of`]): the words so far of what the
+/// output tile at `tile` is made of, and whether a row is laid on it.
+struct Telling<'a> {
+    stamps: &'a Stamps,
+    tile: (i32, i32),
+    words: Vec<u32>,
+    posed: bool,
+}
+
+impl Telling<'_> {
+    /// The tile's own corner, in the canvas's pixels.
+    fn corner(&self) -> (i64, i64) {
+        let side = i64::from(TILE);
+        (i64::from(self.tile.0) * side, i64::from(self.tile.1) * side)
+    }
+
+    /// The part of `rect` — [left, top, right, bottom) — on the tile, from
+    /// the tile's own corner: all a pass tells a pixel of it inside the
+    /// rectangle by, wherever the tile lies.
+    fn on_tile(&self, rect: [i32; 4]) -> [u32; 4] {
+        let ((x, y), side) = (self.corner(), i64::from(TILE));
+        let [left, top, right, bottom] = rect.map(i64::from);
+        [left - x, top - y, right - x, bottom - y].map(|edge| edge.clamp(0, side) as u32)
+    }
+
+    /// `step` of `plan` told, as much of it as lies on the tile — none
+    /// where it reads past what a telling names: an effect chain no hold
+    /// names ([`Self::put`]), the plan's mask, a buffer closed as a row
+    /// over its own tiles, a range mark.
+    fn step(&mut self, plan: &Plan, step: &Step) -> Option<()> {
+        match *step {
+            Step::Row { set, keys, chain: None, map, matrix, opacity, mode, masked: false } => {
+                let read = self.read(plan.sets.get(set)?, map)?;
+                // A row that reads no stored tile here is laid nowhere on
+                // the tile ([`Plan::lays_on`]; composite.wgsl's `rowed`).
+                if read.is_empty() {
+                    return Some(());
+                }
+                self.posed = true;
+                self.words.extend([TOLD_ROW, opacity, mode]);
+                self.words.extend(map.words());
+                self.matrix(plan, matrix)?;
+                self.keys(plan, keys)?;
+                self.words.push((read.len() / READ_WORDS) as u32);
+                self.words.extend(read);
+            }
+            Step::Solid { colour, rect } => {
+                if meets(self.tile, rect) {
+                    self.words.extend([TOLD_SOLID, colour]);
+                    self.words.extend(self.on_tile(rect));
+                }
+            }
+            Step::Open => self.words.push(TOLD_OPEN),
+            Step::OpenOpaque => self.words.push(TOLD_OPEN_OPAQUE),
+            Step::CloseAtop => self.words.push(TOLD_CLOSE_ATOP),
+            Step::Close { opacity, mode, matrix, chain: None } => {
+                self.words.extend([TOLD_CLOSE, opacity, mode]);
+                self.matrix(plan, matrix)?;
+            }
+            _ => self.put(plan, step)?,
+        }
+        Some(())
+    }
+
+    /// `step` of `plan` that names an effect chain, told as the walk lays
+    /// it once the chain has put ([`unchained`]): a row of what the chain
+    /// put — as much of it as lies on the tile, none where its pose reads
+    /// none of the chain's tiles there —, at the mix a buffer's close lays
+    /// it against the tiles the chain ran on. What the chain put is told by
+    /// what holds it: the hold, the number it is kept under there, and the
+    /// rectangle it runs over. None where the step names no chain, its
+    /// chain no hold — it runs each time, on what nothing names —, or the
+    /// row is laid under the plan's mask.
+    ///
+    /// THE APP'S NUMBER IS THE PICTURE (held.rs, 관제 2026-11-08 22:14: 「a
+    /// number is one picture of a folder or a row — its signature, compared
+    /// whole」): the walk lays what the hold keeps under it and runs nothing
+    /// — a buffer's own steps not walked ([`Plan::made_of`]) —, or runs
+    /// the chain once to the same picture where the hold let it go. So the
+    /// number names the chain's pixels as a stamp names a stored tile's,
+    /// and neither the chain's ops nor what they read is told beside it.
+    /// ⛔Not what the hold keeps now — a buffer's name, say: a tile is held
+    /// for a picture told the same after the hold let the put go, and one
+    /// told by what was kept would be made again each time it was.
+    ///
+    /// 🔬Why it is told at all (2026-11-19, S5_BA as its file shows it,
+    /// the playhead on cut 352: the band's 58 pictures, 40 of them the next
+    /// cut's, where one folder under an effect is the same picture in every
+    /// frame): of the 14,742 tiles they made, 14,025 were told by nothing
+    /// for that close alone, 83% of all of them the bytes of another
+    /// (921 MB held, 155 MB of them apart). Told, the same 58 pictures made
+    /// 3,010 tiles, 188 MB.
+    fn put(&mut self, plan: &Plan, step: &Step) -> Option<()> {
+        let (rect, held, number) = named_hold(plan, step)?;
+        let Step::Row { keys, map, matrix, opacity, mode, masked: false, .. } = unchained(*step, 0) else {
+            return None;
+        };
+        let ((x, y), side) = (self.corner(), i64::from(TILE));
+        let [left, top, right, bottom] = tiles_under(rect, map.reads(x, y, x + side, y + side));
+        if left >= right || top >= bottom {
+            return Some(());
+        }
+        self.posed = true;
+        self.words.extend([TOLD_PUT, opacity, mode, mix_of(step)]);
+        self.words.extend(map.words());
+        self.matrix(plan, matrix)?;
+        self.keys(plan, keys)?;
+        let (id, TileRect { x0, y0, columns, rows }) = (held.id(), rect);
+        self.words.extend([id as u32, (id >> 32) as u32, number, x0 as u32, y0 as u32, columns, rows]);
+        Some(())
+    }
+
+    /// The stored tiles a row of `set` posed by `map` reads for the tile,
+    /// [`READ_WORDS`] each: its place in the row and its stamp. None where
+    /// the pose bounds no rectangle — a homography's row reads every tile
+    /// of its set ([`ResampleMap::reads`]), a telling of thousands of
+    /// stamps a tile — or a tile it reads has no stamp.
+    fn read(&self, set: &TileSet, map: ResampleMap) -> Option<Vec<u32>> {
+        let ((x, y), side) = (self.corner(), i64::from(TILE));
+        map.reads(x, y, x + side, y + side)?;
+        let mut words = Vec::new();
+        for ((column, row), at) in set.read_for(map, self.tile) {
+            let stamp = self.stamps.of(at)?;
+            words.extend([column as u32, row as u32, stamp as u32, (stamp >> 32) as u32]);
+        }
+        Some(words)
+    }
+
+    /// Colour matrix `matrix` of `plan` told, or that a step runs none.
+    fn matrix(&mut self, plan: &Plan, matrix: Option<usize>) -> Option<()> {
+        let Some(matrix) = matrix else {
+            self.words.push(0);
+            return Some(());
+        };
+        self.words.push(1);
+        self.words.extend(plan.matrices.get(matrix)?);
+        Some(())
+    }
+
+    /// Key chain `keys` of `plan` told, run after run, or that a row is
+    /// keyed by none.
+    fn keys(&mut self, plan: &Plan, keys: Option<usize>) -> Option<()> {
+        let Some(keys) = keys else {
+            self.words.push(0);
+            return Some(());
+        };
+        let runs = &plan.keys.get(keys)?.runs;
+        self.words.push(1 + runs.len() as u32);
+        for run in runs {
+            self.words.push(run.len() as u32);
+            self.words.extend(run);
+        }
+        Some(())
+    }
+
+    /// The telling whole ([`TOLD_HERE`]).
+    fn told(mut self) -> MadeOf {
+        match self.posed {
+            true => self.words.extend([TOLD_HERE, self.tile.0 as u32, self.tile.1 as u32]),
+            false => self.words.push(TOLD_ANYWHERE),
+        }
+        MadeOf(self.words.into())
+    }
+}
+
+/// The words a telling names a stored tile a row reads by
+/// ([`Telling::read`]): its column and row in the row's grid, and its
+/// stamp's two.
+const READ_WORDS: usize = 4;
+
+impl Plan<'_> {
+    /// Whether the plan may lay anything on the output tile at `tile`: a
+    /// row where its pose reads a stored tile for it — the walk lays it
+    /// nowhere else ([`lay`]) —, a solid where its rectangle meets it, a
+    /// buffer's open and its plain close nowhere of their own; and, for
+    /// want of telling where, everywhere a step may put what it read
+    /// elsewhere or nothing at all: a chain, a buffer closed as a row or
+    /// through a matrix, a buffer opened on the one under it made whole, a
+    /// range mark. A tile it lays nothing on composites to nothing.
+    pub(crate) fn lays_on(&self, tile: (i32, i32)) -> bool {
+        self.steps.iter().any(|step| match *step {
+            Step::Row {
+                set, chain: None, map, ..
+            } => self.sets.get(set).is_none_or(|set| set.read_for(map, tile).next().is_some()),
+            Step::Solid { rect, .. } => meets(tile, rect),
+            Step::Open
+            | Step::CloseAtop
+            | Step::Close {
+                matrix: None,
+                chain: None,
+                ..
+            } => false,
+            _ => true,
+        })
+    }
+
+    /// What the output tile at `tile` of a picture over the pixels
+    /// `extent`, [left, top, right, bottom), is made of ([`MadeOf`]) —
+    /// none where the plan cannot tell: its tiles' stamps not handed with
+    /// it ([`Plan::stamps`]), or a step that reads past what a telling
+    /// names ([`Telling::step`]). Such a tile is made, whatever is kept.
+    ///
+    /// A buffer closed through a chain a hold names is told by its close
+    /// alone, none of the steps from its open on: the walk lays what the
+    /// hold keeps and walks none of them ([`Composite::chained`]) — a row
+    /// in it that no telling names is no word of the tile's.
+    pub(crate) fn made_of(&self, tile: (i32, i32), extent: [i32; 4]) -> Option<MadeOf> {
+        let stamps = self.stamps?;
+        let pool = stamps.pool();
+        let mut telling = Telling { stamps, tile, words: vec![pool as u32, (pool >> 32) as u32], posed: false };
+        let inside = telling.on_tile(extent);
+        telling.words.extend(inside);
+        // The closes are asked for only where a chain of the plan is held:
+        // a pen's step tells a tile or two a hundred times a second.
+        let held = self.chains.iter().any(|chain| chain.held.is_some());
+        let closes = if held { closes_of(self.steps) } else { Vec::new() };
+        let mut index = 0;
+        while let Some(step) = self.steps.get(index) {
+            let close = closes.get(index).copied().flatten();
+            let held = close.filter(|&close| matches!(step, Step::Open) && named_hold(self, &self.steps[close]).is_some());
+            index = match held {
+                Some(close) => close,
+                None => {
+                    telling.step(self, step)?;
+                    index + 1
+                }
+            };
+        }
+        Some(telling.told())
+    }
+}
+
+/// Whether the tile at `column`, `row` holds a pixel of `rect`, [left, top,
+/// right, bottom) — none for an empty one.
+pub(crate) fn meets((column, row): (i32, i32), rect: [i32; 4]) -> bool {
+    let side = i64::from(TILE);
+    let (x, y) = (i64::from(column) * side, i64::from(row) * side);
+    let [left, top, right, bottom] = rect.map(i64::from);
+    left < right && top < bottom && left < x + side && x < right && top < y + side && y < bottom
 }
 
 /// Where a run's last pass puts its pixels.
@@ -633,7 +1010,7 @@ impl Composite {
         let shown = format.filter(|&format| stores(engine, format)).and_then(storage_format);
         // The tiles' output, and the surface's where there is one.
         let outputs = [Some(None), shown.map(Some)];
-        let (source, binding) = (&composite.pages.source(), composite.surface_binding());
+        let (source, binding) = (&composite.pages.stored(), composite.surface_binding());
         let made = engine.side_by_side(outputs.into_iter().flatten().map(|output| {
             move || (output, compile(engine, source, binding, Compiled::full(output)))
         }));
@@ -671,28 +1048,38 @@ impl Composite {
         extent: [i32; 4],
         budget: Budget,
     ) -> Option<Composited> {
-        let out = engine.device().create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite out"),
-            size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
+        let out = spares::out_of(engine, tiles.len());
         let target = Target::Tiles(&out);
         let passes = self.walk(engine, plan, tiles, extent, None, &target, budget)?;
         Some(Composited { out, passes })
     }
 
+    /// [`Composite::run`] for a walk's own use, with no edge — what a
+    /// chained step's tiles, or its buffer's steps, are composited into
+    /// ([`Composite::made`]): the output one of the engine's spares, its
+    /// holders' till the last lets go ([`spares`]).
+    fn run_spare(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<Lent> {
+        let out = engine.spares.out(engine, tiles.len());
+        self.walk(engine, plan, tiles, NO_EDGE, None, &Target::Tiles(out.buffer()), budget)?;
+        Some(out)
+    }
+
     /// [`Composite::run`], each output tile's pixels put at its place in
     /// `onto` — one a tile, in the order asked — and no buffer of the run's
     /// own made for them: how a picture is kept in the pictures' pool
-    /// (halvings.rs, `Kept`). Submits the work; returns how many passes it
+    /// (kept.rs, `Kept`). Submits the work; returns how many passes it
     /// took.
     ///
     /// ⚠️A place is a FRESH slot: one no pass of this run reads, so the
-    /// pages `onto` names may be pages `plan` lays rows from — a halving
-    /// stage reads the stage above it off the pool it is kept in.
+    /// pages `onto` names may be pages `plan` lays rows from. ↩️A halving
+    /// stage read the stage above it off the pool it was kept in so, till
+    /// 2026-11-19; no plan lays rows from the pictures' pool now.
     pub(crate) fn run_onto(
         &self,
         engine: &Engine,
@@ -739,29 +1126,56 @@ impl Composite {
         through: Through,
         budget: Budget,
     ) -> Option<Composited> {
-        let steps = [Step::Row {
-            set: 0,
-            keys: through.keys.map(|_| 0),
-            chain: None,
-            map: ResampleMap::moved(0, 0),
-            matrix: through.matrix.map(|_| 0),
-            // Whole. 65534 copies the same bytes — a stored byte's step is 257
-            // on this scale — so no test tells the two apart (mutant r04, 11-06).
-            opacity: 65535,
-            mode: NORMAL,
-            masked: false,
-        }];
-        let plan = Plan {
-            pages,
-            sets: std::slice::from_ref(set),
-            keys: through.keys.map_or(&[], std::slice::from_ref),
-            matrices: through.matrix.map_or(&[], std::slice::from_ref),
-            chains: &[],
-            steps: &steps,
-            mask: None,
-        };
-        self.run(engine, &plan, tiles, NO_EDGE, budget)
+        copied_as(pages, set, through, |plan| self.run(engine, plan, tiles, NO_EDGE, budget))
     }
+
+    /// [`Composite::copied_through`] for a walk's own use — a chained
+    /// row's tiles as they are stored, a chain's colour steps and the rows
+    /// it reads beside its tiles (kernels/chain): the output one of the
+    /// engine's spares ([`Composite::run_spare`]).
+    pub(crate) fn copied_spare(
+        &self,
+        engine: &Engine,
+        pages: &[wgpu::Buffer],
+        set: &TileSet,
+        tiles: &[(i32, i32)],
+        through: Through,
+        budget: Budget,
+    ) -> Option<Lent> {
+        copied_as(pages, set, through, |plan| self.run_spare(engine, plan, tiles, budget))
+    }
+}
+
+/// What `run` makes of the plan [`Composite::copied_through`] runs: `set`'s
+/// tiles on `pages` as a row copied whole over nothing, keyed and through
+/// `through`.
+fn copied_as<T>(pages: &[wgpu::Buffer], set: &TileSet, through: Through, run: impl FnOnce(&Plan) -> T) -> T {
+    let steps = [Step::Row {
+        set: 0,
+        keys: through.keys.map(|_| 0),
+        chain: None,
+        map: ResampleMap::moved(0, 0),
+        matrix: through.matrix.map(|_| 0),
+        // Whole. 65534 copies the same bytes — a stored byte's step is 257
+        // on this scale — so no test tells the two apart (mutant r04, 11-06).
+        opacity: 65535,
+        mode: NORMAL,
+        masked: false,
+    }];
+    let plan = Plan {
+        pages,
+        sets: std::slice::from_ref(set),
+        keys: through.keys.map_or(&[], std::slice::from_ref),
+        matrices: through.matrix.map_or(&[], std::slice::from_ref),
+        chains: &[],
+        steps: &steps,
+        mask: None,
+        stamps: None,
+    };
+    run(&plan)
+}
+
+impl Composite {
 
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
     /// right, bottom), the output's pixels being the surface's own — and
@@ -844,7 +1258,7 @@ impl Composite {
     /// has why): made, then put in its output's cell.
     fn full(&self, engine: &Engine, surface: Option<&'static str>) -> wgpu::ComputePipeline {
         let (cell, full) = (self.fulls.cell(surface), Compiled::full(surface));
-        kept_or_made(&cell, || compile(engine, &self.pages.source(), self.surface_binding(), full)).clone()
+        kept_or_made(&cell, || compile(engine, &self.pages.stored(), self.surface_binding(), full)).clone()
     }
 
     /// Compiles the passes asked for and not made, the latest asked first,
@@ -858,7 +1272,7 @@ impl Composite {
     /// (`Apart`, in `device.rs`): no one waits for a pass of a plan's own.
     fn compile_apart(&self, engine: &Engine) {
         let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
-        let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
+        let (pages, surface_binding) = (self.pages.stored(), self.surface_binding());
         std::thread::spawn(move || loop {
             engine.apart.wait();
             let Some(wanted) = passes.next() else {
@@ -924,6 +1338,8 @@ impl Composite {
         budget: Budget,
     ) -> Option<usize> {
         debug_assert!(engine.is_its_thread(), "a walk off the engine's thread");
+        // A walk in no picture's making is a compose of its own ([`spares`]).
+        let _composing = engine.spares.composing();
         let pages_per_pass = budget.pages;
         if pages_per_pass == 0 || pages_per_pass > self.pages.per_pass() {
             return fail(format!(
@@ -943,7 +1359,7 @@ impl Composite {
         )?;
         check_mask(plan)?;
         if plan.steps.iter().any(runs_first) {
-            let (pages, sets, steps) = self.chained(engine, plan, tiles, budget)?;
+            let (pages, sets, steps, lent) = self.chained(engine, plan, tiles, budget)?;
             let plan = Plan {
                 pages: &pages,
                 sets: &sets,
@@ -951,7 +1367,14 @@ impl Composite {
                 steps: &steps,
                 ..*plan
             };
-            return self.walk(engine, &plan, tiles, extent, surface, target, budget);
+            let walked = self.walk(engine, &plan, tiles, extent, surface, target, budget);
+            // Held till the walk that reads them is through: a buffer is
+            // no spare while a walk has yet to read it ([`spares`]).
+            // ⚠️No test tells this from letting go before that walk —
+            // nothing takes one between the two; what the tests see is
+            // `chained` holding each while the steps after it run.
+            drop(lent);
+            return walked;
         }
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         if laid.iter().all(|each| each.pages.len() <= pages_per_pass) {
@@ -980,7 +1403,6 @@ impl Composite {
         tiles: &[(i32, i32)],
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Laid>)> {
-        let side = i64::from(TILE);
         let held = tiles_a_page(engine)?;
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
         let mut gathered = Vec::with_capacity(laid.len());
@@ -996,8 +1418,7 @@ impl Composite {
             let (Some((_, &(column, row))), None) = (live.next(), live.next()) else {
                 return fail("a step past a pass's pages is one output tile's");
             };
-            let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
-            let under = plan.sets[*set].placed_under(map.reads(x0, y0, x0 + side, y0 + side));
+            let under = plan.sets[*set].read_for(*map, (column, row));
             // Row after row, as the set they make holds them.
             let read: Vec<(i32, i32)> = under.map(|(place, _)| place).collect();
             // ⚠️No test reaches this refusal (관제 11-06 21:18 asked why): a
@@ -1053,8 +1474,13 @@ impl Composite {
         plan: &Plan,
         tiles: &[(i32, i32)],
         budget: Budget,
-    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
+    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>, Vec<Lent>)> {
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
+        // What holds each buffer laid on `pages` below for the walk that
+        // reads it ([`Lent`]): a page is the bare buffer. 🚨Each is held
+        // from where it is made: let go of there, the next step run
+        // would take it and write its own tiles over it.
+        let mut lent: Vec<Lent> = Vec::new();
         let mut steps: Vec<Step> = Vec::with_capacity(plan.steps.len());
         // Where in `steps` each buffer open there was opened, and whether
         // on nothing.
@@ -1106,7 +1532,8 @@ impl Composite {
                     made
                 }
             };
-            let put = laid_on(&mut pages, &mut sets, made.put, rect)?;
+            let put = laid_on(&mut pages, &mut sets, made.put.buffer().clone(), rect)?;
+            lent.push(made.put);
             match (*step, made.under) {
                 (
                     Step::Close {
@@ -1117,7 +1544,8 @@ impl Composite {
                     },
                     Some(under),
                 ) if mix < WHOLE => {
-                    let read = laid_on(&mut pages, &mut sets, under, rect)?;
+                    let read = laid_on(&mut pages, &mut sets, under.buffer().clone(), rect)?;
+                    lent.push(under);
                     let laid = |set, opacity, mode, matrix| Step::Row {
                         set,
                         keys: None,
@@ -1143,7 +1571,7 @@ impl Composite {
                 _ => steps.push(unchained(*step, put)),
             }
         }
-        Some((pages, sets, steps))
+        Some((pages, sets, steps, lent))
     }
 
     /// What step `index`, `step`, of `plan` puts over `rect`, run
@@ -1169,7 +1597,10 @@ impl Composite {
             return fail(format!("step {index} runs on {count} tiles; a page holds {page}"));
         }
         let under = match *step {
-            Step::Row { set, .. } => self.copied(engine, plan.pages, &plan.sets[set], &read, budget)?,
+            Step::Row { set, .. } => {
+                let (set, stored) = (&plan.sets[set], Through::default());
+                self.copied_spare(engine, plan.pages, set, &read, stored, budget)?
+            }
             _ => {
                 // A buffer opened on the one under it holds what is under
                 // it, which its steps alone do not lay.
@@ -1183,17 +1614,14 @@ impl Composite {
                     steps: &alone,
                     ..*plan
                 };
-                self.run(engine, &plan, &read, NO_EDGE, budget)?
+                self.run_spare(engine, &plan, &read, budget)?
             }
         };
         let put = match chain_of(step) {
-            Some(at) => {
-                let chained = &plan.chains[at];
-                self.through(engine, plan, chained, under.out.clone(), &read, budget)?
-            }
-            None => under.out.clone(),
+            Some(at) => self.through(engine, plan, &plan.chains[at], under.clone(), &read, budget)?,
+            None => under.clone(),
         };
-        let under = mixed(step).then_some(under.out);
+        let under = mixed(step).then_some(under);
         Some(Made { put, under })
     }
 
@@ -1206,10 +1634,10 @@ impl Composite {
         engine: &Engine,
         plan: &Plan,
         chained: &Chained,
-        under: wgpu::Buffer,
+        under: Lent,
         read: &[(i32, i32)],
         budget: Budget,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         let mut drawn = Vec::with_capacity(chained.ops.len());
         for op in &chained.ops {
             let Some(rows) = op.map_rows() else {
@@ -1220,7 +1648,7 @@ impl Composite {
                 return fail("a chain reads a map whose rows read a map");
             }
             let plan = Plan { steps: rows, ..*plan };
-            drawn.push(Some(self.run(engine, &plan, read, NO_EDGE, budget)?.out));
+            drawn.push(Some(self.run_spare(engine, &plan, read, budget)?));
         }
         let ops = with_drawn(&chained.ops, &drawn);
         // A chain reads its tiles and puts others: what it read stays.
@@ -1476,19 +1904,36 @@ fn runs_first(step: &Step) -> bool {
     chain_of(step).is_some() || matches!(step, Step::CloseRow { .. })
 }
 
+/// What names what the chain `step` names puts: the rectangle it runs
+/// over, its hold, and the number it is kept under there — none where the
+/// step names no chain of the plan, or its chain no hold.
+fn named_hold<'a>(plan: &Plan<'a>, step: &Step) -> Option<(TileRect, &'a HeldChains, u32)> {
+    let chained = plan.chains.get(chain_of(step)?)?;
+    let (held, number) = chained.held?;
+    Some((chained.rect, held, number))
+}
+
 /// What the hold of the chain `step` names keeps of it, over the chain's
 /// rectangle and — where `step` is laid crossfaded with them — with the
 /// tiles it ran on; none where it names no chain or none held.
 fn held_over(plan: &Plan, step: &Step) -> Option<Made> {
-    let chained = &plan.chains[chain_of(step)?];
-    let (held, id) = chained.held?;
-    held.over(id, chained.rect, mixed(step))
+    let (rect, held, number) = named_hold(plan, step)?;
+    held.over(number, rect, mixed(step))
+}
+
+/// The mix `step` lays what its chain put at, against the tiles the chain
+/// ran on: a chained buffer's close's — whole for any other step.
+fn mix_of(step: &Step) -> u32 {
+    match *step {
+        Step::Close { chain: Some(BufferChain { mix, .. }), .. } => mix,
+        _ => WHOLE,
+    }
 }
 
 /// Whether `step` closes a chained buffer at a mix under whole: laid as a
 /// crossfade of its tiles with what its chain put ([`Composite::chained`]).
 fn mixed(step: &Step) -> bool {
-    matches!(*step, Step::Close { chain: Some(BufferChain { mix, .. }), .. } if mix < WHOLE)
+    mix_of(step) < WHOLE
 }
 
 /// For each step that opens a buffer, the step that closes it, if one does.
@@ -1749,7 +2194,6 @@ fn lay(
     page_count: usize,
     pages_per_pass: usize,
 ) -> Option<Vec<Laid>> {
-    let side = i64::from(TILE);
     let mut laid = Vec::new();
     for step in steps {
         let Step::Row { set, map, .. } = *step else {
@@ -1762,10 +2206,9 @@ fn lay(
         };
         // The pages each output tile reads.
         let mut reads: Vec<Vec<u16>> = Vec::with_capacity(tiles.len());
-        for &(column, row) in tiles {
-            let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+        for &tile in tiles {
             let mut read: Vec<u16> = Vec::new();
-            for at in sets[set].under(map.reads(x0, y0, x0 + side, y0 + side)) {
+            for (_, at) in sets[set].read_for(map, tile) {
                 if usize::from(at.page) >= page_count {
                     return fail(format!("tile set {set} names page {}", at.page));
                 }

@@ -42,6 +42,29 @@ void main() {
     expect(at(stack, r'require_worktree "$p"'), lessThan(rebased));
   });
 
+  // 🐞관제 2026-11-18 03:35: the pan keys were sent stacked on the name tag
+  // fold, and measured from the fork they laid the fold's commits again on
+  // its copies — left out of the bundle, and in conflict alone after it.
+  test('🚨a lone land and a bundle ask one place where a lane\'s own commits '
+      'start — past a lane it was sent stacked on', () {
+    final land = script.codeOf('cmd_land');
+    final asked = at(land, r'below="$(own_base "work/$name")"');
+    expect(asked, isNot(-1));
+    expect(asked, lessThan(at(land, r'rebase --onto "$TRUNK" "$below"')));
+    final bundle = script.codeOf('land_bundle');
+    expect(at(bundle, r'own_base "work/$name" ${ORIG[@]+"${ORIG[@]}"}'),
+        isNot(-1),
+        reason: 'the lanes before it in the bundle, as they were sent');
+    expect(at(bundle, r'merge-base "$TRUNK"'), -1,
+        reason: 'the fork is own_base\'s first answer, not a second copy');
+    final base = script.codeOf('own_base');
+    final stacked = at(base, r'merge-base --is-ancestor "$c" "$lane"');
+    final copies = at(base, "--format='%at %ae %s'");
+    expect([stacked, copies], everyElement(isNot(-1)));
+    expect(copies, greaterThan(stacked),
+        reason: 'copies are looked for past the nearest lane it holds');
+  });
+
   test('a stack is measured by the land\'s own gates, and only a gate\'s own '
       'refusal reads as red — one that could not run stops the land', () {
     final green = script.codeOf('stack_is_green');

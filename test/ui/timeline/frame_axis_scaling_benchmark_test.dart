@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
+import '../../helpers/semantics_as_the_app_runs.dart';
+
 /// THE frame-axis baseline, and the guard for the round that follows.
 ///
 /// ZOOM is geometry-bound. A row's box WAS `renderedFrameCount * cellWidth`,
@@ -173,5 +175,7 @@ void main() {
     session.dispose();
     await tester.pumpAndSettle();
     expect(rounds, greaterThan(0));
-  }, timeout: const Timeout(Duration(minutes: 10)));
+  },
+      semanticsEnabled: semanticsAsTheAppRuns,
+      timeout: const Timeout(Duration(minutes: 10)));
 }

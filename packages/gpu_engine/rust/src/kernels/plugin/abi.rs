@@ -271,8 +271,9 @@ pub unsafe extern "C" fn gpu_engine_plugin_render_read(
             .and_then(|asked| {
                 let Kept { tiles, rect, rows } = read.kept()?;
                 let frame = asked.frame(picture, share, &[], &[]);
-                let rows: Vec<Tiled> = rows.iter().map(|tiles| Tiled { tiles, rect }).collect();
-                match plugin.render_tiled(engine, &frame, at, Tiled { tiles: &tiles, rect }, &rows)? {
+                let rows: Vec<Tiled> =
+                    rows.iter().map(|tiles| Tiled { tiles: tiles.buffer(), rect }).collect();
+                match plugin.render_tiled(engine, &frame, at, Tiled { tiles: tiles.buffer(), rect }, &rows)? {
                     Ok(tiles) => Some(PluginMade { rect, tiles }),
                     Err(Cut) => fail(format!("the plugin spent each pixel's share of {share} and was cut")),
                 }
@@ -292,10 +293,9 @@ pub unsafe extern "C" fn gpu_engine_plugin_render_read(
 /// what it made ([`placed`]): the engine's alone, with no wait for the
 /// GPU. Returns as [`gpu_engine_stroke_land`] does, each landed inked.
 ///
-/// ⚠️The letters' plate lands so too (`gpu_engine_lettered_land`): the
-/// second picture landed as it lies on the device, its own entry over the
-/// one door. A third (a picture brought in, `EnginePicture`) makes the
-/// three one (rule of three).
+/// ↩️The letters' plate landed so too, its own entry over the one door,
+/// till its laying went to the engine's thread unwaited
+/// (`gpu_engine_letters_land`, 2026-11-18).
 ///
 /// [`gpu_engine_stroke_land`]: crate::kernels::dab::abi::gpu_engine_stroke_land
 ///

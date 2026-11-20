@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/the_classic_rail.dart';
@@ -128,7 +129,8 @@ layers: layers,
     final gesture = await tester.startGesture(start);
     await gesture.moveBy(Offset(0, cellExtent * 4));
 
-    expect(scrubbed, isNotEmpty);
+    // As the ruler's: the press, then where the one move took the drag.
+    expect(scrubbed, containsAllInOrder(<int>[1, 5]));
     expect(selected, isEmpty, reason: 'moves must not commit');
     expect(scrubEnds, 0);
 
@@ -289,6 +291,35 @@ layers: layers,
       expect(notifies, 0, reason: 'seeks are never session notifies');
       expect(manager.currentFrameIndex, 5);
       expect(manager.frameScrub.active.value, isFalse);
+    });
+
+    // The X-sheet's rail is the ruler turned on its side, through the one
+    // scrub area: one move takes the playhead as far down it.
+    testWidgets('tab host: a rail drag down the X-sheet takes the playhead '
+        'where the drag was taken', (tester) async {
+      final manager = session();
+      addTearDown(manager.dispose);
+      await pumpTimelineHostOn(
+        tester,
+        manager,
+        surface: const Size(800, 600),
+        orientation: TimelineOrientation.vertical,
+        pixelsPerFrame: 48,
+      );
+
+      final rail = find.byKey(
+        const ValueKey<String>('xsheet-frame-rail-scrub-area'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(rail) + const Offset(10, 48 + 8),
+      );
+      await gesture.moveBy(const Offset(0, 48 * 4));
+      await tester.pump();
+
+      expect(manager.currentFrameIndex, 5);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(manager.currentFrameIndex, 5);
     });
 
     /// 🚨★★★ #26 — A SCRUB SHOWS THE EDITING CANVAS, AT THE CROSSED FRAME.

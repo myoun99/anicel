@@ -197,11 +197,11 @@ class ProjectFile {
     }
     var media = const <String, int>{};
     var conform = const <String, int>{};
-    // The layout a reader sees ([readableAnicelLayout]) — a torn tail's last
-    // committed directory included, as the bytes that are read are. None to
-    // read answers nothing rather than a wrong number; the row falls back to
+    // The layout a reader sees ([_layoutNow]) — a torn tail's last committed
+    // directory included, as the bytes that are read are. None to read
+    // answers nothing rather than a wrong number; the row falls back to
     // what it always showed.
-    final layout = readableAnicelLayout(path);
+    final layout = _layoutNow();
     if (layout != null) {
       media = {
         for (final entry in layout.entries)
@@ -230,6 +230,46 @@ class ProjectFile {
   Map<String, int> _mediaStoredBytes = const {};
   Map<String, int> _conformArchivedBytes = const {};
   int _archivedBytesGeneration = -1;
+
+  /// [batch] with the project file's directory read ONCE for every question
+  /// it asks of where bytes are ([mediaByteSourceFor], [carriedConformFor],
+  /// the holders' walks): the first to ask reads it, the rest are answered
+  /// from that read.
+  ///
+  /// 🔬card anicel-open-stands-still-while-it-settles (Surface, 2026-11-20,
+  /// a 393 MB project of 678 entries, the app's own workers): a read of the
+  /// directory is 5–13 ms on the thread that draws, and an open's warm took
+  /// two a sound — where its bytes are, and whether the file carries its
+  /// conform: 22–30 ms of the open's 51–69 ms stall for two sounds, and
+  /// ten more a sound.
+  ///
+  /// ⛔Held for the batch and no longer — offsets belong to one layout
+  /// ([mediaByteSourceFor]). A batch runs in one turn of this thread, where
+  /// nothing of this session writes the file, and a file the session has
+  /// moved on to since ([_fileGeneration]) is read anew.
+  T withOneReadOfTheFile<T>(T Function() batch) {
+    late final layout = readableAnicelLayout(_projectFilePath);
+    _oneRead = (generation: _fileGeneration, layout: () => layout);
+    try {
+      return batch();
+    } finally {
+      _oneRead = null;
+    }
+  }
+
+  /// The project file's directory as a reader sees it
+  /// ([readableAnicelLayout] — a torn tail's last committed one included):
+  /// the batch's read inside [withOneReadOfTheFile] while the file is the
+  /// one it read, a read of its own otherwise.
+  AnicelZipLayout? _layoutNow() {
+    final batch = _oneRead;
+    return batch != null && batch.generation == _fileGeneration
+        ? batch.layout()
+        : readableAnicelLayout(_projectFilePath);
+  }
+
+  /// The read [withOneReadOfTheFile] shares while its batch runs.
+  ({int generation, AnicelZipLayout? Function() layout})? _oneRead;
 
   /// What [poolPath]'s CONFORM occupies, or null when it has none.
   ///
@@ -351,8 +391,9 @@ class ProjectFile {
   /// carrying exists to survive) silenced the clip and hung a "missing"
   /// banner on an asset the project owns.
   ///
-  /// Resolved fresh per call, never held: offsets belong to one layout
-  /// and a compaction moves every byte. The archive range carries the
+  /// Resolved fresh per call — or per batch ([withOneReadOfTheFile]) —
+  /// never held past it: offsets belong to one layout and a compaction
+  /// moves every byte. The archive range carries the
   /// entry's CRC, and the conform pipeline treats a mismatch as transient
   /// — a read that raced a compaction retries against fresh offsets
   /// rather than decoding whatever moved into the window. A reader that
@@ -404,10 +445,7 @@ class ProjectFile {
   /// known: what a reader following its bytes asks ([HeldMediaBytes.again]),
   /// THESE bytes whatever the pool names at their path by then.
   _Whereabouts _whereTheCarryIs(MediaCarry carry) {
-    final (:stored, :at) = _storedFor(
-      carry,
-      () => readableAnicelLayout(_projectFilePath),
-    );
+    final (:stored, :at) = _storedFor(carry);
     return (
       carry: carry,
       stored: stored,
@@ -428,19 +466,17 @@ class ProjectFile {
 
   /// [carry]'s stored bytes and where they were found
   /// ([storedMediaBytesFor]) — asked for a reader, and again after a save
-  /// for the readers already holding ([_tellTheHoldersWhatMoved]). [layout]
-  /// is the project file's, read only when the file holds this carry — the
-  /// pool asks per row, and a carry not saved yet has nothing in there to
-  /// find.
-  ({MediaByteSource stored, MediaBytesAt at}) _storedFor(
-    MediaCarry carry,
-    AnicelZipLayout? Function() layout,
-  ) => storedMediaBytesFor(
-    carry,
-    layout: mediaEntryHeld(_mediaInFile, carry) ? layout() : null,
-    archivePath: _projectFilePath,
-    staging: _staging,
-  );
+  /// for the readers already holding ([_tellTheHoldersWhatMoved]). The
+  /// project file's directory ([_layoutNow]) is read only when the file
+  /// holds this carry — the pool asks per row, and a carry not saved yet
+  /// has nothing in there to find.
+  ({MediaByteSource stored, MediaBytesAt at}) _storedFor(MediaCarry carry) =>
+      storedMediaBytesFor(
+        carry,
+        layout: mediaEntryHeld(_mediaInFile, carry) ? _layoutNow() : null,
+        archivePath: _projectFilePath,
+        staging: _staging,
+      );
 
   /// Every hold handed out and not given back yet that has a carry — what a
   /// save asks about: to store what they read ([heldCarries]), to tell each
@@ -464,17 +500,16 @@ class ProjectFile {
   /// what the file holds ([mediaInFile]) never listed it: a reader holding
   /// it was told its bytes had moved to the ORIGINAL and followed there, and
   /// an undo that brought the asset back read the original too.
-  Map<MediaCarry, MediaByteSource> get heldCarries {
-    late final layout = readableAnicelLayout(_projectFilePath);
-    return {
+  Map<MediaCarry, MediaByteSource> get heldCarries => withOneReadOfTheFile(
+    () => {
       for (final live in _liveHolds)
-        if (_storedFor(live.carry, () => layout) case (
+        if (_storedFor(live.carry) case (
           :final stored,
           :final at,
         ) when at != MediaBytesAt.original)
           live.carry: stored,
-    };
-  }
+    },
+  );
 
   /// Tells every live hold whose carry the file just saved answers from
   /// somewhere else — the save absorbed the staged copy it reads, or wrote
@@ -495,16 +530,18 @@ class ProjectFile {
   void _tellTheHoldersWhatMoved() {
     // Read once for every holder — a central directory per movie row per
     // save is the cost this would otherwise add to every save.
-    late final layout = readableAnicelLayout(_projectFilePath);
-    for (final live in _liveHolds) {
-      final now = _storedFor(live.carry, () => layout).stored;
-      // Told once per answer: a reader still on its way there — or one
-      // that could not follow — hears again only when the answer moves on.
-      if (now != live.stored && now != live.toldOf) {
-        live.toldOf = now;
-        live.moves.add(HeldBytesMove.elsewhere);
+    withOneReadOfTheFile(() {
+      for (final live in _liveHolds) {
+        final now = _storedFor(live.carry).stored;
+        // Told once per answer: a reader still on its way there — or one
+        // that could not follow — hears again only when the answer moves
+        // on.
+        if (now != live.stored && now != live.toldOf) {
+          live.toldOf = now;
+          live.moves.add(HeldBytesMove.elsewhere);
+        }
       }
-    }
+    });
   }
 
   /// Asks every reader holding [filePath] open to let go of it, and waits
@@ -783,9 +820,10 @@ class ProjectFile {
   /// playing now and playing after a full pass over 55MB of compressed
   /// audio.
   ///
-  /// ⚠️Resolved per call and never held — the same rule
-  /// [mediaByteSourceFor] follows: a compaction moves every byte, and a
-  /// range kept from before would read whatever landed on those offsets.
+  /// ⚠️Resolved per call — or per batch ([withOneReadOfTheFile]) — and
+  /// never held past it, the same rule [mediaByteSourceFor] follows: a
+  /// compaction moves every byte, and a range kept from before would read
+  /// whatever landed on those offsets.
   ///
   /// ⛔The entry name is DERIVED, not recorded: the path and the settings
   /// say it, and both spellings are asked. Media keeps a record of its names
@@ -793,12 +831,12 @@ class ProjectFile {
   /// ([MediaAsset.carriedAs]), not its path's; a conform has no such thing,
   /// and a second record would be a second thing to keep in step.
   ///
-  /// A torn tail is read the way every reader reads it
-  /// ([readableAnicelLayout]); nothing readable, and the decode still works
-  /// — which is the entire fallback this optimisation stands on.
+  /// A torn tail is read the way every reader reads it ([_layoutNow]);
+  /// nothing readable, and the decode still works — which is the entire
+  /// fallback this optimisation stands on.
   MediaByteSource? carriedConformFor(String sourcePath) {
     final archivePath = _projectFilePath;
-    final layout = readableAnicelLayout(archivePath);
+    final layout = _layoutNow();
     if (archivePath == null || layout == null) {
       return null;
     }
@@ -866,6 +904,14 @@ class ProjectFile {
   /// Whether this session holds edits no file has (autosave, the close
   /// gate, the title dots).
   bool get hasUnsavedChanges => _edits != _editsInFile;
+
+  /// 🚨★★★Whether tearing this session down would lose work: edits no file
+  /// has, or a file gone with the clean cels that live as refs into it
+  /// ([hasVanished]). The question every tear-down asks — the window's
+  /// close, a tab's, a lost screen's restart — and so ONE spelling: the
+  /// close and the window each wrote it out till the lost screen made a
+  /// third (2026-11-18).
+  bool wouldLoseWork() => hasUnsavedChanges || hasVanished();
 
   /// The count a save captures before it reads the project, and hands back
   /// as [bindToSavedFile]'s `cleanAsOf`.

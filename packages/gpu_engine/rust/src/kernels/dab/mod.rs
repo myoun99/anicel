@@ -43,6 +43,7 @@ mod tests;
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
@@ -100,11 +101,16 @@ pub(crate) struct RoundProfile<'a> {
 /// A bitmap the kernel reads — a tip's or the paper's: `side` texels a
 /// side, row after row, on the 16-bit scale. Made once; every pile that
 /// reads it after the first finds it on the GPU.
+///
+/// Its words are shared, so a copy is a count: a pile handed over unwaited
+/// holds the textures it reads past the app's free of them, which lets
+/// them go where it is called (`gpu_engine_stroke_pile`).
+#[derive(Clone)]
 pub(crate) struct Texture {
     /// Which texture it is, for the plan to know it again.
     id: u64,
     side: u32,
-    words: Vec<u32>,
+    words: Arc<[u32]>,
 }
 
 impl Texture {

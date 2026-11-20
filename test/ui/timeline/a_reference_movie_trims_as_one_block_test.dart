@@ -115,6 +115,22 @@ void main() {
     expect(movieRow(s).timeline.keys, [0]);
   });
 
+  // I-179 (유저 2026-11-19): 「블록을 사용하는거라면 모든것에 법 통일적용」.
+  test('pulled back past its block, the movie leaves the row — its in '
+      'point where it was, and one undo brings it back', () async {
+    final (s, before) = await placed();
+
+    drag(s, before, blockStart: 0, edge: TimelineBlockEdge.start, delta: 20);
+
+    final after = movieRow(s);
+    expect(after.timeline, isEmpty);
+    expect(after.mediaReference!.frameOffset, 4);
+
+    s.historyManager.undo();
+    expect(movieRow(s).timeline.keys, [0]);
+    expect(movieRow(s).timeline[0]!.length, 20);
+  });
+
   test('growing the head back stops at the file\'s first frame', () async {
     final (s, placedRow) = await placed();
     // The block stands at 10: ten frames of room before it, four of file.

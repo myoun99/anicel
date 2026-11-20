@@ -148,6 +148,53 @@ void main() {
       expect(lo.state, BooleanMix.off);
     });
 
+    // 🗣️F-614 (유저 2026-11-19): 「색라벨 lo했을때 라벨없음행이 마지막
+    // 출력리스트에서만 사라지면됨」 — the hand's switches and the attach
+    // column as they were (Q1 · Q2 「지금대로」).
+    test('🚨a row with no label and no file is not a row of a label\'s list '
+        '— one of another label is, one with a file is, and 「라벨 없음」 '
+        'lists it', () {
+      const none = LayerMark.none;
+      final cut = Cut(
+        id: cutId,
+        name: '301',
+        duration: 8,
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        layers: [
+          row('e', 'E', const [], mark: none),
+          row('l', 'L', ['1', '2'], mark: layout),
+          row('a', 'A', ['1', '2']),
+          row('n', 'N', ['1', '2'], mark: none),
+          row('m', 'M', ['1'], mark: none),
+          row('mr', 'M_r', ['1'], mark: layout, attachedTo: 'm'),
+          createCameraLayer(cutId: cutId),
+        ],
+      );
+      const lo = CelsExportSpec(kinds: {ExportCelKind.cel}, label: layout);
+      final underLo = board(cut, spec: lo).rows;
+      expect(ids(underLo), unorderedEquals(['l', 'a', 'm']));
+      expect(of(underLo, 'a').sheets, isEmpty, reason: 'another label: off');
+      expect(names(of(underLo, 'm').sheets), ['1'], reason: 'M_r is LO');
+
+      final handed = board(
+        cut,
+        spec: lo,
+        delta: ExportCelsCutDelta().withLayerOverride(
+          const LayerId('n'),
+          true,
+        ),
+      ).rows;
+      expect(ids(handed), unorderedEquals(['l', 'a', 'm', 'n']));
+      expect(names(of(handed, 'n').sheets), ['1', '2']);
+
+      const unlabelled = CelsExportSpec(
+        kinds: {ExportCelKind.cel},
+        label: none,
+      );
+      final underNone = board(cut, spec: unlabelled).rows;
+      expect(of(underNone, 'e').sheets, isEmpty, reason: 'E holds none');
+    });
+
     test('a free attach row that is its stack\'s only picture lends the row '
         'its name and its drawings — the row stays its base\'s', () {
       final rows = board(

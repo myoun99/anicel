@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'timeline/memo_token.dart' show ByIdentity, Kept, keptWhileSame;
@@ -55,10 +56,11 @@ class _KeyedKeepAliveStackState<K, S> extends State<KeyedKeepAliveStack<K, S>> {
   final Map<K, Kept<S>> _kept = {};
 
   /// 🚨The stack as last built, handed back unchanged while the same key is
-  /// active over the same keys (2026-09-26). [IndexedStack] wraps EVERY
-  /// child in its own visibility scaffolding and rebuilds all of it
-  /// whenever it is rebuilt — four elements a key, for keys nobody is
-  /// looking at. A state change of the active key is news for one slot, so
+  /// active over the same keys (2026-09-26). The stack wraps EVERY child
+  /// in the guard that keeps focus off it while hidden and rebuilds all of
+  /// them whenever it is rebuilt — for keys nobody is looking at (with
+  /// [IndexedStack]'s own visibility scaffolding it was four elements a
+  /// key). A state change of the active key is news for one slot, so
   /// that slot is all that rebuilds: a brush pick rebuilt forty wrappers in
   /// each of the tool panels, and a size drag did on every frame. A key
   /// visited for the first time is a slot more — slots only come — so
@@ -91,20 +93,23 @@ class _KeyedKeepAliveStackState<K, S> extends State<KeyedKeepAliveStack<K, S>> {
     }
     return keptWhileSame(
       _stack,
-      IndexedStack,
+      _ShownStack,
       (key, ByIdentity(widget.keys), _slots.length),
-      () => IndexedStack(
+      () => _ShownStack(
         index: widget.keys.indexOf(key),
         children: [
           for (final k in widget.keys)
-            if (_slots[k] case final kept?)
-              ValueListenableBuilder<Widget>(
-                key: ValueKey<K>(k),
-                valueListenable: kept,
-                builder: (context, child, _) => child,
-              )
-            else
-              SizedBox.shrink(key: ValueKey<K>(k)),
+            ExcludeFocus(
+              excluding: k != key,
+              child: switch (_slots[k]) {
+                final kept? => ValueListenableBuilder<Widget>(
+                  key: ValueKey<K>(k),
+                  valueListenable: kept,
+                  builder: (context, child, _) => child,
+                ),
+                null => SizedBox.shrink(key: ValueKey<K>(k)),
+              },
+            ),
         ],
       ),
     );
@@ -112,4 +117,89 @@ class _KeyedKeepAliveStackState<K, S> extends State<KeyedKeepAliveStack<K, S>> {
 
   Widget _childOf(BuildContext context, K key) =>
       KeyedSubtree(key: ValueKey<K>(key), child: widget.builder(context));
+}
+
+/// An [IndexedStack] that LAYS OUT only the child it shows.
+///
+/// 🔬An [IndexedStack] lays out every child at every layout of its own, so
+/// a tool's panel kept off stage was laid out again with the one in hand
+/// whenever the panel's box changed — measured on a rail scrolling its
+/// groups to the part its window shows (tool-settings-rows-cut-off-under-
+/// the-variants-panel, 2026-11-20): the brush's library and settings were
+/// laid out with the fill's on every frame, and a frame's build took twice
+/// as long. One kept off stage keeps the box it was last shown in, and is
+/// laid out again to that box, by itself, only when something in it
+/// changes — as an [Overlay] lays out the entries it does not show — and
+/// to the box it comes back to.
+///
+/// Painting, hit testing and semantics are [RenderIndexedStack]'s; a finder
+/// sees the child shown, as it sees an [IndexedStack]'s; and the stack is
+/// as big as that child, the others' sizes being out of date.
+class _ShownStack extends MultiChildRenderObjectWidget {
+  const _ShownStack({required this.index, required super.children});
+
+  final int index;
+
+  @override
+  MultiChildRenderObjectElement createElement() => _ShownStackElement(this);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderShownStack(
+    index: index,
+    textDirection: Directionality.maybeOf(context),
+  );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderShownStack renderObject,
+  ) {
+    renderObject
+      ..index = index
+      ..textDirection = Directionality.maybeOf(context);
+  }
+}
+
+class _ShownStackElement extends MultiChildRenderObjectElement {
+  _ShownStackElement(_ShownStack super.widget);
+
+  @override
+  void debugVisitOnstageChildren(ElementVisitor visitor) =>
+      visitor(children.elementAt((widget as _ShownStack).index));
+}
+
+class _RenderShownStack extends RenderIndexedStack {
+  _RenderShownStack({required int super.index, super.textDirection});
+
+  RenderBox get _shown {
+    var child = firstChild!;
+    for (var i = 0; i < index!; i += 1) {
+      child = childAfter(child)!;
+    }
+    return child;
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      constraints.constrain(_shown.getDryLayout(constraints.loosen()));
+
+  @override
+  void performLayout() {
+    final shown = _shown..layout(constraints.loosen(), parentUsesSize: true);
+    size = constraints.constrain(shown.size);
+    (shown.parentData! as StackParentData).offset = alignment
+        .resolve(textDirection)
+        .alongOffset(size - shown.size as Offset);
+    // ↩️Left unlaid, a kept child something in it had marked stayed marked
+    // under a stack that was not, and the next mark inside it broke the
+    // framework's books of who is to be laid out
+    // (`_debugRelayoutBoundaryAlreadyMarkedNeedsLayout` — 🧪eleven files
+    // of the app's tests). Laid to the box it has, a kept child that has
+    // not changed returns at once, and is its own relayout boundary.
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      if (child != shown && child.hasSize) {
+        child.layout(child.constraints);
+      }
+    }
+  }
 }

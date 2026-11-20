@@ -6,7 +6,6 @@ import '../models/canvas_point.dart';
 import '../models/cut_piece.dart';
 import 'canvas_selection.dart';
 import 'resample/resample_kernel.dart';
-import 'segment_spacing_walk.dart';
 
 /// One stamp of [piece], centred on [center], at [opacity].
 ///
@@ -115,30 +114,46 @@ BrushDab buildCutPasteDab(CutPiece piece, {double opacity = 1.0}) {
   );
 }
 
-/// The centres a drag lays stamps on, from [from] to [to].
+/// The centres a drag lays stamps on, from [from] to [to]: [spacing] apart
+/// — a share of the piece's own size, as a brush's spacing is a share of
+/// its tip's — and never under a pixel.
 ///
-/// Spacing is one whole piece — stamps touch and do not overlap. The user
-/// took the spacing knob OUT of the held piece on purpose ("스페이싱 같은 거
-/// 없애고"), so this is a law rather than a default, and non-overlap is the
-/// choice that keeps a soft edge from accumulating where stamps stack.
+/// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격 지금
+/// 고정이니까 스탬프 도구설정에 간격설정도 두도록」 — the stamp tool's own
+/// setting (`BrushToolState.cutStampSpacing`). Its default, a whole piece,
+/// is the old law: stamps touch and do not overlap, which keeps a soft edge
+/// from accumulating where they stack. ↩️That law was all there was: the
+/// user had taken the spacing knob out of the held piece (2026-08-12:
+/// 「스페이싱 같은 거 없애고」).
+///
+/// 🚨A HAND THAT ENDS ON A STEP LAYS THAT STEP (card
+/// a-stamp-drag-drops-its-last-stamp-on-an-exact-step, 검증 2026-11-20):
+/// each place is its own multiple of the spacing, counted once, and a step
+/// the hand reaches to within [_onTheHand] is laid. ↩️The walk added the
+/// spacing to itself, and the sum ran past an end the hand had reached: 35%
+/// of a 4 px piece dragged 14 px laid 9 stamps, not 10 — one exact end in
+/// six across spacings of 1–200% and pieces of 1–300 px (measured
+/// 2026-11-20). ↩️That walk was a stepper shared with the brush's offline
+/// dab walk (49de67216) until that walk went (c7fff282b).
 List<CanvasPoint> cutStampCentersAlong({
   required CutPiece piece,
   required CanvasPoint from,
   required CanvasPoint to,
+  required double spacing,
 }) {
-  final spacing = math
-      .max(piece.stampWidth, piece.stampHeight)
-      .toDouble();
-  final distance = from.distanceTo(to);
-  if (distance < spacing) {
-    return const [];
-  }
-  final centres = <CanvasPoint>[];
-  placeAlongSegment(
-    length: distance,
-    spacing: spacing,
-    firstAt: spacing,
-    place: (t) => centres.add(CanvasPoint.lerp(from, to, t)),
+  final apart = math.max(
+    1.0,
+    spacing * math.max(piece.stampWidth, piece.stampHeight),
   );
-  return centres;
+  final distance = from.distanceTo(to);
+  final steps = ((distance + _onTheHand) / apart).floor();
+  return [
+    for (var step = 1; step <= steps; step += 1)
+      CanvasPoint.lerp(from, to, step * apart / distance),
+  ];
 }
+
+/// How far short of a step the hand may stop and still stand on it, in
+/// pixels: a double's rounding of a share of a piece, and of a point
+/// brought from the canvas onto a row — far under anything a hand means.
+const double _onTheHand = 1e-6;

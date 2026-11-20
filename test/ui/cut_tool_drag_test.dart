@@ -20,6 +20,7 @@ import 'package:anicel/src/services/canvas_selection.dart'
     show SelectionMaskOptions;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -32,6 +33,8 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
+    show AppProgressDialog;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
@@ -39,6 +42,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/wait_window.dart' show windowBehind;
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/the_points_the_os_saw.dart';
 
 /// The cut tool driven through real pointer input.
 ///
@@ -73,6 +77,7 @@ void main() {
         CanvasShapeKind? shape,
         BrushBlendMode? stampBlend,
         double? stampOpacity,
+        double? stampSpacing,
         bool rowTakesStrokes,
         bool celUnderThePlayhead,
         bool cutDeletesSource,
@@ -94,6 +99,7 @@ void main() {
     // Where a stamp lands, as the session would read it. Null = the cel
     // the panel stands on.
     PieceGround Function()? pieceGround,
+    int historyCap = HistoryManager.defaultMaxEntries,
   }) async {
     final softness = ValueNotifier(maskOptions);
     addTearDown(softness.dispose);
@@ -101,7 +107,7 @@ void main() {
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
-    final history = HistoryManager();
+    final history = HistoryManager(maxEntries: historyCap);
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
     final sink = BrushEditCacheInvalidationSink();
@@ -113,6 +119,7 @@ void main() {
       CanvasShapeKind? shape,
       BrushBlendMode? stampBlend,
       double? stampOpacity,
+      double? stampSpacing,
       // False = standing on a row that takes no strokes (a property lane).
       bool rowTakesStrokes = true,
       // False = standing on a frame with no cel.
@@ -141,6 +148,7 @@ void main() {
                 cutShape: outline,
                 cutStampBlendMode: stampBlend,
                 cutStampOpacity: stampOpacity,
+                cutStampSpacing: stampSpacing,
                 cutDeletesSource: cutDeletesSource,
                 cutSource: cutSource,
               )),
@@ -612,6 +620,231 @@ void main() {
     // The far end of the drag is painted, which the press alone could not
     // have done.
     expect(surfaceRgbaInPlace(surface, 190, 150) ?? 0, isNot(0));
+  });
+
+  // 🗣️F-612 (유저 2026-11-18 「다른 도구같은곳에서도 검사후 통일적용」).
+  testWidgets('🎯F-612 a stamp drag lays its trail along every point a move '
+      'the OS merged went through, as the same points moved one by one', (
+    tester,
+  ) async {
+    // The pixels round the trail, pressed at (20, 150) and dragged through
+    // [moves] — each a move the OS merged those points into.
+    Future<List<int>> trail(List<List<Offset>> moves) async {
+      final env = await pumpPanel(tester, tool: CanvasTool.cut);
+      await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+      await env.setTool(CanvasTool.cutStamp);
+      final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+      await dragThroughMergedMoves(tester, origin + const Offset(20, 150), [
+        for (final points in moves) [
+          for (final point in points) origin + point,
+        ],
+      ]);
+      final surface = env.coordinator.currentSurfaceOf(
+        env.coordinator.activeFrameKey,
+      );
+      return [
+        for (var y = 100; y < 280; y += 4)
+          for (var x = 0; x < 280; x += 4)
+            surfaceRgbaInPlace(surface, x, y) ?? 0,
+      ];
+    }
+
+    const bend = [Offset(80, 150), Offset(140, 230), Offset(200, 150)];
+    final merged = await trail([bend]);
+    final apart = await trail([
+      for (final point in bend) [point],
+    ]);
+    final newestAlone = await trail([
+      [bend.last],
+    ]);
+
+    expect(newestAlone, isNot(apart), reason: 'LIVENESS: the bend shows');
+    expect(merged, apart);
+  });
+
+  // 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「한 끌기 =
+  // 한 되돌리기(획처럼)」 · 「스탬프 도구설정에 간격설정도 두도록」 — and recorded
+  // as a stroke is (관제 2026-11-19): one landing per cel at the lift.
+  group('a stamp drag', () {
+    final cels = BrushCanvasFixture.createFrameKeys();
+
+    /// A stamp drag pressed at (20, 150) and moved to (200, 150), [end]ing
+    /// it — the lift, a cancel, or the canvas going away — over [range]
+    /// (null: the cel you stand on), with [first] taken before the press:
+    /// the panel's history, the ink on the trail's line at x on a cel (the
+    /// one you stand on unless named), how many steps the drag took before
+    /// its end, the ink the cel you stand on showed at 190 then, and the
+    /// wait window the end stood behind, if one.
+    Future<
+      ({
+        HistoryManager history,
+        int Function(int x, [BrushFrameKey? cel]) inkAt,
+        int midway,
+        int shownMidway,
+        AppProgressDialog? window,
+      })
+    >
+    stampDrag(
+      WidgetTester tester, {
+      double? spacing,
+      int historyCap = HistoryManager.defaultMaxEntries,
+      List<BrushFrameKey>? range,
+      Command? first,
+      required Future<void> Function(TestGesture gesture) end,
+    }) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        historyCap: historyCap,
+        pieceGround: range == null
+            ? null
+            : () => PieceGround(cels: range, placementOf: (_) => null),
+      );
+      await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+      await env.setTool(CanvasTool.cutStamp, stampSpacing: spacing);
+      if (first != null) {
+        env.history.execute(first);
+      }
+      final before = env.history.undoCount;
+      final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+      final gesture = await tester.startGesture(
+        origin + const Offset(20, 150),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.pump();
+      for (var x = 40; x <= 200; x += 20) {
+        await gesture.moveTo(origin + Offset(x.toDouble(), 150));
+        await tester.pump();
+      }
+      int inkAt(int x, [BrushFrameKey? cel]) =>
+          surfaceRgbaInPlace(
+            env.coordinator.currentSurfaceOf(
+              cel ?? env.coordinator.activeFrameKey,
+            ),
+            x,
+            150,
+          ) ??
+          0;
+      final midway = env.history.undoCount - before;
+      final shownMidway = inkAt(190);
+      final window = await windowBehind(tester, () => end(gesture));
+      await tester.pump();
+      return (
+        history: env.history,
+        inkAt: inkAt,
+        midway: midway,
+        shownMidway: shownMidway,
+        window: window,
+      );
+    }
+
+    testWidgets('🚨is ONE undo — the press and the whole trail, as a stroke '
+        'is — and one redo lays it all again', (tester) async {
+      final drag = await stampDrag(tester, end: (gesture) => gesture.up());
+      expect(drag.shownMidway, isNot(0), reason: 'the hand sees the trail');
+      expect(drag.midway, 0, reason: 'nothing recorded till the lift');
+      expect(drag.window, isNull, reason: 'one cel lands at once (F-566)');
+      final undos = drag.history.undoCount;
+      expect(drag.inkAt(20), isNot(0), reason: 'the press');
+      expect(drag.inkAt(190), isNot(0), reason: 'the trail');
+
+      drag.history.undo();
+      await tester.pump();
+      expect(drag.inkAt(20), 0, reason: 'the press, undone');
+      expect(drag.inkAt(190), 0, reason: 'the trail, undone with it');
+      expect(drag.history.undoCount, undos - 1);
+
+      drag.history.redo();
+      await tester.pump();
+      expect(drag.inkAt(20), isNot(0));
+      expect(drag.inkAt(190), isNot(0));
+    });
+
+    testWidgets('a drag the OS cancels is one undo all the same', (
+      tester,
+    ) async {
+      final drag = await stampDrag(tester, end: (gesture) => gesture.cancel());
+      expect(drag.inkAt(190), isNot(0), reason: 'what it laid is landed');
+      drag.history.undo();
+      await tester.pump();
+      expect(drag.inkAt(20), 0);
+      expect(drag.inkAt(190), 0);
+    });
+
+    testWidgets('🚨a drag under a canvas that goes away lands what it laid, '
+        'one undo', (tester) async {
+      final drag = await stampDrag(
+        tester,
+        end: (gesture) async {
+          await tester.pumpWidget(const SizedBox());
+          await gesture.up();
+        },
+      );
+      expect(drag.inkAt(190), isNot(0), reason: 'landed, not left raw');
+      drag.history.undo();
+      expect(drag.inkAt(20), 0);
+      expect(drag.inkAt(190), 0);
+    });
+
+    testWidgets('🚨stays ONE undo at the history\'s cap, and leaves the steps '
+        'before it', (tester) async {
+      // ↩️Each stamp was a step and the lift folded them: past the cap the
+      // stamps pushed the steps before them out, and the fold — refusing a
+      // run the deep end cut into — left the drag a step a stamp.
+      final first = _Marker();
+      final drag = await stampDrag(
+        tester,
+        // A quarter piece: twenty canvas pixels a stamp, nine and more.
+        spacing: 0.25,
+        historyCap: 4,
+        first: first,
+        end: (gesture) => gesture.up(),
+      );
+      drag.history.undo();
+      expect(drag.inkAt(20), 0, reason: 'the press, undone with the trail');
+      expect(drag.inkAt(190), 0);
+      expect(first.done, isTrue);
+      drag.history.undo();
+      expect(first.done, isFalse, reason: 'the step before it is still there');
+    });
+
+    testWidgets('over a range lands the whole trail on every cel, and one '
+        'undo takes it from all', (tester) async {
+      final drag = await stampDrag(
+        tester,
+        range: cels.take(2).toList(),
+        end: (gesture) => gesture.up(),
+      );
+      // 🗣️F-551 · F-566 · F-615: the other cel takes the trail behind the
+      // app's wait window, not with the screen held.
+      expect(drag.window, isNotNull, reason: 'two cels: behind the window');
+      for (final cel in cels.take(2)) {
+        expect(drag.inkAt(20, cel), isNot(0), reason: '$cel: the press');
+        expect(drag.inkAt(190, cel), isNot(0), reason: '$cel: the trail');
+      }
+      expect(drag.inkAt(190, cels[2]), 0, reason: 'a cel the range leaves');
+      drag.history.undo();
+      for (final cel in cels.take(2)) {
+        expect(drag.inkAt(20, cel), 0, reason: '$cel');
+        expect(drag.inkAt(190, cel), 0, reason: '$cel');
+      }
+    });
+
+    testWidgets('lays its stamps the stamp tool\'s spacing apart — a whole '
+        'piece by default, so they touch', (tester) async {
+      // The piece is 80 wide: at a whole piece the stamps sit at 20, 100,
+      // 180; at two, at 20 and 180 — and 100 is between them.
+      final touching = await stampDrag(tester, end: (gesture) => gesture.up());
+      expect(touching.inkAt(100), isNot(0));
+      final apart = await stampDrag(
+        tester,
+        spacing: 2,
+        end: (gesture) => gesture.up(),
+      );
+      expect(apart.inkAt(100), 0);
+      expect(apart.inkAt(190), isNot(0), reason: 'LIVENESS: the second stamp');
+    });
   });
 
   testWidgets('a stamp drag stops when the pointer lifts', (tester) async {
@@ -1326,4 +1559,18 @@ void main() {
       );
     });
   });
+}
+
+/// A step of history that says whether it stands.
+class _Marker implements Command {
+  bool done = false;
+
+  @override
+  String get description => 'Marker';
+
+  @override
+  void execute() => done = true;
+
+  @override
+  void undo() => done = false;
 }

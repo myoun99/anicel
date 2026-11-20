@@ -29,7 +29,6 @@ crc32fast = "1"
 # The app's native modules this library carries, each exported from here
 # (src/lib.rs names it — the workspace note below says why it must).
 audio = { path = "native/audio" }
-audio_denoise = { path = "native/audio_denoise" }
 audio_device = { path = "native/audio_device" }
 audio_mix = { path = "native/audio_mix" }
 compress = { path = "native/compress" }
@@ -203,7 +202,8 @@ symphonia-codec-vorbis = { path = "vendor/symphonia-codec-vorbis" }
 # — 디스크 캐시 + 나란히 컴파일」). DXC was nine tenths of every compile the
 # app's wait window stood for on the Surface Pro 11, and wgpu-hal 30 kept
 # none of what it made past the run and compiled on one compiler from every
-# thread: what DXC makes is now kept on disk (src/dx12/dxil_cache.rs) and
+# thread: what DXC makes, and what the driver makes of each pipeline on it,
+# is now kept on disk (src/dx12/compile_cache.rs) and
 # each compile under way takes a compiler of its own
 # (src/dx12/shader_compilation.rs, `DxcCompilers`). Every change of ours
 # says ANICEL. ⚠️EVERY UPGRADE OF WGPU DOES IT AGAIN: copy the new

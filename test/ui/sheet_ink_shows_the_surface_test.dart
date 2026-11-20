@@ -1,7 +1,6 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart' show Canvas, Rect, Size;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -14,27 +13,30 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
-import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_controller.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
+
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨★★★A SHEET SHOWS ITS INK'S SURFACE THE MOMENT IT IS THE SURFACE (유저
 /// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The
 /// controller hands the panel the baked surface itself (`surfaceFor`), and
-/// the print draws it as the brush's live window does
-/// ([printSheetInkAsLive], F-215) — a tile that has no picture gets one
-/// made in the draw, through the one door — so a stroke's pen-up, an undo
-/// and a redo each show on the frame they happen.
+/// the engine shows it on the window's screen ([SheetInkScreens], F-215) —
+/// laid from its tiles, no picture of one made — so a stroke's pen-up, an
+/// undo and a redo each show on the frame they happen.
 ///
 /// ↩️THE FILE WAS `sheet_ink_display_image_test` (09-17 → 10-01): the
 /// controller composed the surface into one raster, `displayImageFor`, and
 /// the panel drew that `medium`-filtered in paper space — the soft, slid
-/// ink of F-215. The law it held is unchanged; the seam moved.
+/// ink of F-215. Then (10-01 → 11-18) the panel's print drew it as the
+/// brush's live window did (`printSheetInkAsLive`), a picture made of each
+/// tile in the draw. The law it held is unchanged; the seam moved.
 ///
 /// 🪦WHAT IT WAS BEFORE THAT (`sheet_ink_controller_dispose_test`, until
 /// 2026-09-17): 「closing a sheet panel mid-compose must not throw」. A
@@ -54,15 +56,17 @@ import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 /// REAL baked surface whose tiles were never pictured — exactly the state
 /// that used to take the asynchronous road.
 void main() {
+  opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 16, height: 16);
+  final screen = GlobalKey();
 
   /// A surface with one painted tile that has never been pictured.
   BitmapSurface freshSurface(RgbaColor color) {
-    var tile = BitmapTile.blank(size: 8);
+    var tile = BitmapTile.blank(size: 128);
     tile = writeRgbaColorToBitmapTile(tile: tile, x: 1, y: 1, color: color);
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
+      tileSize: 128,
       tiles: {TileCoord(x: 0, y: 0): tile},
     );
   }
@@ -70,92 +74,89 @@ void main() {
   final red = RgbaColor(r: 255, g: 0, b: 0, a: 255);
   final blue = RgbaColor(r: 0, g: 0, b: 255, a: 255);
 
-  /// [surface] printed through a window at the paper's corner, one surface
-  /// pixel to a screen pixel — what a panel at 100% shows of it.
-  Future<List<int>> printedAt(
-    BitmapSurface surface,
+  /// [ink]'s surface under [key] shown through a window at the paper's
+  /// corner, one surface pixel to a screen pixel — what a panel at 100%
+  /// shows of it — and the pixel at (1, 1), the panel built anew at each
+  /// ask, as a host rebuilds it.
+  Future<List<int>> Function() shownBy(
+    WidgetTester tester,
+    SheetInkController<Null> ink,
     BrushFrameKey key,
-    int x,
-    int y,
-  ) async {
-    final recorder = ui.PictureRecorder();
-    printSheetInkAsLive(
-      Canvas(recorder),
-      [
-        SheetInk(
-          SheetPaintLayer.ink,
-          key: key,
-          placement: const SheetInkPlacement(
-            window: Rect.fromLTWH(0, 0, 16, 16),
-            scale: 1,
+  ) {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final strokes = SheetInkStrokes();
+    addTearDown(strokes.dispose);
+    Widget view() => onAScreen(
+      screen,
+      size: const Size(16, 16),
+      under: const Color(0xFF000000),
+      view: SheetInkScreens(
+        windows: [
+          SheetInkWindow(
+            id: 'window',
+            key: key,
+            placement: const SheetInkPlacement(
+              window: Rect.fromLTWH(0, 0, 16, 16),
+              scale: 1,
+            ),
           ),
-        ),
-      ],
-      (_) => surface,
-      (
+        ],
+        keyPrefix: 'sheet',
         viewport: CanvasViewport(),
-        devicePixelRatio: 1,
-        size: const Size(16, 16),
-        above: const [],
-        imageFor: null,
+        surfaceOf: (window) => ink.surfaceFor(null, window.key),
+        strokes: strokes,
+        inkChanges: ink,
       ),
     );
-    final image = await recorder.endRecording().toImage(16, 16);
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    final bytes = data!.buffer.asUint8List();
-    final o = (y * 16 + x) * 4;
-    return [bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]];
+    return () async {
+      await tester.pumpWidget(view());
+      await tester.pump();
+      final shot = await shotOf(tester, screen);
+      final at = (1 * shot.width + 1) * 4;
+      return shot.rgba.sublist(at, at + 4);
+    };
   }
 
-  testWidgets('a conte window shows a surface nobody has pictured, in the '
-      'draw — and the NEXT surface on the next ask, never the stale one', (
+  testWidgets('a conte window shows a surface nobody has pictured, at the '
+      'paint — and the NEXT surface at the next, never the stale one', (
     tester,
   ) async {
     final rowStore = BrushFrameStore();
     final controller = ConteInkController(rowStore: rowStore);
+    addTearDown(controller.dispose);
     controller.syncGeometry(
       const ConteSheetMetrics(pageWidth: 200, pageHeight: 280),
     );
     final key = conteInkRowKey(const CutId('c1'), 'ink-1');
     rowStore.storeBakedSurface(key, freshSurface(red));
+    final shown = shownBy(tester, controller, key);
 
-    await tester.runAsync(() async {
-      final first = controller.surfaceFor(null, key);
-      expect(first, isNotNull, reason: 'nothing to wait for');
-      expect(await printedAt(first!, key, 1, 1), [255, 0, 0, 255]);
+    expect(await shown(), [255, 0, 0, 255], reason: 'nothing to wait for');
 
-      // An undo, a redo, another stroke: a new surface of new tiles.
-      rowStore.storeBakedSurface(key, freshSurface(blue));
-      final second = controller.surfaceFor(null, key);
-      expect(
-        await printedAt(second!, key, 1, 1),
-        [0, 0, 255, 255],
-        reason: 'the stale image used to hold here until an asynchronous '
-            'compose landed — the undone stroke stayed on the sheet',
-      );
-
-      // Closing right after: nothing is in flight to land on a controller
-      // that is gone.
-      controller.dispose();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
+    // An undo, a redo, another stroke: a new surface of new tiles.
+    rowStore.storeBakedSurface(key, freshSurface(blue));
+    expect(
+      await shown(),
+      [0, 0, 255, 255],
+      reason: 'the stale image used to hold here until an asynchronous '
+          'compose landed — the undone stroke stayed on the sheet',
+    );
   });
 
   testWidgets('an envelope window does the same', (tester) async {
     final store = BrushFrameStore();
     final controller = CutEnvelopeInkController(store: store);
+    addTearDown(controller.dispose);
     controller.syncGeometry(aspectRatio: 1.4);
     final key = envelopeInkBoxKey(const CutId('c'), 'box');
     store.storeBakedSurface(key, freshSurface(red));
 
-    await tester.runAsync(() async {
-      final surface = controller.surfaceFor(null, key);
-      expect(surface, isNotNull, reason: 'nothing to wait for');
-      expect(await printedAt(surface!, key, 1, 1), [255, 0, 0, 255]);
-      controller.dispose();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
+    expect(
+      await shownBy(tester, controller, key)(),
+      [255, 0, 0, 255],
+      reason: 'nothing to wait for',
+    );
   });
 
   test('the ink a sheet shows is handed out in ONE place, and nothing there '

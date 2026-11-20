@@ -11,7 +11,7 @@ use crate::kernels::composite::tests::{
     spotted, texel,
 };
 use crate::device::Engine;
-use crate::kernels::composite::{KeyChain, TILE, TILE_TEXELS, TileAt};
+use crate::kernels::composite::{Composite, KeyChain, Lent, TILE, TILE_TEXELS, TileAt};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::{Focus, Iris};
@@ -19,7 +19,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::matrix_tests::{each, graded};
 use crate::kernels::effects::matrix_words;
-use crate::testing::read_buffer;
+use crate::testing::{a_device_of_its_own, read_buffer};
 
 /// The chain's blurs, compiled once on the executor's device for every
 /// test here (blend's tests have why).
@@ -43,20 +43,27 @@ const TILES: [(i32, i32); 6] = [(-1, 0), (0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)
 /// [`RECT`]'s tiles holding `pixel`, as a chain reads them: the store's
 /// page of them, tile after tile row by row.
 fn tiles(pixel: impl Fn(i32, i32) -> u32) -> wgpu::Buffer {
-    let mut pool = Pool::default();
-    pool.drawn(pixel, (RECT.x0, RECT.y0), (RECT.columns, RECT.rows), |_, _| Some(0));
-    pool.upload(composite_rig().engine).swap_remove(0)
+    tiles_on(composite_rig().engine, pixel)
 }
 
-/// `tiles` through `ops`, or `None` where the chain refused them.
-fn chained(tiles: wgpu::Buffer, ops: &[Op]) -> Option<wgpu::Buffer> {
+/// [`tiles`], on `engine`.
+fn tiles_on(engine: &Engine, pixel: impl Fn(i32, i32) -> u32) -> wgpu::Buffer {
+    let mut pool = Pool::default();
+    pool.drawn(pixel, (RECT.x0, RECT.y0), (RECT.columns, RECT.rows), |_, _| Some(0));
+    pool.upload(engine).swap_remove(0)
+}
+
+/// `tiles` through `ops`, held as the chain put them — a spare of the
+/// tests' engine, the next run's to write over once let go of —, or
+/// `None` where the chain refused them.
+fn chained(tiles: wgpu::Buffer, ops: &[Op]) -> Option<Lent> {
     chained_over(tiles, Stored { pages: &[], sets: &[] }, ops)
 }
 
 /// [`chained`], the ops reading `stored` beside the tiles.
-fn chained_over(tiles: wgpu::Buffer, stored: Stored, ops: &[Op]) -> Option<wgpu::Buffer> {
+fn chained_over(tiles: wgpu::Buffer, stored: Stored, ops: &[Op]) -> Option<Lent> {
     let rig = composite_rig();
-    chain().run(rig.engine, &rig.composite, stored, tiles, RECT, ops)
+    chain().run(rig.engine, &rig.composite, stored, Lent::alone(tiles), RECT, ops)
 }
 
 /// The tiles over `rect` holding `pixels` at `picture`, clear elsewhere:
@@ -85,8 +92,8 @@ fn pixels() -> impl Iterator<Item = (i32, i32)> {
 
 /// What `out` holds over [`RECT`], A<<24|B<<16|G<<8|R, in [`pixels`]'
 /// order.
-fn held(out: &wgpu::Buffer) -> Vec<u32> {
-    let bytes = read_buffer(composite_rig().engine, out);
+fn held(out: &Lent) -> Vec<u32> {
+    let bytes = read_buffer(composite_rig().engine, out.buffer());
     pixels()
         .map(|(x, y)| u32::from_le_bytes(pixel_at(&bytes, &TILES, x, y)))
         .collect()
@@ -231,6 +238,70 @@ fn each_blur_of_a_chain_is_its_kernel_s() {
     assert_ne!(by_lens(Some(map)), by_lens(None));
 }
 
+/// What each op puts into buffers taken again — every spare scribbled
+/// over, as holding what another run left there — is what it puts into
+/// ones made new: a blur zeroes the tiles it puts before its passes and
+/// reads its planes only where a pass put them, and a colour step puts
+/// every tile whole. On a device of the test's own, whose spares are no
+/// other test's.
+#[test]
+fn each_op_puts_into_buffers_taken_again_what_it_puts_into_new_ones() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let chain = Chain::new(&engine);
+    let map_tiles = tiles_on(&engine, |x, y| texel(96, x, y));
+    let map = BlurMap {
+        tiles: MapTiles::Laid(&map_tiles),
+        channel: MapChannel::Luminance,
+        focus: Focus {
+            focal: 128.0,
+            inverts: true,
+        },
+    };
+    let ops = [
+        Op::Keys(KeyChain {
+            runs: vec![key_run(KEY_RED, false, half)],
+        }),
+        Op::Matrix(matrix_words(&graded(0.5, 40.0)).expect("a matrix in range")),
+        Op::Gaussian(blur(1.0, 0.7, Edge::Nothing)),
+        Op::Line {
+            plate: [-100, 10, 200, 240],
+            passes: vec![LinePass::along([1.5, 0.5], 7), LinePass::along([-0.5, 1.5], 5)],
+        },
+        // Over a picture inside the rectangle, as the other two put.
+        Op::Lens {
+            picture: [-100, 10, 200, 240],
+            lens: lens(),
+            map: Some(map),
+        },
+        // The map's tiles as a set a plug-in made.
+        Op::Put(0),
+    ];
+    let sets = [laid_as(RECT, 0)];
+    let ran = |op: &Op| {
+        let tiles = Lent::alone(tiles_on(&engine, |x, y| spotted(95, x, y)));
+        let stored = Stored { pages: std::slice::from_ref(&map_tiles), sets: &sets };
+        let put = chain.run(&engine, &composite, stored, tiles, RECT, std::slice::from_ref(op));
+        let bytes = read_buffer(&engine, put.expect("chain").buffer());
+        bytes[..TILES.len() * TILE_TEXELS as usize * 4].to_vec()
+    };
+    // The buffers each makes, every one a spare: the tiles it puts and,
+    // of a blur, the two planes between its passes.
+    let buffers = [1, 1, 3, 3, 3, 1];
+    for (at, op) in ops.iter().enumerate() {
+        engine.spares.let_go();
+        let before = engine.spares.made();
+        let new = ran(op);
+        assert!(new.iter().any(|&byte| byte != 0), "the premise: op {at} puts a picture");
+        let made = engine.spares.made();
+        assert_eq!(made - before, buffers[at], "each buffer op {at} made is a spare");
+        engine.spares.scribble(&engine);
+        assert!(ran(op) == new, "op {at}");
+        assert_eq!(engine.spares.made(), made, "the premise: op {at} took each of its buffers again");
+    }
+}
+
 /// A chain's ops run one after another, each on what the one before put —
 /// so the chain is its ops chained one at a time, and not them in another
 /// order.
@@ -267,9 +338,9 @@ fn a_chain_runs_its_ops_one_after_another() {
     };
     let whole = held(&chained(tiles(picture), &ops()).expect("chain"));
 
-    let mut put = tiles(picture);
+    let mut put = Lent::alone(tiles(picture));
     for op in &ops() {
-        put = chained(put, std::slice::from_ref(op)).expect("chain");
+        put = chained(put.buffer().clone(), std::slice::from_ref(op)).expect("chain");
     }
     assert_same(&whole, &held(&put));
 

@@ -142,6 +142,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // A file just opened stands bare till its first frame's picture comes
+    // (the-standing-canvas-composes-a-frame-twice-before-its-picture-Q7).
+    await theFrameIsShown(tester);
   }
 
   /// How many pixels of the canvas area are [channel]'s colour alone (0 red,

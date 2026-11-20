@@ -267,9 +267,9 @@ final class OpenedFilesDoor {
     }
     final read = await FolderPicker.readOpenedFile(grant.document!.uri);
     ProviderDocuments.letGo(read.path);
-    if (read.staged) {
-      await File(read.path).delete().then<void>((_) {}, onError: (_) {});
-    }
+    await FolderPicker.letGoOfStagedCopy(
+      (path: read.path, staged: read.staged),
+    );
     return read.bytes;
   }
 }

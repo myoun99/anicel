@@ -8,6 +8,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -22,9 +23,11 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../helpers/a_move_lands.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
-import '../helpers/wait_window.dart' show windowBehind, windowBehindTheTap;
+import '../helpers/wait_window.dart'
+    show expectOneBar, watchTheBar, windowBehind, windowBehindTheTap;
 
 /// 유저 2026-08-27, 실기: 「지금 아직도 캔버스에 반영안되고 블록도 반영안되는데」
 /// + 「버튼 자체도 블록에 따라 활성화 비활성화 제대로 갱신 안되고있어」.
@@ -152,6 +155,7 @@ void main() {
       session.selectLayer(row.id);
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
         isTrue,
@@ -163,6 +167,7 @@ void main() {
       // measured in the playhead file, nine of twenty-five buttons deep.
       session.frameScrub.scrubFrameIndex(8);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
         isFalse,
@@ -173,6 +178,7 @@ void main() {
       // And back, so this cannot pass by simply never enabling.
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
   );
@@ -187,6 +193,7 @@ void main() {
       session.selectLayer(row.id);
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       // ⛔The head itself runs nothing — 색 편집 is a category, so a press
       // that also did one of the verbs would be one button answering two
@@ -223,6 +230,7 @@ void main() {
       session.selectLayer(row.id);
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       // Clear Pixels ships Backspace on the registry's keys; the others are
       // bound here the way the shortcut list binds them.
@@ -282,6 +290,7 @@ void main() {
         // seeds from it.
         session.selectFrameIndex(1);
         await tester.pumpAndSettle();
+        await theMoveLands(tester, session);
         final key = session.brushFrameKeyForCut(
           session.requireActiveCut,
           row.id,
@@ -355,6 +364,7 @@ void main() {
       // opened AFTER the ink seeds from it.
       session.selectFrameIndex(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       await clearPixelsFromTheHead(tester);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
@@ -366,6 +376,7 @@ void main() {
       // one on every other gate the bar shows.
       session.selectFrameIndex(2);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
@@ -386,6 +397,7 @@ void main() {
       // Frame 1 for the timeline case's reason above.
       session.selectGlobalFrame(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(
         buttonEnabled(tester, 'shared-colour-edit-button'),
         isTrue,
@@ -396,6 +408,7 @@ void main() {
 
       session.selectGlobalFrame(2);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
 
       expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
     },
@@ -413,6 +426,7 @@ void main() {
       // Frame 1 for the timeline case's reason above.
       session.selectFrameIndex(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       final layer = session.layers.firstWhere((l) => l.id == row.id);
       expect(session.layerStack.celHasContentForLayer(layer, 1), isTrue);
       final before = session.layerStack.celTintRevision.value;
@@ -447,6 +461,7 @@ void main() {
     session.selectLayer(row.id);
     session.selectFrameIndex(1);
     await tester.pumpAndSettle();
+    await theMoveLands(tester, session);
     final key = session.brushFrameKeyForCut(
       session.requireActiveCut,
       row.id,
@@ -523,13 +538,77 @@ void main() {
   );
 
   testWidgets(
+    '🗣️F-615: the window over 픽셀 비우기 across blocks tells how many of its '
+    'cels are done — 「대상 프레임 수에 맞춰서 몇퍼센트인지 표시」 — and so do '
+    'its undo and its redo',
+    (tester) async {
+      final session = await pump(tester);
+      await standOnAnInkedCel(tester, session);
+      final row = session.activeLayerId!;
+      // Frames 0 to 2 of the row stood on: three blocks.
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: row,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pumpAndSettle();
+      expect(session.pixelVerbs.pixelVerbCellKeys(), hasLength(3));
+
+      for (final press in [
+        () => clearPixelsFromTheHead(tester),
+        () => windowBehindTheTap(tester, undo),
+        () => windowBehindTheTap(tester, redo),
+      ]) {
+        final told = watchTheBar(tester);
+        expect(await press(), isNotNull);
+        expectOneBar(told, [1 / 3, 2 / 3, 1]);
+      }
+    },
+  );
+
+  testWidgets(
+    '🗣️F-615: the window over 픽셀 위 붙여넣기 across blocks tells how many of '
+    'its cels are done too — 「말한것들은 다른 진행창뜨는거에 다 통일적용」',
+    (tester) async {
+      final session = await pump(tester);
+      await standOnAnInkedCel(tester, session);
+      session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: session.activeLayerId!,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        session.pixelVerbs.pixelClipboardVerbCels(
+          PixelClipboardVerb.pasteAbove,
+        ),
+        hasLength(3),
+        reason: '⛔premise: three blocks',
+      );
+
+      final told = watchTheBar(tester);
+      final window = await windowBehind(tester, () async {
+        await pressTheHead(tester);
+        await tester.tap(
+          find.byKey(
+            const ValueKey<String>('shared-paste-pixels-above-button'),
+          ),
+        );
+      });
+      expect(window, isNotNull);
+      expectOneBar(told, [1 / 3, 2 / 3, 1]);
+    },
+  );
+
+  testWidgets(
     'F-551: the window is what a step stood behind, not which verb it was — '
     'the same 픽셀 비우기 taken with no window is undone at once',
     (tester) async {
       final session = await pump(tester);
       final drawn = await standOnAnInkedCel(tester, session);
 
-      session.pixelVerbs.runPixelVerb(CelPixelVerb.clearPixels);
+      session.pixelVerbs.pixelVerbStep(CelPixelVerb.clearPixels).step();
       await tester.pumpAndSettle();
       expect(drawn(), isFalse, reason: '⛔fixture: the verb ran');
 
@@ -556,6 +635,7 @@ void main() {
       // Frame 1 for the timeline case's reason above.
       session.selectFrameIndex(1);
       await tester.pumpAndSettle();
+      await theMoveLands(tester, session);
       expect(session.canUndo, isFalse, reason: '⛔fixture');
 
       await pressTheHead(tester);

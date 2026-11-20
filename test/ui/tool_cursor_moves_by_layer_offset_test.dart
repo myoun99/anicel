@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -166,6 +167,25 @@ void main() {
     }
     await tester.pump();
     expect(samples, 1, reason: 'one frame shows one colour');
+  });
+  testWidgets('a view moved under a resting dropper samples again — the '
+      'colour now under the pointer', (tester) async {
+    await pumpPanel(
+      tester,
+      tool: CanvasTool.eyedropper,
+      sample: (point) => (point as CanvasPoint).x.round(),
+    );
+    await hover(tester, const Offset(40, 40));
+    final before = eyedropperSwatchColor(tester);
+    expect(before, isNotNull, reason: '⛔premise: the swatch shows');
+
+    // A wheel turned over another place on the canvas zooms about it.
+    final wheel = TestPointer(99, PointerDeviceKind.mouse)
+      ..hover(canvasGlobalOffset(tester, const Offset(140, 40)));
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, -40)));
+    await tester.pump();
+
+    expect(eyedropperSwatchColor(tester), isNot(before));
   });
 }
 

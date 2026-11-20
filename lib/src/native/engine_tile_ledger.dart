@@ -14,6 +14,7 @@ import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
 import '../services/cel_shells.dart';
 import 'app_gpu_engine.dart';
+import 'tiles_stood_on.dart';
 
 /// The engine's copy of each tile asked for — a slot of a pool of its own
 /// ([pool]) — found FROM the tile object and let go WITH it, as the tile's
@@ -42,7 +43,8 @@ import 'app_gpu_engine.dart';
 ///
 /// ⛔THE SLOTS A CALL IS HANDED STAY TILL IT RETURNS ([held], ⓓ). Only a
 /// store the pool is full at lets slots go, only the ones no open hold
-/// has, and the ones stored longest ago first — as many as it is short, a
+/// has and no canvas stands on ([TilesStoodOn]), and the ones stored
+/// longest ago first — as many as it is short, a
 /// page's worth at the least ([_shortAsRoomIsMade]): a tile whose bytes
 /// are here is stored again when asked, never read back
 /// (screen-on-the-engine c4, 관제 2026-11-07). The tiles a hold has are
@@ -80,6 +82,17 @@ import 'app_gpu_engine.dart';
 /// went: every read of it was refused, a save among them, and what could
 /// be kept of the session was the last save.
 ///
+/// 🚨AND ONE WHOSE LANDING SAID HOW IT IS MADE READS AS ITSELF, MADE AGAIN
+/// ([LandsAgain], [_Slot.made]) — 🗣️유저 2026-11-19
+/// (cel-originals-are-held-twice-in-ram-and-on-the-gpu-Q2): 「픽셀 대신 「한
+/// 일의 기록」을 들고, 잃으면 다시 그린다」. Where the app stands on another
+/// engine by then, the landing is made there once more, over the tile it
+/// landed on — itself made again the same way, where its own copy had not
+/// come — and the last strokes are not gone. Kept as long as the tile it
+/// landed on is: till the copy comes. ⏳The copies still come
+/// ([copyHereABatch]): what a landing with no such word has, and all there
+/// is where no other engine opens.
+///
 /// The pages nobody holds are given back ([respondToMemoryPressure],
 /// [byteBudget] falling under them) — the slots of tiles collected let go
 /// first, their finalizers' messages or not (pool-pages-given-back): a
@@ -96,12 +109,30 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// A ledger of a pool of its own on [engine], making no page past
   /// [byteBudget] but for the tiles a call holds — none but the OS's where
   /// null —, a full pool letting go [roomBatch] slots at the least: a
-  /// page's worth where null.
-  EngineTileLedger(GpuEngine engine, {int? byteBudget, int? roomBatch})
-    : _engine = engine,
-      pool = GpuPool(engine, byteBudget ?? _unbounded),
-      _byteBudget = byteBudget,
-      _roomBatch = roomBatch ?? EngineTileLedger.roomBatch {
+  /// page's worth where null. Its tiles are folded by what [foldKernels]
+  /// answers — the fold's kernels on [engine] once they are compiled,
+  /// null till then — and by nothing where it is null ([foldABatch]).
+  /// The tiles [stoodOn] answers keep their slots where it makes room
+  /// ([_shortAsRoomIsMade]); none do where it is null.
+  /// A page of its pool holds [debugTilesAPage] tiles where a test says
+  /// so ([GpuPool.new]).
+  EngineTileLedger(
+    GpuEngine engine, {
+    int? byteBudget,
+    int? roomBatch,
+    GpuFold? Function()? foldKernels,
+    TilesStoodOn? stoodOn,
+    int? debugTilesAPage,
+  }) : _engine = engine,
+       pool = GpuPool(
+         engine,
+         byteBudget ?? _unbounded,
+         debugTilesAPage: debugTilesAPage,
+       ),
+       _byteBudget = byteBudget,
+       _roomBatch = roomBatch ?? EngineTileLedger.roomBatch,
+       _foldKernels = foldKernels,
+       _stoodOn = stoodOn {
     pool.onUnwritten = _letGoUnwritten;
   }
 
@@ -115,7 +146,12 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
       throw TileLedgerAskedOnAWorker();
     }
     return _instance.of(
-      () => EngineTileLedger(appGpuEngine, byteBudget: _appByteBudget),
+      () => EngineTileLedger(
+        appGpuEngine,
+        byteBudget: _appByteBudget,
+        foldKernels: () => appGpuFoldKernels.compiled,
+        stoodOn: TilesStoodOn.app,
+      ),
     );
   }
 
@@ -158,9 +194,11 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   final GpuPool pool;
 final GpuEngine _engine;
 
-  /// The bytes past which no page is made but for the tiles a call holds;
-  /// none but the OS's where null. Falling under the pages made, it gives
-  /// back those nobody holds till they keep within it.
+  /// The bytes past which no page is made but for the tiles a call holds
+  /// and the page a fold lays its tiles on ([foldABatch] —
+  /// [GpuPool.makeNoPagePast] has why); none but the OS's where null.
+  /// Falling under the pages made, it gives back those nobody holds till
+  /// they keep within it.
   int? get byteBudget => _byteBudget;
   set byteBudget(int? bytes) {
     _byteBudget = bytes;
@@ -273,9 +311,12 @@ final GpuEngine _engine;
   /// A shell's slots go as freely as any whose bytes are here
   /// ([TilePixelsKeptBesides]): a tile whose slot went reads the cel's kept
   /// bytes again ([readAgain]) — once for every tile a turn reads so
-  /// ([_KeptCel]) — as the cel's next thaw would. ⚠️A shell's tile weighs a
-  /// tile's bytes ([BitmapTile.ownBytes]), as any the engine made does: the
-  /// looks weigh what the engine keeps for them, as before.
+  /// ([_KeptCel]) — as the cel's next thaw would. A shell's tile weighs
+  /// nothing here ([BitmapTile.ownBytes]), as any the engine made does
+  /// till its bytes come: what the looks hold of a shell is the
+  /// engine's, in the pool's count and no row of RAM. ↩️It weighed a
+  /// tile's bytes till 2026-11-19, a tile the engine made weighing them
+  /// wherever they lay.
   @override
   BitmapSurface? shellOf(
     BitmapSurface surface, {
@@ -356,11 +397,41 @@ final GpuEngine _engine;
     if (slot == null) {
       throw StateError('a tile the engine made was read after it was let go');
     }
-    if (!_reads(() => pool.read([slot.at], into))) {
+    if (!_reads(() => pool.read([slot.at], into)) &&
+        !_makesAgain(slot, into)) {
       _layThePictureUnder(tile, slot, into);
     }
-    // Its bytes are here: the tile it landed on is its to keep no longer.
-    slot.under = null;
+    // Its bytes are here: the tile it landed on is its to keep no longer,
+    // nor how it was made.
+    slot.keepsNothing();
+  }
+
+  /// Whether [slot]'s tile, gone with the device, was made again in
+  /// [into]: its landing once more ([_Slot.made]), over the tile it landed
+  /// on, on the engine the app stands on now.
+  ///
+  /// Not where its landing said nothing of how it is made; nor while the
+  /// app still stands on this ledger's engine ([opened]) — one device went
+  /// within a minute of another (`EngineRefusals.openAnotherApart`), or no
+  /// other opened —, where there is nothing to make it on; nor where the
+  /// making is refused in its turn, that engine's device gone too. Each
+  /// then reads as the picture it landed on ([_layThePictureUnder]).
+  bool _makesAgain(_Slot slot, Pointer<Uint8> into) {
+    final made = slot.made;
+    if (made == null || identical(opened, this)) {
+      return false;
+    }
+    final under = slot.under;
+    try {
+      final (:change, tile: again) = made.by.again([
+        (column: made.column, row: made.row, under: under),
+      ]).single;
+      // The landing left the tile under it as it was: that tile's bytes.
+      _layBytesOf(change == GpuChange.same ? under : again, into);
+      return true;
+    } on GpuRefused {
+      return false;
+    }
   }
 
   /// Whether [read] reads what it asks of the device: not where the device
@@ -402,14 +473,22 @@ final GpuEngine _engine;
   /// A tile of the slot [at], which it now holds: the only copy of its
   /// pixels till they are read here ([BitmapTile.isOnlyOnEngine]), so till
   /// then nothing but its collection or [retire] lets it go — and till then
-  /// it keeps [under], the tile it landed on ([_Slot.under]).
-  BitmapTile _adopted(GpuTile at, {bool? hasInk, BitmapTile? under}) {
+  /// it keeps [under], the tile it landed on ([_Slot.under]), and [made],
+  /// how its landing is made again ([_Slot.made]).
+  BitmapTile _adopted(
+    GpuTile at, {
+    bool? hasInk,
+    BitmapTile? under,
+    _Made? made,
+  }) {
     final tile = BitmapTile.onEngine(
       size: gpuTileSide,
       on: this,
       hasInk: hasInk,
     );
-    _give(tile, at).under = under;
+    _give(tile, at)
+      ..under = under
+      ..made = made;
     return tile;
   }
 
@@ -438,77 +517,214 @@ final GpuEngine _engine;
 
   /// Where [tile]'s bytes are, for a store that holds [tile] while they are
   /// read ([GpuPool.store]) — the one way a pointer outlives the read it
-  /// comes from (BitmapTile.readPixels).
+  /// comes from (BitmapTile.readPixels). ⚠️Of a tile whose bytes are here
+  /// ([_storedFrom]): one kept besides is lent its bytes for the read
+  /// alone.
   static Pointer<Uint8> _bytesOf(BitmapTile tile) =>
       tile.readPixels((pointer, _) => pointer);
+
+  /// The tile [tile] is stored from: what holds, till the store's copy
+  /// has read them ([GpuPool.store]), the bytes [_bytesOf] points at —
+  /// itself where its bytes are here, else a tile of them made for the
+  /// store, and gone with it. A shell's tile whose slot a full pool let
+  /// go is stored again so: read from its cel's kept bytes
+  /// ([_ShellPixels]), it keeps none of them ([BitmapTile.readPixels]).
+  static BitmapTile _storedFrom(BitmapTile tile) => tile.hasItsBytesHere
+      ? tile
+      : BitmapTile.written(size: tile.size, write: tile.copyPixelsInto);
 
   /// The pages what lands takes: every stroke's and stamp's result, a few
   /// pages between them, whatever cels they land on.
   static final Object landedCel = Object();
 
   /// What [by] makes of the tiles [asks] — `GpuStroke.land`,
-  /// `GpuStampLanding.land` —, each result a tile of its own, on [cel]'s
-  /// pages; [compared], [by]'s, says the results' ink is known. A full pool
-  /// has room made as [_store]'s is ([_shortAsRoomIsMade]): what is on the
-  /// way to the screen has no fallback.
+  /// `GpuStampLanding.land` —, each result a tile of its own, on the pages
+  /// of what lands ([landedCel]); [compared], [by]'s, says the results' ink
+  /// is known. A full pool has room made as [_store]'s is
+  /// ([_shortAsRoomIsMade]): what is on the way to the screen has no
+  /// fallback.
+  ///
+  /// [again] makes the same landing on another engine, where the caller
+  /// can say how ([LandsAgain]): what each tile landed reads as should this
+  /// engine's device go before the tile's bytes are here ([_makesAgain]).
+  ///
+  /// [ofTheHand] says whether a hand at work landed it — a stroke's step,
+  /// a stamp, a verb: the folds wait a rest from it, and those under way
+  /// stop behind their batch ([_foldOnceTheHandRests]). A picture made as
+  /// a frame is — the letters' plate, a cel's texts laid, a plug-in's
+  /// step, an import's raster — asks for them as a store does, and puts
+  /// none off ([_foldBeforeLong]).
+  ///
+  /// 🚨ONLY A HAND PUTS THE FOLDS OFF (🔢브러시/렌더링's, 2026-11-20, said
+  /// on F-610: no rule of the user's — theirs is F-610-Q5, 「할수있는거
+  /// 다하면서」). ↩️Till that day every landing did, and a band being made
+  /// lands at its frames too. 🔬The main PC, S5_BA cut 352 with every eye
+  /// on, opened from its file — the app whole, no window, a line a
+  /// quarter second: 36 landings in the 8 s its band filled, 18 plates of
+  /// cel numbers, 13 cels' texts laid and 5 name tags' plates, none a
+  /// hand's, began the rest again each time and stopped the folds under
+  /// way all three times they had begun. Three runs each way in a quiet
+  /// window: the pool stood at 928 to 960 MiB at its most and fell to
+  /// 352 once all rested; 736 to 864 at its most now, and 320 to 352
+  /// at rest — the page made ahead its room there
+  /// (rust/src/kernels/pool/folded.rs). 🔬The Surface,
+  /// FNK_02 opened (검증 11-20): the pool's most the same to the decimal
+  /// with and without 「a store puts no fold off」, 1,442.6 MB.
+  /// ⚠️The copies at rest are put off by every landing still
+  /// ([_copyHereOnceTheHandRests]): each makes tiles to copy, and nothing
+  /// measured says what a picture's landing costs them.
+  ///
+  /// ↩️It took the cel whose pages it landed on till 2026-11-19: every
+  /// caller named [landedCel], since what lands has pages of its own, and
+  /// [landWhole] never asked.
   List<LandedTile> land(
-    Object cel,
     List<TileAsk> asks, {
     required LandedBy by,
+    required bool ofTheHand,
     bool compared = false,
+    LandsAgain? again,
   }) => held((hold) {
-    final under = hold.slotsOfThose(cel, [
+    final asked = _askedOf(hold, asks);
+    List<GpuLanded> landOf(List<GpuTileAsk> asked) =>
+        by(pool, _cels.putIfAbsent(landedCel, pool.cel), asked);
+    final landed = landOf(asked);
+    _allPlaced(
+      asked.length,
+      landed.length,
+      (from) {
+        final more = landOf(asked.sublist(from));
+        landed.addAll(more);
+        return more.length;
+      },
+      (landed) =>
+          'the device lands $landed of the ${asked.length} tiles it was '
+          'asked for',
+    );
+    _copyHereOnceTheHandRests();
+    if (ofTheHand) {
+      _foldOnceTheHandRests();
+    } else {
+      _foldBeforeLong();
+    }
+    return _adoptedOf(asks, landed, compared: compared, again: again);
+  });
+
+  /// [asks] as the engine takes them: each over the slot of the tile it
+  /// names, held by [hold] on the pages of what lands.
+  List<GpuTileAsk> _askedOf(TileHold hold, List<TileAsk> asks) {
+    final under = hold.slotsOfThose(landedCel, [
       for (final ask in asks) ask.under,
     ]);
-    final asked = <GpuTileAsk>[
+    return [
       for (final (at, ask) in asks.indexed)
         (column: ask.column, row: ask.row, under: under[at]),
     ];
-    List<GpuLanded> landOf(List<GpuTileAsk> asked) =>
-        by(pool, _cels.putIfAbsent(cel, pool.cel), asked);
-    final landed = landOf(asked);
-    if (landed.length < asked.length) {
-      final short = _shortAsRoomIsMade(asked.length - landed.length, () {
-        landed.addAll(landOf(asked.sublist(landed.length)));
-        return asked.length - landed.length;
-      });
-      if (short > 0) {
-        throw TileRoomRefused(
-          'the device lands ${landed.length} of the ${asked.length} tiles '
-          'it was asked for',
-        );
-      }
+  }
+
+  /// What [landed] made of [asks], in their order: a tile of its own
+  /// where one landed ([_adopted]) — its ink known where the landing
+  /// [compared] —, which keeps the tile it landed on and, where [again]
+  /// says how, the way its landing is made again.
+  List<LandedTile> _adoptedOf(
+    List<TileAsk> asks,
+    List<GpuLanded> landed, {
+    required bool compared,
+    LandsAgain? again,
+  }) => [
+    for (final (at, (:change, :tile)) in landed.indexed)
+      (
+        change: change,
+        tile: tile == null
+            ? null
+            : _adopted(
+                tile,
+                hasInk: compared ? true : null,
+                under: asks[at].under,
+                made: again == null
+                    ? null
+                    : (by: again, column: asks[at].column, row: asks[at].row),
+              ),
+      ),
+  ];
+
+  /// [land] compared, with no wait for the GPU: [by] —
+  /// `GpuStampLanding.finished`, `finishedMask` — is asked what it makes
+  /// of [asks] over the tiles they name, as the pool holds them now; and
+  /// once it is told what each is, the inked are given their slots and
+  /// put there on their way (`GpuFinished.landOnItsWay`). [unput] is
+  /// called where they were not put, as a stroke on its way is told
+  /// (`GpuStroke.landOnItsWay`): what the caller made of the tiles handed
+  /// back is forgotten there. Fails as its asking does, and where the
+  /// landing was not finished.
+  ///
+  /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second (브러시/렌더링
+  /// 2026-11-20): what a box at rest cuts ahead of the press — a cel's
+  /// hole, its float's stamp — lands through here, a turn of the UI's
+  /// thread standing for none of it; a press, whose frame shows the cut,
+  /// lands through [land].
+  ///
+  /// ⚠️THE HOLD ENDS WITH THE ASKING. The engine reads the tiles under
+  /// on its own thread, off the pool's pages as they stood at the asking
+  /// (rust/src/kernels/dab/abi.rs, `finishing`), whatever a store or a
+  /// fold makes of their slots meanwhile — nothing need hold them through
+  /// the wait, which a hold of [held]'s could not: it ends with the call
+  /// it is handed to.
+  ///
+  /// No hand's landing: it puts no fold off ([_foldBeforeLong]).
+  Future<List<LandedTile>> landOnceTold(
+    List<TileAsk> asks, {
+    required FinishedBy by,
+    required void Function() unput,
+  }) async {
+    final finished = await held((hold) => by(pool, _askedOf(hold, asks)));
+    try {
+      final cel = _cels.putIfAbsent(landedCel, pool.cel);
+      List<GpuTile> putFrom(int first) =>
+          finished.landOnItsWay(pool, cel, first: first, unput: unput);
+      final places = putFrom(0);
+      _allPlaced(
+        finished.inked,
+        places.length,
+        (from) {
+          final more = putFrom(from);
+          places.addAll(more);
+          return more.length;
+        },
+        (put) =>
+            'the device puts $put of the ${finished.inked} tiles a landing '
+            'finished',
+      );
+      _copyHereOnceTheHandRests();
+      _foldBeforeLong();
+      var next = 0;
+      return _adoptedOf(asks, [
+        for (final change in finished.changes)
+          (
+            change: change,
+            tile: change == GpuChange.inked ? places[next++] : null,
+          ),
+      ], compared: true);
+    } finally {
+      finished.free();
     }
-    _copyHereOnceTheHandRests();
-    return [
-      for (final (at, (:change, :tile)) in landed.indexed)
-        (
-          change: change,
-          tile: tile == null
-              ? null
-              : _adopted(
-                  tile,
-                  hasInk: compared ? true : null,
-                  under: asks[at].under,
-                ),
-        ),
-    ];
-  });
+  }
 
   /// Every tile of [rect] — a rectangle of tiles on the canvas's grid: its
   /// first tile's column and row, and how many columns and rows it spans —
   /// landed by [by] on the pages of what lands ([landedCel]), each a tile
   /// where it lies: a picture the engine made whole over its rectangle,
   /// landed as it lies on the device — the letters' plate
-  /// (`EngineLetters`), what a plug-in's step made (`GpuFxPlugin`).
+  /// (`EngineLetters`), what a plug-in's step made (`GpuFxPlugin`). No
+  /// hand's, either: each is made as a frame is ([land]).
   ///
   /// ⚠️One at the second, not the third (캔버스 베이스 2026-11-15): the
   /// plug-in's landing spelled the plate's steps token for token, and all
   /// that differs between the two is what [land] takes already ([by]) —
   /// nothing to reconcile and no flag to invent, so the clone ratchet read
   /// the pair as what it was (`one_algorithm_one_place_test`). The engine's
-  /// two doors stay two: each lands a thing of its own (`GpuLettered.land` ·
-  /// `GpuPluginMade.land`).
+  /// two doors stay two: each lands a thing of its own (`GpuLetters.land` ·
+  /// `GpuPluginMade.land`) — the letters' laid on the engine's thread
+  /// unwaited (2026-11-18), the plug-in's waited for.
   Map<TileCoord, BitmapTile> landWhole(
     ({int x0, int y0, int columns, int rows}) rect, {
     required LandedBy by,
@@ -519,7 +735,7 @@ final GpuEngine _engine;
         for (var across = 0; across < columns; across++)
           (column: x0 + across, row: y0 + down, under: null),
     ];
-    final landed = land(landedCel, asks, by: by);
+    final landed = land(asks, by: by, ofTheHand: false);
     return {
       for (final (at, (:column, :row, under: _)) in asks.indexed)
         TileCoord(x: column, y: row): landed[at].tile!,
@@ -534,7 +750,7 @@ final GpuEngine _engine;
       return;
     }
     slot.out = true;
-    slot.under = null;
+    slot.keepsNothing();
     slot.place.slot = null;
     pool.release(slot.at);
     _slotCount -= 1;
@@ -564,6 +780,11 @@ final GpuEngine _engine;
   /// The engine's are read back, which waits for the GPU, on pages of
   /// [cel]'s; the rest give the bytes they hold.
   ///
+  /// A shell's tile is read as the engine's own while it has its slot, in
+  /// the one read with them; one whose slot went gives the bytes its cel
+  /// keeps ([_ShellPixels]) — and either way keeps none here
+  /// ([BitmapTile.readPixels]).
+  ///
   /// 🚨A TILE WHOSE BYTES ARE HERE GOES NOWHERE NEAR THE POOL. ↩️They were
   /// stored and read straight back while the CPU's tiles were the canonical
   /// ones (flip lane ⓓ, till ⓒ): a park, which runs when memory is tight,
@@ -574,9 +795,12 @@ final GpuEngine _engine;
   /// CPU's does.
   void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) {
     _refuseOtherGrids(tiles);
+    // Those whose bytes are not here and whose slot is: one of another
+    // ledger's, or a shell's whose slot went, reads through its own
+    // reader below, and is stored nowhere for it.
     final asked = [
       for (final tile in tiles)
-        if (tile.isOnlyOnEngine) tile,
+        if (!tile.hasItsBytesHere && _slotNow(tile) != null) tile,
     ];
     if (asked.isNotEmpty) {
       final read = held((hold) {
@@ -673,6 +897,7 @@ final GpuEngine _engine;
   /// ([BitmapTile.rememberInkBounds]) — the tiles laid side by side as a
   /// cel of those tiles alone, as the scan takes them. Waits for the GPU.
   void rememberInk(Object cel, List<BitmapTile> tiles) => held((hold) {
+    debugInkScans += 1;
     final slots = hold.slotsOf(cel, tiles);
     for (final walked in _ink.run(pool, 0, 0, tiles.length, 1, slots)) {
       final box = walked.box;
@@ -689,6 +914,11 @@ final GpuEngine _engine;
     }
   });
 
+  /// The scans [rememberInk] asked of the engine — each a wait of the
+  /// GPU's: what a walk over many pictures asks once.
+  @visibleForTesting
+  int debugInkScans = 0;
+
   late final GpuInk _ink = GpuInk(_engine);
 
   /// The tiles a read of [readEach] reads at once.
@@ -700,6 +930,15 @@ final GpuEngine _engine;
 
   final int _roomBatch;
 
+  /// What the canvases that stand say they stand on, whose slots a full
+  /// pool leaves ([_shortAsRoomIsMade]); null for a ledger nothing
+  /// stands on.
+  final TilesStoodOn? _stoodOn;
+
+  /// Whether this ledger asks [stoodOn] as it makes room.
+  @visibleForTesting
+  bool debugAsks(TilesStoodOn stoodOn) => identical(_stoodOn, stoodOn);
+
   /// The slot [tile] has, or null — nothing is stored here. A probe: a
   /// call that runs over slots asks [held].
   GpuTile? slotOf(BitmapTile tile) => _slotNow(tile)?.at;
@@ -708,6 +947,12 @@ final GpuEngine _engine;
   /// record once its slot goes, which a test reads off the heap.
   @visibleForTesting
   Object? recordOf(BitmapTile tile) => _slotNow(tile);
+
+  /// How [tile]'s landing is made again, where its slot keeps that
+  /// ([_Slot.made]), or null — a probe of what a tile holds while it waits
+  /// for its bytes, and lets go of once they are here.
+  @visibleForTesting
+  LandsAgain? madeBy(BitmapTile tile) => _slotNow(tile)?.made?.by;
 
   /// The place [tile]'s key has ([BitmapTile.pixelsKey]), or null before
   /// its first store — a probe: a key stored again is in the one it had,
@@ -725,45 +970,163 @@ final GpuEngine _engine;
     }
   }
 
-  List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
+  /// [TileHold.gridOf]: the grid answered for [tiles] the last time, where
+  /// none of the slots it answered is out ([_Slot.out]) — [hold] then
+  /// holds its keys as they were kept —, else the grid asked anew, and
+  /// kept.
+  ///
+  /// 🚨A MAP OF TILES IS ASKED AGAIN AT EVERY PLAN (card
+  /// every-plan-asks-every-rows-tile-slots-again): a plan asks every row's
+  /// tiles whole (`composite_tree_plan.dart`), at every step of a stroke
+  /// as its frame's picture is patched and at every frame the band bakes,
+  /// and a row that did not change hands over the same map — its
+  /// surface's own, which no one writes to. A slot changes only where it
+  /// is let go, or moved to a shell's tile ([_shellOf]) — out, either
+  /// way —, so a grid stands while none of its own is. 🔬The test VM,
+  /// S5_BA cut 352 (68 rows), a stroke on a full band: 282 ms of the UI
+  /// thread's 1,566 asking every row's slots, 18% (2026-11-18).
+  /// ↩️It stood while no slot at all had been let go since (cd6c872a6,
+  /// mine): the tiles a stroke leaves behind are collected as it goes,
+  /// each letting its slot go, so hardly a plan found its grids — 🔬the
+  /// same stroke after it, 159 ms of 1,279 still asking, 118 of them each
+  /// tile's slot (k1279).
+  TileGrid _gridOf(
+    TileHold hold,
+    Object cel,
+    Map<TileCoord, BitmapTile> tiles,
+  ) {
+    final kept = _grids[tiles];
+    if (kept != null && !kept.slots.any((slot) => slot.out)) {
+      hold._keptKeys.add(kept.keys);
+      return kept.grid;
+    }
+    final coords = tiles.keys;
+    final x0 = coords.map((coord) => coord.x).reduce(math.min);
+    final y0 = coords.map((coord) => coord.y).reduce(math.min);
+    final columns = coords.map((coord) => coord.x).reduce(math.max) - x0 + 1;
+    final rows = coords.map((coord) => coord.y).reduce(math.max) - y0 + 1;
+    final slots = _heldSlotsOf(hold, cel, tiles.values.toList());
+    final grid = List<GpuTile?>.filled(columns * rows, null);
+    for (final (at, coord) in coords.indexed) {
+      grid[(coord.y - y0) * columns + coord.x - x0] = slots[at].at;
+    }
+    final answered = (
+      x0: x0,
+      y0: y0,
+      columns: columns,
+      rows: rows,
+      tiles: List<GpuTile?>.unmodifiable(grid),
+    );
+    _grids[tiles] = (
+      slots: slots,
+      keys: Set<Object>.identity()
+        ..addAll(tiles.values.map((tile) => tile.pixelsKey)),
+      grid: answered,
+    );
+    return answered;
+  }
+
+  /// The grid each map of tiles was last answered ([_gridOf]).
+  final Expando<_KeptGrid> _grids = Expando('engine tile grids');
+
+  /// How many tiles were asked their slots ([_slotsOf]) — what a kept
+  /// grid ([_gridOf]) spares.
+  @visibleForTesting
+  int debugSlotsAsked = 0;
+
+  List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) =>
+      [for (final slot in _heldSlotsOf(hold, cel, tiles)) slot.at];
+
+  /// The slot of each of [tiles], held by [hold] — stored on [cel]'s pages
+  /// where it has none ([_slotsOf]).
+  List<_Slot> _heldSlotsOf(
+    TileHold hold,
+    Object cel,
+    List<BitmapTile> tiles,
+  ) {
+    debugSlotsAsked += tiles.length;
     _refuseOtherGrids(tiles);
     hold._keys.addAll(tiles.map((tile) => tile.pixelsKey));
-    // Once a key: two tiles of a colour asked together are one store.
-    final asked = Set<Object>.identity();
-    final missing = [
-      for (final tile in tiles)
-        if (_slotNow(tile) == null && asked.add(tile.pixelsKey)) tile,
+    var missing = _withNoSlot(tiles);
+    // 🚨A TILE ANOTHER ENGINE ALONE HELD IS READ HERE BEFORE THE STORE, NOT
+    // INSIDE IT: with no slot here and no bytes, it is a tile of an engine
+    // that went, and its read may make it again ([_makesAgain]) — a
+    // landing on THIS ledger, which stores the tile it lands on. Read while
+    // the store gathered its bytes, that tile was stored there and then
+    // and, listed with no slot before, once more by the store around it
+    // (🔬found by reading, 2026-11-19: six slots for five tiles).
+    final lost = [
+      for (final tile in missing)
+        if (tile.isOnlyOnEngine) tile,
     ];
+    if (lost.isNotEmpty) {
+      for (final tile in lost) {
+        tile.readPixels((_, _) {});
+      }
+      missing = _withNoSlot(tiles);
+    }
     if (missing.isNotEmpty) {
       _store(_cels.putIfAbsent(cel, pool.cel), missing);
     }
-    return [for (final tile in tiles) _slotNow(tile)!.at];
+    return [for (final tile in tiles) _slotNow(tile)!];
+  }
+
+  /// Those of [tiles] with no slot here, once a key: two tiles of a colour
+  /// asked together are one store.
+  List<BitmapTile> _withNoSlot(List<BitmapTile> tiles) {
+    final asked = Set<Object>.identity();
+    return [
+      for (final tile in tiles)
+        if (_slotNow(tile) == null && asked.add(tile.pixelsKey)) tile,
+    ];
   }
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the
   /// budget, else as room is made ([_shortAsRoomIsMade]).
-  void _store(int cel, List<BitmapTile> tiles) {
-    var stored = _put(cel, tiles);
-    if (stored == tiles.length) {
+  void _store(int cel, List<BitmapTile> tiles) => _allPlaced(
+    tiles.length,
+    _put(cel, tiles),
+    (from) => _put(cel, tiles.sublist(from)),
+    (stored) =>
+        'the device stores $stored of the ${tiles.length} tiles a call holds',
+  );
+
+  /// All [count] placed — [placed] of them are, the first —, [more]
+  /// placing what it can from the one it is handed on, and answering how
+  /// many, as room is made ([_shortAsRoomIsMade]): a store's tiles
+  /// ([_store]), a landing's ([land]), the inked of one finished
+  /// ([landOnceTold]). Where room made every way leaves some out it is
+  /// refused as [refused] says of how many were placed.
+  ///
+  /// ↩️Each of the three spelled it till 2026-11-20 — a store and a
+  /// landing since they were written, and the finished landing would
+  /// have been the third.
+  void _allPlaced(
+    int count,
+    int placed,
+    int Function(int from) more,
+    String Function(int placed) refused,
+  ) {
+    if (placed == count) {
       return;
     }
-    final short = _shortAsRoomIsMade(tiles.length - stored, () {
-      stored += _put(cel, tiles.sublist(stored));
-      return tiles.length - stored;
+    final short = _shortAsRoomIsMade(count - placed, () {
+      placed += more(placed);
+      return count - placed;
     });
-    // ⚠️No test reaches the throw: past both budgets a store falls short
-    // only where the driver refuses a page, which no test has one do.
+    // ⚠️No test reaches the throw for a store: past both budgets one
+    // falls short only where the driver refuses a page, which no test
+    // has one do.
     if (short > 0) {
-      throw TileRoomRefused(
-        'the device stores $stored of the ${tiles.length} tiles a call holds',
-      );
+      throw TileRoomRefused(refused(placed));
     }
   }
 
   /// How many of the [short] tiles a store had no slot for are still
   /// without one once room is made for them: [placeRest] places what is
   /// left and answers how many still are, asked again after each step —
-  /// the slots no hold has, of tiles whose bytes are here, let go, the
+  /// the slots no hold has and no canvas stands on ([TilesStoodOn],
+  /// asked once a call), of tiles whose bytes are here, let go, the
   /// ones stored longest ago first, as many as the store is short and
   /// [roomBatch] at the least, and [byteBudget] lifted; the bytes of tiles
   /// the engine alone holds moved here ([_moveBytesHere]); a page past the
@@ -782,14 +1145,13 @@ final GpuEngine _engine;
   /// own cost at every store; a page's worth at the least, 35 times a
   /// pass, 1.2 ms a time (6.6 once) and 18 to 29 ms a pass.
   int _shortAsRoomIsMade(int short, int Function() placeRest) {
-    _letGoWhere(
-      (key, _) => _noHoldHas(key),
-      most: math.max(short, _roomBatch),
-    );
+    final stoodOn = _stoodOn?.keysNow() ?? const <Object>{};
+    bool mayGo(Object? key) => _noHoldHas(key) && !stoodOn.contains(key);
+    _letGoWhere((key, _) => mayGo(key), most: math.max(short, _roomBatch));
     pool.makeNoPagePast(_unbounded);
     try {
       short = placeRest();
-      if (short > 0 && _moveBytesHere(short)) {
+      if (short > 0 && _moveBytesHere(short, mayGo)) {
         short = placeRest();
       }
       if (short > 0) {
@@ -806,15 +1168,15 @@ final GpuEngine _engine;
     }
   }
 
-  /// Moves here the bytes of the oldest tiles the engine alone holds and no
-  /// hold has — [short] of them, a read's batch at the least: one wait of
-  /// the GPU's frees as many slots as it reads — and lets their slots go;
-  /// whether there was one.
-  bool _moveBytesHere(int short) {
+  /// Moves here the bytes of the oldest tiles the engine alone holds that
+  /// [mayGo] — [short] of them, a read's batch at the least: one wait of
+  /// the GPU's frees as many slots as it reads — and lets go the slots
+  /// that may; whether there was one.
+  bool _moveBytesHere(int short, bool Function(Object? key) mayGo) {
     final going = [
       for (final (:tile, slot: _)
           in _engineAlone
-              .where((held) => _noHoldHas(held.tile))
+              .where((held) => mayGo(held.tile))
               .take(math.max(short, readBatch)))
         tile,
     ];
@@ -822,7 +1184,7 @@ final GpuEngine _engine;
       return false;
     }
     _copyHere(going);
-    _letGoWhere((key, _) => _noHoldHas(key));
+    _letGoWhere((key, _) => mayGo(key));
     return true;
   }
 
@@ -848,7 +1210,7 @@ final GpuEngine _engine;
       // landed on, its device gone ([readInto]).
       if (tile.isOnlyOnEngine) {
         tile.keepBytesHere(bytes);
-        _slotNow(tile)?.under = null;
+        _slotNow(tile)?.keepsNothing();
       }
     });
   }
@@ -927,7 +1289,7 @@ final GpuEngine _engine;
           tile.keepBytesHere(
             Uint8List.sublistView(bytes, from, from + gpuTileBytes),
           );
-          slot.under = null;
+          slot.keepsNothing();
         }
       }
     } on GpuRefused {
@@ -1002,16 +1364,148 @@ final GpuEngine _engine;
     while (_atRest == null && await copyHereABatch()) {}
   }
 
-  bool _noHoldHas(Object? key) =>
-      !_holds.any((hold) => hold._keys.contains(key));
+  /// The fold's kernels on this ledger's engine where they are compiled,
+  /// null till then; none for a ledger that folds nothing. The app's
+  /// ledger is handed the app's (`appGpuFoldKernels`), which the list a
+  /// launch runs compiles off this isolate.
+  final GpuFold? Function()? _foldKernels;
+
+  /// Folds the tiles of the pool next to fold — [foldBatch] of them, by
+  /// the fold's kernels where they are compiled ([_foldKernels]) —, this
+  /// isolate waiting for none of it ([GpuPool.fold]); whether any was
+  /// folded, so that there may be more — none by a fold that failed,
+  /// whose tiles the next rest's takes again.
+  ///
+  /// 🗣️F-610-Q5 (유저 2026-11-19, 채팅): 「압축은 일단 중복줄이면서 하는데
+  /// 결국은 3번대로 하자. 결과가 제일 좋으니까」. A tile folded keeps its
+  /// slot's name, so nothing here is told of it: its hold, its copy and
+  /// what lays it on a screen read it as they did. The pool says which
+  /// tiles are next — a page's before the next page's —, and each is
+  /// asked once.
+  ///
+  /// THE MEMORY COMES BACK AS A PAGE EMPTIES: a page of tiles whose every
+  /// tile lies folded is given back by the pool, its slots their names
+  /// still; and the page with the most slots free is not folded — the
+  /// pool's room, where the next tile goes —, till a page made ahead
+  /// stands beside it at a rest and is the room in its place
+  /// (rust/src/kernels/pool/folded.rs has the three, and why). 🔬The main PC
+  /// (2026-11-19, F-610): the user's line art, its cels' 14,509 tiles,
+  /// took 1,024 MiB of pool as they were and 256 MiB folded, in 224
+  /// batches and 0.5–1.0 s; S5 cut 352 with every eye on, 896 MiB and
+  /// 352 MiB. The band made again of the tiles folded took as long as
+  /// of the tiles as they were, within what that measurement tells
+  /// apart (a frame's 32 ms, beside other runs).
+  Future<bool> foldABatch() async {
+    final kernels = _foldKernels?.call();
+    // A ledger whose engine the app let go reads the next one's kernels,
+    // and its device is gone.
+    if (kernels == null || _engine.isGone) {
+      return false;
+    }
+    return await pool.fold(kernels, foldBatch) > 0;
+  }
+
+  /// The tiles a batch of the folds at rest takes ([foldABatch]): what
+  /// the engine's thread is held for at a time. 🔢브러시/렌더링's pick
+  /// (2026-11-19), to measure on the Surface.
+  static const int foldBatch = 64;
+
+  /// Whether the pool's tiles are folded a rest ([rest]) after they
+  /// come, and after the hand's last landing ([_foldOnceTheHandRests]): a
+  /// launch's word, before its first frame (`main`). False where no
+  /// launch said so — the pins and the measurements of the fold say it
+  /// themselves.
+  static bool foldsAtRest = false;
+
+  /// The folds asked for, a rest from now ([rest]).
+  Timer? _foldRest;
+
+  /// The folds under way ([_foldAtRest]): let go of here, they stop
+  /// behind the batch they wait for.
+  Object? _folds;
+
+  /// The hand is at work: the folds wait a rest from this landing, and
+  /// those under way stop behind their batch — a stroke's dab stands
+  /// behind no more than the one. A landing that is no hand's comes
+  /// nowhere near ([land]).
+  void _foldOnceTheHandRests() {
+    if (!foldsAtRest) {
+      return;
+    }
+    _folds = null;
+    _foldRest?.cancel();
+    _foldRest = Timer(rest, _foldFromHere);
+  }
+
+  /// Asks for the folds a rest from now where none are asked for, and
+  /// puts none off — those under way neither: what a store does, and a
+  /// landing that is no hand's ([land]).
+  ///
+  /// 🚨A STORE PUTS NO FOLD OFF (🔢브러시/렌더링's, 2026-11-20, said on
+  /// F-610: no rule of the user's — theirs is F-610-Q5, 「할수있는거
+  /// 다하면서」). ↩️Till that day a store put the folds off as a landing
+  /// does, and they began once NOTHING had come for a rest: a band
+  /// being made stores at every frame, so the pool stood as its tiles
+  /// were stored for as long as the band filled — at its highest, which
+  /// the fold is there to lower. 🔬The main PC that day
+  /// (folds_at_rest_benchmark_test.dart, its `coming`): 2,048 tiles
+  /// stored eight a beat over 4.5 s, on pages of 256 — the pool stood
+  /// at the 128 MiB they take as stored till the last store, and at 48
+  /// at its most now, 32 at the last store (16 folded, either way).
+  /// The copies' law already ([_copyHereOnceTheHandRests]): a frame
+  /// played stores, and what a hand drew before it is copied
+  /// meanwhile. ⚠️A timer of its own beside theirs: a store asks for no
+  /// copy, and for these.
+  void _foldBeforeLong() {
+    if (foldsAtRest) {
+      _foldRest ??= Timer(rest, _foldFromHere);
+    }
+  }
+
+  /// The rest asked for is over: the folds begin — or, where some are
+  /// under way still, are asked for again behind them: what was stored
+  /// once their last batch was asked is no batch's of theirs.
+  void _foldFromHere() {
+    _foldRest = null;
+    if (_folds == null) {
+      unawaited(_foldAtRest());
+    } else {
+      _foldBeforeLong();
+    }
+  }
+
+  /// What the launch's list says once the fold's kernels are compiled
+  /// (`compileAppKernelsAhead`, which compiles them last): a rest that
+  /// came before them folded nothing ([foldABatch]), and where nothing
+  /// is stored or landed after it — a project opened as the app
+  /// launched, and only looked at — none would come to ask again. The
+  /// rest is taken from here.
+  void theFoldKernelsCame() => _foldBeforeLong();
+
+  /// The batches of the folds, one behind another ([foldABatch]), till
+  /// none is left or the hand comes ([_foldOnceTheHandRests]).
+  Future<void> _foldAtRest() async {
+    final mine = _folds = Object();
+    while (identical(_folds, mine) && await foldABatch()) {}
+    if (identical(_folds, mine)) {
+      _folds = null;
+    }
+  }
+
+  bool _noHoldHas(Object? key) => !_holds.any((hold) => hold._has(key));
 
   /// Stores [tiles] in one store and gives each landed its slot; how many
   /// landed, the first of them.
   int _put(int cel, List<BitmapTile> tiles) {
-    final slots = pool.store(cel, tiles, _bytesOf);
+    final slots = pool.store(
+      cel,
+      [for (final tile in tiles) _storedFrom(tile)],
+      _bytesOf,
+    );
     for (var at = 0; at < slots.length; at++) {
       _give(tiles[at], slots[at]);
     }
+    _foldBeforeLong();
     return slots.length;
   }
 
@@ -1028,6 +1522,17 @@ final GpuEngine _engine;
   /// bytes to be stored again from: the ones stored longest ago first and
   /// no more than [most] of them, where given. What is let go is swept out
   /// of [_stored], as far as the walk went.
+  ///
+  /// 🚨THE CALLER'S QUESTION FIRST (card a-closed-projects-collection-
+  /// walks-the-tile-ledger, 2026-11-18): [goes] is what the walk is for,
+  /// and whether the engine alone holds a tile only guards a slot it would
+  /// let go. A collected key's walk passes every live slot — some 22,000
+  /// of them (FNK_02 cut 59) — to find the few whose key is gone.
+  /// ↩️Asked the other way round since the walk was written (nobody's
+  /// order): 🔬the test VM, a closed project collected as an eye was
+  /// toggled (S5_BA cut 352, a second copy handed over), 194 ms of the UI
+  /// thread, 161 of them asking each live slot whether the engine alone
+  /// held its tile.
   void _letGoWhere(
     bool Function(Object? key, GpuTile at) goes, {
     int? most,
@@ -1040,7 +1545,8 @@ final GpuEngine _engine;
       if (slot.out) {
         continue;
       }
-      if (slot.onlyOnEngine != null || !goes(slot.key.target, slot.at)) {
+      final key = slot.key.target;
+      if (!goes(key, slot.at) || _guards(key)) {
         _stored[kept++] = slot;
         continue;
       }
@@ -1049,6 +1555,18 @@ final GpuEngine _engine;
     }
     _stored.removeRange(kept, walked);
   }
+
+  /// Whether [key] is a tile the engine alone holds — a slot no walk lets
+  /// go ([_letGoWhere]).
+  bool _guards(Object? key) {
+    debugGuardsAsked += 1;
+    return _Slot.onlyOnEngineOf(key) != null;
+  }
+
+  /// How many slots a walk asked whether the engine alone holds their
+  /// tile ([_guards]): those its caller's question let through.
+  @visibleForTesting
+  int debugGuardsAsked = 0;
 }
 
 /// A tile a landing was asked for: its [column] and [row], and the cel's
@@ -1062,6 +1580,29 @@ typedef LandedTile = ({GpuChange change, BitmapTile? tile});
 /// What makes a landing of the tiles asked, on a cel of a pool.
 typedef LandedBy =
     List<GpuLanded> Function(GpuPool pool, int cel, List<GpuTileAsk> asked);
+
+/// What asks a landing's finish of the tiles asked, on a pool, and is
+/// told it ([EngineTileLedger.landOnceTold]): no cel named — what is
+/// finished takes its slots once told.
+typedef FinishedBy =
+    Future<GpuFinished> Function(GpuPool pool, List<GpuTileAsk> asked);
+
+/// How a landing is made again once the engine it was made on is gone:
+/// what it laid, as values — nothing of that engine's, which a [LandedBy]
+/// holds.
+///
+/// 🗣️유저 2026-11-19 (cel-originals-are-held-twice-in-ram-and-on-the-gpu-Q2):
+/// 「픽셀 대신 「한 일의 기록」을 들고, 잃으면 다시 그린다」.
+abstract interface class LandsAgain {
+  /// The landing of [asks] — each as it was asked, its `under` the tile it
+  /// landed on — made on the engine the app stands on now: what it makes
+  /// of each, in order. Refused as that engine refuses.
+  List<LandedTile> again(List<TileAsk> asks);
+}
+
+/// How a landed tile's landing is made again, and where the tile lies in
+/// it ([_Slot.made]).
+typedef _Made = ({LandsAgain by, int column, int row});
 
 /// What a key has here for as long as it lives — a tile, or a colour's
 /// block ([BitmapTile.pixelsKey]): the slot it has now — none once a full
@@ -1102,7 +1643,11 @@ final class _Slot {
   /// ([BitmapTile.isOnlyOnEngine]) — null for a tile collected or one whose
   /// pixels are here, and for a colour's block, whose tiles' pixels are
   /// here from the start.
-  BitmapTile? get onlyOnEngine => switch (key.target) {
+  BitmapTile? get onlyOnEngine => onlyOnEngineOf(key.target);
+
+  /// [key] where it is a tile the engine holds the only copy of the
+  /// pixels of ([onlyOnEngine]), else null.
+  static BitmapTile? onlyOnEngineOf(Object? key) => switch (key) {
     final BitmapTile tile when tile.isOnlyOnEngine => tile,
     _ => null,
   };
@@ -1113,6 +1658,18 @@ final class _Slot {
   /// (`EngineTileLedger._layThePictureUnder`). Let go once its bytes are
   /// here, and with the slot.
   BitmapTile? under;
+
+  /// How the landing that made [onlyOnEngine] is made again, where it said
+  /// ([LandsAgain]) — what the tile reads as before [under], should the
+  /// device go with its pixels (`EngineTileLedger._makesAgain`). Kept and
+  /// let go as [under] is.
+  _Made? made;
+
+  /// Its tile's bytes are here: neither is its to keep any longer.
+  void keepsNothing() {
+    under = null;
+    made = null;
+  }
 
   /// Let go already — by its key's finalizer, a full pool or a give-back.
   bool out = false;
@@ -1172,6 +1729,10 @@ final class _KeptCel {
 
 /// What a call of [EngineTileLedger.held] is handed: the slots asked for
 /// through it stay till that call returns.
+/// A grid answered for a map of tiles ([EngineTileLedger._gridOf]): the
+/// slots it answered, its tiles' keys, and the grid.
+typedef _KeptGrid = ({List<_Slot> slots, Set<Object> keys, TileGrid grid});
+
 /// What [TileHold.gridOf] answers.
 typedef TileGrid = ({
   int x0,
@@ -1189,6 +1750,21 @@ final class TileHold {
   /// The key of every tile asked for through this hold
   /// ([BitmapTile.pixelsKey]) — by identity, as `==` reads every pixel.
   final Set<Object> _keys = Set<Object>.identity();
+
+  /// The keys of the grids answered as they were kept
+  /// ([EngineTileLedger._gridOf]): held as their sets, and put in [_keys]
+  /// the first time a walk asks ([_has]) — a plan asks every row's grid,
+  /// and a walk that lets slots go is rare.
+  final List<Set<Object>> _keptKeys = [];
+
+  /// Whether a tile of [key] was asked for through this hold.
+  bool _has(Object? key) {
+    for (final keys in _keptKeys) {
+      _keys.addAll(keys);
+    }
+    _keptKeys.clear();
+    return _keys.contains(key);
+  }
 
   bool _open = true;
 
@@ -1211,17 +1787,10 @@ final class TileHold {
   /// — null at a place with none: a cel as a kernel reads one. [tiles] is
   /// not empty.
   TileGrid gridOf(Object cel, Map<TileCoord, BitmapTile> tiles) {
-    final coords = tiles.keys;
-    final x0 = coords.map((coord) => coord.x).reduce(math.min);
-    final y0 = coords.map((coord) => coord.y).reduce(math.min);
-    final columns = coords.map((coord) => coord.x).reduce(math.max) - x0 + 1;
-    final rows = coords.map((coord) => coord.y).reduce(math.max) - y0 + 1;
-    final slots = slotsOf(cel, tiles.values.toList());
-    final grid = List<GpuTile?>.filled(columns * rows, null);
-    for (final (at, coord) in coords.indexed) {
-      grid[(coord.y - y0) * columns + coord.x - x0] = slots[at];
+    if (!_open) {
+      throw StateError('a hold is asked inside the call it was handed to');
     }
-    return (x0: x0, y0: y0, columns: columns, rows: rows, tiles: grid);
+    return _ledger._gridOf(this, cel, tiles);
   }
 
   /// [slotsOf] for a list with gaps: null where [tiles] has none.

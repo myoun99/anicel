@@ -13,10 +13,12 @@ import '../../services/playback/playback_wait.dart';
 import '../../services/playback/playhead_way.dart';
 import '../playback/audio_windowed_upload.dart' show OutputComing;
 import '../playback/looking_ticker.dart';
+import '../playback/moves_wait_for_their_pictures.dart';
 import '../present_pacing.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
 import 'audio_viewer_document.dart';
 import 'page_rasters.dart';
+import 'picture_run_document.dart';
 import 'viewer_sound.dart';
 
 /// What a run asks of the surface it runs on — the only things only the
@@ -67,6 +69,51 @@ class MediaRun {
 
   final MediaRunSurface _surface;
   final PageRasters _rasters;
+
+  /// 🗣️F-617 (유저 2026-11-19, 셀 탭의 동영상 미리보기: 「법을 그냥 타임라인
+  /// 플립이랑 똑같이 준비안되면 이전 재생헤드에 서고 이전 그림 보여주게
+  /// 통일」 · 「첫 로딩? 전엔 로딩창띄우고, 이후엔 … 연번이면 재생헤드
+  /// 이전위치,이전그림」): a hand's move of the playhead among the pages of a
+  /// document whose pages are frames ([_pagesAreFrames] — a movie, a moving
+  /// GIF, a numbered run) stands on the page shown, its picture up, until
+  /// the page it goes to has landed — the canvas's law, in its code
+  /// ([MovesWaitForTheirPictures]). Its places are pages of the document
+  /// the rasters hold ([PageRasters.clears]): a move into one gone lands
+  /// nowhere.
+  ///
+  /// A book's pages (「pdf 볼때처럼 여러 페이지가 존재할땐 해당 페이지만
+  /// 로딩창」), one picture (「단일 이미지파일같은것도 로딩창」) and the
+  /// first page of a document just opened, which shows no picture to stand
+  /// on, land at once, and the screen says it is loading on that page
+  /// alone. So does a move while the run plays: it waits by its own law
+  /// ([playheadWay]).
+  ///
+  /// ↩️Every move landed at once, and the page it went to was black under
+  /// the loading ring until its picture came.
+  late final MovesWaitForTheirPictures moves = MovesWaitForTheirPictures(
+    stood: () => _placeOf(_page),
+    isThere: (place) => _rasters.imageOf(place.at) != null,
+    make: (place, {required givenUp}) => switch (_rasters.scale) {
+      final scale? => _rasters.rendered(place.at, scale),
+      null => Future<void>.value(),
+    },
+  )..shownBy(_surface);
+
+  /// [page] as a place a move stands on or goes to ([moves]), inside the
+  /// document — none where the pages are not frames ([_pagesAreFrames]),
+  /// or the run plays.
+  PicturePlace? _placeOf(int page) => _pagesAreFrames && !playing
+      ? (scope: _rasters.clears, at: page.clamp(0, _pageCount - 1))
+      : null;
+
+  /// Whether the document's pages are the frames of one run, walked by the
+  /// playhead: a movie's, a moving GIF's ([turnsItsOwnPages]), and a
+  /// numbered run's, paged by hand ([PictureRunDocument] — 🗣️F-617
+  /// 「연번이면 재생헤드 이전위치,이전그림」; F-282 「연번은 … 동영상과 같은
+  /// 법」). Not a PDF's or a sheet's pages, nor one picture.
+  bool get _pagesAreFrames =>
+      turnsItsOwnPages ||
+      (_pageCount > 1 && _surface.document is PictureRunDocument);
 
   /// The surface's sound, or silence if the app has no audio device.
   final ViewerSound sound;
@@ -272,21 +319,37 @@ class MediaRun {
       : rate.sampleToFrame((soundSeconds * _micros).round(), _micros);
 
   /// The hand moved the playhead to [frame]. A waveform's seconds move with
-  /// it; anything else turns to the page. A run going picks up from there,
-  /// sound and all ([movedByHand]).
+  /// it; anything else turns to the page — once its picture is there, where
+  /// the pages stand ([moves]). A run going picks up from there, sound and
+  /// all ([movedByHand]).
   void seekToFrame(int frame, ProjectFrameRate rate) {
-    _surface.setState(() {
-      if (_waveform != null) {
-        soundSeconds = rate.frameToSample(frame, _micros) / _micros;
-      } else {
-        _surface.turnToPage(frame);
-      }
-      // TURNING A PAGE IS ASKING AGAIN — the viewer's law for a page its
-      // engine once refused (`MediaViewerTabHost`'s `_forgetRefusals`).
-      _rasters.forgetRefusals();
+    // TURNING A PAGE IS ASKING AGAIN — the viewer's law for a page its
+    // engine once refused (`MediaViewerTabHost`'s `_forgetRefusals`).
+    _rasters.forgetRefusals();
+    if (_waveform != null) {
+      _surface.setState(
+        () => soundSeconds = rate.frameToSample(frame, _micros) / _micros,
+      );
+      movedByHand();
+      return;
+    }
+    moves.moveToPlace(_placeOf(frame), () {
+      _surface.setState(() => _surface.turnToPage(frame));
+      movedByHand();
     });
-    movedByHand();
   }
+
+  /// The hand stepped the playhead [by] frames from where it stands — in
+  /// its turn ([MovesWaitForTheirPictures.inTurn]): one pressed while a
+  /// move waits is counted from where the move lands, as the canvas's
+  /// steps are (🗣️F-617 「타임라인이랑똑같이」).
+  void stepBy(int by, ProjectFrameRate rate) => moves.inTurn(
+    () => seekToFrame(
+      (frameAt(rate) + by).clamp(0, frameCount(rate) - 1),
+      rate,
+    ),
+    repeated: false,
+  );
 
   /// The transport's sound cell over this run: the surface's loudness as it
   /// stands, and what a hand on the speaker or the bar asks of it
@@ -717,6 +780,7 @@ class MediaRun {
   /// Stops and lets go of the notifier — the surface is going.
   void dispose() {
     stop();
+    moves.dispose();
     playingFlips.dispose();
     _played.dispose();
   }

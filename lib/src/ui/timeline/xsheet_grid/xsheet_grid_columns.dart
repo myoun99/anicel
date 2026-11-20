@@ -63,26 +63,45 @@ class _XSheetGridColumns {
     // — a drag step rebuilds the dragged column in ITS scope, not the grid's.
     // The box is laid FRESH on every pass, outside the kept column: a zoom
     // step moves its extent and keeps the column. Built in its BERTH and
-    // named for its layer, as the timeline's rows are (I-57).
-    return Named(
-      'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
-      key: _state._berths.keyOf(entry),
-      child: SizedBox(
-        width: timelineDisplayRowExtent(entry, _state._metrics),
-        height: totalFrameContentHeight,
-        child: entry.isLane
+    // named for its layer, as the timeline's rows are (I-57) — and, as
+    // theirs is (11-19), handed back while what it is built from holds: a
+    // pass that changes another column builds none of this one.
+    final berths = _state._berths;
+    final facts = (
+      name: 'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
+      width: timelineDisplayRowExtent(entry, _state._metrics),
+      height: totalFrameContentHeight,
+      column: ByIdentity(
+        entry.isLane
             ? timelineGatedRow(
                 entry,
                 grid.hooks.dragPreview,
                 (context, layer) =>
                     timelineLaneRowFrom(entry, layer, grid, _laneSpan),
               )
-            : keptTimelineCellsRow(_kept, _state._berths, entry, grid),
+            : keptTimelineCellsRow(_kept, berths, entry, grid),
+      ),
+    );
+    return _boxed.keep(
+      berths,
+      entry,
+      facts,
+      () => Named(
+        facts.name,
+        key: berths.keyOf(entry),
+        child: SizedBox(
+          width: facts.width,
+          height: facts.height,
+          child: facts.column.value,
+        ),
       ),
     );
   }
 
   final KeptTimelineCellsRows _kept = KeptTimelineCellsRows();
+
+  /// Each column in its box ([_gatedColumn]), berth by berth.
+  final KeptByBerth<_BoxedColumn> _boxed = KeptByBerth();
 
   /// The frames the sheet lays its lane columns over — all of them, as the
   /// timeline's rows body lays its lanes (a lane windows itself off the
@@ -143,3 +162,13 @@ class _XSheetGridColumns {
     );
   }
 }
+
+/// What a column in its box is built from: the name it is found by, its
+/// box, and the column in it — its memo's, the same widget while the memo
+/// hands it back.
+typedef _BoxedColumn = ({
+  String name,
+  double width,
+  double height,
+  ByIdentity<Widget> column,
+});

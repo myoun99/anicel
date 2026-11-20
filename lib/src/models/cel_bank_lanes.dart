@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'audio_clip.dart';
+import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
 import 'timeline_exposure.dart';
@@ -87,6 +89,56 @@ class CelBankLanes {
   bool exposes(FrameId frameId, {required Map<int, TimelineExposure> lane}) =>
       laneExposesFrame(lane, frameId) ||
       others.any((other) => laneExposesFrame(other, frameId));
+}
+
+/// [after] — an edit of [before] — less each cel the edit stopped
+/// exposing that no lane of [bank] still shows: a cel leaves the row with
+/// the last block that showed it (F-136), its linked sounds with it
+/// (REC1-A).
+///
+/// ⚠️Only cels THIS edit orphaned. A layer may legitimately hold a cel no
+/// exposure points at (drawn, then its block deleted), and "unreferenced
+/// after" alone would take those out with it — an edit three rows away
+/// silently emptying the bank.
+///
+/// ONE answer for every edit that takes blocks off a row — the delete,
+/// the splice a retime makes, and a lead edge sweeping blocks away on
+/// either axis (I-179). ↩️The first two spelled it each.
+Layer layerLeavingWhatItOrphaned(
+  Layer before,
+  Layer after, {
+  required CelBankLanes bank,
+}) {
+  final frames = [
+    for (final frame in after.frames)
+      if (bank.exposes(frame.id, lane: after.timeline) ||
+          !laneExposesFrame(before.timeline, frame.id))
+        frame,
+  ];
+  if (frames.length == after.frames.length) {
+    return after;
+  }
+  return after.copyWith(
+    frames: frames,
+    audioClips: audioClipsOfFrames(after, frames),
+  );
+}
+
+/// [layer]'s audio clips minus links to frames that are not in
+/// [nextFrames] (REC1-A). A frame that leaves the layer takes its linked
+/// sounds with it — the AudioClip contract: the sound belongs to the
+/// instance. A kept dangling link plays nothing yet makes the media pool's
+/// remove-guard refuse the asset forever.
+List<AudioClip> audioClipsOfFrames(Layer layer, List<Frame> nextFrames) {
+  if (layer.audioClips.isEmpty || identical(nextFrames, layer.frames)) {
+    return layer.audioClips;
+  }
+  final liveIds = {for (final frame in nextFrames) frame.id};
+  final kept = [
+    for (final clip in layer.audioClips)
+      if (liveIds.contains(clip.frameId)) clip,
+  ];
+  return kept.length == layer.audioClips.length ? layer.audioClips : kept;
 }
 
 /// [layer] with every drawing block of a key of [joins] showing that key's

@@ -80,6 +80,31 @@ final class ByMap<K, V> {
   int get hashCode => value.length;
 }
 
+/// A memo-token field for a page that compares a model object as it PRINTS
+/// it: [value] compares as [printed] makes it (`cutAsPrinted` and kin —
+/// the rail's folds and twirls at rest, and the eye open where the page
+/// does not print it), so a change to what the page leaves out is the same
+/// input and anything else is not. The same object is the same input
+/// without making anything.
+///
+/// [printed] hands back what compares by value: a list says so with
+/// [ByList].
+final class AsPrinted<T extends Object> {
+  AsPrinted(this.value, Object Function(T value) printed) : _print = printed;
+
+  final T value;
+  final Object Function(T value) _print;
+  late final Object _printed = _print(value);
+
+  @override
+  bool operator ==(Object other) =>
+      other is AsPrinted<T> &&
+      (identical(other.value, value) || other._printed == _printed);
+
+  @override
+  int get hashCode => _printed.hashCode;
+}
+
 /// What a memo holds for one key: the widget as built, the facts it was
 /// built from, and the words it was built in.
 typedef Kept<F> = ({F facts, AppLanguageSettings language, Widget built});

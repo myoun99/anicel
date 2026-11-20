@@ -6,8 +6,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
@@ -15,19 +19,32 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_laying.dart'
+    show trackWithItsConteLaid;
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/track_transform_lane_carrier.dart'
+    show trackTransformLaneCarrierId;
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
+    show CanvasLayerImageRequest;
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
+
+import '../../helpers/a_canvas_standing_on_a_frame.dart'
+    show theFramesPicture;
 
 /// The project's fields nothing on the canvas reads — each with where it
 /// IS read. Every other field is heard ([EditorCanvasArea.shownBy]).
@@ -96,6 +113,88 @@ Project _project() => Project(
     ),
   ],
 );
+
+/// [_project] with a conte in its first cut and `x` riding over it, the
+/// track's conte laid as a write lays it — the conte's heads worn.
+Project _projectWithAConte() {
+  final project = _project();
+  final track = project.tracks.single;
+  final first = track.cuts.first;
+  final withConte = track.copyWith(
+    cuts: [
+      first.copyWith(
+        layers: [
+          ...first.layers,
+          Layer(
+            id: const LayerId('conte'),
+            name: 'Conte',
+            kind: LayerKind.storyboard,
+            frames: [
+              Frame(id: const FrameId('panel'), duration: 6, strokes: const []),
+            ],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('panel'), length: 6),
+            },
+          ),
+          Layer(
+            id: const LayerId('x'),
+            name: 'X',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: const LayerId('conte'),
+            attachedPlacement: AttachedPlacement.above,
+            attachedMode: AttachedMode.free,
+            frames: const [],
+            timeline: const {},
+          ),
+        ],
+      ),
+      ...track.cuts.skip(1),
+    ],
+  );
+  return project.copyWith(
+    tracks: [trackWithItsConteLaid(withConte, settledCut: (_) => null)],
+  );
+}
+
+/// [_projectWithAConte] with `b` in a folder `f`.
+Project _projectWithAFolderAndAConte() {
+  final project = _projectWithAConte();
+  final track = project.tracks.single;
+  final first = track.cuts.first;
+  const folder = LayerId('f');
+  return project.copyWith(
+    tracks: [
+      track.copyWith(
+        cuts: [
+          first.copyWith(
+            layers: [
+              for (final row in first.layers) ...[
+                if (row.id == const LayerId('b')) ...[
+                  Layer(
+                    id: row.id,
+                    name: row.name,
+                    folderId: folder,
+                    frames: row.frames,
+                    timeline: row.timeline,
+                  ),
+                  Layer(
+                    id: folder,
+                    name: 'F',
+                    kind: LayerKind.folder,
+                    frames: const [],
+                    timeline: const {},
+                  ),
+                ] else
+                  row,
+              ],
+            ],
+          ),
+          ...track.cuts.skip(1),
+        ],
+      ),
+    ],
+  );
+}
 
 /// Stands on whichever of the first cut's two rows is not stood on.
 void _standOnTheOtherLayer(EditorSessionManager session) =>
@@ -166,6 +265,166 @@ void main() {
     session.selectCut(const CutId('e2'));
     expect(session.activeLayerId, layer, reason: '⛔premise: the same row');
     expect(EditorCanvasArea.shownBy(session), isNot(before));
+  });
+
+  // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3b): the picture
+  // prints the eyes and hears them itself; the area prints two — the stood
+  // row's, which refuses the pen, and the row the camera is framed over.
+  group('an eye toggled', () {
+    testWidgets('on a row not stood on is the picture\'s alone', (
+      tester,
+    ) async {
+      final session = sessionOf(_project());
+      session.selectLayer(const LayerId('a'));
+      final before = EditorCanvasArea.shownBy(session);
+      final drawn = EditorCanvasArea.tracksDrawnBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('b'));
+
+      expect(
+        EditorCanvasArea.tracksDrawnBy(session),
+        isNot(drawn),
+        reason: 'the parts that draw the rows hear it',
+      );
+      expect(EditorCanvasArea.shownBy(session), before);
+    });
+
+    testWidgets('on a row riding the conte, which its head wears, is the '
+        'picture\'s alone', (tester) async {
+      final session = sessionOf(_projectWithAConte());
+      session.selectLayer(const LayerId('a'));
+      Track track() => session.repository.requireProject().tracks.single;
+      final heads = track().conte;
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('x'));
+
+      expect(
+        track().conte,
+        isNot(heads),
+        reason: 'the row\'s head wears its eye',
+      );
+      expect(EditorCanvasArea.shownBy(session), before);
+    });
+
+    // The camera would frame over 'a', the first drawn row; it is not
+    // stood on, so what it would frame is nothing the canvas shows.
+    testWidgets('on the row the camera would frame, the camera not stood '
+        'on, is the picture\'s alone', (tester) async {
+      final session = sessionOf(_project());
+      session.selectLayer(const LayerId('b'));
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+
+      expect(EditorCanvasArea.shownBy(session), before);
+    });
+
+    testWidgets('on the row stood on is the area\'s: the pen refuses it', (
+      tester,
+    ) async {
+      final session = sessionOf(_project());
+      session.selectLayer(const LayerId('a'));
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+
+      expect(EditorCanvasArea.shownBy(session), isNot(before));
+    });
+
+    testWidgets('on the row the camera is framed over is the area\'s', (
+      tester,
+    ) async {
+      final project = _project();
+      final track = project.tracks.single;
+      final first = track.cuts.first;
+      final session = sessionOf(
+        project.copyWith(
+          tracks: [
+            track.copyWith(
+              cuts: [
+                first.copyWith(
+                  layers: [
+                    ...first.layers,
+                    Layer(
+                      id: const LayerId('cam'),
+                      name: 'Camera',
+                      kind: LayerKind.camera,
+                      frames: const [],
+                    ),
+                  ],
+                ),
+                ...track.cuts.skip(1),
+              ],
+            ),
+          ],
+        ),
+      );
+      session.selectLayer(const LayerId('cam'));
+      expect(
+        session.camera.isCameraLayerActive,
+        isTrue,
+        reason: '⛔premise: the camera stood on',
+      );
+      final before = EditorCanvasArea.shownBy(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+
+      expect(EditorCanvasArea.shownBy(session), isNot(before));
+    });
+  });
+
+  // 🔬Card a-frame-lane-band-lets-its-image-go-on-one-row-pick-and-not-another
+  // (11-20): no page prints the rail's folds and twirls — a twirl made the
+  // track anew, and the next word built the area again — not even on the
+  // row stood on, whose eye the area does print.
+  group('a fold or a twirl', () {
+    final folds = <String, void Function(EditorSessionManager session)>{
+      'the stood row\'s lanes twirled': (session) =>
+          session.layerSwitches.toggleLayerLanes(const LayerId('a')),
+      'a group of its lanes opened': (session) =>
+          session.layerSwitches.setLayerLaneGroupExpanded(
+            const LayerId('a'),
+            transformGroupHeaderLane.laneId,
+            expanded: true,
+          ),
+      'a folder folded': (session) =>
+          session.folders.toggleLayerCollapsed(const LayerId('f')),
+      'an attach side folded': (session) => session.folders.setAttachFolds(
+        const LayerId('conte'),
+        {AttachedPlacement.above},
+      ),
+      'a row riding the conte twirled': (session) =>
+          session.layerSwitches.toggleLayerLanes(const LayerId('x')),
+      'the track\'s own row twirled': (session) =>
+          session.layerSwitches.toggleLayerLanes(
+            trackTransformLaneCarrierId(const TrackId('t')),
+          ),
+    };
+    for (final MapEntry(key: act, value: run) in folds.entries) {
+      testWidgets('$act is nothing the canvas shows', (tester) async {
+        final session = sessionOf(_projectWithAFolderAndAConte());
+        session.selectLayer(const LayerId('a'));
+        Track track() => session.repository.requireProject().tracks.single;
+        final was = track();
+        final before = EditorCanvasArea.shownBy(session);
+        final drawn = EditorCanvasArea.tracksDrawnBy(session);
+
+        run(session);
+
+        expect(
+          identical(track(), was),
+          isFalse,
+          reason: '⛔premise: $act made the track anew',
+        );
+        expect(EditorCanvasArea.shownBy(session), before);
+        expect(
+          EditorCanvasArea.tracksDrawnBy(session),
+          drawn,
+          reason: 'nor do the parts that draw the rows print it',
+        );
+      });
+    }
   });
 
   final notShown = <String, void Function(EditorSessionManager session)>{
@@ -279,6 +538,56 @@ void main() {
       identical(host(), before),
       isFalse,
       reason: 'the layer stood on is drawn on',
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('in the app, an eye toggled on a row not stood on leaves the '
+      'canvas standing and its picture drops the row; on the row stood on, '
+      'the canvas is built again', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _project())),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.selectLayer(const LayerId('a'));
+    await tester.pumpAndSettle();
+    MainCanvasBrushHost host() =>
+        tester.widget<MainCanvasBrushHost>(find.byType(MainCanvasBrushHost));
+    bool pictureDraws(String row) => [
+      for (final node in preorderNodes(
+        tester.widget<FramePictureView>(theFramesPicture()).nodes,
+      ))
+        if (node case CompositeLeaf(:final payload)) payload,
+    ].any(
+      (shown) =>
+          shown is CanvasLayerImageRequest &&
+          shown.frameKey.layerId == LayerId(row),
+    );
+    final before = host();
+    expect(pictureDraws('b'), isTrue, reason: '⛔premise: b is drawn');
+
+    session.layerSwitches.toggleLayerVisibility(const LayerId('b'));
+    await tester.pump();
+    expect(
+      identical(host(), before),
+      isTrue,
+      reason: 'an eye is the picture\'s to print',
+    );
+    expect(pictureDraws('b'), isFalse, reason: 'and the picture prints it');
+
+    session.layerSwitches.toggleLayerVisibility(const LayerId('a'));
+    await tester.pump();
+    expect(
+      identical(host(), before),
+      isFalse,
+      reason: 'the row stood on hidden refuses the pen',
     );
 
     await tester.pump(const Duration(seconds: 1));

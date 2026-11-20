@@ -30,8 +30,13 @@ void main() {
   File records(List<String> lines) =>
       File('${dir.path}/board.jsonl')..writeAsStringSync(lines.join('\n'));
 
-  String complaints(List<String> lines) =>
-      boardCheckComplaints(records(lines), now: DateTime.utc(2026, 9, 1));
+  // ⚠️The prose rule is judged from its own cutoff (kProseSince, 11-19);
+  // these fixtures are older, so the test names a cutoff before them.
+  String complaints(List<String> lines) => boardCheckComplaints(
+        records(lines),
+        proseSince: '2026-08-31T00:00:00Z',
+        now: DateTime.utc(2026, 9, 1),
+      );
 
   const kProse = 'PR을 본문에만 적은 카드';
   const head = '{"kind":"item","id":"W","at":"남은 것","title":"작업",'

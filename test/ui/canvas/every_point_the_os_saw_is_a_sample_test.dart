@@ -1,5 +1,3 @@
-import 'dart:ui' as ui show PointerChange, PointerData;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +17,9 @@ import 'package:anicel/src/services/input/pen_path.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 
+import '../../helpers/the_points_the_os_saw.dart';
 import '../brush_canvas_test_helpers.dart';
 
 /// 🗣️H56 (유저 2026-11-14): 「선 빠르게그으면 곡선이아니라 각져져서
@@ -169,6 +169,88 @@ void main() {
       expect(_look(seen), _look(handled));
     },
   );
+
+  testWidgets(
+    "the inspector's press line says where each sample took its pressure, "
+    "and how far the driver's stood from the pen's own (H61)",
+    (tester) async {
+      InputInspector.visible.value = true;
+      addTearDown(InputInspector.reset);
+      final wintab = WintabPenService.instance;
+      WintabPenService.debugClockOverride = () => DateTime(2024);
+      addTearDown(() => WintabPenService.debugClockOverride = null);
+      wintab.debugPollOverride = () => const [];
+      wintab.start();
+      wintab.debugInjectPacket(
+        const QaTabletPacket(pressure: 0.9, timeMs: 0, buttons: 1),
+      );
+      // Windows Ink on: each point the OS saw carries the pen's own 0.15
+      // and the driver's pressure beside it ([_line]'s `driven`) — the
+      // press and a merged move's two. A move the OS merged nothing into
+      // is its own point, the driver's newest packet (0.9) beside the
+      // pen's 0.6.
+      final lines = <String?>[];
+      await _line(
+        tester,
+        _pressureAndSpeed,
+        [
+          _press(_p(4, 8, 0, 0.5), seenAt: _ms(0), pressureMin: 0),
+          _merged([_p(20, 10, 8, 0.3), _p(36, 16, 13, 0.3)], pressureMin: 0),
+          _merged([_p(48, 14, 20, 0.6)], pressureMin: 0),
+          _lift(_p(60, 12, 34, 0), pressureMin: 0),
+          // The next stroke on the same canvas is counted alone: two
+          // samples, the driver's newest beside the pen's 0.45.
+          _press(_p(4, 24, 50, 0.45), pressureMin: 0),
+          _merged([_p(30, 24, 60, 0.45)], pressureMin: 0),
+          _lift(_p(30, 24, 70, 0), pressureMin: 0),
+        ],
+        driven: true,
+        strokes: 2,
+        afterEach: () => lines.add(InputInspector.notes['press']),
+      );
+      // The poll timer must die before the binding's pending-timer check.
+      wintab.debugReset();
+
+      expect(lines.where((line) => line != null).toSet().toList(), [
+        'press ldg=0 own=3 new=1 os=0 one=0 sw=1 drv/os ×2.00 (1.50–3.33)',
+        'press ldg=0 own=0 new=2 os=0 one=0 sw=0 drv/os ×2.00 (2.00–2.00)',
+      ]);
+    },
+  );
+
+  // 🗣️F-611 (유저 2026-11-18, iPhone, a finger): the opening of every line
+  // straight — what the phone handed in, said on the phone.
+  testWidgets(
+    "the inspector's path line says how many points a line took, how soon "
+    'the first move came and the longest wait between two — in its opening '
+    'and in all of it',
+    (tester) async {
+      InputInspector.visible.value = true;
+      addTearDown(InputInspector.reset);
+      final lines = <String?>[];
+      await _line(
+        tester,
+        _pressureAndSpeed,
+        [
+          _press(_p(4, 8, 0, 0.5), seenAt: _ms(0)),
+          _merged([_p(20, 10, 8, 0.6), _p(36, 16, 110, 0.7)]),
+          _merged([_p(48, 14, 300, 0.6)]),
+          _lift(_p(60, 12, 310, 0)),
+          // The next line on the same canvas is counted alone.
+          _press(_p(4, 24, 400, 0.5), seenAt: _ms(400)),
+          _merged([_p(30, 24, 408, 0.5)]),
+          _lift(_p(30, 24, 416, 0)),
+        ],
+        strokes: 2,
+        afterEach: () => lines.add(InputInspector.notes['path']),
+      );
+
+      expect(lines.where((line) => line != null).toSet().toList(), [
+        'path pts=4 1st=8ms open=102ms max=190ms',
+        'path pts=2 1st=8ms open=8ms max=8ms',
+      ]);
+    },
+  );
 }
 
 final BrushEditCanvasInputSettings _pressureAndSpeed =
@@ -287,11 +369,15 @@ const double _osAside = 0.15;
 /// a datum, with the points the OS saw of its message — and returns the
 /// line's dabs. Each point's pressure is the OS's own, or, [driven], the
 /// tablet driver's, the OS reading a pen at [_osAside] and a mouse at none.
+/// [events] may be [strokes] contacts on the one canvas — the last one's
+/// dabs are returned —, and [afterEach] is told after each event is in.
 Future<List<BrushDab>> _line(
   WidgetTester tester,
   BrushEditCanvasInputSettings settings,
   List<_Event> events, {
   bool driven = false,
+  int strokes = 1,
+  void Function()? afterEach,
 }) async {
   final results = <List<BrushDab>>[];
   final cel = BitmapSurface(
@@ -319,40 +405,26 @@ Future<List<BrushDab>> _line(
     final made = event.made(tester);
     final points = event.points;
     if (points != null) {
-      QaPenPoints.debugTake = (_, _) => [
+      pairWithThePointsTheOsSaw(made, [
         for (final point in points)
-          (
-            x: canvasGlobalOffset(tester, point.at).dx,
-            y: canvasGlobalOffset(tester, point.at).dy,
-            at: point.time,
+          seenAt(
+            canvasGlobalOffset(tester, point.at),
+            time: point.time,
             pressure: !driven
                 ? point.force
                 : made.kind == PointerDeviceKind.mouse
                 ? null
                 : _osAside,
-            tilt: null,
-            orientation: null,
-            driven: driven ? point.force : null,
+            driven: driven
+                ? (pressure: point.force, lean: null, twist: null)
+                : null,
           ),
-      ];
-      PenPath.arrived(
-        made,
-        ui.PointerData(
-          change: switch (made) {
-            PointerDownEvent() => ui.PointerChange.down,
-            PointerUpEvent() => ui.PointerChange.up,
-            _ => ui.PointerChange.move,
-          },
-          physicalX: made.position.dx,
-          physicalY: made.position.dy,
-        ),
-        1,
-      );
-      QaPenPoints.debugTake = null;
+      ]);
     }
     tester.binding.handlePointerEvent(made);
     await tester.pump();
+    afterEach?.call();
   }
-  expect(results, hasLength(1));
-  return results.single;
+  expect(results, hasLength(strokes));
+  return results.last;
 }

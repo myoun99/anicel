@@ -9,6 +9,7 @@ use crate::kernels::composite::abi::{MaskPlane, gpu_engine_mask_free, gpu_engine
 use crate::kernels::composite::tests::rig;
 use crate::kernels::composite::{NO_TILE, TILE_BYTES, TileAt};
 use crate::kernels::pool::Pool;
+use crate::kernels::pool::folded_tests::{scrubbed, settled, tile};
 use crate::testing::{last_error, stored};
 
 const WHOLE: u32 = 65535;
@@ -26,15 +27,26 @@ type Landed = Vec<(u8, Option<TileAt>)>;
 /// `opacity` in normal under `mask`.
 fn landed(
     pool: &mut Pool,
+    set: (i32, i32, u32, u32, &[u32]),
+    asks: &[(i32, i32)],
+    opacity: u32,
+    mask: *const MaskPlane,
+) -> Landed {
+    landed_over(pool, set, asks, &vec![NO_TILE; asks.len()], opacity, mask)
+}
+
+/// [`landed`] over the cel's tiles `under` names, one for each of `asks`.
+fn landed_over(
+    pool: &mut Pool,
     (x0, y0, columns, rows, words): (i32, i32, u32, u32, &[u32]),
     asks: &[(i32, i32)],
+    under: &[u32],
     opacity: u32,
     mask: *const MaskPlane,
 ) -> Landed {
     let rig = rig();
     let cel = pool.cel();
     let coordinates: Vec<i32> = asks.iter().flat_map(|&(column, row)| [column, row]).collect();
-    let under = vec![NO_TILE; asks.len()];
     let mut places = vec![0u32; asks.len()];
     let mut changes = vec![9u8; asks.len()];
     // SAFETY: every pointer is live on the rig's engine, and each list holds
@@ -140,6 +152,23 @@ fn a_picture_lands_under_the_mask_s_byte_and_nothing_past_its_box() {
         assert_eq!(pixel(&right, x, y)[3], 0, "({x}, {y}) is past the box");
     }
     assert!(left.chunks_exact(4).all(|texel| texel[3] == 0), "the first tile is past the box");
+}
+
+// A picture is laid from where its tiles lie, on the cel's tile where it
+// lies: both folded since they were stored, their slots' bytes written
+// over, the landing puts the bytes it put before.
+#[test]
+fn a_picture_and_the_tile_under_it_that_lie_folded_land_as_they_did() {
+    let (mut pool, places) = stored(&[tile(1, 2), tile(2, 16)]);
+    let (picture, under) = ((0, 0, 1, 1, &[places[0].word()][..]), [places[1].word()]);
+    let before = landed_over(&mut pool, picture, &[(0, 0)], &under, HALF, std::ptr::null());
+    let as_stored = read(&pool, before[0].1.unwrap());
+    assert!(as_stored != read(&pool, places[0]) && as_stored != read(&pool, places[1]));
+    assert_eq!(settled(&mut pool, &places), 2);
+    scrubbed(rig().engine, &pool, &places);
+    let after = landed_over(&mut pool, picture, &[(0, 0)], &under, HALF, std::ptr::null());
+    assert_eq!(after[0].0, 1);
+    assert!(read(&pool, after[0].1.unwrap()) == as_stored);
 }
 
 // No tile asked lands none, and is no failure.

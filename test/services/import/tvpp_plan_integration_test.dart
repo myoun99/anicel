@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
@@ -5,17 +6,26 @@ import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
 import 'package:anicel/src/models/inbetween_mark.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/tvp_import_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../models/import/tvpp_test_builder.dart';
+
 /// The .tvpp pipeline end to end WITHOUT pixels: parse-model conversion
 /// feeding the SAME planner the JSON export uses — folders arrive as
 /// folder rows with members linked, and image marks land as the blocks'
 /// inbetween dots.
 void main() {
+  /// The clip's camera fitted as the door fits it, on the worker.
+  CutCamera cameraOf(TvpImportClip parsed) => planTvpCamera(
+        camera: parsed.camera,
+        frameCount: parsed.frameCount,
+      );
+
   ImportIdMint mint() {
     var layers = 0;
     var frames = 0;
@@ -40,6 +50,32 @@ void main() {
         chunkLength: 0,
         compressed: true,
       );
+
+  test('🗣️two instances named in 한글 are two names on the cels — the '
+      'second is no 「-1」 of the first (F-621 ④)', () {
+    // The user's file: the same number of letters, so read as blanks the
+    // two were one name, and the second cel became its 「-1」.
+    final b = TvppBuilder()
+      ..clipProperties('c')
+      ..clipHeader(width: 32, height: 18)
+      ..layerHead('SE', end: 1, count: 2)
+      ..layerExt(const {0: '에리,안녕', 1: '안녕,에리'});
+    for (var k = 0; k < 2; k++) {
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+    }
+    b.clipConfig();
+    final clip = parseTvppStructure(b.bytes).clips.single;
+    final parsed = convertTvppClip(clip, clipIndex: 0).result;
+    final plan = planTvpImport(
+      parsed: parsed,
+      camera: cameraOf(parsed),
+      resolveFile: (key) => key,
+      mint: mint(),
+      unnamedMark: defaultUnnamedDrawingMark,
+    );
+    final se = plan.cut.layers.singleWhere((l) => l.name == 'SE');
+    expect([for (final cel in se.frames) cel.name], ['에리,안녕', '안녕,에리']);
+  });
 
   test('folders become folder rows and marks become inbetween dots', () {
     final clip = TvppClip(
@@ -103,6 +139,7 @@ void main() {
     final conversion = convertTvppClip(clip, clipIndex: 0);
     final plan = planTvpImport(
       parsed: conversion.result,
+      camera: cameraOf(conversion.result),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,
@@ -134,6 +171,7 @@ void main() {
     for (final pick in InbetweenMark.values) {
       final picked = planTvpImport(
         parsed: conversion.result,
+        camera: cameraOf(conversion.result),
         resolveFile: (key) => key,
         mint: mint(),
         unnamedMark: pick,
@@ -186,6 +224,7 @@ void main() {
     );
     final plan = planTvpImport(
       parsed: parsed,
+      camera: cameraOf(parsed),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,
@@ -248,8 +287,10 @@ void main() {
         ),
       ],
     );
+    final converted = convertTvppClip(clip, clipIndex: 0).result;
     final plan = planTvpImport(
-      parsed: convertTvppClip(clip, clipIndex: 0).result,
+      parsed: converted,
+      camera: cameraOf(converted),
       resolveFile: (key) => key,
       mint: mint(),
       unnamedMark: defaultUnnamedDrawingMark,
@@ -263,5 +304,130 @@ void main() {
       ],
       unorderedEquals(['12.mp4', '13.wav']),
     );
+  });
+
+  group('a blending mode comes in by TVPaint\'s number (card F-621 ③)', () {
+    TvppLayer row(
+      String name,
+      int mode, {
+      TvppLayerKind kind = TvppLayerKind.raster,
+    }) =>
+        TvppLayer(
+          kind: kind,
+          name: name,
+          layerId: 7,
+          parentId: 0,
+          start: 0,
+          end: 0,
+          opacity: 255,
+          preBehavior: TvpEdgeBehavior.none,
+          postBehavior: TvpEdgeBehavior.none,
+          slots: [image()],
+          ctgSecondStream: kind == TvppLayerKind.ctg ? [image()] : const [],
+          instanceNames: const {},
+          blendingModeId: mode,
+        );
+
+    TvpImportPlan planOf(TvppLayer layer) {
+      final parsed = convertTvppClip(
+        TvppClip(
+          name: 'cut',
+          width: 320,
+          height: 180,
+          frameRate: 24,
+          pixelAspectRatio: 1,
+          layers: [layer],
+          imageMarks: const [],
+          cameraPoints: const [],
+          cameraDataText: '',
+        ),
+        clipIndex: 0,
+      ).result;
+      return planTvpImport(
+        parsed: parsed,
+        camera: cameraOf(parsed),
+        resolveFile: (key) => key,
+        mint: mint(),
+        unnamedMark: defaultUnnamedDrawingMark,
+      );
+    }
+
+    test('the twelve Anicel has come in as theirs; every other mode comes in '
+        'as normal and the notice names it — 🗣️「구현하지말고 표준으로 들여도 '
+        '문제없어. 메시지로 표시만 잘하면됨.」 (유저 2026-11-19)', () {
+      // 🔬The numbers of the user's calibration file: a layer per mode of
+      // TVPaint 12's picker (13 and 14 were in none of them).
+      const theirs = <int, LayerBlendMode>{
+        0: LayerBlendMode.normal,
+        7: LayerBlendMode.glowAdd,
+        9: LayerBlendMode.multiply,
+        10: LayerBlendMode.screen,
+        15: LayerBlendMode.difference,
+        17: LayerBlendMode.overlay,
+        18: LayerBlendMode.colorDodge,
+        19: LayerBlendMode.colorBurn,
+        20: LayerBlendMode.hardLight,
+        21: LayerBlendMode.softLight,
+        25: LayerBlendMode.darken,
+        26: LayerBlendMode.lighten,
+      };
+      const named = <int, String>{
+        1: 'Behind',
+        2: 'Erase',
+        3: 'Shade',
+        4: 'Light',
+        5: 'Colorize',
+        6: 'Tint',
+        8: 'Sub',
+        11: 'Replace',
+        12: 'Substitute',
+        13: '13',
+        16: 'Divide',
+        22: 'Grain Extract',
+        23: 'Grain Merge',
+        24: 'Subtract',
+        27: 'Value',
+        28: 'Saturate',
+        29: 'Overlay 2',
+        30: 'Alpha Diff',
+        31: '31',
+      };
+      for (final MapEntry(key: id, value: mode) in theirs.entries) {
+        final plan = planOf(row('A', id));
+        final a = plan.cut.layers.singleWhere((l) => l.name == 'A');
+        expect(a.blendMode, mode, reason: '$id');
+        expect(plan.warnings, isEmpty, reason: '$id');
+      }
+      for (final MapEntry(key: id, value: name) in named.entries) {
+        final plan = planOf(row('A', id));
+        expect(
+          plan.cut.layers.singleWhere((l) => l.name == 'A').blendMode,
+          LayerBlendMode.normal,
+          reason: '$id',
+        );
+        expect(
+          plan.warnings.single.english,
+          'A: blending mode "$name" has no Anicel equivalent — imported as '
+          'normal.',
+        );
+      }
+    });
+
+    test('a CTG layer\'s mode blends its folder — the one picture its two '
+        'streams make — and neither stream', () {
+      final plan = planOf(row('CTG', 9, kind: TvppLayerKind.ctg));
+      expect(
+        [
+          for (final layer in plan.cut.layers)
+            if (layer.name.startsWith('CTG')) (layer.kind, layer.blendMode),
+        ],
+        [
+          (LayerKind.animation, LayerBlendMode.normal),
+          (LayerKind.animation, LayerBlendMode.normal),
+          (LayerKind.folder, LayerBlendMode.multiply),
+        ],
+      );
+      expect(plan.warnings, isEmpty);
+    });
   });
 }

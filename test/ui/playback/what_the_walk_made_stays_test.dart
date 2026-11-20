@@ -135,7 +135,9 @@ void main() {
         shouldAbort: () => false,
       );
       final made = pictures.bytesOf(rig.framePictures.keyOf(headOf(cuts[0])))!;
-      final estimated = rig.framePictures.bytesToMake(headOf(cuts[2]));
+      final estimated = await rig.framePictures.bytesToMake(
+        headOf(cuts[2]),
+      );
       expect(
         made,
         greaterThan(estimated),

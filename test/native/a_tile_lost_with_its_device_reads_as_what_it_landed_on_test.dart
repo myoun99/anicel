@@ -42,7 +42,7 @@ void main() {
   );
 
   List<BitmapTile> landed(List<BitmapTile?> unders, int value) =>
-      landedOn(ledger, cel, unders, value);
+      landedOn(ledger, unders, value);
 
   test('its device gone before its copy came, a tile reads as the tile it '
       'landed on — as nothing where it landed on none — and forgets what '

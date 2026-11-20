@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'still_raster.dart' show TickSceneLayer;
 
 /// Where what a tick moves is laid out, painted and described — ALONE.
@@ -60,7 +61,31 @@ import 'still_raster.dart' show TickSceneLayer;
 /// repainted 17 boundaries, measured). So the layer is built once per
 /// child and handed back whole while the child is the same widget.
 class TickLayer extends StatefulWidget {
-  const TickLayer({super.key, required this.child}) : _kind = _Kind.built;
+  const TickLayer({super.key, required Widget this.child})
+    : _kind = _Kind.built,
+      facts = null,
+      builder = null;
+
+  /// A built tick that KEEPS ITSELF: what [builder] makes, handed back
+  /// whole while [facts] are what it was made from — THE keep
+  /// ([keptWhileSame], F-244) — for a host that cannot keep the child
+  /// itself, being built anew round it on every notify.
+  ///
+  /// 🔬Card an-eye-toggle-holds-the-ui-thread (11-18, ㉢): the timeline's
+  /// host is built again for every announcement but a stand, and every tick
+  /// layer in it was handed a child made anew — so its LayoutBuilder ran
+  /// again, and what it holds was built, laid out and painted again for an
+  /// eye toggled, a row picked, anything. [builder] runs in a `Builder` of
+  /// its own, so what it reads of the theme rebuilds it there.
+  ///
+  /// ⚠️[facts] is everything [builder] reads that can change: a field
+  /// missing there keeps the layer across a change of it.
+  const TickLayer.kept({
+    super.key,
+    required this.facts,
+    required WidgetBuilder this.builder,
+  }) : _kind = _Kind.built,
+       child = null;
 
   /// A layer whose ticks are HEARD — what moves on it listens to its tick
   /// and lays out or paints itself (a canvas tool cursor), so nothing is
@@ -77,8 +102,10 @@ class TickLayer extends StatefulWidget {
   /// host's, and a toolbar handed back as it was touches nothing. ↩️The
   /// tick the bar heard was its counter's line (`TickText`), until F-463
   /// took the counter off.
-  const TickLayer.heard({super.key, required this.child})
-    : _kind = _Kind.heard;
+  const TickLayer.heard({super.key, required Widget this.child})
+    : _kind = _Kind.heard,
+      facts = null,
+      builder = null;
 
   /// A panel's HOST on a layer of its own — laid out, painted and described
   /// alone, as a tick is, for the same reasons — that a still region keeps
@@ -102,9 +129,17 @@ class TickLayer extends StatefulWidget {
   /// panel's is painted again for what changed in it — and on a semantics
   /// node of its own, which a layout of the host rebuilds alone
   /// ([LaidOutAlone] has why).
-  const TickLayer.host({super.key, required this.child}) : _kind = _Kind.host;
+  const TickLayer.host({super.key, required Widget this.child})
+    : _kind = _Kind.host,
+      facts = null,
+      builder = null;
 
-  final Widget child;
+  /// What the layer holds — or null where it keeps what [builder] makes.
+  final Widget? child;
+
+  /// What [builder]'s child is made from ([TickLayer.kept]).
+  final Object? facts;
+  final WidgetBuilder? builder;
   final _Kind _kind;
 
   @override
@@ -116,20 +151,35 @@ class TickLayer extends StatefulWidget {
 enum _Kind { built, heard, host }
 
 class _TickLayerState extends State<TickLayer> {
-  /// The layer as built round the child it holds.
-  late Widget _built = _layer();
+  /// What a kept layer made, and from what ([TickLayer.kept]).
+  final Map<Type, Kept<Object?>> _held = {};
+
+  /// The child the layer holds, and the layer as built round it.
+  late Widget _child = _childNow();
+  late Widget _built = _layer(_child);
+
+  /// The child handed in — or a kept layer's, made again only for new facts.
+  Widget _childNow() => switch (widget.builder) {
+    null => widget.child!,
+    final builder => keptWhileSame(
+      _held,
+      TickLayer,
+      widget.facts,
+      () => Builder(builder: builder),
+    ),
+  };
 
   @override
   void didUpdateWidget(covariant TickLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.child, widget.child) ||
-        oldWidget._kind != widget._kind) {
-      _built = _layer();
+    final child = _childNow();
+    if (!identical(child, _child) || oldWidget._kind != widget._kind) {
+      _child = child;
+      _built = _layer(child);
     }
   }
 
-  Widget _layer() {
-    final child = widget.child;
+  Widget _layer(Widget child) {
     return Semantics(
       container: true,
       child: switch (widget._kind) {
@@ -223,12 +273,30 @@ class RenderTickBoundary extends RenderRepaintBoundary {
 /// repainted the panel around them. The fill is what makes the layer's
 /// constraints tight, so it keeps the layout in.
 class TickOverlay extends StatelessWidget {
-  const TickOverlay({super.key, required this.children});
+  const TickOverlay({super.key, required List<Widget> this.children})
+    : facts = null,
+      keptChildren = null;
 
-  final List<Widget> children;
+  /// The marks on a layer that keeps itself ([TickLayer.kept]): made by
+  /// [keptChildren], again only when [facts] change.
+  const TickOverlay.kept({
+    super.key,
+    required this.facts,
+    required List<Widget> Function() this.keptChildren,
+  }) : children = null;
+
+  final List<Widget>? children;
+  final Object? facts;
+  final List<Widget> Function()? keptChildren;
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
-    child: TickLayer(child: Stack(children: children)),
+    child: switch (keptChildren) {
+      null => TickLayer(child: Stack(children: children!)),
+      final made => TickLayer.kept(
+        facts: facts,
+        builder: (_) => Stack(children: made()),
+      ),
+    },
   );
 }

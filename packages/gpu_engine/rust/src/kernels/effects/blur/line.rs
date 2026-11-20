@@ -21,6 +21,7 @@ mod tests;
 use super::{Dispatch, GROUP, Held, TileRect, bands, compile, run, words_buffer};
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::Lent;
 use crate::kernels::shared::{WIDE_WGSL, q, room};
 
 /// The most taps one pass takes — the app's `lineBoxTapsAPass`.
@@ -171,7 +172,7 @@ impl LineBlur {
         rect: TileRect,
         plate: [i32; 4],
         passes: &[LinePass],
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         self.run_in(engine, tiles, rect, plate, passes, room(engine))
     }
 
@@ -185,7 +186,7 @@ impl LineBlur {
         plate: [i32; 4],
         passes: &[LinePass],
         room: u64,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         if passes.is_empty() {
             return fail("a blur of no pass changes no pixel — a plan leaves it out");
         }

@@ -49,7 +49,7 @@ import '../../services/playback/cut_frame_composite_signature.dart'
         CompositeRowSignature,
         CutFrameCompositeSignature,
         SeNameTagRowSignature;
-import 'tile_origin.dart';
+import '../../services/tile_origin.dart';
 import '../text/se_name_tag_paint.dart' show seNameTagExtent;
 import '../../core/display_filter.dart' show filterQualityForDisplayScale;
 import '../../models/dirty_region.dart';

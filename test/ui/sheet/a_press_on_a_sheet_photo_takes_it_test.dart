@@ -320,7 +320,11 @@ void main() {
       landed,
       reason: 'the frame it lets go in shows it where it landed',
     );
-    expect(history.undoCount, steps + 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the photo is',
+    );
     expect(inked(box), isFalse, reason: 'no stroke began on the photo');
     expect(held(), (key: box.key, id: photo.id), reason: 'still held');
   });
@@ -349,7 +353,11 @@ void main() {
     await drag(tester, inBox(tester, box, 0.6, 0.5), const Offset(0, 45));
 
     expect(photosIn(box).single.reference.pose.rotationDegrees, isNot(0));
-    expect(history.undoCount, steps + 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the photo is',
+    );
     expect(inked(box), isFalse);
     expect(held(), (key: box.key, id: photo.id));
   });
@@ -401,7 +409,12 @@ void main() {
     final pose = photosIn(box).single.reference.pose;
     expect(pose.scaleX, greaterThan(1));
     expect(pose.scaleY, greaterThan(1));
-    expect(session.historyManager.undoCount, steps + 1);
+    final history = session.historyManager;
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the photo is',
+    );
   });
 
   testWidgets('the pill\'s delete takes it off its cell as ONE step and '

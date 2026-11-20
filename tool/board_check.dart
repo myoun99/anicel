@@ -16,16 +16,24 @@ import 'dart:io';
 import 'board_door.dart';
 import 'board_model.dart';
 
-/// Matches a PR named in prose — 「#1302」, 「PR #1302」 — which the board
-/// cannot file by. Four digits only: three-digit issue numbers and 「#1」
-/// style round tags are not PRs.
-final _prInProse = RegExp(r'#\d{4}\b');
-
 // What the gate reads off a card's whole story, kept on the card. A card no
 // write reached is the same object from one reading to the next
 // ([BoardRecords]), so the gate, asked at the end of every session's turn,
 // reads only the stories that moved (10-19: these two were 24 of its 40ms).
-final _prInItsProse = Expando<bool>();
+// ⚠️The stamp of the LAST entry citing a PR in prose ('' for none), not a
+// yes/no: the cutoff it is judged against is an argument, and an answer
+// kept per card must not depend on which cutoff asked first.
+final _lastPrInItsProse = Expando<String>();
+
+String _lastCitation(BoardCard c) {
+  final kept = _lastPrInItsProse[c];
+  if (kept != null) return kept;
+  var last = '';
+  for (final l in prsQuotedInProse(c)) {
+    if (l.ts.compareTo(last) > 0) last = l.ts;
+  }
+  return _lastPrInItsProse[c] = last;
+}
 final _refsToNothing = Expando<List<String>>();
 
 /// Words that describe a CHECK rather than work. Used on `rest` only.
@@ -46,7 +54,7 @@ const _staleAfter = Duration(hours: 24);
 /// **nine red in a bulk run, 13/13 green alone**. A gate that goes red for
 /// reasons that have nothing to do with the board is a gate people learn to
 /// re-run instead of read.
-/// 🚨★★★BOTH CUTOFFS ARE ARGUMENTS, because a test that compares its fixtures
+/// 🚨★★★EVERY CUTOFF IS AN ARGUMENT, because a test that compares its fixtures
 /// against a hardcoded date is a test that depends on what day the machine
 /// thinks it is. 🧪CI proved it: green here, red on a Windows shard, and
 /// nothing about the board had changed — only the clock.
@@ -54,7 +62,8 @@ const _staleAfter = Duration(hours: 24);
 /// [since] is when the MODEL changed (a card written before it was correct
 /// under the rules it was written for). [linesSince] is when the two LINE
 /// rules landed — 「state 를 손으로 쓰지 말라」와 「미래 시각을 쓰지 말라」 —
-/// which is later, because lines cannot be fixed by appending.
+/// which is later, because lines cannot be fixed by appending. [proseSince]
+/// is when `board_say` began refusing a PR quoted in prose ([kProseSince]).
 ///
 /// ⚠️`now` too: the future-stamp check needs one, and taking it from the
 /// clock inside a test makes the fixture's meaning depend on when it runs.
@@ -65,6 +74,7 @@ String boardCheckComplaints(
   File file, {
   String since = kGateSince,
   String linesSince = kLinesSince,
+  String proseSince = kProseSince,
   DateTime? now,
   Set<int>? openPrs,
 }) {
@@ -78,7 +88,7 @@ String boardCheckComplaints(
     ..._stampsTheFileContradicts(records.lines, cards, acks),
     ..._cardsOffTheBoard(cards, acks, since),
     ..._sectionsTheStoryCannotName(records.lines, cards, acks, now, linesSince),
-    ..._workThatShipped(cards, acks, since),
+    ..._workThatShipped(cards, acks, since, proseSince),
     ..._questionsNobodyCanAnswer(cards, acks, since),
     ..._answersNobodyRead(cards, acks, since, now),
     ..._deadAcks(cards, acks, openPrs),
@@ -460,7 +470,6 @@ Iterable<String> _sectionsTheStoryCannotName(
   DateTime? now,
   String linesSince,
 ) sync* {
-  const knownEndings = {'archived', 'deleted'};
   final byId = {for (final c in cards) c.id: c};
   final unknownStage = <String>[];
   final future = <String>[];
@@ -499,7 +508,7 @@ Iterable<String> _sectionsTheStoryCannotName(
       unknownStage.add('$n:$id($at)');
     }
     final state = line.state;
-    if (state.isNotEmpty && !knownEndings.contains(state)) {
+    if (state.isNotEmpty && !kWrittenStates.contains(state)) {
       handWrittenState.add('$n:$id($state)');
     }
   }
@@ -606,6 +615,21 @@ const kGateSince = '2026-08-30T21:48:00';
 /// about. The rules start where my mistakes stop.
 const kLinesSince = '2026-08-31T15:00:00';
 
+/// ⚠️A THIRD LINE, for 「PR을 본문에만 적은 카드」: from here `board_say`
+/// refuses such a line before it is written ([prsQuotedInProse] answers for
+/// both), so the gate judges only what came after.
+///
+/// 🚨WHY NOT THE WHOLE STORY ANY MORE (board-say-takes-a-pr-number-cited-
+/// in-a-note, 관제 2026-11-19). The prose cannot tell a PR this card
+/// shipped from an old PR it quotes, and a quote has no honest exit: the
+/// line cannot be mended, and putting the number in `pr` claims a landing
+/// that never happened (guide-slider-one-undo · trimmed-piece-apple-parity
+/// did exactly that). So every quote ended in an ack — over fifty by 11-19
+/// — and an ack leaves the WHOLE card alone, which put its unanswered
+/// questions and its unmoved landings to sleep as well. Lines before this
+/// were each judged when written, and each was mended or acked then.
+const kProseSince = '2026-11-19T16:20:00';
+
 
 // ──────────────────────────────────────────── 4. 착지했는데 실기로 안 간 일
 
@@ -622,6 +646,7 @@ Iterable<String> _workThatShipped(
   List<BoardCard> cards,
   Set<String> acks,
   String since,
+  String proseSince,
 ) sync* {
   final shipped = <String>[];
   final bare = <String>[];
@@ -647,9 +672,11 @@ Iterable<String> _workThatShipped(
         shipped.add(c.id);
       }
       if (!_saysSomething(c)) bare.add(c.id);
-    } else if (_recent(c, since) &&
-        (_prInItsProse[c] ??= c.log.any((l) =>
-            !l.byUser && l.pr == null && _prInProse.hasMatch(l.text)))) {
+    }
+    // ⚠️Its own `if`, not the shipped branch's `else`: whether a card that
+    // claims a PR is asked at all is [prsQuotedInProse]'s to say, and an
+    // `else` here was a second answer to it that the mutants found.
+    if (_recent(c, since) && _lastCitation(c).compareTo(proseSince) >= 0) {
       // 🚨★★★THE STORY, NOT THE HEAD — the last piece of `board-one-stream`
       // (「note·said·title 은 아직 마지막값이 이기는 필드다 — 항목으로 접는
       // 것이 이 개편의 마지막 조각이다」).
@@ -660,10 +687,10 @@ Iterable<String> _workThatShipped(
       // when the PR line was last and went silent when one more note
       // followed it. That is not a gate, that is a coin toss on ordering.
       //
-      // ⚠️`!l.byUser` keeps the meaning it always had: the complaint is 「내가
-      // 본문에 적었다」, and the user quoting a number in their own feedback
-      // is not that. `l.pr == null` says the same thing the branch already
-      // says — an entry that CLAIMS its PR properly is the correct shape.
+      // ⚠️Which entries count is [prsQuotedInProse]'s to say — `board_say`
+      // asks it too, before the line is written.
+      //
+      // 🚨★★★ONLY ENTRIES WRITTEN SINCE [proseSince] — see [kProseSince].
       prose.add(c.id);
     }
     final rest = c.rest.trim();

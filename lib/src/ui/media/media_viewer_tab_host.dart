@@ -40,7 +40,8 @@ import '../editor_session_manager.dart';
 import '../input/os_file_drop.dart';
 import '../playback/playback_transport.dart';
 import '../session/media_file_views.dart';
-import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
+import '../sheet/sheet_ink_layer.dart'
+    show SheetInkScreens, SheetInkStrokes, SheetInkWindow;
 import '../sheet/sheet_shape_targets.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
@@ -465,6 +466,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     brushInput: (live) => widget.session.setBrushInputActive(live),
   );
 
+  /// The pages' strokes in flight, by window — the views write them and
+  /// the ink's screens show them ([SheetInkStrokes]), held here above both.
+  final SheetInkStrokes _inkStrokes = SheetInkStrokes();
+
   /// What takes a shape on the page ink — its layer says (F-420).
   final SheetShapeTargets _shapes = SheetShapeTargets();
 
@@ -712,6 +717,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     _run.dispose();
     _ownSelection?.dispose();
     _strokeHold.dispose();
+    _inkStrokes.dispose();
     super.dispose();
   }
 
@@ -1145,6 +1151,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
         playing: _run.playing,
         onSeek: (frame) => _run.seekToFrame(frame, rate),
+        onStep: (by) => _run.stepBy(by, rate),
         onPlayPause: _run.toggle,
         sound: _run.soundCell(onChanged: _setLoudness),
       ),
@@ -1730,25 +1737,22 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                           child: const SizedBox.expand(),
                         ),
                       ),
-                      // The page's saved ink, over it (I-114) — but where a
-                      // live window draws it.
+                      // The page's saved ink, over it (I-114), the brush on
+                      // or off (F-215): a window shows what its view draws
+                      // on while the brush is on.
                       if (ink != null && inkWindows.isNotEmpty)
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            key: ValueKey<String>(_key('ink')),
-                            painter: ViewerInkPainter(
-                              windows: inkWindows,
-                              viewport: snapped,
-                              effectiveRatio: ratio,
-                              inkSurfaceFor: ink.surfaceOf,
-                              liveInkKeys: {
-                                if (drawing)
-                                  for (final window in inkWindows) window.key,
-                              },
-                              repaint: ink,
-                            ),
-                            child: const SizedBox.expand(),
+                        SheetInkScreens(
+                          key: ValueKey<String>(_key('ink')),
+                          windows: inkWindows,
+                          keyPrefix: widget.viewerId,
+                          viewport: snapped,
+                          surfaceOf: (window) => ink.shownSurfaceFor(
+                            window.plane! as CanvasSize,
+                            window.key,
+                            drawing: drawing,
                           ),
+                          strokes: _inkStrokes,
+                          inkChanges: ink,
                         ),
                       if (drawing)
                         ViewerInkOverlay(
@@ -1760,6 +1764,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                           historyManager: widget.session.historyManager,
                           viewport: snapped,
                           strokeActive: _strokeHold,
+                          strokes: _inkStrokes,
                           cacheInvalidationSink: _cacheInvalidationSink,
                         ),
                       // The file still opening, a page on screen not

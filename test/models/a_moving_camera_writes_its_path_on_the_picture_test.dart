@@ -24,8 +24,9 @@ void main() {
   const green = 0xFF3B6D11;
   const red = 0xFFA32D2D;
 
-  /// An arm of a key's cross on the conte's paper: two points, 5 apart —
-  /// every key wears one at its centre (유저 2026-10-12), a trail does not.
+  /// An arm of a key's cross as the canvas draws it: two points, 5 apart —
+  /// the conte's paper draws none (F-622 — ↩️every key wore one at its
+  /// centre, 유저 2026-10-12), and a trail is not one.
   bool crossArm(SheetStroke stroke) =>
       !stroke.closed &&
       stroke.points.length == 2 &&
@@ -109,7 +110,7 @@ void main() {
       hasLength(4),
       reason: 'fixture: four trails',
     );
-    expect(strokes.where(crossArm), hasLength(4), reason: 'two keys\' arms');
+    expect(strokes.where(crossArm), isEmpty, reason: 'no cross (F-622)');
     for (final stroke in strokes) {
       expect(
         stroke.argb >>> 24,
@@ -320,13 +321,13 @@ void main() {
     expect(between.argb >>> 24, 0xFF, reason: 'a name in full ink (H47)');
   });
 
-  test('every key is crossed at its frame\'s centre, as the canvas and the '
-      'export cross it (유저 2026-10-12: 「카메라 출력궤도랑 완전통일 … '
-      '중간키들도 표시하고」 · 「아까처럼 중앙에 두자 … 즉 법 통일」 — ↩️a '
-      'named key between alone, at its corner, H55) — small, turned with '
-      'its frame; a key between\'s cross and name are the sheet\'s black '
-      '(H55: 「작고 검정색으로? 그리고 그 색으로 키 색도 바꾸고」); the '
-      'trails keep H47\'s light grey', () {
+  test('🎯no key is crossed — 「콘티용지패널만 예외로 카메라 오버레이 중앙의 '
+      '십자사각형 없도록. 혹시나 궤도가 온다면 궤도도 중앙에 없도록」 (F-622 — '
+      '↩️every key was, at its frame\'s centre, as the canvas and the export '
+      'cross it, 유저 2026-10-12) — every key framed and named, a key '
+      'between\'s name the sheet\'s black (H55: 「작고 검정색으로? 그리고 그 '
+      '색으로 키 색도 바꾸고」); the trails keep H47\'s light grey and run '
+      'the corners, none the centre', () {
     const turn = math.pi / 6;
     List<Offset> turned(Offset centre) => [
       for (final corner in const [
@@ -381,45 +382,18 @@ void main() {
         .whereType<SheetStroke>()
         .where((stroke) => !stroke.closed)
         .toList();
-    final cross = [
-      for (final stroke in open)
-        if (stroke.argb == conteInkArgb) stroke,
-    ];
     expect(
-      cross,
-      hasLength(4),
-      reason: 'two arms each, S\'s and the unnamed key between\'s',
+      open.where(
+        (stroke) => {conteInkArgb, green, red}.contains(stroke.argb),
+      ),
+      isEmpty,
+      reason: 'no key\'s ink but on its frame and its name: no cross',
     );
-    final sides = [
-      Offset(math.cos(turn), math.sin(turn)),
-      Offset(-math.sin(turn), math.cos(turn)),
-    ];
-    for (final (key, frame) in [frames[1], frames[2]].indexed) {
-      final centre = onPaper(picture, work, (frame[0] + frame[2]) / 2);
-      final arms = cross.sublist(2 * key, 2 * key + 2);
-      for (final (index, arm) in arms.indexed) {
-        expect(arm.points, hasLength(2));
-        expectPoint(
-          (arm.points.first + arm.points.last) / 2,
-          centre,
-          'centred on the camera — its frame\'s centre',
-        );
-        final reach = arm.points.last - arm.points.first;
-        expect(reach.distance, closeTo(5, 1e-9), reason: 'small');
-        expectPoint(
-          reach / reach.distance,
-          sides[index],
-          'square to its frame',
-        );
-      }
-    }
-    for (final ink in [green, red]) {
-      expect(
-        open.where((stroke) => stroke.argb == ink),
-        hasLength(2),
-        reason: 'the first and the last are crossed too, in their own ink',
-      );
-    }
+    expect(
+      marks.whereType<SheetStroke>().where((stroke) => stroke.closed),
+      hasLength(4),
+      reason: 'every key framed',
+    );
     for (final name in ['S', '24f']) {
       final words = marks.whereType<SheetWords>().singleWhere(
         (words) => words.text == name,
@@ -437,8 +411,16 @@ void main() {
         if (!{conteInkArgb, green, red}.contains(stroke.argb)) stroke,
     ];
     expect(trails, hasLength(4), reason: 'fixture: the four trails');
-    for (final trail in trails) {
+    for (final (corner, trail) in trails.indexed) {
       expect(trail.argb, 0x805F5E5A, reason: 'a trail, as light as H47 left it');
+      expect(trail.points, hasLength(frames.length));
+      for (final (key, point) in trail.points.indexed) {
+        expectPoint(
+          point,
+          onPaper(picture, work, frames[key][corner]),
+          'a corner\'s trail, not the centre\'s',
+        );
+      }
     }
   });
 

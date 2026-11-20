@@ -107,13 +107,119 @@ void main() {
     );
   });
 
+  /// The rows built now, by name — in view or not.
+  Set<String> built() => {
+    for (final layer in layers)
+      if (find.text(layer.name).evaluate().isNotEmpty) layer.name,
+  };
+
+  /// The rows a pointer reaches now, by name — in view.
+  Set<String> inView() => {
+    for (final layer in layers)
+      if (find.text(layer.name).hitTestable().evaluate().isNotEmpty)
+        layer.name,
+  };
+
+  /// The rows built wholly below the grid, by name — past the view, not a
+  /// row the view's edge cuts.
+  Set<String> builtBelow(WidgetTester tester) {
+    final bottom = tester.getRect(find.byType(LayerTimelineGrid)).bottom;
+    return {
+      for (final name in built())
+        if (tester.getTopLeft(find.text(name)).dy >= bottom) name,
+    };
+  }
+
+  // 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q1 = B):
+  // spare rows past the view, always — [timelineRowWindowMargin].
+  testWidgets('the rows a notch brings in stand built before it, either '
+      'way, and the frame the grid opens in builds them too', (tester) async {
+    await tester.pumpWidget(grid());
+
+    expect(
+      builtBelow(tester),
+      isNotEmpty,
+      reason: 'the opening frame built rows past the view',
+    );
+
+    await tester.pumpAndSettle();
+    // A notch at 100%, as Windows' wheel turns it — down, then back up.
+    for (final notch in [100.0, -100.0]) {
+      final before = built();
+      final seen = inView();
+      await wheelBy(tester, notch);
+      final came = inView().difference(seen);
+      expect(
+        came,
+        isNotEmpty,
+        reason: 'the notch brought rows in — else this proves nothing',
+      );
+      expect(
+        came.difference(before),
+        isEmpty,
+        reason: 'every row the notch $notch brought in was built before',
+      );
+    }
+  });
+
+  // 🗣️유저 2026-11-18 (a-timeline-wheel-notch-lays-out-the-rail-Q2 = 1,
+  // 「칸 뒤 쉬는 프레임에 짓기」).
+  testWidgets('a notch lays no row in its own frame, and the rows the '
+      'window takes in come a row a frame after it', (tester) async {
+    await tester.pumpWidget(grid());
+    await tester.pumpAndSettle();
+    var laid = 0;
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (element.widget is ValueListenableBuilder<int>) {
+        laid += 1;
+      }
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+    final before = built();
+    final seen = inView();
+    await wheelBy(tester, 100);
+    expect(
+      inView().difference(seen),
+      isNotEmpty,
+      reason: '⛔전제: the notch brought rows in',
+    );
+    expect(laid, 0, reason: 'the notch\'s own frame laid no row');
+    expect(built(), before);
+
+    final arrivals = <int>[];
+    var now = before;
+    for (var frame = 0; frame < 12; frame += 1) {
+      await tester.pump();
+      final next = built();
+      arrivals.add(next.difference(now).length);
+      now = next;
+    }
+    debugOnRebuildDirtyWidget = null;
+    expect(
+      arrivals.every((count) => count <= 1),
+      isTrue,
+      reason: 'a row a frame: $arrivals',
+    );
+    expect(
+      arrivals.where((count) => count == 1).length,
+      greaterThan(1),
+      reason: 'taken in over the frames after the notch: $arrivals',
+    );
+    expect(
+      builtBelow(tester).length,
+      greaterThanOrEqualTo(3),
+      reason: 'and the window is a notch past the view again',
+    );
+  });
+
   testWidgets('sub-row movement re-windows nothing at all', (tester) async {
     await tester.pumpWidget(grid());
     await tester.pumpAndSettle();
 
     final before = scrollArea(tester);
-    // A third of a row: the ≥2-row overscan absorbs it, so not even the
-    // token should move.
+    // A third of a row: the window's notch past the view absorbs it, so not
+    // even the token should move.
     await wheelBy(tester, timelineLayerRowHeight / 3);
 
     expect(identical(scrollArea(tester), before), isTrue);

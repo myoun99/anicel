@@ -9,6 +9,7 @@ import 'engine_floods.dart';
 import 'engine_frame_tools.dart';
 import 'engine_selection_masks.dart';
 import 'engine_strokes.dart';
+import 'engine_tile_ledger.dart';
 
 /// Every set of kernels the app compiles ahead of its first use, off this
 /// isolate: what a hand needs all at once, the engine compiling on as many
@@ -37,9 +38,10 @@ import 'engine_strokes.dart';
 /// map or a mesh, the bucket's fill, a blur brush's stroke —, then the
 /// grids' (their rows draw themselves meanwhile), the effect chains' (a
 /// frame that names one waits, [FrameKernelsToCome]), the kernels a blur
-/// stroke goes by strips with (it goes a pass a dispatch meanwhile) and
-/// the export's (a file written meanwhile compiles what it asks, where
-/// it asks).
+/// stroke goes by strips with (it goes a pass a dispatch meanwhile), the
+/// export's (a file written meanwhile compiles what it asks, where it
+/// asks) and the fold's (the ledger folds no tile till they are there,
+/// [appGpuFoldKernels]).
 ///
 /// 🗣️관제 2026-11-11 04:09 (④): 「첫 획 · 첫 들어올리기에서도 UI 스레드가
 /// 직접 하는 커널 컴파일 0, `ink_box` 포함」. 🔬Surface Pro 11, 11-11: the
@@ -96,6 +98,11 @@ Future<void> compileAppKernelsAhead() async {
   await tools.composite.compileChains();
   await EngineStrokes.warmBlurStrips();
   await appGpuExportKernels.warm();
+  await appGpuFoldKernels.warm();
+  // A rest that came before these folded nothing, and none comes again
+  // while a project is only looked at
+  // (`EngineTileLedger.theFoldKernelsCame`).
+  EngineTileLedger.opened?.theFoldKernelsCame();
 }
 
 /// Whether the app still gets ready what a hand needs of its engine: from

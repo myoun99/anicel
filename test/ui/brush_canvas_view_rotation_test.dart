@@ -38,25 +38,32 @@ void main() {
     int? Function(CanvasPoint point)? sampleColorAt,
     ValueChanged<int>? onEyedropperPick,
     BrushToolState brushToolState = BrushToolState.defaults,
+    bool onTheFloor = true,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final commands = CanvasViewCommands();
+    final panel = BrushCanvasPanel(
+      coordinator: BrushCanvasFixture.createCoordinator(frameKeys: frameKeys),
+      availableFrameKeys: frameKeys,
+      cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+      // A canvas standing on its own IS the floor, and that is where the
+      // view controls live (법: 뷰 컨트롤은 바닥에만).
+      brushToolState: ValueNotifier(brushToolState),
+      sampleColorAt: sampleColorAt,
+      onEyedropperPick: onEyedropperPick,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: BrushCanvasFixture.createCoordinator(
-              frameKeys: frameKeys,
-            ),
-            availableFrameKeys: frameKeys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            // A canvas standing on its own IS the floor, and that is where the
-            // view controls live (법: 뷰 컨트롤은 바닥에만).
-            brushToolState: ValueNotifier(brushToolState),
-            viewCommands: commands,
-            sampleColorAt: sampleColorAt,
-            onEyedropperPick: onEyedropperPick,
-          ),
+          // The view keys drive the panel lying on the floor (F-623). Off
+          // it, the pill folds its view controls into the settings list.
+          body: onTheFloor
+              ? CanvasFloorInsets(
+                  insets: EdgeInsets.zero,
+                  viewCommands: commands,
+                  child: panel,
+                )
+              : panel,
         ),
       ),
     );
@@ -91,7 +98,7 @@ void main() {
     // Measured here rather than assumed: the readout keeps the drag, and
     // the row redraws while the list is open, which is the whole point of
     // [PanelFlyoutRow] carrying a listenable.
-    await pumpPanel(tester);
+    await pumpPanel(tester, onTheFloor: false);
     await openViewSettings(tester);
 
     final label = find.byKey(
@@ -113,7 +120,7 @@ void main() {
   testWidgets('the view row carries the STATE ACCENT ink (UI-R21 #1): '
       'straighten while the view is turned, flips while active — and the '
       'rotate buttons never (I-176)', (tester) async {
-    await pumpPanel(tester);
+    await pumpPanel(tester, onTheFloor: false);
     // Rotate and flip live in the settings list now, and a knob does not
     // close it — so the whole accent sequence runs with it open, which is
     // also how a person uses it (straighten, look, flip, look).

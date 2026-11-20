@@ -26,6 +26,7 @@ import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🗣️I-150-Q3 (유저 2026-11-03): 「일단 다른 타임라인끼리는 단순 겸용컷
 /// 작동안하게. 지금 겸용 만드는게 컷 복사하고 다른타임라인에 링크붙여넣기
@@ -925,6 +926,9 @@ void main() {
       final s = session();
       final made = linkedWhereItStands(s).made;
       final store = s.renderCaches.brushFrameStore;
+      // Their copies come: a tile the engine alone holds weighs nothing
+      // here (`BitmapTile.ownBytes`).
+      theCopiesComeOfTheHotCelsOf(store);
       final before = store.hotBakedBytes;
 
       s.cutVerbs.unsyncCut(made);

@@ -9,7 +9,7 @@ import '../../models/brush_mixing_method.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings_group.dart';
 import '../../models/brush_settings_row.dart';
-import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
+import '../../models/brush_shape.dart' show BrushMaskSlot;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_order.dart';
 import '../../models/brush_texture_mode.dart';
@@ -30,6 +30,7 @@ import '../widgets/setting_source_button.dart';
 import '../widgets/tip_direction_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
+import 'spacing_bar.dart';
 import 'tool_setting_rows.dart'
     show
         ToolSettingChoiceRow,
@@ -112,6 +113,23 @@ class BrushSettingsPanel extends StatefulWidget {
   // The `language` parameter left with the blend row: it existed only for
   // the blend labels (ja = CSP terms), and the rest of the panel reads its
   // wording from `AppText.strings`.
+
+  /// The least width this panel lays every brush's choices readable at
+  /// ([ToolSettingColumns.panelFor]) — its frame's inset and lane, and its
+  /// end column with the curve buttons in it. Every choice it can show
+  /// counts, shown or not, so a brush that shows another does not move it.
+  static double minWidthIn(BuildContext context) => ToolSettingColumns.panelFor(
+    chrome:
+        EditorPanelFrame.defaultBodyPadding.horizontal +
+        ContentScrollbar.laneIn(context),
+    end: _PanelSlider.endReach,
+    controls: [
+      ToolSettingChoiceRow.widthIn(context, _AntiAliasRow.answers),
+      ToolSettingChoiceRow.widthIn(context, _TextureModeRow.answers),
+      ToolSettingChoiceRow.widthIn(context, _MixingMethodRow.answers),
+      ToolSettingChoiceRow.widthIn(context, _SteadyingBySpeedRow.answers),
+    ],
+  );
 
   @override
   State<BrushSettingsPanel> createState() => _BrushSettingsPanelState();
@@ -635,16 +653,13 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         ),
       ),
     ),
-    BrushSettingsRow.spacing => _PanelSlider(
+    BrushSettingsRow.spacing => ToolSettingRow.bar(
       label: AppText.strings.brSpacing,
-      unit: '%',
-      displayScale: 100,
-      value: BrushToolState.clampSpacing(state.spacing),
-      min: BrushShape.minSpacing,
-      max: BrushShape.maxSpacing,
-      scale: FieldSliderScale.exponential,
-      keyValue: 'brush-tool-spacing-slider',
-      onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+      bar: spacingBar(
+        keyValue: 'brush-tool-spacing-slider',
+        value: state.spacing,
+        onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+      ),
       trailing: _pressureButton(BrushPressureTarget.spacing),
     ),
     // ---- 色の混ぜ方 ----
@@ -799,16 +814,13 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         ),
       ),
     ),
-    BrushSettingsRow.dualSpacing => _PanelSlider(
+    BrushSettingsRow.dualSpacing => ToolSettingRow.bar(
       label: AppText.strings.brSpacing,
-      unit: '%',
-      displayScale: 100,
-      value: BrushToolState.clampSpacing(state.dualSpacing),
-      min: BrushShape.minSpacing,
-      max: BrushShape.maxSpacing,
-      scale: FieldSliderScale.exponential,
-      keyValue: 'brush-tool-dual-spacing-slider',
-      onChanged: (value) => onChanged(state.copyWith(dualSpacing: value)),
+      bar: spacingBar(
+        keyValue: 'brush-tool-dual-spacing-slider',
+        value: state.dualSpacing,
+        onChanged: (value) => onChanged(state.copyWith(dualSpacing: value)),
+      ),
     ),
     BrushSettingsRow.dualScatter => _PanelSlider(
       label: AppText.strings.brScatter,
@@ -1168,12 +1180,18 @@ class _AntiAliasRow extends StatelessWidget {
 
   /// 1·2·3 are DIGITS, not words — they read the same in every language
   /// this program speaks, so only 없음 goes through [AppText].
-  String _labelFor(BrushAntiAlias step) => switch (step) {
+  static String _labelFor(BrushAntiAlias step) => switch (step) {
     BrushAntiAlias.none => AppText.strings.brEdgeNone,
     BrushAntiAlias.low => '1',
     BrushAntiAlias.medium => '2',
     BrushAntiAlias.high => '3',
   };
+
+  static List<({BrushAntiAlias value, String key, String label})>
+  get answers => [
+    for (final step in BrushAntiAlias.values)
+      (value: step, key: step.name, label: _labelFor(step)),
+  ];
 
   /// Every tool's choice row ([ToolSettingChoiceRow] — its name in the
   /// name column, the answers sharing the control column; tool-settings-
@@ -1186,10 +1204,7 @@ class _AntiAliasRow extends StatelessWidget {
     name: 'edge',
     label: AppText.strings.brAntiAlias,
     current: value,
-    answers: [
-      for (final step in BrushAntiAlias.values)
-        (value: step, key: step.name, label: _labelFor(step)),
-    ],
+    answers: answers,
     onPick: (step) => () => onChanged(step),
   );
 }
@@ -1203,12 +1218,18 @@ class _TextureModeRow extends StatelessWidget {
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
 
-  String _labelFor(BrushTextureMode mode) => switch (mode) {
+  static String _labelFor(BrushTextureMode mode) => switch (mode) {
     BrushTextureMode.multiply => SeparableBlendMode.multiply.labelFor(
       AppText.language,
     ),
     BrushTextureMode.height => AppText.strings.brTextureModeHeight,
   };
+
+  static List<({BrushTextureMode value, String key, String label})>
+  get answers => [
+    for (final mode in BrushTextureMode.values)
+      (value: mode, key: mode.name, label: _labelFor(mode)),
+  ];
 
   @override
   Widget build(BuildContext context) => ToolSettingChoiceRow<BrushTextureMode>(
@@ -1216,10 +1237,7 @@ class _TextureModeRow extends StatelessWidget {
     name: 'texture-mode',
     label: AppText.strings.brTextureMode,
     current: state.textureMode,
-    answers: [
-      for (final mode in BrushTextureMode.values)
-        (value: mode, key: mode.name, label: _labelFor(mode)),
-    ],
+    answers: answers,
     onPick: (mode) => () => onChanged(state.copyWith(textureMode: mode)),
   );
 }
@@ -1232,10 +1250,16 @@ class _MixingMethodRow extends StatelessWidget {
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
 
-  String _labelFor(BrushMixingMethod method) => switch (method) {
+  static String _labelFor(BrushMixingMethod method) => switch (method) {
     BrushMixingMethod.mix => AppText.strings.brMixingMix,
     BrushMixingMethod.blur => AppText.strings.brMixingBlur,
   };
+
+  static List<({BrushMixingMethod value, String key, String label})>
+  get answers => [
+    for (final method in BrushMixingMethod.values)
+      (value: method, key: method.name, label: _labelFor(method)),
+  ];
 
   @override
   Widget build(BuildContext context) =>
@@ -1244,10 +1268,7 @@ class _MixingMethodRow extends StatelessWidget {
         name: 'mixing-method',
         label: AppText.strings.brMixingMethod,
         current: state.mixingMethod,
-        answers: [
-          for (final method in BrushMixingMethod.values)
-            (value: method, key: method.name, label: _labelFor(method)),
-        ],
+        answers: answers,
         onPick: (method) =>
             () => onChanged(state.copyWith(mixingMethod: method)),
       );
@@ -1261,11 +1282,17 @@ class _SteadyingBySpeedRow extends StatelessWidget {
   final BrushSteadyingBySpeed value;
   final ValueChanged<BrushSteadyingBySpeed> onPick;
 
-  String _labelFor(BrushSteadyingBySpeed type) => switch (type) {
+  static String _labelFor(BrushSteadyingBySpeed type) => switch (type) {
     BrushSteadyingBySpeed.off => AppText.strings.commonNone,
     BrushSteadyingBySpeed.slow => AppText.strings.brBySpeedSlow,
     BrushSteadyingBySpeed.fast => AppText.strings.brBySpeedFast,
   };
+
+  static List<({BrushSteadyingBySpeed value, String key, String label})>
+  get answers => [
+    for (final type in BrushSteadyingBySpeed.values)
+      (value: type, key: type.name, label: _labelFor(type)),
+  ];
 
   @override
   Widget build(BuildContext context) =>
@@ -1274,10 +1301,7 @@ class _SteadyingBySpeedRow extends StatelessWidget {
         name: 'steadying-by-speed',
         label: AppText.strings.brStabilizerBySpeed,
         current: value,
-        answers: [
-          for (final type in BrushSteadyingBySpeed.values)
-            (value: type, key: type.name, label: _labelFor(type)),
-        ],
+        answers: answers,
         onPick: (type) => () => onPick(type),
       );
 }

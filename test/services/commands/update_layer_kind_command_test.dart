@@ -141,6 +141,39 @@ void main() {
       );
     });
 
+    test('🐛undo puts back the lane the kind\'s write reshaped — an '
+        'animation\'s twelve frames made an image, one cell held over the '
+        'cut, come back as twelve', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = _layer(
+        id: 'layer-1',
+        frames: [frame],
+        timeline: {0: TimelineExposure.drawing(frame.id, length: 12)},
+      );
+      final cut = _cut(id: 'cut-1', layers: [layer]);
+      final repository = ProjectRepository(initialProject: _project([cut]));
+      final historyManager = HistoryManager();
+      Layer row() => requireLayerAnywhere(repository.requireProject(), layer.id);
+      final before = row();
+
+      historyManager.execute(
+        UpdateLayerKindCommand(
+          repository: repository,
+          cutId: cut.id,
+          layerId: layer.id,
+          kind: LayerKind.image,
+        ),
+      );
+      expect(row().timeline[0]?.length, 1, reason: 'one cell, held');
+
+      historyManager.undo();
+      expect(row(), before);
+
+      historyManager.redo();
+      expect(row().kind, LayerKind.image);
+      expect(row().timeline[0]?.length, 1);
+    });
+
     test('rejects animation to storyboard when another storyboard exists', () {
       final storyboardLayer = _layer(
         id: 'layer-storyboard',

@@ -1623,10 +1623,10 @@ Future<bool> ensureUnsavedWorkSettled(
   // said once when the user comes back from their file manager) and no
   // gate. One fact, two doors: the notice opens the window to restore the
   // file, this closes the one where it is thrown away.
-  final vanished = session.projectFile.hasVanished();
-  if (!session.projectFile.hasUnsavedChanges && !vanished) {
+  if (!session.projectFile.wouldLoseWork()) {
     return true;
   }
+  final vanished = session.projectFile.hasVanished();
   final strings = AppText.strings;
   final choice = await showDialog<UnsavedWorkChoice>(
     context: context,

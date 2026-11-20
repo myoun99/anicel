@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_denoiser.dart';
+import 'package:anicel/src/native/qa_audio_filter.dart';
 import 'package:anicel/src/ui/playback/voice_take_bake.dart';
 
 /// 🚨A TAKE IS BAKED OFF THE THREAD THAT DRAWS (board

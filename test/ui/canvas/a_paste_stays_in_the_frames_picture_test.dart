@@ -237,7 +237,7 @@ void main() {
     final s = await up(tester);
     paintTile(s, 'a0', TileCoord(x: -2, y: 0), red);
     await settle(tester);
-    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     s.selectLayer(const LayerId('b'));
     await settle(tester);
     s.visibilitySolo.toggleLayerVisibilitySolo();
@@ -287,7 +287,7 @@ void main() {
       ) async {
         final s = await upWithACopyPastThePage(tester);
 
-        s.pixelVerbs.runPixelClipboardVerb(verb);
+        s.pixelVerbs.pixelClipboardVerbStep(verb).step();
         await settle(tester);
 
         await expectThroughSolo(tester, s, pastTheX, pastTheY);
@@ -299,10 +299,10 @@ void main() {
     ) async {
       final s = await upWithACopyPastThePage(tester);
 
-      s.pixelVerbs.landCanvasPicture(
+      s.pixelVerbs.canvasPictureStep(
         pieceAt(-210, 10),
         description: 'a picture',
-      );
+      ).step();
       await settle(tester);
 
       await expectThroughSolo(tester, s, pastTheX, pastTheY);
@@ -328,7 +328,7 @@ void main() {
 
     testWidgets('undone and redone, it goes and it comes back', (tester) async {
       final s = await upWithACopyPastThePage(tester);
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
       await settle(tester);
 
       s.undo();
@@ -348,12 +348,12 @@ void main() {
     await settle(tester);
     paintTile(s, 'a1', TileCoord(x: -2, y: 0), red);
     await settle(tester);
-    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     s.selectFrameIndex(0);
     s.selectLayer(const LayerId('b'));
     await settle(tester);
 
-    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await settle(tester);
     expect(await pictureAt(tester, pastTheX, pastTheY), red, reason: 'landed');
 
@@ -385,12 +385,12 @@ void main() {
       red,
     );
     await settle(tester);
-    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     s.selectFrameIndex(0);
     s.selectLayer(const LayerId('b'));
     await settle(tester);
 
-    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
     await settle(tester);
     s.selectFrameIndex(1);
     await settle(tester);
@@ -413,7 +413,7 @@ void main() {
       final s = await up(tester);
       paintTile(s, 'a0', TileCoord(x: 0, y: 0), red);
       await settle(tester);
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
       return s;
     }
 
@@ -431,7 +431,7 @@ void main() {
       final s = await upWithACopyOnThePage(tester);
       await standInSoloOnB(tester, s);
 
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
       await settle(tester);
 
       await expectThroughSolo(tester, s, 20, 20);
@@ -449,7 +449,7 @@ void main() {
       }
 
       final before = shownNow();
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
       await settle(tester);
 
       expect(before, isNotNull, reason: '⛔premise: a picture to go into');
@@ -463,7 +463,7 @@ void main() {
       await settle(tester);
       await standInSoloOnB(tester, s);
 
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteBelow);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteBelow).step();
       await settle(tester);
       expect(
         await pictureAt(tester, 20, 20),
@@ -471,7 +471,7 @@ void main() {
         reason: 'under the drawing',
       );
 
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
       await settle(tester);
       await expectThroughSolo(tester, s, 20, 20);
     });
@@ -490,7 +490,7 @@ void main() {
       s.visibilitySolo.toggleLayerVisibilitySolo();
       await settle(tester);
 
-      s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+      s.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.pasteAbove).step();
       await settle(tester);
 
       await expectThroughSolo(tester, s, 20, 20);

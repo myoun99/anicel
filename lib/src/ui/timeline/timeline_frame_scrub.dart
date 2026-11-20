@@ -7,10 +7,21 @@ import 'package:flutter/widgets.dart';
 
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../input/value_control_pointers.dart' show valueControlOwnsPointer;
+import '../widgets/axis_gesture_detector.dart';
 import 'axis_turn.dart' show extentAlong, partAlong;
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_coordinate_policy.dart';
-import 'timeline_grid_hooks.dart';
+
+/// Where a scrub's frames go ([TimelineFrameScrub]): each move's to
+/// [scrubbed] — the cursor alone — and the one commit to [ended] as the
+/// pointer lets go; where a host has no [scrubbed], each move's to
+/// [selected]. A grid hands its hooks' (`TimelineGridHooks.scrubSinks`), in
+/// its cut's frames; the conte's ruler its panel's, in the track's.
+typedef FrameScrubSinks = ({
+  ValueChanged<int>? selected,
+  ValueChanged<int>? scrubbed,
+  VoidCallback? ended,
+});
 
 /// Whether a press on a ruler strip is the strip's to scrub by — ONE answer
 /// for the ruler across, the X-sheet's rail down and the conte panel's
@@ -35,16 +46,23 @@ bool rulerPressScrubs(PointerDownEvent event) =>
 /// VALUE here, the way Flutter's own `Axis` serves Flex and ListView, so
 /// there is one body and no side can lag the other.
 ///
-/// Everything a scrub needs from its grid arrives as a getter, because the
-/// metrics, the hooks and the rendered extent all change under it between
-/// gestures; the controller and the viewport key are fixed for the grid's
+/// 🚨AND FOR THE CONTE'S RULER, the third (board
+/// the-conte-ruler-scrubs-through-the-one-area, 11-18): it called the same
+/// policy functions and assembled the press, the drag and the release of
+/// its own — and so it panned on a press near its edge, which the grids
+/// stopped doing (R10 R6, [pressAt]), and counted its frames from an
+/// offset other than the one its ruler is painted at.
+///
+/// Everything a scrub needs from its host arrives as a getter, because the
+/// metrics, the sinks and the rendered extent all change under it between
+/// gestures; the controller and the viewport key are fixed for the host's
 /// life and arrive as themselves.
 class TimelineFrameScrub {
   TimelineFrameScrub({
     required this.axis,
     required this.viewportKey,
     required this.controller,
-    required this.hooks,
+    required this.sinks,
     required this.frameCellExtent,
     required this.renderedFrameCount,
     required this.scrolledFrameOffset,
@@ -62,7 +80,7 @@ class TimelineFrameScrub {
   /// The frame axis's scroll controller, the one an edge pan moves.
   final ScrollController controller;
 
-  final TimelineGridHooks Function() hooks;
+  final FrameScrubSinks Function() sinks;
   final double Function() frameCellExtent;
 
   /// The BUILT extent the clamp answers against (UI-R12 #16).
@@ -91,7 +109,7 @@ class TimelineFrameScrub {
     visibleFrameCount: renderedFrameCount(),
   );
 
-  void selectClampedFrame(int frameIndex) {
+  void _selectClampedFrame(int frameIndex) {
     // The endless runway IS the selectable tail now (UI-R10 #23 retired
     // the fixed safety frames): clamp against the BUILT extent.
     final frame = _scrubbedFrame.next(
@@ -103,8 +121,8 @@ class TimelineFrameScrub {
     if (frame == null) {
       return;
     }
-    final grid = hooks();
-    (grid.onScrubFrame ?? grid.onSelectFrame)(frame);
+    final host = sinks();
+    (host.scrubbed ?? host.selected)?.call(frame);
   }
 
   /// The scrub gesture's release (raw pointer up/cancel — fires for taps
@@ -112,7 +130,7 @@ class TimelineFrameScrub {
   /// so a strip's trailing onTap stays deduplicated.
   void endScrub() {
     letGo();
-    hooks().onScrubEnd?.call();
+    sinks().ended?.call();
   }
 
   void resetTracking() => _scrubbedFrame.reset();
@@ -164,7 +182,7 @@ class TimelineFrameScrub {
     if (frameIndex == null) {
       return;
     }
-    selectClampedFrame(frameIndex);
+    _selectClampedFrame(frameIndex);
   }
 
   /// Edge auto-pan (UI-R10 #24, the pro-standard ruler drag): a scrub
@@ -183,4 +201,50 @@ class TimelineFrameScrub {
       edgeAutoPanDelta(alongLocal, extentAlong(axis, viewport.size)),
     );
   }
+}
+
+/// Where a press on a frame strip scrubs [scrub] — the timeline's ruler
+/// across and the X-sheet's rail down, ONE body turned by the scrub's axis.
+///
+/// The pointer layer scrubs on the press itself, so the playhead comes to
+/// the finger at once, taps included, and ends the scrub on the raw up or
+/// cancel wherever the pointer ends up; the drag along the strip only feeds
+/// the moves. R26 #34: a press that pans is the pan's, not a scrub — and a
+/// marker's is the marker's (I-169, [rulerPressScrubs]).
+///
+/// ↩️Each grid carried this body of its own, once with horizontal drags and
+/// once with vertical ones; the clone scan saw the pair when the ruler left
+/// the grid's build (card an-eye-toggle-holds-the-ui-thread, 11-18).
+class TimelineFrameScrubArea extends StatelessWidget {
+  const TimelineFrameScrubArea({
+    super.key,
+    required this.scrub,
+    required this.child,
+  });
+
+  final TimelineFrameScrub scrub;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (event) {
+      if (!rulerPressScrubs(event)) {
+        return;
+      }
+      scrub.resetTracking();
+      scrub.pressAt(event.position);
+    },
+    onPointerUp: (_) => scrub.endScrub(),
+    onPointerCancel: (_) => scrub.endScrub(),
+    child: AxisGestureDetector(
+      axis: scrub.axis,
+      behavior: HitTestBehavior.translucent,
+      onDragStart: (details) => scrub.pressAt(details.globalPosition),
+      onDragUpdate: (details) => scrub.dragTo(details.globalPosition),
+      onDragEnd: (_) => scrub.resetTracking(),
+      onDragCancel: scrub.resetTracking,
+      child: child,
+    ),
+  );
 }

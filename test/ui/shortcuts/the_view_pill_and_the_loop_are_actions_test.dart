@@ -5,6 +5,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -65,10 +66,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Somewhere other than where fit and 1:1 land.
-  Future<void> zoomAway(WidgetTester tester) async {
-    await pressKeyOf(tester, EditorActionIds.canvasZoomIn);
-    await pressKeyOf(tester, EditorActionIds.canvasZoomIn);
+  /// One place other than where fit and 1:1 land, reached the same way
+  /// each time: fit frames from the window alone, and the steps after it
+  /// are the same steps. Out, not in: the steps up from this fit pass
+  /// through 100%, where 1:1 has nothing to do.
+  ///
+  /// ⚠️The button and the key both start from IT. 1:1 changes the zoom
+  /// alone, about the middle of the view (F-381), so a 1:1 from two views
+  /// a zoom apart meets the other only to the float: the floor under the
+  /// tool settings' rail moved that middle, and they landed 2e-13 apart.
+  Future<CanvasViewport> standAway(WidgetTester tester) async {
+    await tapOnPill(tester, 'canvas-viewport-fit');
+    await pressKeyOf(tester, EditorActionIds.canvasZoomOut);
+    await pressKeyOf(tester, EditorActionIds.canvasZoomOut);
+    return viewOf(tester);
   }
 
   testWidgets('↕ and the straighten, by key, do what their buttons do', (
@@ -108,11 +119,12 @@ void main() {
       ('canvas-viewport-fit', EditorActionIds.canvasFit),
       ('canvas-viewport-reset', EditorActionIds.canvasResetView),
     ]) {
+      final away = await standAway(tester);
       await tapOnPill(tester, button);
       final landed = viewOf(tester);
-      await zoomAway(tester);
-      expect(viewOf(tester), isNot(landed), reason: 'fixture: moved away');
+      expect(landed, isNot(away), reason: '$button presses');
 
+      expect(await standAway(tester), away, reason: 'fixture: one place');
       await pressKeyOf(tester, action);
       expect(viewOf(tester), landed, reason: action);
     }
@@ -144,22 +156,30 @@ void main() {
       CanvasViewCommands? viewCommands,
     }) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final panel = BrushCanvasPanel(
+        coordinator: BrushCanvasFixture.createCoordinator(
+          frameKeys: frameKeys,
+          canvasSize: const CanvasSize(width: 300, height: 300),
+        ),
+        availableFrameKeys: frameKeys,
+        cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+        canvasSize: const CanvasSize(width: 300, height: 300),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: SizedBox(
               width: 900,
               height: 600,
-              child: BrushCanvasPanel(
-                coordinator: BrushCanvasFixture.createCoordinator(
-                  frameKeys: frameKeys,
-                  canvasSize: const CanvasSize(width: 300, height: 300),
+              child: switch (viewCommands) {
+                null => panel,
+                // The view keys drive the panel lying on the floor (F-623).
+                final commands => CanvasFloorInsets(
+                  insets: EdgeInsets.zero,
+                  viewCommands: commands,
+                  child: panel,
                 ),
-                availableFrameKeys: frameKeys,
-                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                canvasSize: const CanvasSize(width: 300, height: 300),
-                viewCommands: viewCommands,
-              ),
+              },
             ),
           ),
         ),
@@ -184,8 +204,8 @@ void main() {
       ]);
     });
 
-    testWidgets('⛔any other canvas: the key would move the editor\'s canvas, '
-        'so its fit says none', (tester) async {
+    testWidgets('⛔a canvas off the floor: the key moves what lies there, so '
+        'its fit says none', (tester) async {
       await pumpPanel(tester);
       expect(keysOn(tester, 'canvas-viewport-fit'), isEmpty);
     });

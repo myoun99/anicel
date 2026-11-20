@@ -45,6 +45,7 @@ void main() {
     int currentFrame = 0,
     bool playing = false,
     ValueChanged<int>? onSeek = _ignoreFrame,
+    ValueChanged<int>? onStep = _ignoreFrame,
     VoidCallback? onPlayPause = _ignore,
     TransportRange? range,
     TransportSound? sound,
@@ -66,6 +67,7 @@ void main() {
                 currentFrame: currentFrame,
                 playing: playing,
                 onSeek: onSeek,
+                onStep: onStep,
                 onPlayPause: onPlayPause,
                 range: range,
                 sound: sound,
@@ -246,6 +248,7 @@ void main() {
                       currentFrame: 0,
                       playing: false,
                       onSeek: _ignoreFrame,
+                      onStep: _ignoreFrame,
                       onPlayPause: _ignore,
                       range: span(0, 9),
                     ),
@@ -494,29 +497,14 @@ void main() {
       expect(tester.appIconButton(find.byKey(k('play'))).onPressed, isNull);
     });
 
-    testWidgets('stepping clamps at both ends', (tester) async {
-      var seeked = -1;
-      await pump(
-        tester,
-        frameCount: 10,
-        currentFrame: 0,
-        onSeek: (frame) => seeked = frame,
-      );
+    testWidgets('🗣️F-617: a step is told as a step, one frame either way — '
+        'the surface counts it from where its playhead lands', (tester) async {
+      final steps = <int>[];
+      await pump(tester, frameCount: 10, currentFrame: 4, onStep: steps.add);
       await tester.tap(find.byKey(k('step-back')));
-      expect(seeked, 0);
       await tester.tap(find.byKey(k('step-forward')));
-      expect(seeked, 1);
-
-      await pump(
-        tester,
-        frameCount: 10,
-        currentFrame: 9,
-        onSeek: (frame) => seeked = frame,
-      );
       await tester.tap(find.byKey(k('step-forward')));
-      expect(seeked, 9);
-      await tester.tap(find.byKey(k('step-back')));
-      expect(seeked, 8);
+      expect(steps, [-1, 1, 1]);
     });
 
     testWidgets('the end buttons stop at the span that is kept', (
@@ -562,6 +550,7 @@ void main() {
           frameCount: frameCount,
           currentFrame: frameCount ~/ 2,
           onSeek: onSeek,
+          onStep: onSeek,
         );
         for (final suffix in ['first', 'step-back', 'step-forward', 'last']) {
           expect(

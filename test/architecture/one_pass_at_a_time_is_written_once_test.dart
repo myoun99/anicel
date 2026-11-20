@@ -37,7 +37,7 @@ void main() {
     expectEveryEntrySaysWhy(_notAnotherOnePass);
   });
 
-  test('the six that were written by hand hold the one law', () {
+  test('the ones that were written by hand hold the one law', () {
     for (final path in _holders) {
       expect(
         File(path).readAsStringSync(),
@@ -101,7 +101,9 @@ void main() {
   });
 }
 
-/// The six that wrote it out by hand, which hold the law now.
+/// The ones that wrote it out by hand, which hold the law now — the six,
+/// and the engine's lays of the frames' pictures, found after (F-620): a
+/// flag kept on the lay, not the store, is no shape the scan sees.
 const _holders = [
   'lib/src/ui/playback/frame_picture_view.dart',
   'lib/src/services/persistence/versioned_settings_file.dart',
@@ -109,6 +111,7 @@ const _holders = [
   'lib/src/services/brush_tip_thumbnails.dart',
   'lib/src/services/brush_frame_store.dart',
   'lib/src/services/history_manager.dart',
+  'lib/src/ui/playback/engine_frame_picture_store.dart',
 ];
 
 /// Flags of the shape that are not a pass kept on its way by hand.

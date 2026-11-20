@@ -60,21 +60,50 @@ void main() {
   );
   final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
 
-  BitmapTile red() => BitmapTile(
+  /// A tile of one red, [shade] of it: no two shades the same bytes.
+  BitmapTile red([int shade = 255]) => BitmapTile(
     size: tileSide,
     pixels: Uint8List.fromList([
-      for (var i = 0; i < tileSide * tileSide; i += 1) ...[255, 0, 0, 255],
+      for (var i = 0; i < tileSide * tileSide; i += 1) ...[shade, 0, 0, 255],
     ]),
   );
 
+  /// A cel inked whole at each of [tiles], each in a shade of its own.
   BitmapSurface inkedAt(List<TileCoord> tiles) => BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSide,
-    tiles: {for (final at in tiles) at: red()},
+    tiles: {
+      for (final (shade, at) in tiles.indexed) at: red(255 - 30 * shade),
+    },
   );
 
   BitmapSurface inACorner() => inkedAt([TileCoord(x: 0, y: 0)]);
-  BitmapSurface onThePasteboard() =>
+
+  /// Ink on every tile of the canvas and on two past it.
+  ///
+  /// 🚨NO TWO TILES OF THE PICTURE ALIKE, AND NONE THE PAPER'S ALONE
+  /// (2026-11-19, 관제's order once master went red): pictures made of the
+  /// same keep one tile and a picture weighs the tiles it made (🗣️유저
+  /// 2026-11-18, F-610-Q2 「같은 타일은 한 벌만」 — 710618af0). ↩️Two red
+  /// tiles past a bare canvas, till then: the canvas's four tiles, the
+  /// paper's alone, came to be one tile, so the picture weighed three where
+  /// its plan weighs it ahead as six — under the canvas's four, the premise
+  /// these tests stand on. The product weighs right; the picture drawn
+  /// here was the one thing of its kind a share makes lighter.
+  /// ↩️Ahead, a plan weighed every tile it lays on, shared or not, till
+  /// the change after (2026-11-19, `Kept::tiles_made`): it is weighed by
+  /// the tiles its making runs for, and the picture that was drawn here
+  /// is that change's pin ([pastABareCanvas]).
+  BitmapSurface onThePasteboard() => inkedAt([
+    TileCoord(x: -1, y: -1),
+    for (var y = 0; y < 2; y += 1)
+      for (var x = 0; x < 2; x += 1) TileCoord(x: x, y: y),
+    TileCoord(x: 2, y: 2),
+  ]);
+
+  /// Ink on two tiles past a canvas with none on it: six tiles its plan
+  /// lays on — the canvas's four the paper's alone, one tile for the four.
+  BitmapSurface pastABareCanvas() =>
       inkedAt([TileCoord(x: -1, y: -1), TileCoord(x: 2, y: 2)]);
 
   CanvasLayerImageRequest asItLies() =>
@@ -110,7 +139,7 @@ void main() {
       addTearDown(images.dispose);
       final pictures = picturesOf(images);
 
-      expect(pictures.bytesToMake(picture), canvasBytes);
+      expect(await pictures.bytesToMake(picture), canvasBytes);
       expect(
         store.hotBakedSurfaceOrNull(key),
         isNull,
@@ -118,7 +147,7 @@ void main() {
       );
 
       await pictures.readIn(picture);
-      final weight = pictures.bytesToMake(picture);
+      final weight = await pictures.bytesToMake(picture);
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
 
       expect(weight, pictures.weighNew(picture, {}));
@@ -127,6 +156,34 @@ void main() {
         greaterThan(canvasBytes),
         reason: '⛔premise: ink past the canvas',
       );
+    });
+  });
+
+  // 🗣️유저 2026-11-18 (F-610-Q2): 「같은 타일은 한 벌만」 — and the room is
+  // asked for what a picture comes to weigh. ↩️Weighed ahead as every tile
+  // it lays on, this picture was asked room for six tiles and weighed
+  // three (🔬2026-11-19, master red: 393,216 against 196,608).
+  testWidgets('🚨a picture is weighed ahead by the tiles its making comes to '
+      'make — the tiles of its paper alone are one — not by every tile it '
+      'lays on', (tester) async {
+    await tester.runAsync(() async {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key: pastABareCanvas()});
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      final tileBytes = canvasBytes ~/ 4;
+
+      await pictures.readIn(picture);
+      final weight = await pictures.bytesToMake(picture);
+      expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
+
+      expect(
+        weight,
+        3 * tileBytes,
+        reason: 'the paper once and the two inked, of the six it lays on',
+      );
+      expect(weight, pictures.weighNew(picture, {}));
     });
   });
 
@@ -143,7 +200,7 @@ void main() {
 
       await pictures.readIn(picture);
 
-      expect(pictures.bytesToMake(picture), canvasBytes);
+      expect(await pictures.bytesToMake(picture), canvasBytes);
     });
   });
 

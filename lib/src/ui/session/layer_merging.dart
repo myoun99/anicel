@@ -300,14 +300,20 @@ class LayerMerging {
     return true;
   }
 
-  /// Each row's blocks [plan] takes made one — the band let go, as every
-  /// cut command lets it go ([ChangeSink.refreshAfterCutCommand]); or
-  /// nothing, when its cut has changed since it was planned.
+  /// Each row's blocks [plan] takes made one — the band over the block
+  /// they make; or nothing, when its cut has changed since it was planned.
+  ///
+  /// ↩️The band was let go, as a delete lets it go — then as every cut
+  /// command lets it go ([ChangeSink.refreshAfterCutCommand]) — and so the
+  /// merge was one of the edits a band did not follow (F-619): it is held
+  /// before the write and laid over its blocks after the refresh.
   bool landBlocks(BlockMergePlan plan) {
+    final band = _rangeSelections.holdBand(actsOnIt: true);
     if (!_lands(plan.cut, plan.layers, 'Merge blocks')) {
       return false;
     }
     _changes.refreshAfterCutCommand();
+    band?.follow();
     _changes.notifyChanged();
     return true;
   }

@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/a_move_lands.dart';
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 
@@ -70,10 +71,12 @@ void main() {
     // every case green, because the line was never reached.
     session.frameVerbs.selectNextFrame();
     await tester.pump();
+    await theMoveLands(tester, session);
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
     session.frameVerbs.selectPreviousFrame();
     await tester.pumpAndSettle();
+    await theMoveLands(tester, session);
 
     // X: the select tool mounts the selection layer (W until F-261, when W
     // took to walking up the sheet; Z until I-63 emptied it). Single frames
@@ -164,6 +167,7 @@ void main() {
 
     session.frameVerbs.selectNextFrame();
     await tester.pump();
+    await theMoveLands(tester, session);
     expect(
       commands.hasRegion,
       isTrue,
@@ -206,6 +210,7 @@ void main() {
 
     session.frameVerbs.selectNextFrame();
     await tester.pump();
+    await theMoveLands(tester, session);
     expect(
       session.currentFrameIndex,
       1,
@@ -229,6 +234,7 @@ void main() {
 
     session.frameVerbs.selectPreviousFrame();
     await tester.pump();
+    await theMoveLands(tester, session);
 
     commands.beginTransform();
     await tester.pump();

@@ -84,7 +84,10 @@ void main() {
       ],
     );
     return [
-      for (final cut in buildConteSheetSource(project, olWord: word).cuts)
+      for (final cut in buildConteSheetSource(
+        project,
+        words: word == null ? null : (ol: word, wholeCut: '全尺'),
+      ).cuts)
         cut.cells,
     ];
   }

@@ -10,7 +10,7 @@ use std::ops::Range;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::TILE_BYTES;
+use crate::kernels::composite::{FOLDED, TILE_BYTES};
 
 /// A buffer a pass reads or puts, of `bytes` — nothing at first: wgpu
 /// zeroes a new buffer.
@@ -64,13 +64,16 @@ pub(crate) fn tiles_a_pass(engine: &Engine, per_tile: u64, fixed: u64) -> Option
 }
 
 /// The most tiles a page takes on this device: as many as a pass takes and
-/// a slot names — a u16 (`TileAt`). ⛔ONE COUNT: a gathered row's page, a
-/// chained row's, a stamp's and the letters' each worked it out, and a kept
-/// picture's was to be the fifth (11-08). ⚠️No test reaches the u16: a
-/// page past it is a binding of 4 GiB, past every device here (mutant M13,
-/// 11-08).
+/// a slot names — a u16 (`TileAt`) under the bit that says a folded
+/// tile's ([`FOLDED`]), so no slot of a tile as it is reads as a folded
+/// one's (F-610, 2026-11-19; ↩️a u16 whole till then). ⛔ONE COUNT: a
+/// gathered row's page, a chained row's, a stamp's and the letters' each
+/// worked it out, and a kept picture's was to be the fifth (11-08). ⚠️No
+/// test tells the bound from the u16: a page at it is a binding of 2 GiB,
+/// all the main PC's device holds, and one past it is past every device
+/// here (mutant M13, 11-08).
 pub(crate) fn tiles_a_page(engine: &Engine) -> Option<usize> {
-    Some(tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX)))
+    Some(tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(FOLDED)))
 }
 
 /// The most rows of a plane, `row_bytes` each, one binding of `room` bytes
@@ -282,13 +285,32 @@ pub(crate) fn encode_on(
         compute.set_bind_group(0, bind_group, &[]);
         compute.dispatch_workgroups(across, down, deep);
     }
+    crate::submits::encoded(dispatches.iter().map(|dispatch| dispatch.groups));
 }
 
-/// Encodes `dispatches` in order and submits them; the caller waits.
+/// Encodes `dispatches` in order and submits them; the caller waits —
+/// noted where the caller asked ([`crate::submits`]).
+#[track_caller]
 pub(crate) fn encode(engine: &Engine, dispatches: &[Encoded]) {
+    encode_cleared(engine, &[], dispatches);
+}
+
+/// [`encode`], the first bytes of each of `cleared` zeroed before the
+/// dispatches: a buffer taken again holds what its last holder left
+/// (`composite/spares.rs`), and a pass that puts a part of one leaves
+/// the rest as it was.
+#[track_caller]
+pub(crate) fn encode_cleared(
+    engine: &Engine,
+    cleared: &[(&wgpu::Buffer, u64)],
+    dispatches: &[Encoded],
+) {
     let mut encoder = engine
         .device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    for &(buffer, bytes) in cleared {
+        encoder.clear_buffer(buffer, 0, Some(bytes));
+    }
     encode_on(engine, &mut encoder, dispatches);
     engine.queue.submit([encoder.finish()]);
 }

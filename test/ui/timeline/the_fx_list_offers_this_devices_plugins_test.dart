@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/sound_preset.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -154,21 +155,26 @@ void main() {
       .single
       .effects;
 
+  /// The menu's own entries, before a plugin's: the presets' heading, a
+  /// row each and the rule under them; the sound and picture headings and
+  /// the rule between; a row a kind.
+  final ownEntries =
+      2 + SoundPreset.values.length + 3 + effectKindsAddedAlone.length;
+
   test('after the app\'s kinds, under their own heading, one row each — '
       'named as an add of it is', () async {
     final session = sessionOn(await deviceWith(['a.b', 'c.d']));
     final list = listOf(session);
-    final kinds = effectKindsAddedAlone.length;
 
-    expect(list.length, 3 + kinds + 2 + 2);
-    expect(list[3 + kinds], isA<PanelFlyoutDivider>());
+    expect(list.length, ownEntries + 2 + 2);
+    expect(list[ownEntries], isA<PanelFlyoutDivider>());
     expect(
-      (list[4 + kinds] as PanelFlyoutHeader).label,
+      (list[ownEntries + 1] as PanelFlyoutHeader).label,
       AppText.strings.fxPluginsOfDevice,
     );
     expect(
       [
-        for (final entry in list.skip(5 + kinds))
+        for (final entry in list.skip(ownEntries + 2))
           (entry as PanelFlyoutItem).label,
       ],
       [
@@ -188,8 +194,8 @@ void main() {
   test('a device with none shows none — no heading, no rule of its own',
       () async {
     final session = sessionOn(await deviceWith([]));
-    expect(listOf(session).length, 3 + effectKindsAddedAlone.length);
-    expect(listOf(session).whereType<PanelFlyoutDivider>(), hasLength(1));
+    expect(listOf(session).length, ownEntries);
+    expect(listOf(session).whereType<PanelFlyoutDivider>(), hasLength(2));
     expect(
       listOf(session).whereType<PanelFlyoutHeader>().map((h) => h.label),
       isNot(contains(AppText.strings.fxPluginsOfDevice)),
@@ -197,36 +203,49 @@ void main() {
   });
 
   // 🗣️audio-fx-grows-like-the-pros Q2 (유저 2026-11-17): 「시안 3 · 시안 1
-  // + 성격 프리셋」 — design 1's menu as drawn: 音声 first, a rule, 映像.
-  test('🎯the sound section leads, the picture one follows a rule; a '
-      'picture row\'s sound kinds are dimmed, never hidden', () async {
+  // + 성격 프리셋」 — design 3's menu as drawn: プリセット, a rule, 音声, a
+  // rule, 映像.
+  test('🎯the presets lead, then the sound section, then the picture one, '
+      'each after a rule; a picture row\'s sound rows are dimmed, never '
+      'hidden', () async {
     final session = sessionOn(await deviceWith([]));
     final list = listOf(session);
+    const presets = SoundPreset.values;
     final sound = [
       for (final kind in effectKindsAddedAlone)
         if (kind.filtersSound) kind,
     ];
+    List<String> keysOf(int from, int count) => [
+      for (final entry in list.skip(from).take(count))
+        (entry as PanelFlyoutItem).keyValue,
+    ];
     expect(
       (list.first as PanelFlyoutHeader).label,
+      AppText.strings.tlEffectPresets,
+    );
+    expect(keysOf(1, presets.length), [
+      for (final preset in presets) 'add-sound-preset-${preset.jsonValue}',
+    ]);
+    expect(list[1 + presets.length], isA<PanelFlyoutDivider>());
+    final soundAt = 2 + presets.length;
+    expect(
+      (list[soundAt] as PanelFlyoutHeader).label,
       AppText.strings.tlEffectsOfSound,
     );
+    expect(keysOf(soundAt + 1, sound.length), [
+      for (final kind in sound) 'add-effect-${kind.jsonValue}',
+    ]);
+    expect(list[soundAt + 1 + sound.length], isA<PanelFlyoutDivider>());
     expect(
-      [
-        for (final entry in list.skip(1).take(sound.length))
-          (entry as PanelFlyoutItem).keyValue,
-      ],
-      [for (final kind in sound) 'add-effect-${kind.jsonValue}'],
-    );
-    expect(list[1 + sound.length], isA<PanelFlyoutDivider>());
-    expect(
-      (list[2 + sound.length] as PanelFlyoutHeader).label,
+      (list[soundAt + 2 + sound.length] as PanelFlyoutHeader).label,
       AppText.strings.tlEffectsOfPicture,
     );
-    PanelFlyoutItem entryOf(EffectKind kind) => list
+    PanelFlyoutItem entryOf(String key) => list
         .whereType<PanelFlyoutItem>()
-        .singleWhere((item) => item.keyValue == 'add-effect-${kind.jsonValue}');
-    expect(entryOf(EffectKind.equalizer).enabled, isFalse);
-    expect(entryOf(EffectKind.blur).enabled, isTrue);
+        .singleWhere((item) => item.keyValue == key);
+    expect(entryOf('add-sound-preset-dialogue').enabled, isFalse);
+    expect(entryOf('add-effect-equalizer').enabled, isFalse);
+    expect(entryOf('add-effect-blur').enabled, isTrue);
   });
 
   test('its row adds an effect of it, at its own values', () async {

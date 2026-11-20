@@ -12,7 +12,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::UI::Input::{RAWHID, RAWINPUT};
 
-use crate::raw::{Device, FLAGS, Hid, POSE, STARTED, ValueCaps, hid_reports};
+use crate::raw::{Device, FLAGS, Hid, POSE, ValueCaps, hid_reports};
 use crate::report::{pose, snapshot};
 
 /// The `qpr_*` exports of one observer.
@@ -46,7 +46,7 @@ fn polled(observer: Observer, cap: i32) -> (i32, usize) {
 }
 
 /// A process registers one window per collection: one observer at a time.
-fn one_at_a_time() -> MutexGuard<'static, ()> {
+pub(super) fn one_at_a_time() -> MutexGuard<'static, ()> {
     static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
     ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -112,18 +112,6 @@ fn the_latest_report_is_forgotten_at_stop() {
     crate::qpr_stop();
     assert_ne!(after[0], heard[0], "its buttons, stopped and started");
     assert_ne!(&after[2..], &heard[2..], "its pose, stopped and started");
-}
-
-#[test]
-fn a_start_while_the_last_observer_winds_down_starts_none() {
-    let _turn = one_at_a_time();
-    assert_eq!(crate::qpr_start(), 1);
-    // As while its thread has not yet ended.
-    STARTED.store(false, Ordering::SeqCst);
-    assert_eq!(crate::qpr_start(), 0, "a second observer beside the first");
-    STARTED.store(true, Ordering::SeqCst);
-    crate::qpr_stop();
-    assert!(!STARTED.load(Ordering::SeqCst), "LIVENESS — the first ended");
 }
 
 /// What the HID parser answers, and what it was handed.

@@ -18,11 +18,13 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
+import 'package:anicel/src/models/sound_preset.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import 'package:anicel/src/ui/dialogs/convert_to_linked_cut_dialog.dart';
+import 'package:anicel/src/ui/dialogs/rename_layer_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
@@ -52,13 +54,13 @@ final barRows = [
   EditorActionIds.cutConvertLinked,
   EditorActionIds.layerRename,
   EditorActionIds.layerDetach,
-  EditorActionIds.layerStoryboard,
   for (final kind in addLayerKinds) addLayerKindActionId(kind),
   EditorActionIds.layerAttachFreeAbove,
   EditorActionIds.layerAttachFreeBelow,
   EditorActionIds.layerAttachSyncedAbove,
   EditorActionIds.layerAttachSyncedBelow,
   EditorActionIds.frameSelectRowSpan,
+  for (final preset in SoundPreset.values) soundPresetActionId(preset),
   for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
 ];
 
@@ -154,6 +156,7 @@ void main() {
         reason: 'a button of the pill, not a row of a menu',
       );
       expect(ids.sublist(theSwitch + 1), [
+        for (final preset in SoundPreset.values) soundPresetActionId(preset),
         for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
       ]);
     });
@@ -257,12 +260,11 @@ void main() {
       expect(shell, contains('pressFlyoutRow('), reason: '⛔LIVENESS');
       // The verbs the bar's rows run, by the names the rows call them by.
       for (final verb in const [
-        'runPixelVerb(',
-        'runPixelClipboardVerb(',
+        'pixelVerbStep(',
+        'pixelClipboardVerbStep(',
         'createCut',
         'createLinkedCutFromActiveCut',
         'detachRows',
-        'toggleTargetLayerKind',
         'addAttachedLayer',
         'selectRowSpan',
         'addLayerOfKind',
@@ -486,14 +488,11 @@ void main() {
       await pumpApp(tester);
       final session = sessionOf(tester);
       expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔premise');
-      List<LayerKind> kinds() => [
-        for (final layer in session.activeCutOrNull!.layers) layer.kind,
-      ];
-      final before = kinds();
+      // ↩️The row was 「콘티 레이어」 until F-613 took it off the menu.
       expect(
-        rowOf(timelineRows(tester), EditorActionIds.layerStoryboard).enabled,
+        rowOf(timelineRows(tester), EditorActionIds.layerRename).enabled,
         isTrue,
-        reason: '⛔premise: on the timeline the row would turn the layer',
+        reason: '⛔premise: on the timeline the row would rename the layer',
       );
 
       session.claimStoryboardRow();
@@ -505,13 +504,14 @@ void main() {
             session: session,
             panel: StoryboardToolbarPanelContext(session),
           ).rows(contextOf(tester)),
-          EditorActionIds.layerStoryboard,
+          EditorActionIds.layerRename,
         ).enabled,
         isFalse,
         reason: '⛔premise: the storyboard\'s layer menu shows the row dim',
       );
-      await pressKeyOf(tester, EditorActionIds.layerStoryboard);
-      expect(kinds(), before);
+      await pressKeyOf(tester, EditorActionIds.layerRename);
+      await tester.pumpAndSettle();
+      expect(find.byType(RenameLayerDialog), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

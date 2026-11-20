@@ -135,6 +135,7 @@ dependencies = [
 name = "audio_mix"
 version = "0.0.1"
 dependencies = [
+ "audio_denoise",
  "ledger",
  "libm",
 ]
@@ -896,7 +897,6 @@ version = "0.0.1"
 dependencies = [
  "ash",
  "audio",
- "audio_denoise",
  "audio_device",
  "audio_mix",
  "compress",

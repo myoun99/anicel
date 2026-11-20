@@ -515,7 +515,7 @@ class _StoryboardRailRows {
         inHand.layer,
         layerIndex: layers.indexOf(inHand.layer),
       ),
-      layers: layers,
+      attachGroups: attachGroupRowsBySide(layers),
       onToggle: _state.widget.onToggleGroupFold,
     );
   }
@@ -2955,7 +2955,7 @@ class _StoryboardRailRows {
       // The CAMERA row heads the group (I-73 ④) — a row of the CUTS, so
       // it is built on them as this step lays them, like the V row below.
       if (_showsCameraRow(track))
-        () => [_cameraStripRow(track, strip, scale)],
+        () => [_cameraStripRow(track, strip, scale, rows)],
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
       // The transition row and the S rows are both track-global, so both
@@ -2965,30 +2965,33 @@ class _StoryboardRailRows {
       // lanes with it, or every row under it parts from its label.
       if (_filterAllowsTrackRow(track))
         () => [
-          _StoryboardTrackRow(
-            trackId: track.id,
-            layoutEntries: entries,
-            onRowFramePress: _state.widget.onRowFramePress,
-            onDropMediaAsset: _state.widget.onDropMediaAsset,
-            acceptsMediaAsset: _state.widget.acceptsMediaAsset,
-            laneHeight: _in.trackLaneHeight,
-            stripEdges: _state.widget.stripEdges,
-            cutMove: _state.widget.cutMove,
-            cutSelect: _state.widget.cutSelect,
-            thumbnails: _state.widget.thumbnails,
-            timelineScale: scale,
-            frameGeometry: _state._windowedFrameGeometry,
-            windowIsStill: true,
-            hoveredCutId: _state._hoveredCutId,
-            standingCutId: _state._standing.standingCutOn(track),
-            windowBucket: _state._horizontalWindowBucket,
-            railSweepAt: _railSweepOn(track.id),
-            showSeconds: _state.widget.showSeconds,
-            projectFrameRate: _state.widget.projectFrameRate,
-            linkedCutIds: _state.widget.linkedCutIds,
-            syncedCutIds: _state.widget.syncedCutIds,
-            onOpenCutLinks: _state.widget.onOpenCutLinks,
-            onEditCutBlock: _state.widget.onEditCutBlock,
+          rows.piece(
+            ('vStrip', track.id),
+            _StoryboardTrackRow(
+              trackId: track.id,
+              layoutEntries: entries,
+              onRowFramePress: _state.widget.onRowFramePress,
+              onDropMediaAsset: _state.widget.onDropMediaAsset,
+              acceptsMediaAsset: _state.widget.acceptsMediaAsset,
+              laneHeight: _in.trackLaneHeight,
+              stripEdges: _state.widget.stripEdges,
+              cutMove: _state.widget.cutMove,
+              cutSelect: _state.widget.cutSelect,
+              thumbnails: _state.widget.thumbnails,
+              timelineScale: scale,
+              frameGeometry: _state._windowedFrameGeometry,
+              windowIsStill: true,
+              hoveredCutId: _state._hoveredCutId,
+              standingCutId: _state._standing.standingCutOn(track),
+              windowBucket: _state._horizontalWindowBucket,
+              railSweepAt: _railSweepOn(track.id),
+              showSeconds: _state.widget.showSeconds,
+              projectFrameRate: _state.widget.projectFrameRate,
+              linkedCutIds: _state.widget.linkedCutIds,
+              syncedCutIds: _state.widget.syncedCutIds,
+              onOpenCutLinks: _state.widget.onOpenCutLinks,
+              onEditCutBlock: _state.widget.onEditCutBlock,
+            ),
           ),
           if (track.lanesExpanded)
             for (final strip in _trackTransformLaneStrips(
@@ -2999,7 +3002,7 @@ class _StoryboardRailRows {
             ))
               strip,
         ],
-      ..._conteStripRows(track, strip, scale),
+      ..._conteStripRows(track, strip, scale, rows),
     ]);
   }
 
@@ -3011,8 +3014,9 @@ class _StoryboardRailRows {
     Track track,
     _TrackStrip strip,
     TimelineScale scale,
-  ) => _onTheReaches(track, strip, (reaches) {
-    final row = _StoryboardCameraRow(
+    _WindowedRows rows,
+  ) {
+    KeptPiece row(List<CameraRowReach> reaches) => _StoryboardCameraRow(
       trackId: track.id,
       reaches: reaches,
       height: _state._rowHeights.camera,
@@ -3027,23 +3031,39 @@ class _StoryboardRailRows {
       onEditCameraCell: _state.widget.onEditCameraCell,
       stripSelect: _state.widget.stripSelect,
     );
-    if (!_cameraLanesOpen(track)) {
-      return row;
-    }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        row,
-        ..._projectionLaneStrips(
-          track,
-          _cameraProjection(track),
-          _cameraLanes(track),
-          (reaches: reaches, scale: scale),
+    if (_cameraLanesOpen(track)) {
+      // Its lanes laid again at every pass, as the timeline's are.
+      return _onTheReaches(
+        track,
+        strip,
+        (reaches) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            row(reaches),
+            ..._projectionLaneStrips(
+              track,
+              _cameraProjection(track),
+              _cameraLanes(track),
+              (reaches: reaches, scale: scale),
+            ),
+          ],
         ),
-      ],
+      );
+    }
+    // Kept while the row on the strip as this pass lays it holds, and the
+    // channel its builder hears. The cuts and the transition row it is
+    // laid on reach the row only as its reaches — each holding its cut's
+    // place ([CameraRowReach.entry]) — which the row's facts hold; what it
+    // shows under a drag in flight its builder hears itself.
+    final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
+    return rows.piece(
+      ('cameraStrip', track.id),
+      row(_reachesOn(strip.entries, strip.transitionRow)),
+      inputs: ByIdentity(dragPreview),
+      wrap: (_) => _onTheReaches(track, strip, row),
     );
-  });
+  }
 
   /// [build] with [track]'s cuts' own frames as this step lays them, under
   /// the のりしろ the track's transition row asks of each
@@ -3138,27 +3158,31 @@ class _StoryboardRailRows {
     Track track,
     _TrackStrip strip,
     TimelineScale scale,
+    _WindowedRows rows,
   ) => [
     for (final seat in _shownConteSeats(track))
       () => [
-        _StoryboardConteRow(
-          trackId: track.id,
-          seat: seat,
-          layoutEntries: strip.entries,
-          height: _state._rowHeights.conte,
-          timelineScale: scale,
-          frameGeometry: _state._windowedFrameGeometry,
-          windowIsStill: true,
-          windowBucket: _state._horizontalWindowBucket,
-          showSeconds: _state.widget.showSeconds,
-          projectFrameRate: _state.widget.projectFrameRate,
-          onRowFramePress: _state.widget.onRowFramePress,
-          stripEdges: _state.widget.stripEdges,
-          stripSelect: _state.widget.stripSelect,
-          onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
-          onEditConteBlock: _state.widget.onEditConteBlock,
-          conteCelContent: _state.widget.conteCelContent,
-          stepsUntilShown: _state.widget.stepsUntilShown,
+        rows.piece(
+          ('conteStrip', track.id, seat),
+          _StoryboardConteRow(
+            trackId: track.id,
+            seat: seat,
+            layoutEntries: strip.entries,
+            height: _state._rowHeights.conte,
+            timelineScale: scale,
+            frameGeometry: _state._windowedFrameGeometry,
+            windowIsStill: true,
+            windowBucket: _state._horizontalWindowBucket,
+            showSeconds: _state.widget.showSeconds,
+            projectFrameRate: _state.widget.projectFrameRate,
+            onRowFramePress: _state.widget.onRowFramePress,
+            stripEdges: _state.widget.stripEdges,
+            stripSelect: _state.widget.stripSelect,
+            onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+            onEditConteBlock: _state.widget.onEditConteBlock,
+            conteCelContent: _state.widget.conteCelContent,
+            stepsUntilShown: _state.widget.stepsUntilShown,
+          ),
         ),
         if (_conteLanesOpen(track, seat))
           _onTheReaches(
@@ -3187,7 +3211,7 @@ class _StoryboardRailRows {
   ) {
     final moveRows = _seMoveRows(track);
     final heights = _state._rowHeights;
-    Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
+    KeptPiece seRow(int slot, Layer? layer) => _StoryboardSeRow(
       railSweepAt: _railSweepOn(track.id),
       moveRows: moveRows,
       trackIndex: index,
@@ -3220,11 +3244,10 @@ class _StoryboardRailRows {
         // this strip renders the track axis, not the active-cut clone.
         switch (_state._seDisplayAt(track, slot)) {
           null => seRow(slot, null),
-          final globalLayer => TimelineDragPreviewRowGate(
-            dragPreview: _state.widget.dragPreview,
-            layer: globalLayer,
-            useGlobalForm: true,
-            rowBuilder: (context, layer) => seRow(slot, layer),
+          final globalLayer => _state._rows.keptGlobalStrip(
+            ('seStrip', track.id, slot),
+            globalLayer,
+            (layer) => seRow(slot, layer),
           ),
         },
         if (_seLanesOpen(track, slot))
@@ -3387,10 +3410,11 @@ class _StoryboardRailRows {
   /// The base-layout TRACK-GLOBAL strip rows per track index — the transition
   /// row and the SE rows (+ their twirled-down lanes), one unit of the rows'
   /// window each — computed once per PANEL build and reused across
-  /// drag-preview steps.
+  /// drag-preview steps — and across builds, each row while what it is
+  /// built from holds ([_StoryboardRowsWindow.globalStripKeep]).
   List<List<List<Widget>>> _trackGlobalStripRowsByTrack() {
     final scale = _state._scale;
-    return [
+    return _state._rowsWindow.globalStripKeep.pass(() => [
       for (var index = 0; index < _in.project.tracks.length; index++)
         [
           // Heads the group, matching the rail's row order.
@@ -3398,7 +3422,7 @@ class _StoryboardRailRows {
             [_state._rows.transitionStripRow(_in.project.tracks[index], scale)],
           ..._seStripRowsForTrack(_in.project.tracks[index], index, scale),
         ],
-    ];
+    ]);
   }
 }
 

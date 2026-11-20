@@ -167,7 +167,11 @@ void main() {
         () => run.pictures.allInHand(treeOf(), frameOf(paper: paper)),
       ).then((inHand) async {
         expect(inHand, isTrue, reason: 'LIVENESS: the cel is read');
-        await lendBothClocks(tester, rounds: 2);
+        // A screen of a file just opened stands bare till its frame's
+        // picture comes, in real time: waited for, not given rounds — two
+        // were what the Surface needed and too few on lavapipe (the-bundle-
+        // pr-ci-is-red-on-two-frame-screen-tests-on-linux).
+        await theFrameIsShown(tester);
       });
 
   testWidgets('🚨a screen that takes the place of the canvas\'s picture '

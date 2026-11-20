@@ -283,8 +283,8 @@ void main() {
     ]);
     final cel = Object();
     BitmapTile land() => ledger.land(
-      cel,
       [(column: 0, row: 0, under: null)],
+      ofTheHand: true,
       by: (pool, cel, asked) =>
           made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
     ).single.tile!;
@@ -327,8 +327,8 @@ void main() {
     ]);
     final cel = Object();
     BitmapTile land() => ledger.land(
-      cel,
       [(column: 0, row: 0, under: null)],
+      ofTheHand: true,
       by: (pool, cel, asked) =>
           made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
     ).single.tile!;
@@ -383,10 +383,9 @@ void main() {
         contrast: 1,
       ),
     ]);
-    final cel = Object();
     BitmapTile land() => ledger.land(
-      cel,
       [(column: 0, row: 0, under: null)],
+      ofTheHand: true,
       by: (pool, cel, asked) =>
           made.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
     ).single.tile!;

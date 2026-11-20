@@ -485,9 +485,16 @@ void main() {
       );
       clipboardOf(s).copyFrameAtCurrentFrame();
 
-      standOn(s, other, 0);
+      // On a sound's row, the one that takes it (F-609): the independent
+      // paste alone is lit. ↩️It stood on [other], a picture's row, whose
+      // independent paste was lit until F-609 — 「일반레이어에서 복사된건
+      // [s행에] 결과적으로 안붙여넣어지도록」, and the other way the same.
+      standOn(s, se, 4);
       expect(clipboardOf(s).canPasteLinkedFrameAtCurrentFrame, isFalse);
       expect(clipboardOf(s).canPasteIndependentFrameAtCurrentFrame, isTrue);
+      standOn(s, other, 0);
+      expect(clipboardOf(s).canPasteLinkedFrameAtCurrentFrame, isFalse);
+      expect(clipboardOf(s).canPasteIndependentFrameAtCurrentFrame, isFalse);
     });
   });
 }

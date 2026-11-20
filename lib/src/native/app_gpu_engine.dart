@@ -1,4 +1,5 @@
 import 'dart:async' show FutureOr;
+import 'dart:convert' show LineSplitter;
 import 'dart:ui' show RootIsolateToken;
 
 import 'package:flutter/foundation.dart'
@@ -88,6 +89,26 @@ bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 GpuDeviceWent get appGpuEngineWentBy =>
     _its.engine?.wentBy ?? GpuDeviceWent.unsaid;
 
+/// What the app's engine says as a device goes, a line each: whether its
+/// device is gone and why, then what it handed the GPU and has not heard it
+/// finish, after the newest it has ([GpuEngine.unfinishedSubmits]) — asked
+/// without opening one. Waits on neither the engine's thread nor its
+/// device, so it is said of an engine whose device went.
+///
+/// 🗣️H63 (관제 2026-11-18): a reset of the GPU leaves what the engine had
+/// sent it and not had back — written where the app hears a device went
+/// (`GpuLossLog`).
+List<String> get appGpuEngineLossLines {
+  final engine = _its.engine;
+  if (engine == null) {
+    return const ['engine none open'];
+  }
+  return [
+    'engine gone=${engine.isGone} went=${engine.wentBy.name}',
+    ...const LineSplitter().convert(engine.unfinishedSubmits),
+  ];
+}
+
 /// What the OS says of the app's engine's adapter memory
 /// ([GpuEngine.videoMemory]) — null where the app has opened none: asked
 /// without opening one, by the memory census (`collectMemoryCensus`).
@@ -113,6 +134,12 @@ bool isTheAppsEngine(GpuEngine engine) => identical(engine, _its.engine);
 abstract final class EnginePictures {
   /// Their bytes; none where the app has opened no engine.
   static int get idlePictureBytes => _its.engine?.idlePictureBytes ?? 0;
+
+  /// The bytes of the tiles its pictures hold that none of them weighs
+  /// ([GpuEngine.unownedPictureBytes]); none where the app has opened no
+  /// engine.
+  static int get unownedPictureBytes =>
+      _its.engine?.unownedPictureBytes ?? 0;
 
   /// Gives them back till they are [mostIdle] bytes
   /// ([GpuEngine.givePicturesBackPast]).
@@ -472,6 +499,18 @@ final appGpuStampLandingKernels = AppKernels<GpuStampLanding>(
   GpuStampLanding.new,
   GpuStampLanding.opening,
   (landing) => landing.free(),
+);
+
+/// The fold's kernels on [appGpuEngine] (F-610): what the app's ledger
+/// folds its pool's tiles by once a hand rests
+/// (`EngineTileLedger.foldABatch`). Compiled by the list a launch runs,
+/// off this isolate (`compileAppKernelsAhead`), and never where a fold is
+/// asked: the ledger folds nothing till they are there
+/// ([AppKernels.compiled]).
+final appGpuFoldKernels = AppKernels<GpuFold>(
+  GpuFold.new,
+  GpuFold.opening,
+  (fold) => fold.free(),
 );
 
 /// How [debugGpuAdapterChoice] opens the engine — read on this isolate:

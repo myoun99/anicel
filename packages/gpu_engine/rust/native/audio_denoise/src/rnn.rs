@@ -28,6 +28,20 @@ impl RnnState {
             denoise: [0.0; model::DENOISE_NEURONS],
         }
     }
+
+    /// The floats it carries: the voice
+    /// activity's, the noise's and the denoising GRU's.
+    pub(crate) const VALUES: usize = model::VAD_NEURONS + model::NOISE_NEURONS + model::DENOISE_NEURONS;
+
+    /// Its floats in their one order, to keep ([`RnnState::floats_mut`]
+    /// gives them back in it).
+    pub(crate) fn floats(&self) -> impl Iterator<Item = &f32> {
+        self.vad.iter().chain(&self.noise).chain(&self.denoise)
+    }
+
+    pub(crate) fn floats_mut(&mut self) -> impl Iterator<Item = &mut f32> {
+        self.vad.iter_mut().chain(&mut self.noise).chain(&mut self.denoise)
+    }
 }
 
 /// `tansig_approx`: tanh from a 201-entry table and one correction step.

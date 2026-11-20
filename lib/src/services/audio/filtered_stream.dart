@@ -29,8 +29,25 @@ final class FilterCheckpoints {
 }
 
 /// How far apart a span's checkpoints stand at [rate]: a quarter second —
-/// the most a window's bake reads before the window begins.
-int filterCheckpointSpacing(int rate) => math.max(1, rate ~/ 4);
+/// the most a window's bake reads before the window begins — or farther
+/// where the filters remember much ([memory] doubles over [channels]), so
+/// the checkpoints weigh no more than a quarter of the sound between them:
+/// a double is two floats' bytes, so one every 8 × [memory] ÷ [channels]
+/// samples.
+///
+/// 🔬A noise removal remembers each channel's model and frames — about
+/// 5,500 doubles a channel at 48 kHz (native/audio_mix denoiser.rs): a
+/// checkpoint a quarter second would weigh three times the sound, about
+/// 200 MB for ten minutes in stereo; this way 0.91 s apart at 48 kHz. An
+/// equalizer's and a compressor's stay a quarter second.
+int filterCheckpointSpacing({
+  required int rate,
+  required int channels,
+  required int memory,
+}) => math.max(
+  math.max(1, rate ~/ 4),
+  channels <= 0 ? 0 : 8 * memory ~/ channels,
+);
 
 /// [span]'s checkpoints, read off [reader] — the conform its samples are
 /// cut from — a stretch at a time. Null where the conform does not read
@@ -39,11 +56,15 @@ FilterCheckpoints? filterCheckpointsOf(
   ConformPcmStreamReader reader,
   FilteredSpan span,
 ) {
-  final spacing = filterCheckpointSpacing(reader.sampleRate);
   final stretches = FilterStretches(
     channels: reader.channels,
     rate: reader.sampleRate,
     stages: span.stages,
+  );
+  final spacing = filterCheckpointSpacing(
+    rate: reader.sampleRate,
+    channels: reader.channels,
+    memory: stretches.kept.length,
   );
   final memories = <Float64List>[];
   final end = math.min(span.start + span.length, reader.length);
@@ -116,18 +137,32 @@ typedef StreamWindowRead = ({
   );
   final from = span.start + k * checkpoints.spacing;
   final channels = reader.channels;
-  final stretch = reader.readWindow(from, start - from + held).samples;
-  final baked = FilterStretches(
+  final stretches = FilterStretches(
     channels: channels,
     rate: reader.sampleRate,
     stages: span.stages,
     from: (first: from - span.start, memory: checkpoints.memories[k]),
-  ).next(stretch);
-  if (baked.length != (start - from + held) * channels) {
+  );
+  // What comes out late ([FilterStretches.latency]) is read on past the
+  // window — in silence past the span, as its whole bake is ([filterAudio]).
+  final late = stretches.latency;
+  final count = start - from + held + late;
+  final reach = math.min(from + count, spanEnd) - from;
+  final stretch = reader.readWindow(from, reach).samples;
+  if (stretch.length != reach * channels) {
+    return empty;
+  }
+  final baked = stretches.next(
+    reach == count
+        ? stretch
+        : (Float32List(count * channels)..setAll(0, stretch)),
+  );
+  if (baked.length != count * channels) {
     return empty;
   }
   final floats = held * channels;
   final into = place?.call(floats) ?? Float32List(floats);
-  into.setAll(0, Float32List.sublistView(baked, (start - from) * channels));
+  final at = (start - from + late) * channels;
+  into.setAll(0, Float32List.sublistView(baked, at, at + floats));
   return (startSample: start, samples: into);
 }

@@ -8,7 +8,8 @@
 // lane that finds one unlike, or one with ink, sets that bit of the tile's
 // word.
 //
-// Needs shared/tile.wgsl and shared/pages.wgsl (with its bindings).
+// Needs shared/tile.wgsl, shared/pages.wgsl (with its bindings) and
+// shared/stored.wgsl.
 
 const WRITE_LANES: u32 = 256u;
 // The bits of a tile's word: it differs from what is stored; ink is left in
@@ -34,7 +35,7 @@ fn write_changed(
 ) {
   let tile = group.x;
   let k = given[tile * 2u];
-  let at = given[tile * 2u + 1u] * TILE_TEXELS;
+  let slot = given[tile * 2u + 1u];
   // A lane that has found its tile unlike reads no more of the stored one,
   // and one that holds both bits reads no more at all — the same bits, read
   // as little as the one-bit test read (브러시/렌더링 08:20 review). No test
@@ -42,7 +43,7 @@ fn write_changed(
   var bits = 0u;
   for (var i = lane; i < TILE_TEXELS; i += WRITE_LANES) {
     let word = put[tile * TILE_TEXELS + i];
-    if ((bits & WRITE_DIFFERS) == 0u && word != page_word(k, at + i)) {
+    if ((bits & WRITE_DIFFERS) == 0u && word != stored_word(k, slot, i)) {
       bits |= WRITE_DIFFERS;
     }
     bits |= select(0u, WRITE_INKED, (word >> 24u) != 0u);

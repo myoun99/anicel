@@ -46,7 +46,10 @@ void main() {
       expect(shorter[2]!.length, 1);
     });
 
-    test('start edge moves the start, end fixed, clamped by neighbors', () {
+    // The start edge is a block's front edge, by the one rule (I-21 ·
+    // I-179 — 「블록을 사용하는거라면 모든것에 법 통일적용」).
+    test('start edge drawn out spends the gap, then the span in front gives '
+        'frames down to one — its head held, the end fixed', () {
       final map = _map({2: pan, 12: fade});
 
       final moved = instructionMapWithEdgeShifted(
@@ -55,18 +58,77 @@ void main() {
         startEdge: true,
         delta: -6,
       )!;
-      // Clamped at the previous span's end (2 + 6 = 8); end stays 16.
-      expect(moved.containsKey(12), isFalse);
-      expect(moved[8]!.length, 8);
+      expect(moved, {2: pan.copyWith(length: 4), 6: fade.copyWith(length: 10)});
 
-      final shrunk = instructionMapWithEdgeShifted(
+      final asFarAsItGoes = instructionMapWithEdgeShifted(
         map,
-        spanStartIndex: 2,
+        spanStartIndex: 12,
         startEdge: true,
-        delta: 99,
+        delta: -99,
       )!;
-      // Start cannot pass the last covered frame; length bottoms at 1.
-      expect(shrunk[7]!.length, 1);
+      expect(asFarAsItGoes, {
+        2: pan.copyWith(length: 1),
+        3: fade.copyWith(length: 13),
+      });
+    });
+
+    test('start edge pulled back holds one frame, then takes the span and '
+        'sweeps on, the span glued in front following', () {
+      final map = _map({2: pan, 12: fade});
+
+      expect(
+        instructionMapWithEdgeShifted(
+          map,
+          spanStartIndex: 2,
+          startEdge: true,
+          delta: 5,
+        ),
+        {7: pan.copyWith(length: 1), 12: fade},
+      );
+      expect(
+        instructionMapWithEdgeShifted(
+          map,
+          spanStartIndex: 2,
+          startEdge: true,
+          delta: 6,
+        ),
+        {12: fade},
+        reason: 'past its last frame the span is gone',
+      );
+      expect(
+        instructionMapWithEdgeShifted(
+          map,
+          spanStartIndex: 2,
+          startEdge: true,
+          delta: 99,
+        ),
+        isEmpty,
+        reason: 'as far as the row\'s last frame, every span it passes',
+      );
+
+      final glued = _map({0: fade, 4: fade, 8: fade});
+      expect(
+        instructionMapWithEdgeShifted(
+          glued,
+          spanStartIndex: 4,
+          startEdge: true,
+          delta: 6,
+        ),
+        {0: fade.copyWith(length: 10), 10: fade.copyWith(length: 2)},
+      );
+    });
+
+    test('start edge grows to frame 0 and no further', () {
+      expect(
+        instructionMapWithEdgeShifted(
+          _map({0: pan}),
+          spanStartIndex: 0,
+          startEdge: true,
+          delta: -3,
+        ),
+        isNull,
+        reason: 'at the head already, nothing moves',
+      );
 
       final clampedAtZero = instructionMapWithEdgeShifted(
         _map({2: pan}),

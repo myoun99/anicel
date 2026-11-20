@@ -163,6 +163,14 @@ class TimelineCutEndDragHandle extends StatelessWidget {
     );
 
     final dragPreview = this.dragPreview;
+    // 🗣️a-key-on-the-cuts-last-frame-does-not-open-its-name-Q1 (유저
+    // 2026-11-19, 「지금처럼 — 줌을 키워서 누른다」): 「지금대로로
+    // 문제없고 그게 통일인거같음. 끝이라고 별도규칙두면 안된다고생각」.
+    // Under about 10px a frame the strip covers the middle of the last
+    // frame's cell, so a double click on a key there is the end line's —
+    // zooming in is how the key is pressed. ⛔Neither hand the end line's
+    // double click to the cell under it nor move the strip off that cell:
+    // either is a rule for the end alone.
     Widget positioned(int frameCount) {
       final main = timelineFrameEdge(frameCount, cellExtent) - 5;
       return stripAlong(axis, along: main, alongExtent: 12, child: grip);

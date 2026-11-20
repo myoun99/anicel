@@ -27,6 +27,7 @@ import '../helpers/panel_finders.dart';
 import 'brush_canvas_test_helpers.dart';
 
 import '../helpers/rail_group_button.dart';
+import '../helpers/semantics_as_the_app_runs.dart';
 
 /// 🚨**F-130 — 「브러시 커서 프리뷰가 일반 OS 커서보다 느리다 — 일반 커서가
 /// 60fps 면 프리뷰는 30fps 느낌」** (유저 2026-09-14/15).
@@ -353,7 +354,9 @@ void main() {
     // debug variables between the body and the tear-downs, so a platform
     // override released there fails the test it already measured.
     debugDefaultTargetPlatformOverride = null;
-  }, timeout: const Timeout(Duration(minutes: 20)));
+  },
+      semanticsEnabled: semanticsAsTheAppRuns,
+      timeout: const Timeout(Duration(minutes: 20)));
 }
 
 /// One frame's reading.

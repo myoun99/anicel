@@ -2,6 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::ffi::CStr;
 use std::path::PathBuf;
 
+use super::compile_cache::{self, Made, Turn};
 use crate::auxil::dxgi::result::HResult;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -36,7 +37,7 @@ pub(super) struct CompilerStaticDxc {
 
 /// ANICEL — not wgpu's: the DXC compilers one device compiles with, one to
 /// each compile under way, and what DXC made kept on disk
-/// ([`super::dxil_cache`]).
+/// ([`super::compile_cache`]).
 ///
 /// ↩️wgpu-hal 30 made one compiler and compiled on it from whatever thread
 /// asked, with no lock — and 「objects created by DxcCreateInstance aren't
@@ -180,7 +181,7 @@ impl DxcCompilers {
 
     /// What DXC makes of `source`: what an earlier compile kept on disk
     /// where all that is asked is the same — waiting for it where another
-    /// process compiles it now ([`super::dxil_cache::DxilCache::turn`]) —
+    /// process compiles it now ([`super::compile_cache::CompileCache::turn`]) —
     /// else compiled on a compiler no other compile holds — one of
     /// [`Self::spare`], or `make`'s where none is — and kept.
     #[allow(clippy::too_many_arguments)]
@@ -196,19 +197,21 @@ impl DxcCompilers {
     ) -> Result<super::CompiledShader, crate::PipelineError> {
         let args = dxc_args(device, source_name, raw_ep, full_stage);
         let asked = self.identity.as_ref().map(|identity| {
-            super::dxil_cache::asked(
+            compile_cache::asked(
                 [identity.as_bytes()]
                     .into_iter()
                     .chain(args.iter().map(|arg| arg.text.as_bytes()))
                     .chain([source.as_bytes()]),
             )
         });
+        let kept = &device.compile_cache;
         // Held till what DXC made is kept, or the compile fails.
-        let _turn = match asked.as_ref().map(|asked| device.dxil_cache.turn(asked)) {
-            Some(super::dxil_cache::Turn::Kept(dxil)) => {
+        let _turn = match asked.as_ref().map(|asked| kept.turn(Made::Dxil, asked)) {
+            Some(Turn::Kept(dxil)) => {
+                kept.used(Made::Dxil);
                 return Ok(super::CompiledShader::Precompiled(dxil));
             }
-            Some(super::dxil_cache::Turn::Compile(turn)) => turn,
+            Some(Turn::Compile(turn)) => turn,
             None => None,
         };
         let compiler = {
@@ -228,7 +231,7 @@ impl DxcCompilers {
                     blob.GetBufferSize(),
                 )
             };
-            device.dxil_cache.write(asked, dxil);
+            kept.write(Made::Dxil, asked, dxil);
         }
         Ok(super::CompiledShader::Dxc(blob))
     }
@@ -452,7 +455,7 @@ unsafe fn dxc_create_instance<T: DxcObj>(
 struct OPCWSTR {
     inner: Vec<u16>,
     /// ANICEL: what it says, for what DXC was asked to be known by
-    /// ([`super::dxil_cache::asked`]).
+    /// ([`super::compile_cache::asked`]).
     text: String,
 }
 

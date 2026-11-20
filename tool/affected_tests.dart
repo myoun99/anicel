@@ -38,6 +38,7 @@
 //   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
 //   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
 //   bash tool/run.sh affected_tests --first-in-line   # the wide check's own
+//   bash tool/run.sh affected_tests --twin <checkout>  # a second compiler there
 //   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
 //   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
@@ -416,6 +417,7 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
   final useCache = !args.contains('--no-cache');
+  final twinAsked = _flagValue(args, '--twin');
   final turn = lineFor(args);
   if (turn.refusal != null) {
     stderr.writeln('${turn.refusal}.');
@@ -429,6 +431,7 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
   Directory.current = root;
+  final twin = twinAsked == null ? null : _twinAt(twinAsked);
 
   Future<Never> run(
     List<String> files, [
@@ -443,6 +446,7 @@ Future<void> main(List<String> args) async {
       redsTo: redsTo,
       inTheLine: turn.inTheLine,
       firstInLine: turn.first,
+      twin: twin,
     ),
   );
 
@@ -564,12 +568,16 @@ ResultCache? _cacheOr(
 }
 
 /// What a batch's [report] says of each file ([suiteRuns]), with its times
-/// and greens laid over the machine's records ([updatePairs]).
-List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
+/// and greens laid over the machine's records ([updatePairs]) — its paths
+/// read from [root], the checkout it ran in (this one unless named).
+List<SuiteRun> _recordBatch(File report, ResultCache? cache, {String? root}) {
   if (!report.existsSync()) return const [];
   final List<SuiteRun> runs;
   try {
-    runs = suiteRuns(report.readAsStringSync(), root: Directory.current.path);
+    runs = suiteRuns(
+      report.readAsStringSync(),
+      root: root ?? Directory.current.path,
+    );
   } on FileSystemException catch (e) {
     _report('the report of this batch could not be read: ${e.message}');
     return const [];
@@ -636,6 +644,56 @@ List<String> idleArguments(int processId) => [
   '-Command',
   "(Get-Process -Id $processId).PriorityClass = 'Idle'",
 ];
+
+/// Why the checkout at [there] cannot run half of this run's batches
+/// beside it ([runInBatches]) — or null when it can: another checkout, at
+/// the commit this one ([here]) is at, neither holding a change nobody
+/// committed. What it finds green is kept as this checkout's
+/// ([ResultCache]), so what it runs must be what this one holds.
+String? twinRefusal({
+  required String here,
+  required String? there,
+  required String? hereHead,
+  required String? thereHead,
+  required bool hereClean,
+  required bool thereClean,
+}) {
+  if (there == null) return 'it is not a git checkout';
+  if (there == here) return 'it is this checkout';
+  if (hereHead == null || hereHead != thereHead) {
+    return 'it is at ${thereHead ?? '(no commit)'}, this checkout at '
+        '${hereHead ?? '(no commit)'}';
+  }
+  if (!hereClean) return 'this checkout holds changes nobody committed';
+  if (!thereClean) return 'it holds changes nobody committed';
+  return null;
+}
+
+/// The checkout [asked] names, as this run's twin ([twinRefusal]) — or the
+/// run refused, as any flag asked wrongly is.
+String _twinAt(String asked) {
+  String? git(String where, List<String> args) {
+    final result = Process.runSync('git', ['-C', where, ...args]);
+    return result.exitCode == 0 ? (result.stdout as String).trim() : null;
+  }
+
+  final here = git('.', ['rev-parse', '--show-toplevel'])!;
+  final there = git(asked, ['rev-parse', '--show-toplevel']);
+  final refusal = twinRefusal(
+    here: here,
+    there: there,
+    hereHead: git(here, ['rev-parse', 'HEAD']),
+    thereHead: there == null ? null : git(there, ['rev-parse', 'HEAD']),
+    hereClean: git(here, ['status', '--porcelain'])?.isEmpty ?? false,
+    thereClean:
+        there != null && (git(there, ['status', '--porcelain'])?.isEmpty ?? false),
+  );
+  if (refusal != null) {
+    stderr.writeln('--twin $asked: $refusal.');
+    exit(2);
+  }
+  return there!;
+}
 
 Directory? _repoRoot() {
   final result = Process.runSync('git', ['rev-parse', '--show-toplevel']);
@@ -720,15 +778,94 @@ List<String> _wholeSuite() =>
 ///
 /// 6000 keeps 2k of daylight below the real ceiling. Elsewhere ARG_MAX is
 /// megabytes and one batch is always enough.
-const _argBudget = 6000;
+/// ↩️Since 2026-11-20 that is the ceiling only when the tool is reached
+/// through the .bat ([flutterLaunch]); past it the line is
+/// [kDirectArgBudget].
+const kBatArgBudget = 6000;
 
-/// Whether [batch] fits one invocation's budget — off Windows any batch
-/// does. A file that is somehow longer than the whole budget still goes out
-/// alone ([timedBatches] ends at one file a batch) rather than being dropped
-/// — failing loudly beats running less than we said we would.
+/// How many characters of arguments one invocation may carry when the tool
+/// is started without the .bat ([flutterLaunch]): CreateProcess takes
+/// 32,767 for the whole line, and the dart.exe and the two words before
+/// the arguments are a few hundred of them.
+const kDirectArgBudget = 30000;
+
+/// Whether [batch] fits one invocation's budget ([FlutterLaunch.argBudget])
+/// — off Windows any batch does. A file that is somehow longer than the
+/// whole budget still goes out alone ([timedBatches] ends at one file a
+/// batch) rather than being dropped — failing loudly beats running less
+/// than we said we would.
 bool _fitsTheCommandLine(List<String> batch) =>
     !Platform.isWindows ||
-    batch.fold(0, (length, file) => length + file.length + 1) <= _argBudget;
+    batch.fold(0, (length, file) => length + file.length + 1) <=
+        _launch.argBudget;
+
+/// How a batch starts `flutter test` here: the program, the words before
+/// the tool's own, what to add to its environment, whether it goes through
+/// the shell, and how long its arguments may be.
+typedef FlutterLaunch = ({
+  String executable,
+  List<String> leading,
+  Map<String, String> environment,
+  bool shell,
+  int argBudget,
+});
+
+/// 🆕PAST THE .BAT (2026-11-20, card the-wide-check-takes-five-hours). On
+/// Windows `flutter` is a .bat, and every call of it takes one lock for the
+/// whole machine (bin/cache/flutter.bat.lock) and runs git and PowerShell
+/// inside it before the tool starts — and goes through cmd.exe, whose 8191
+/// characters cut the wide check of 11-20 into 39 batches of about a
+/// hundred files, each paying its own start ([kBatArgBudget]). The .bat
+/// ends by calling the SDK's dart on the tool's snapshot; that call is
+/// made here directly when the SDK [environment] reaches
+/// ([flutterRootsIn]) has the three files it needs — `tool/run.sh` reaches
+/// the SDK's dart past the same lock for the same reason (10-18).
+///
+/// ⚖️What the .bat would have done first is not done: rebuilding the
+/// snapshot after Flutter itself changed. Every lane opens with a
+/// `flutter pub get` and every land runs `flutter analyze`, both through
+/// the .bat, so the snapshot is rebuilt the first time either runs after
+/// an upgrade — a batch started before that runs the tool it finds.
+/// ⛔Copying the .bat's checks here would be a second copy of Flutter's
+/// own rule.
+FlutterLaunch flutterLaunch(
+  Map<String, String> environment, {
+  required bool windows,
+  bool Function(String path) exists = _exists,
+}) {
+  if (windows) {
+    for (final root in flutterRootsIn(environment)) {
+      final dart = '$root\\bin\\cache\\dart-sdk\\bin\\dart.exe';
+      final snapshot = '$root\\bin\\cache\\flutter_tools.snapshot';
+      final packages =
+          '$root\\packages\\flutter_tools\\.dart_tool\\package_config.json';
+      if ([dart, snapshot, packages].every(exists)) {
+        return (
+          executable: dart,
+          leading: ['--packages=$packages', snapshot],
+          environment: {'FLUTTER_ROOT': root},
+          shell: false,
+          argBudget: kDirectArgBudget,
+        );
+      }
+    }
+  }
+  return (
+    executable: windows ? 'flutter.bat' : 'flutter',
+    leading: const [],
+    environment: const {},
+    shell: true,
+    argBudget: kBatArgBudget,
+  );
+}
+
+bool _exists(String path) => File(path).existsSync();
+
+/// This machine's [flutterLaunch], read once a run.
+final FlutterLaunch _launch = flutterLaunch(
+  Platform.environment,
+  windows: Platform.isWindows,
+);
 
 /// How long a batch should run at the suites the line gave it, in seconds
 /// — what [nextBatch] cuts to.
@@ -780,7 +917,20 @@ List<String> nextBatch(
 /// that wait for the collector as one batch of their own. [take] stands in
 /// the line for the files still to run and says
 /// how many suites the next batch has; [run] runs the batch at them, on the
-/// engine its [BatchKind] names.
+/// engine its [BatchKind] names. [putDown] hands each take's suites back
+/// once what they ran has ended.
+///
+/// 🆕A SECOND COMPILER (2026-11-20, card the-wide-check-takes-five-hours).
+/// `flutter test` compiles one file at a time (flutter_tools'
+/// TestCompiler, 「one compilation request at a time」), and the light
+/// files that are most of the wide check ran at that compiler's pace —
+/// eighteen suites mostly stood in its queue. Given [runInTwin], a take of
+/// the crowd is cut into two batches at half its suites each, and the
+/// second runs in another checkout of the same commit — its own
+/// `flutter test`, its own compiler — beside the first. Measured on 200
+/// light files at eight suites: 251 s as one run, 188 · 203 s as two.
+/// The batches that run apart (the collector's, the real-time pins, the
+/// engines' own) are never paired: what they are apart from is company.
 Future<void> runInBatches(
   List<String> files, {
   required Map<String, int> known,
@@ -793,33 +943,68 @@ Future<void> runInBatches(
     required BatchKind kind,
   })
   run,
+  Future<void> Function(
+    List<String> batch,
+    int suites, {
+    required BatchKind kind,
+  })?
+  runInTwin,
+  void Function()? putDown,
 }) async {
+  Future<void> held(Future<void> Function() round) async {
+    try {
+      await round();
+    } finally {
+      putDown?.call();
+    }
+  }
+
   final split = partitionByTag(files, read);
   for (final kind in kRunOrder) {
     var left = split[kind]!;
     if (kind == BatchKind.collector) {
-      if (left.isNotEmpty) await run(left, await take(left), kind: kind);
+      if (left.isNotEmpty) {
+        final suites = await take(left);
+        await held(() => run(left, suites, kind: kind));
+      }
       continue;
     }
     if (kind == BatchKind.realtime) {
       for (final file in left) {
-        await run([file], await take([file]), kind: kind);
+        final suites = await take([file]);
+        await held(() => run([file], suites, kind: kind));
       }
       continue;
     }
     while (left.isNotEmpty) {
       final suites = await take(left);
+      final twin = kind == BatchKind.crowd && suites >= 2 ? runInTwin : null;
+      final there = twin == null ? 0 : suites ~/ 2;
       final batch = nextBatch(
         left,
         known,
-        suites: suites,
+        suites: suites - there,
         inTheLine: inTheLine,
       );
-      await run(batch, suites, kind: kind);
-      final ran = batch.toSet();
-      left = [for (final file in left) if (!ran.contains(file)) file];
+      final rest = _without(left, batch);
+      final beside = twin == null || rest.isEmpty
+          ? const <String>[]
+          : nextBatch(rest, known, suites: there, inTheLine: inTheLine);
+      await held(
+        () => Future.wait([
+          run(batch, beside.isEmpty ? suites : suites - there, kind: kind),
+          if (beside.isNotEmpty) twin!(beside, there, kind: kind),
+        ]),
+      );
+      left = _without(rest, beside);
     }
   }
+}
+
+/// [left] but the files of [ran], in [left]'s order.
+List<String> _without(List<String> left, List<String> ran) {
+  final gone = ran.toSet();
+  return [for (final file in left) if (!gone.contains(file)) file];
 }
 
 /// The console reporter every batch asks for, whatever machine it runs on.
@@ -876,6 +1061,7 @@ Future<int> _runTests(
   String? redsTo,
   bool inTheLine = true,
   bool firstInLine = false,
+  String? twin,
 }) async {
   final selected = useCache && cache != null
       ? _withoutStillGreen(files, cache)
@@ -930,28 +1116,34 @@ Future<int> _runTests(
   final unkeyed = <String>{};
   final unrun = <String>[];
   final slow = <SlowTest>[];
-  final reports = Directory.systemTemp.createTempSync('affected-times');
+  final reports = takeReportsFolder();
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
   // takes the suites the line gives it then, by the work still to do. A
   // CI shard takes none ([lineFor], [outsideTheLine]).
   final known = timesOnThisMachine();
   var launched = 0;
+  final times = RunTimes();
+  final started = DateTime.now();
+  var asked = started;
   Future<void> runBatches(Turn turn) async {
     // Runs every file of [files] in batches ([runInBatches]) and hands
-    // [record] each batch's number, report and result.
+    // [record] each batch's number, report, result and the checkout it ran
+    // in.
     Future<void> runAll(
       List<String> files,
-      void Function(int i, File report, _BatchResult result) record,
-    ) => runInBatches(
-      files,
-      known: known,
-      inTheLine: inTheLine,
-      read: (path) => File(path).readAsStringSync(),
-      take: (left) =>
-          turn.take(files: filesNamed(left), work: workOf(left, known)),
-      run: (batch, suites, {required kind}) async {
+      void Function(int i, File report, _BatchResult result, String root)
+      record,
+    ) {
+      Future<void> launch(
+        List<String> batch,
+        int suites,
+        BatchKind kind, {
+        String? checkout,
+      }) async {
         final i = launched++;
+        final began = DateTime.now();
+        final inLine = began.difference(asked);
         _report('batch ${i + 1}: ${batch.length} file(s) at $suites '
             'suite(s)${switch (kind) {
               BatchKind.crowd => '',
@@ -959,16 +1151,20 @@ Future<int> _runTests(
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
               BatchKind.impeller => ' — on Impeller',
               BatchKind.realtime => ' — a real-time pin, alone',
-            }}');
-        final report = File('${reports.path}/batch$i.json');
+            }}${checkout == null ? '' : ' — in the twin checkout'}'
+            ' — at ${clockAt(began)}, ${spanOf(inLine)} in line');
+        final report = File('${reports.folder.path}/batch$i.json');
+        _BatchResult? ran;
         try {
-          final result = await _flutterTest(
+          final result = ran = await _flutterTest(
             batch,
             concurrency: suites,
             report: report.path,
             kind: kind,
+            checkout: checkout,
           );
           if (ranNowhere(
+            kind: kind,
             exitCode: result.exitCode,
             noContext: result.noContext,
           )) {
@@ -978,17 +1174,44 @@ Future<int> _runTests(
                 'asks for ($kNoTesterContext). Its files are neither red '
                 'nor green.');
           } else {
-            record(i, report, result);
+            record(i, report, result, checkout ?? Directory.current.path);
           }
         } finally {
-          turn.putDown();
+          final wall = DateTime.now().difference(began);
+          final own = ran?.ownClock;
+          times.add(inLine: inLine, wall: wall, own: own);
+          _report('batch ${i + 1} ran ${spanOf(wall)} — '
+              '${own == null ? 'no clock of its tests heard' : 'its tests\' '
+                    'own clock ${spanOf(own)}'}'
+              '${ran == null ? '' : ' · '
+                    '${cpuSaid(ran.spent, wall, Platform.numberOfProcessors)}'}');
         }
-      },
-    );
+      }
 
-    await runAll(selected, (i, report, result) {
-      runsOf[i] = _recordBatch(report, cache);
-      slow.addAll(_slowIn(report));
+      return runInBatches(
+        files,
+        known: known,
+        inTheLine: inTheLine,
+        read: (path) => File(path).readAsStringSync(),
+        take: (left) {
+          asked = DateTime.now();
+          return turn.take(
+            files: filesNamed(left),
+            work: workOf(left, known),
+          );
+        },
+        run: (batch, suites, {required kind}) => launch(batch, suites, kind),
+        runInTwin: twin == null
+            ? null
+            : (batch, suites, {required kind}) =>
+                  launch(batch, suites, kind, checkout: twin),
+        putDown: turn.putDown,
+      );
+    }
+
+    await runAll(selected, (i, report, result, root) {
+      runsOf[i] = _recordBatch(report, cache, root: root);
+      slow.addAll(_slowIn(report, root: root));
       skipped += result.skipped;
       if (result.exitCode != 0) {
         exits[i] = result.exitCode;
@@ -1007,8 +1230,8 @@ Future<int> _runTests(
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
     final again = <SuiteRun>[];
-    await runAll(reds.toList()..sort(), (i, report, result) {
-      again.addAll(_recordBatch(report, null));
+    await runAll(reds.toList()..sort(), (i, report, result, root) {
+      again.addAll(_recordBatch(report, null, root: root));
     });
     // ⚠️「The same inputs」 is measured after the second run, not assumed
     // from the keys taken when this run began ([splitGreenAgain]): a
@@ -1055,11 +1278,8 @@ Future<int> _runTests(
       asked: concurrency,
     );
   }
-  try {
-    reports.deleteSync(recursive: true);
-  } on FileSystemException {
-    // A report still held open is the system temp folder's to clear.
-  }
+  _report(times.summary(DateTime.now().difference(started)));
+  reports.end();
 
   if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
   if (moved.isNotEmpty) {
@@ -1215,9 +1435,12 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
 
 /// The tests of [report] that took a minute ([slowTests]); none when it
 /// cannot be read — [_recordBatch] has said so.
-List<SlowTest> _slowIn(File report) {
+List<SlowTest> _slowIn(File report, {String? root}) {
   try {
-    return slowTests(report.readAsStringSync(), root: Directory.current.path);
+    return slowTests(
+      report.readAsStringSync(),
+      root: root ?? Directory.current.path,
+    );
   } on FileSystemException {
     return const [];
   }
@@ -1285,15 +1508,107 @@ void _reportSkips(int skipped) {
   _report('  is a pin that is not running.');
 }
 
+/// ⏱️EACH BATCH SAYS WHEN IT RAN AND WHERE ITS TIME WENT (관제 2026-11-20,
+/// the-wide-check-takes-five-hours: 「추측 말고 로그의 시각으로」). The
+/// wide check's log carried each batch's own clock and nothing more, so its
+/// five hours could be parted only against the line's record, which names
+/// no run. Each batch now says when it started and how long it stood in
+/// the line for its suites; as it ends, its wall time beside its tests' own
+/// clock ([ownClockIn]) — the gap between the two is the process starting
+/// and compiling before its clock runs; and the run ends with the sums.
+class RunTimes {
+  var _batches = 0;
+  var _inLine = Duration.zero;
+  var _wall = Duration.zero;
+  var _own = Duration.zero;
+
+  void add({
+    required Duration inLine,
+    required Duration wall,
+    required Duration? own,
+  }) {
+    _batches++;
+    _inLine += inLine;
+    _wall += wall;
+    _own += own ?? Duration.zero;
+  }
+
+  /// The line the run ends with, for a run of [total] from first to last.
+  String summary(Duration total) =>
+      'time: ${spanOf(total)} — $_batches batch(es) ran ${spanOf(_wall)} '
+      '(their tests\' own clocks ${spanOf(_own)}, outside them '
+      '${spanOf(_wall - _own)}), ${spanOf(_inLine)} in line between them';
+}
+
+/// [at] as the hour, minute and second of the day.
+String clockAt(DateTime at) => [
+  at.hour,
+  at.minute,
+  at.second,
+].map((n) => n.toString().padLeft(2, '0')).join(':');
+
+/// [span] as `m:ss`, or `h:mm:ss` from an hour.
+String spanOf(Duration span) {
+  final seconds = span.inSeconds;
+  final s = (seconds % 60).toString().padLeft(2, '0');
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return '$minutes:$s';
+  return '${minutes ~/ 60}:${(minutes % 60).toString().padLeft(2, '0')}:$s';
+}
+
+/// The latest time the test runner's own clock shows in [text] — the
+/// `mm:ss` its every line begins with, before the counter `+N ~N -N:`
+/// ([flutterTestArguments]) — or null when no line in it shows one. A
+/// chunk may end inside a line; the piece left reads as an earlier time,
+/// never a later one, and the batch keeps the latest.
+Duration? ownClockIn(String text) {
+  Duration? latest;
+  for (final match in _ownClock.allMatches(text)) {
+    final at = Duration(
+      minutes: int.parse(match.group(1)!),
+      seconds: int.parse(match.group(2)!),
+    );
+    if (latest == null || at > latest) latest = at;
+  }
+  return latest;
+}
+
+final _ownClock = RegExp(r'^(\d+):(\d\d) [+~-]\d', multiLine: true);
+
+/// What a batch of [wall] spent of the CPU, beside what the rest of the
+/// machine of [processors] spent then ([CpuWatch]) — each side with the
+/// five that spent most by name.
+String cpuSaid(CpuSpent spent, Duration wall, int processors) {
+  String side(List<(String, Duration)> named) {
+    final most = [
+      for (final (name, used) in named.take(5)) '$name ${spanOf(used)}',
+    ];
+    return '${spanOf(cpuOf(named))}'
+        '${most.isEmpty ? '' : ' (${most.join(' · ')})'}';
+  }
+
+  return 'CPU of the machine\'s ${spanOf(wall * processors)}: its own '
+      '${side(spent.ours)}, beside it ${side(spent.others)}';
+}
+
 class _BatchResult {
   const _BatchResult(
     this.exitCode,
     this.ranTests,
     this.skipped, {
     required this.noContext,
+    required this.ownClock,
+    required this.spent,
   });
   final int exitCode;
   final bool ranTests;
+
+  /// The latest the runner's own clock showed ([ownClockIn]).
+  final Duration? ownClock;
+
+  /// The CPU the batch and the rest of the machine spent as it ran
+  /// ([CpuWatch]).
+  final CpuSpent spent;
 
   /// How many tests the run SKIPPED. See [lastSkipCount].
   final int skipped;
@@ -1336,8 +1651,19 @@ class NoContextWatch {
 /// SwiftShader's Vulkan, so they may have one), and a desk machine that
 /// has none is told the same way. ⚠️If the engine ever words it otherwise
 /// the batch comes back red, never green.
-bool ranNowhere({required int exitCode, required bool noContext}) =>
-    exitCode != 0 && noContext;
+///
+/// 🚨ONLY A BATCH THAT ASKS FOR AN ENGINE ([BatchKind.engineFlags]) can
+/// be refused one. ↩️Any batch was read so till 11-20: a pin on this
+/// tool's source that failed printed the source whole — this constant in
+/// it — and its crowd batch was told DID NOT RUN, its reds neither red nor
+/// green, the run PASSED with exit 0. It happened twice that day (a
+/// lane's first run on its own change, 57 and 37 files), and the wide
+/// check would have read a red tool pin as no red at all.
+bool ranNowhere({
+  required BatchKind kind,
+  required int exitCode,
+  required bool noContext,
+}) => kind.engineFlags.isNotEmpty && exitCode != 0 && noContext;
 
 /// The skip count in `flutter test` output, or null if it says none.
 ///
@@ -1454,6 +1780,29 @@ List<String> stillRunning(String report) {
 /// rather than for the shape of an error.
 final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
 
+/// The folder a run writes its batches' reports to: a [RunTemp] of the
+/// checkout, in a parent of its own ([kReportsParent]) under [temp] — the
+/// system temp unless a test names one.
+///
+/// 🗣️2026-11-20 (card the-wide-check-takes-five-hours): it was a new
+/// `affected-times*` folder each run, removed when the run ended — and each
+/// run cut short left its own: 174 of them, 334 MB. As a [RunTemp], what a
+/// killed run left goes when its checkout's next run takes the folder, and
+/// one whose checkout is gone goes with the sweep.
+///
+/// ⛔A PARENT OF ITS OWN: the batches' temps are [RunTemp]s of the same
+/// checkout in the system temp, numbered from 0, and the hooks runner keeps
+/// a build only while TEMP is what it was. Beside them this folder would
+/// take number 0 and move every batch to 1 — every hook built again.
+RunTemp takeReportsFolder({Directory? temp}) => RunTemp.take(
+  parent: Directory(
+    '${(temp ?? Directory.systemTemp).path}'
+    '${Platform.pathSeparator}$kReportsParent',
+  ),
+);
+
+const kReportsParent = 'affected_reports';
+
 /// Passed through to this terminal as it arrives rather than buffered: a
 /// suite takes tens of minutes, and a tool that says nothing until it
 /// finishes is a tool nobody trusts is still alive. Copied rather than
@@ -1464,8 +1813,9 @@ Future<_BatchResult> _flutterTest(
   required int? concurrency,
   required String report,
   required BatchKind kind,
+  String? checkout,
 }) async {
-  final temp = RunTemp.take();
+  final temp = RunTemp.take(where: checkout);
   try {
     return await _flutterTestIn(
       temp,
@@ -1473,6 +1823,7 @@ Future<_BatchResult> _flutterTest(
       concurrency: concurrency,
       report: report,
       kind: kind,
+      checkout: checkout,
     );
   } finally {
     temp.end();
@@ -1485,20 +1836,27 @@ Future<_BatchResult> _flutterTestIn(
   required int? concurrency,
   required String report,
   required BatchKind kind,
+  String? checkout,
 }) async {
+  final launch = _launch;
   final process = await Process.start(
-    Platform.isWindows ? 'flutter.bat' : 'flutter',
-    flutterTestArguments(
-      files,
-      concurrency: concurrency,
-      report: report,
-      kind: kind,
-    ),
-    environment: temp.environment,
-    runInShell: true,
+    launch.executable,
+    [
+      ...launch.leading,
+      ...flutterTestArguments(
+        files,
+        concurrency: concurrency,
+        report: report,
+        kind: kind,
+      ),
+    ],
+    workingDirectory: checkout,
+    environment: temp.environment..addAll(launch.environment),
+    runInShell: launch.shell,
   );
   var ranTests = false;
   var skipped = 0;
+  Duration? ownClock;
   final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
   var silent = false;
@@ -1508,6 +1866,7 @@ Future<_BatchResult> _flutterTestIn(
     cutTree(process.pid);
   });
   final memory = MemoryWatch(process.pid);
+  final cpu = CpuWatch(process.pid);
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
@@ -1519,6 +1878,10 @@ Future<_BatchResult> _flutterTestIn(
       context.heard(text);
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
+      final clock = ownClockIn(text);
+      if (clock != null && (ownClock == null || clock > ownClock!)) {
+        ownClock = clock;
+      }
       silence.heard(text, DateTime.now());
       return chunk;
     }).forEach(stdout.add),
@@ -1527,6 +1890,7 @@ Future<_BatchResult> _flutterTestIn(
   final code = await process.exitCode;
   look.cancel();
   memory.stop();
+  final spent = cpu.stop();
   await Future.wait(pumped);
   final cut = silent
       ? 'no test finished for ${kSilentBatch.inMinutes} min'
@@ -1546,5 +1910,7 @@ Future<_BatchResult> _flutterTestIn(
     ranTests,
     skipped,
     noContext: context.said,
+    ownClock: ownClock,
+    spent: spent,
   );
 }

@@ -135,7 +135,7 @@ class _TimelineFrameNames {
     ];
     final after = joined.copyWith(
       frames: frames,
-      audioClips: _controller._audioClipsForFrames(before, frames),
+      audioClips: audioClipsOfFrames(before, frames),
     );
     if (after != before) {
       _controller._applyLayerEdit(before: before, after: after);

@@ -127,7 +127,12 @@ class _WorkspaceCollapsedRows {
     // Its eye is the rail's, a folder above that hides the row included
     // (F-185) — on both halves of it: its blocks wear it too (I-129).
     final layers = _state.widget.session.layers;
-    return RailEyes.forLayers(layers, stack: layers, child: overlay);
+    return RailEyes.forLayers(
+      layers,
+      stack: layers,
+      groups: attachGroupRowsBySide(layers),
+      child: overlay,
+    );
   }
 
   /// What a folded row turns its axis by — the playhead the open panel

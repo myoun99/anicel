@@ -27,7 +27,7 @@ pub(crate) mod touches {
 
     use super::events::Point as Place;
     use crate::ledger::{self, Sample, UNREPORTED, state_of};
-    use crate::points::{self, Batch, Point};
+    use crate::points::{self, Batch, Kind, Point};
 
     /// UITouchTypePencil.
     const PENCIL: isize = 2;
@@ -165,9 +165,11 @@ pub(crate) mod touches {
                     }
                 }
                 let handed: Place = msg_send![touch, locationInView: view];
+                let touch_type: isize = msg_send![touch, type];
                 points::book().write(Batch {
                     // UIKit keeps one UITouch for a contact's life.
                     contact: touch as *const AnyObject as u64,
+                    kind: Kind::of_uikit_touch(touch_type),
                     handed: (handed.x * scale, handed.y * scale),
                     points: batch,
                 });

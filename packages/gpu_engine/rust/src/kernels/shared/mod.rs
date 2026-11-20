@@ -38,6 +38,10 @@ mod one_kept_or_made;
 #[cfg(test)]
 mod one_maths;
 #[cfg(test)]
+mod a_page_is_let_go_on_its_thread;
+#[cfg(test)]
+mod one_name_to_a_place;
+#[cfg(test)]
 mod one_ndk_table;
 #[cfg(test)]
 mod one_pass;
@@ -49,6 +53,8 @@ mod one_premultiply;
 mod one_side_by_side;
 #[cfg(test)]
 mod one_sixteen_bit;
+#[cfg(test)]
+mod one_stored_read;
 mod paged;
 mod pages;
 mod resample;
@@ -64,14 +70,12 @@ use crate::device::{CompilerTurn, Engine, KernelSource};
 
 pub(crate) use counted::Counted;
 pub(crate) use dispatch::{
-    Encoded, aligned, bands, buffer_holds, encode, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room,
+    Encoded, aligned, bands, buffer_holds, encode, encode_cleared, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room,
     rows_a_binding, tiles_a_page, tiles_a_pass, whole, words_bound, words_buffer,
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
 pub(crate) use pages::{NO_PAGE, Own, Pages, page_table, runs};
-pub(crate) use resample::{
-    CEILING as RESAMPLE_CEILING, ResampleMap, ResampleMode, ResampleModes, q,
-};
+pub(crate) use resample::{ResampleMap, ResampleMode, ResampleModes, q};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
 pub(crate) const ISQRT_WGSL: &str = include_str!("isqrt.wgsl");

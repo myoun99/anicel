@@ -4,9 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ChangeNotifier, Listenable;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../../core/once_a_microtask.dart';
+import '../../core/one_pass_at_a_time.dart';
 import '../../core/pin_counts.dart';
+import '../../core/telling.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
+import '../../native/app_gpu_engine.dart' show EnginePictures;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
 import '../canvas/fx_plugin_stages.dart';
@@ -118,7 +122,31 @@ class EngineFramePicture extends ChangeNotifier {
     StackedFrame frame, {
     required ui.Rect fresh,
     EngineChainHolds? holds,
-  }) => _screen.composeOver(film._screen, frame, fresh: fresh, holds: holds);
+  }) => _screen.composeOver(
+    frame,
+    over: (film: film._screen, fresh: fresh),
+    holds: holds,
+  );
+
+  /// Laid as [lay] asks, before it is handed to anyone: over [film] where
+  /// it is laid over one that is there, and for the canvas it stands for,
+  /// if any ([EngineStackScreen.composeOver]).
+  Future<void> _laidAs(_Lay<Object> lay, EngineFramePicture? film) {
+    final fresh = lay.over?.fresh;
+    if (fresh != null && film != null) {
+      return _screen.composeOver(
+        lay.frame,
+        over: (film: film._screen, fresh: fresh),
+        holds: lay.holds,
+        standing: lay.standing,
+      );
+    }
+    return _screen.compose(
+      lay.frame,
+      holds: lay.holds,
+      standing: lay.standing,
+    );
+  }
 
   void _letGo() {
     _gone = true;
@@ -131,12 +159,6 @@ class EngineFramePicture extends ChangeNotifier {
       dispose();
     }
   }
-}
-
-/// What tells a store's news ([EngineFramePictureStore.waits],
-/// [EngineFramePictureStore.wentWithItsTools]).
-class _News extends ChangeNotifier {
-  void changed() => notifyListeners();
 }
 
 /// What a store has of the tools it lays with, from before they are asked
@@ -187,7 +209,7 @@ class EngineFramePictureStore<K extends Object> {
     return its.opening ??= Zone.root.run<Future<EngineFrameTools>>(
       () => _open().then((opened) => its.open = opened).whenComplete(() {
         its.through = true;
-        _waits.changed();
+        _waits.tell();
       }),
     );
   }
@@ -211,13 +233,28 @@ class EngineFramePictureStore<K extends Object> {
   /// ([Zone.inSameErrorZone]) — a screen under a test's zone never heard
   /// that the engine would not open (🔬2026-11-11, the pin hung).
   Listenable get waits => _waits;
-  final _News _waits = _News();
+  final Telling _waits = Telling();
 
   /// Tells that every picture went with the tools it was laid with
   /// ([letGoWithItsTools]): a screen that shows one, or stands on a screen
   /// of those tools, lets go of it and asks for its frame again.
   Listenable get wentWithItsTools => _went;
-  final _News _went = _News();
+  final Telling _went = Telling();
+
+  /// Tells that a picture was laid into the store, or let go of — once the
+  /// code on its way is through: a screen lets go of one in its paint,
+  /// where a bar that hears it may not be painted again. What a bar that
+  /// counts the frames whose pictures are there hears (the green band,
+  /// `FramePictures.standingMoved`): every picture made comes in here, the
+  /// walk's, a canvas's and a move's alike (the-screen-shows-a-frame-the-
+  /// green-band-leaves-empty).
+  ///
+  /// ⛔Not a picture handed to another key, nor one a step was written
+  /// into ([move], [patch]): that goes with an edit of a cel, which the
+  /// cels tell — told here, a stroke would tell it at every step.
+  Listenable get laidOrLetGo => _laidOrLetGo;
+  final Telling _laidOrLetGo = Telling();
+  late final _laidOrLetGoTold = OnceAMicrotask(_laidOrLetGo.tell);
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -261,7 +298,10 @@ class EngineFramePictureStore<K extends Object> {
   /// its turn comes: composited where it is fresh alone, in world pixels,
   /// and the film's elsewhere as it is ([EngineStackScreen.composeOver]).
   ///
-  /// [holds] says where its chains' puts are held, if anywhere.
+  /// [holds] says where its chains' puts are held, if anywhere — for the
+  /// canvas [standing] stands for, where one stands on the frame to draw
+  /// ([EngineStackScreen.compose]); one asked for meanwhile is laid for the
+  /// first who asked.
   Future<EngineFramePicture?> lay(
     K key,
     StackedFrame frame, {
@@ -269,6 +309,7 @@ class EngineFramePictureStore<K extends Object> {
     bool Function() gone = _stays,
     ({K film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) {
     final there = peek(key);
     if (there != null) {
@@ -285,16 +326,34 @@ class EngineFramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame, over, holds)..askers.add(gone);
+    final lay = _Lay<K>(key, frame, over, holds, standing)..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
       _lays.add(lay);
     }
-    // A turn for each lay: one asked for the screen meanwhile goes to the
-    // front.
+    // Its turn, where none is on its way: asked while one is, it waits in
+    // the line, at the front where the screen asked for it ([_turns]).
     _aTurn();
     return lay.done.future;
+  }
+
+  /// Keeps [screen] as [key]'s picture — [key]'s frame laid on it already,
+  /// by a screen that drew the frame as it stands — and answers it: what a
+  /// [lay] of [key] would lay, laid once. Null, keeping nothing, where
+  /// [key] has a picture or one is on its way: one picture a key.
+  ///
+  /// 🔬F-620 (S5_BA cut 352, 2026-11-19): a value dragged in a cel number's
+  /// box composed the frame twice a value — on the screen that stands, and
+  /// again as the picture of its key.
+  EngineFramePicture? keepLaid(K key, EngineStackScreen screen) {
+    if (_entries.containsKey(key) || _lays.any((lay) => lay.key == key)) {
+      return null;
+    }
+    final picture = EngineFramePicture._(screen);
+    _entries[key] = _Entry(picture)..lastUsed = ++_clock;
+    _laidOrLetGoTold.ask();
+    return picture;
   }
 
   /// Composes [frame] into the picture of [from] where it changed —
@@ -469,8 +528,24 @@ class EngineFramePictureStore<K extends Object> {
     there?.picture._letGo();
   }
 
-  /// The bytes the pictures keep on the GPU.
-  int get estimatedBytes {
+  /// The bytes the pictures keep on the GPU: the tiles they made
+  /// ([madeBytes]), and the tiles they hold that none of them weighs
+  /// ([EnginePictures.unownedPictureBytes]) — what the playback's line
+  /// keeps within, and has room past.
+  ///
+  /// 🗣️유저 2026-11-18 (F-610-Q2 「같은 타일은 한 벌만」): pictures made of
+  /// the same hold one tile, weighed by the picture that made it. That one
+  /// let go while others hold the tile, no picture weighs it; counted here,
+  /// the line still sees every byte its pictures keep. ⚠️The engine's count
+  /// is every store's — another document's orphans too —, so the line may
+  /// let go sooner than it must, never hold past itself.
+  int get estimatedBytes => madeBytes + EnginePictures.unownedPictureBytes;
+
+  /// The bytes of the tiles the pictures made — each picture's own
+  /// ([EngineFramePicture.bytes]), a tile many of them hold counted once.
+  /// What the memory census sums store by store, the tiles no picture
+  /// weighs counted once beside them.
+  int get madeBytes {
     var total = 0;
     for (final entry in _entries.values) {
       total += entry.picture.bytes;
@@ -502,7 +577,13 @@ class EngineFramePictureStore<K extends Object> {
   );
 
   /// Lets go of [key]'s picture.
-  void letGo(K key) => _entries.remove(key)?.picture._letGo();
+  void letGo(K key) {
+    final gone = _entries.remove(key);
+    if (gone != null) {
+      gone.picture._letGo();
+      _laidOrLetGoTold.ask();
+    }
+  }
 
   /// Lets go of [key]'s picture as [letGo] does, unless a screen holds it
   /// ([retainPin]) — as the budget never lets one go ([enforceBudget]).
@@ -542,7 +623,10 @@ class EngineFramePictureStore<K extends Object> {
     for (final entry in _entries.values) {
       entry.picture._letGo();
     }
-    _entries.clear();
+    if (_entries.isNotEmpty) {
+      _entries.clear();
+      _laidOrLetGoTold.ask();
+    }
   }
 
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
@@ -558,8 +642,8 @@ class EngineFramePictureStore<K extends Object> {
   void letGoWithItsTools() {
     _letGoOfAll();
     _its = _Tools();
-    _went.changed();
-    _waits.changed();
+    _went.tell();
+    _waits.tell();
   }
 
   /// The engine would not open: every lay asked for hears why.
@@ -570,10 +654,6 @@ class EngineFramePictureStore<K extends Object> {
     _lays.clear();
   }
 
-  /// Lays the lay at the front, if any is left — [dispose] answers them.
-  /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
-  /// meanwhile waits on it, not laid a second time over it. A key a
-  /// picture moved to meanwhile ([move]) answers with it: one picture a key.
   /// A turn of the lays once the tools are open, in no one's zone as
   /// [tools] is: a lay asked from under a test's fake clock would stand at
   /// the front, its awaits never run, and every lay behind it wait for ever.
@@ -582,7 +662,7 @@ class EngineFramePictureStore<K extends Object> {
     Zone.root.run(
       () => unawaited(
         tools.then(
-          (_) => _layFirst(),
+          (_) => _turns.ask(),
           onError: (Object error, StackTrace stack) {
             // Why tools let go of since would not open is no word on the
             // next ones ([letGoWithItsTools]).
@@ -595,38 +675,48 @@ class EngineFramePictureStore<K extends Object> {
     );
   }
 
-  void _layFirst() {
-    if (_lays.isEmpty) {
-      return;
-    }
+  /// The lays, ONE AT A TIME: one asked for while another is on its way
+  /// waits for it, at the front of the line where the screen asked for it
+  /// ([lay]), and is given up there where its askers left it meanwhile.
+  ///
+  /// 🔬F-620 (S5_BA cut 352, Surface Pro 11, 2026-11-20): kept by hand with
+  /// a flag on the lay, a lay the screen asked for went to the front past
+  /// the one on its way and was laid beside it. A blur's value dragged on
+  /// the timeline laid the frame at each value, about six at once on the
+  /// engine (37 lays' 27.7 s from ask to laid, in a drag of 4.8 s), none
+  /// given up, each value on the canvas 0.5–0.9 s late.
+  late final _turns = OnePassAtATime(
+    due: () => _lays.isNotEmpty,
+    pass: _layTheFirst,
+  );
+
+  /// One turn: the lay at the front laid, answered with what is there, or
+  /// given up — [dispose] answers them all. The turns end where the tools
+  /// they were asked with were let go of since ([letGoWithItsTools]): every
+  /// lay in the line was asked after, of the ones asked for anew, and its
+  /// turn comes with them ([_aTurn]).
+  ///
+  /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
+  /// meanwhile waits on it, not laid a second time over it. A key a
+  /// picture moved to meanwhile ([move]) answers with it: one picture a key.
+  Future<bool> _layTheFirst() async {
     if (toolsOpen == null) {
-      // A turn of the tools let go of since ([letGoWithItsTools]): the
-      // next ones' comes.
-      _aTurn();
-      return;
+      return false;
     }
     final lay = _lays.first;
-    if (lay.running) {
-      _turnsOwed += 1;
-      return;
-    }
     final there = lay.unwanted ? null : peek(lay.key);
     if (there != null || lay.unwanted) {
       lay.done.complete(there);
       _lays.remove(lay);
-      return;
+      return true;
     }
-    unawaited(_lay(lay));
+    await _lay(lay);
+    return true;
   }
 
-  /// Turns that came with a lay on its way at the front: each lay's own,
-  /// given back once it is done.
-  int _turnsOwed = 0;
-
-  /// Lays [lay]'s picture, its plug-ins' steps run first: a turn comes
-  /// back for the lays behind it.
+  /// Lays [lay]'s picture, its plug-ins' steps run first: the turn of the
+  /// lays behind it comes once it is done.
   Future<void> _lay(_Lay<K> lay) async {
-    lay.running = true;
     final its = _its;
     final picture = _aPicture();
     try {
@@ -636,7 +726,7 @@ class EngineFramePictureStore<K extends Object> {
         told: (told) => picture._told = told,
         waitsForKernels: (waits) {
           its.waitsForKernels = waits;
-          _waits.changed();
+          _waits.tell();
         },
       );
       // 🚨ANSWERED ONCE THE GPU HAS LAID IT (the-ui-thread-never-enters-
@@ -654,6 +744,7 @@ class EngineFramePictureStore<K extends Object> {
         picture._letGo();
       } else {
         _entries[lay.key] = _Entry(picture)..lastUsed = ++_clock;
+        _laidOrLetGoTold.ask();
         lay.done.complete(picture);
       }
     } on Object catch (error, stack) {
@@ -663,11 +754,6 @@ class EngineFramePictureStore<K extends Object> {
       }
     } finally {
       _lays.remove(lay);
-      final owed = _turnsOwed;
-      _turnsOwed = 0;
-      for (var turn = 0; turn < owed; turn += 1) {
-        _aTurn();
-      }
     }
   }
 
@@ -678,16 +764,10 @@ class EngineFramePictureStore<K extends Object> {
 
   Future<void> _composedAs(_Lay<K> lay, EngineFramePicture picture) {
     final over = lay.over;
-    final film = over == null ? null : _entries[over.film]?.picture;
-    if (over != null && film != null) {
-      return picture._composedOver(
-        film,
-        lay.frame,
-        fresh: over.fresh,
-        holds: lay.holds,
-      );
-    }
-    return picture._composed(lay.frame, holds: lay.holds);
+    return picture._laidAs(
+      lay,
+      over == null ? null : _entries[over.film]?.picture,
+    );
   }
 }
 
@@ -720,20 +800,17 @@ final class _LayAnswer {
 }
 
 final class _Lay<K> {
-  _Lay(this.key, this.frame, this.over, this.holds);
+  _Lay(this.key, this.frame, this.over, this.holds, this.standing);
 
   final K key;
   final StackedFrame frame;
   final ({K film, ui.Rect fresh})? over;
   final EngineChainHolds? holds;
+  final Object? standing;
 
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];
   final _LayAnswer done = _LayAnswer();
-
-  /// Whether it is being laid: its turn has come, and its plug-ins' steps
-  /// are on their way.
-  bool running = false;
 
   /// Whether every one who asked for it is gone.
   bool get unwanted => askers.every((gone) => gone());

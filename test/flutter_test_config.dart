@@ -12,6 +12,8 @@ import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
     show debugPictureSideLimit;
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show debugCheckFilmRowsKept;
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
@@ -58,7 +60,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // next run's is handed: a file there is used only where all that was
   // asked of the compiler is the same, and is written beside its name and
   // renamed to it, so runs side by side share the folder
-  // (rust/vendor/wgpu-hal, dxil_cache.rs).
+  // (rust/vendor/wgpu-hal, compile_cache.rs).
   //
   // A run is a launch, and the container it stands in is new and its own
   // (`testContainerFolder`), so each run compiled every kernel it drew
@@ -198,6 +200,11 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // it is handed out here, and an input of the tree that moves past
   // the stamp throws in whichever test moves it.
   debugCheckFrameStanding = true;
+  // 🚨SET: the film hands a row's own nodes on across an edit while it
+  // reads all it read (`filmTreeOf`) — so every one handed on is resolved
+  // anew as it is handed out here, and an input of a row the hand-on does
+  // not name throws in whichever test moves it.
+  debugCheckFilmRowsKept = true;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;

@@ -279,6 +279,29 @@ mpoints-1-bezieraftery=0.000000
       ]);
     });
 
+    test('a layer\'s blending mode is LRHD[15], TVPaint\'s number for it '
+        '(card F-621 ③)', () {
+      final b = TvppBuilder();
+      b.clipProperties('first');
+      b.clipHeader(width: 64, height: 32);
+      b.layerHead('Alpha Diff', layerId: 3, blendingModeId: 0x1e);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.layerHead('Multiply', layerId: 2, blendingModeId: 9);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.layerHead('Color', layerId: 1);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.clipConfig();
+
+      final layers = parseTvppStructure(b.bytes).clips.single.layers;
+      expect(
+        [for (final layer in layers) (layer.name, layer.blendingModeId)],
+        [('Alpha Diff', 0x1e), ('Multiply', 9), ('Color', 0)],
+      );
+    });
+
     test('🎯a header chunk this parser does not know makes the layer '
         'UNKNOWN — kept in its place with its own images, and the layers '
         'after it read as ever (보드 tvpp-unknown-layer-kinds-come-in-'
@@ -337,6 +360,30 @@ mpoints-1-bezieraftery=0.000000
       expect(layer.slots[2].v10WholeCanvas, isFalse);
     });
 
+    // 🗣️F-621 ④ (유저 2026-11-19): 「이름은 영문숫자든뭐든 상관없이 그대로
+    // 들여오는게 맞지않나」 — the user's file named a layer's instances in
+    // 한글 with a comma inside, and they came in as blanks.
+    test('the names come in as written, whatever their letters — a clip, '
+        'its layers and their instances', () {
+      final b = TvppBuilder()
+        ..clipProperties('컷 십이')
+        ..clipHeader(width: 32, height: 18)
+        ..layerHead('효과음 SE', end: 2, count: 3)
+        ..layerExt(const {0: '에리,안녕', 1: 'ありがとう', 2: 'A-1'});
+      for (var k = 0; k < 3; k++) {
+        b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      }
+      b.clipConfig();
+      final clip = parseTvppStructure(b.bytes).clips.single;
+      expect(clip.name, '컷 십이');
+      expect(clip.layers.single.name, '효과음 SE');
+      expect(clip.layers.single.instanceNames, const {
+        0: '에리,안녕',
+        1: 'ありがとう',
+        2: 'A-1',
+      });
+    });
+
     test('rejects bytes with no clip header', () {
       expect(
         () => parseTvppStructure(TvppBuilder().bytes),
@@ -388,6 +435,58 @@ mpoints-1-bezieraftery=0.000000
         expect([for (final w in result.warnings) w.key], ['tvppChunkBroken']);
         expect(result.warnings.single.values['n'], '1');
       });
+    });
+
+    // ⚡Card F-621 ⑤: a clip's head is looked for from where the clip
+    // before it ended — its chunks walked, not its bytes searched.
+    test('🎯bytes that read as a clip head INSIDE a chunk are no clip — a '
+        'head lies only between the chains', () {
+      final b = TvppBuilder();
+      b.clipProperties('only');
+      b.clipHeader(width: 32, height: 18);
+      b.layerHead('A', end: 1, count: 2);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      // A DLOC as pixels can spell one: 8 bytes, a size, a zero.
+      b.chunk('ZZZZ', [
+        ...'DLOC'.codeUnits,
+        ...[0, 0, 0, 8, 0, 16, 0, 8, 0, 0, 0, 0],
+      ]);
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      b.clipConfig();
+
+      final result = parseTvppStructure(b.bytes);
+      expect(result.clips.single.layers.single.slots, hasLength(2));
+    });
+
+    test('🎯a chain that runs straight into the next clip\'s DLOC ends there '
+        '— and the next clip is its own', () {
+      final b = TvppBuilder();
+      b.clipProperties('first');
+      b.clipHeader(width: 32, height: 18);
+      b.layerHead('A', end: 0, count: 1);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(32 * 18, 0), 32, 18));
+      b.clipConfig(timestamp: false);
+      b.clipHeader(width: 16, height: 8);
+      b.layerHead('B', end: 0, count: 1);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(16 * 8, 0), 16, 8));
+      b.clipConfig();
+
+      final result = parseTvppStructure(b.bytes);
+      expect(
+        [
+          for (final clip in result.clips)
+            (
+              clip.width,
+              clip.height,
+              [for (final l in clip.layers) l.name].join(','),
+            ),
+        ],
+        [(32, 18, 'A'), (16, 8, 'B')],
+      );
+      expect(result.warnings, isEmpty);
     });
   });
 }

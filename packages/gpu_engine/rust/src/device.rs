@@ -3,13 +3,14 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe, Location};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
 use crate::kernels::shared::{Counted, built_here, put_built_here};
+use crate::submits::Submits;
 use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_error};
 
 /// How long a wait for the GPU is waited out before it is answered that the
@@ -20,6 +21,10 @@ use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_erro
 // long enough that a heavy export frame does not fail falsely. To be settled
 // from the Surface's slowest waits, as the reading watch's three seconds were.
 const WAIT_LIMIT: Duration = Duration::from_secs(30);
+
+/// The bytes of what stands in for a page given back ([`Engine::no_page`]):
+/// a word, the least a buffer is.
+pub(crate) const NO_PAGE_BYTES: u64 = 4;
 
 /// One wgpu device and its queue.
 #[derive(Clone)]
@@ -80,6 +85,9 @@ pub struct Engine {
     /// clone of its own: the engine let go meanwhile, the device goes here
     /// once that making ends — as a poll's goes on `polls`.
     pages: EngineThread,
+    /// What stands in the place of a page a pool gave back
+    /// ([`Engine::no_page`]).
+    no_page: wgpu::Buffer,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
     /// When what is compiled apart may take the compiler ([`Apart`]).
@@ -93,6 +101,9 @@ pub struct Engine {
     /// The composite's work buffer, kept from one run to the next
     /// (kernels/composite's `Work`).
     pub(crate) work: crate::kernels::composite::Work,
+    /// The buffers a walk made for itself, kept for the next
+    /// (kernels/composite's `Spares`).
+    pub(crate) spares: crate::kernels::composite::Spares,
     /// What the device refused that no wait has told yet, and whether it
     /// is gone ([`Refusals`]).
     refusals: Refusals,
@@ -385,14 +396,20 @@ fn compiling_threads() -> usize {
 pub(crate) struct Queue {
     queue: wgpu::Queue,
     thread: EngineThread,
+    /// Every submit through here, and whether the GPU said it finished it
+    /// ([`Submits`]).
+    pub(crate) submits: Arc<Submits>,
 }
 
 impl Queue {
     /// Submits `buffers` and returns once the driver has them, so what the
     /// caller writes next goes after them, as on one thread. A thread that
-    /// is gone is the next wait's error.
+    /// is gone is the next wait's error. Noted, where its caller made it,
+    /// until the GPU says it finished it ([`Submits`]).
+    #[track_caller]
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
+        let (submits, number) = (self.submits.clone(), self.submits.note(Location::caller()));
         #[cfg(test)]
         let by = self.thread.number;
         let _ = self.thread.run(move || {
@@ -402,6 +419,7 @@ impl Queue {
             #[cfg(test)]
             let _turn = crate::testing::submitting(by);
             queue.submit(buffers);
+            queue.on_submitted_work_done(move || submits.done(number));
         });
     }
 
@@ -512,6 +530,12 @@ impl Engine {
                 let tells = EngineThread::start()?;
                 let compiling = EngineThread::start_many(compiling_threads())?;
                 let pages = EngineThread::start()?;
+                let no_page = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("no page"),
+                    size: NO_PAGE_BYTES,
+                    usage: wgpu::BufferUsages::STORAGE,
+                    mapped_at_creation: false,
+                });
                 let refusals = Refusals::default();
                 let (lost, noting) = (refusals.clone(), refusals.clone());
                 device.set_device_lost_callback(move |reason, message| {
@@ -520,21 +544,31 @@ impl Engine {
                 device.on_uncaptured_error(Arc::new(move |error: wgpu::Error| {
                     noting.note(error.to_string());
                 }));
+                // What the spares let go of with no one waiting for it is
+                // dropped on the thread for pages (kernels/composite/
+                // spares.rs has why).
+                let spares = {
+                    let pages = pages.clone();
+                    crate::kernels::composite::Spares::dropping_on(move |work| pages.post(work))
+                };
                 Some(Self {
                     queue: Queue {
                         queue,
                         thread: thread.clone(),
+                        submits: Arc::default(),
                     },
                     thread,
                     polls,
                     tells,
                     compiling,
                     pages,
+                    no_page,
                     kernels: Kernels::default(),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
                     pictures: Default::default(),
                     work: Default::default(),
+                    spares,
                     refusals,
                     ended: Ended::default(),
                     posted_refused: PostedRefused::default(),
@@ -641,6 +675,22 @@ impl Engine {
     /// runs on ([`Self::on_thread`]).
     pub(crate) fn is_its_thread(&self) -> bool {
         self.thread.is_here()
+    }
+
+    /// What stands in the place of a page a pool gave back
+    /// (`kernels/pool`): one buffer of [`NO_PAGE_BYTES`], made with the
+    /// engine, in the place of each — a `TileAt` names a page by its place
+    /// among the pool's. So a page is given back on whatever thread keeps
+    /// the pool's books, and no buffer is made for it. ↩️A tile's bytes
+    /// made for each page given back, on the engine's thread, till the
+    /// pages no tile lies on were given back where a fold is settled —
+    /// the UI's thread (F-610, 2026-11-19).
+    ///
+    /// Too small for a tile, as it is or folded: a place said on it is
+    /// refused (`TileAt::stored_on`), where a tile's bytes read whatever
+    /// the first slot's were.
+    pub(crate) fn no_page(&self) -> wgpu::Buffer {
+        self.no_page.clone()
     }
 
     /// `work`, run on the thread a pool's pages are made on ([`Engine`]'s
@@ -2034,6 +2084,40 @@ pub(crate) unsafe fn on_thread_of<T, Made>(handed: *const T, work: impl FnOnce()
     thread.run_lent(work)
 }
 
+/// Hands `work` to the thread of the engine that made `handed` and
+/// returns, the caller waiting for none of it, as [`Engine::posted`] hands
+/// a verb's body over ([`EngineThread::posts`]): run there in turn, behind
+/// every body handed before it. For a verb handed a thing and no engine
+/// that lets go, in the turn of a gesture, of what the thing keeps of the
+/// device — and takes nothing back.
+///
+/// 🔬`gpu_engine_held_let_go` stood 48–63 ms on the UI's thread at each
+/// value of a blur dragged, all of it the drop of one put of 18–23 MiB
+/// — its lock 0, its remove 0 — and before that, every compose ahead of
+/// it on this thread (서피스11 캔버스 베이스, the Surface, S5_BA cut 352,
+/// 2026-11-20, card a-blur-drag-stops-once-on-its-first-frame). ↩️Till
+/// then it waited there ([`on_thread_of`]), as the two that let go at
+/// rest still do — the blurs' strokes' and the selection masks', asked
+/// where the OS says memory is tight, whose bytes the census reads gone
+/// as they return.
+///
+/// ⛔Not let go of on the caller's thread, ahead of its turn: a compose
+/// handed over before it that names the number would miss, run its
+/// chain again and keep what it put under a number the app has let go
+/// of, for good — the app gives no number twice (`EngineChainHolds.idOf`).
+///
+/// ⚠️What `work` counts off is counted off as it runs, not as its verb
+/// returns: who reads the count asks for a done first
+/// ([`Engine::done_then`], in turn behind it).
+///
+/// # Safety
+/// `handed` came from [`Engine::hands`], and is live.
+pub(crate) unsafe fn posted_of<T>(handed: *const T, work: impl FnOnce() + Send + 'static) {
+    // SAFETY: by the contract, the first field of a live `Handed<T>`.
+    let thread = unsafe { &(*handed.cast::<Handed<T>>()).thread };
+    thread.posts(work);
+}
+
 /// `made`, handed to the caller over the ABI where it holds nothing of a
 /// device — bytes in memory ([`Handed`] has which, and why they are no
 /// engine's): a bare box, [`let_go_bytes`]'s to let go of on whatever
@@ -2277,6 +2361,24 @@ pub unsafe extern "C" fn gpu_engine_noted(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.refusals.taken().map_or(0, |error| copy_out(&error, buffer, capacity))
+}
+
+/// Copies what `engine` submitted that the GPU has not said it finished,
+/// and the newest it has ([`Submits::told`]), into `buffer` (UTF-8) and
+/// returns its full length. Asks nothing of the engine's thread or the
+/// device: what the app writes down as a device goes (H63).
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_unfinished(
+    engine: *const Engine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    copy_out(&engine.queue.submits.told(), buffer, capacity)
 }
 
 /// [`Engine::done_then`] across the boundary: a thread of the engine's
@@ -3440,6 +3542,43 @@ mod tests {
             assert_eq!(so_far, Err(std::sync::mpsc::TryRecvError::Empty), "waited for, or let go of here");
         });
         assert_eq!(let_go_on.recv_timeout(IN_TIME), Ok(engine.thread.number));
+    }
+
+    // 🚨Work a verb hands over by its thing, its caller waiting for none
+    // of it (`posted_of` has why, and what it is for): back while a body
+    // ahead still has the engine's thread, and run there in turn — behind
+    // what was handed before it, ahead of what is handed after.
+    #[test]
+    fn work_handed_over_by_a_thing_waits_for_no_body_and_runs_in_turn_on_its_engines_thread() {
+        let engine = first_engine();
+        let handed = engine.hands(7u8);
+        let (told, ran) = std::sync::mpsc::channel();
+        let (lets, released) = std::sync::mpsc::channel::<()>();
+        let (began, begun) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                engine.on_thread(|| {
+                    let _ = began.send(());
+                    let _ = released.recv_timeout(IN_TIME);
+                })
+            });
+            begun.recv().expect("the body ahead began");
+            let by_the_thing = told.clone();
+            let work = move || {
+                let _ = by_the_thing.send(("by the thing", super::WORKS_FOR.get()));
+            };
+            // SAFETY: handed out above, live.
+            unsafe { super::posted_of(handed, work) };
+            let so_far = ran.try_recv();
+            engine.posted(move || told.send(("after", super::WORKS_FOR.get())).ok());
+            let _ = lets.send(());
+            assert_eq!(so_far, Err(std::sync::mpsc::TryRecvError::Empty), "waited for, or run here");
+        });
+        let on = engine.thread.number;
+        assert_eq!(ran.recv_timeout(IN_TIME), Ok(("by the thing", on)));
+        assert_eq!(ran.recv_timeout(IN_TIME), Ok(("after", on)), "in turn");
+        // SAFETY: handed out above, let go of once.
+        unsafe { super::let_go(handed) };
     }
 
     // 🚨The thread stands for as long as a thing of its engine's does: the

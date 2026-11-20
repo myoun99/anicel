@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/attached_layer_resolve.dart' show AttachGroups;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../input/panel_pan.dart';
@@ -32,6 +33,7 @@ class TimelineGridShell extends StatelessWidget {
     required this.activeLayer,
     required this.controllers,
     required this.layers,
+    required this.attachGroups,
     required this.child,
   });
 
@@ -51,6 +53,11 @@ class TimelineGridShell extends StatelessWidget {
   /// and to its frame rows alike: a hidden row's blocks wear the eye its
   /// rail shows (I-129), a folder above hiding it included (F-185).
   final List<Layer> layers;
+
+  /// [layers]' attach groups, worked out in the model order — the sides
+  /// whose eyes a base's fold halves dim by ([RailEyes.forLayers]); the
+  /// grids hold a display order.
+  final AttachGroups attachGroups;
 
   final Widget child;
 
@@ -80,7 +87,12 @@ class TimelineGridShell extends StatelessWidget {
             controllers: controllers,
             child: RailStand(
               activeLayer: activeLayer,
-              child: RailEyes.forLayers(layers, stack: layers, child: child),
+              child: RailEyes.forLayers(
+                layers,
+                stack: layers,
+                groups: attachGroups,
+                child: child,
+              ),
             ),
           ),
         ),

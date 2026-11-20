@@ -67,20 +67,23 @@ class EngineLetters {
 
   /// [letters]' plate on the paper of [row] — no tile where they cover no
   /// pixel —, made the first time it is asked for and kept.
-  BitmapSurface celNumberPlate(CelNumberLetters letters, BitmapSurface row) =>
-      _plates.resolve(
-        (
-          letters: letters,
-          canvas: row.canvasSize,
-          reach: row.pasteboardReach,
-          fonts: TextMeasure.fontsNow,
-        ),
-        () => _plateOf(
-          celNumberShapes(letters),
-          canvas: row.canvasSize,
-          reach: row.pasteboardReach,
-        ),
-      );
+  BitmapSurface celNumberPlate(CelNumberLetters letters, BitmapSurface row) {
+    final _PlateKey key = (
+      letters: letters,
+      canvas: row.canvasSize,
+      reach: row.pasteboardReach,
+      fonts: TextMeasure.fontsNow,
+    );
+    return _plates.resolve(
+      key,
+      () => _plateOf(
+        celNumberShapes(letters),
+        canvas: row.canvasSize,
+        reach: row.pasteboardReach,
+        unput: () => _plates.take(key),
+      ),
+    );
+  }
 
   /// [tag]'s plate in its own space on a canvas of [canvas] — its blocks'
   /// letters set as a cel number's are ([seNameTagShapes]), laid by its
@@ -89,28 +92,39 @@ class EngineLetters {
   /// 된다 — 이름표를 엔진 그림 안으로」) —, made the first time it is asked
   /// for and kept. What it holds is its writing alone: where it is laid,
   /// how strong and through what are the row's.
-  BitmapSurface seNameTagPlate(ResolvedSeNameTag tag, CanvasSize canvas) =>
-      _plates.resolve(
-        (
-          letters: (tag.content, tag.line, tag.delivery, tag.widthBudget),
-          canvas: canvas,
-          reach: PasteboardReach.whole,
-          fonts: TextMeasure.fontsNow,
-        ),
-        () => _plateOf(
-          switch (seNameTagShapes(tag, canvasSize: canvas)) {
-            null => null,
-            final layers => (layers: layers, stand: _whereTheyStand),
-          },
-          canvas: canvas,
-          reach: PasteboardReach.whole,
-        ),
-      );
+  BitmapSurface seNameTagPlate(ResolvedSeNameTag tag, CanvasSize canvas) {
+    final _PlateKey key = (
+      letters: (tag.content, tag.line, tag.delivery, tag.widthBudget),
+      canvas: canvas,
+      reach: PasteboardReach.whole,
+      fonts: TextMeasure.fontsNow,
+    );
+    return _plates.resolve(
+      key,
+      () => _plateOf(
+        switch (seNameTagShapes(tag, canvasSize: canvas)) {
+          null => null,
+          final layers => (layers: layers, stand: _whereTheyStand),
+        },
+        canvas: canvas,
+        reach: PasteboardReach.whole,
+        unput: () => _plates.take(key),
+      ),
+    );
+  }
 
+  /// The plate of [shapes] on a canvas of [canvas]: its letters covered
+  /// here and its picture laid on the engine's thread, in its turn
+  /// ([GpuLetters.land]). [unput] is called where that picture was not put
+  /// — its tiles hold no letters, and no bytes to be stored again from —:
+  /// the plate is forgotten and made again where it is next asked for, as a
+  /// store's slot not written is let go (`EngineTileLedger
+  /// ._letGoUnwritten`).
   BitmapSurface _plateOf(
     ({List<CanvasLetterShapes> layers, List<double> stand})? shapes, {
     required CanvasSize canvas,
     required PasteboardReach reach,
+    required void Function() unput,
   }) {
     BitmapSurface on({
       Map<TileCoord, BitmapTile> tiles = const {},
@@ -128,29 +142,31 @@ class EngineLetters {
     final picture = GpuLetters();
     try {
       shapes.layers.forEach(picture._hand);
-      final lettered = picture.set(_composite, _faces, shapes.stand);
-      if (lettered == null) {
+      final rect = picture.cover(_faces, shapes.stand);
+      if (rect == null) {
         return on();
       }
-      try {
-        final (:x0, :y0, :columns, :rows) = lettered.rect;
-        return on(
-          tiles: EngineTileLedger.instance.landWhole(
-            lettered.rect,
-            by: lettered.land,
+      final (:x0, :y0, :columns, :rows) = rect;
+      return on(
+        tiles: EngineTileLedger.instance.landWhole(
+          rect,
+          by: (pool, cel, asked) => picture.land(
+            _composite,
+            pool,
+            cel,
+            asked,
+            unput: unput,
           ),
-          // A picture laid, kept whole wherever its letters stand — as the
-          // walk's plate is, which no pasteboard cuts.
-          laid: DirtyRegion(
-            left: x0 * gpuTileSide,
-            top: y0 * gpuTileSide,
-            rightExclusive: (x0 + columns) * gpuTileSide,
-            bottomExclusive: (y0 + rows) * gpuTileSide,
-          ),
-        );
-      } finally {
-        lettered.free();
-      }
+        ),
+        // A picture laid, kept whole wherever its letters stand — as the
+        // walk's plate is, which no pasteboard cuts.
+        laid: DirtyRegion(
+          left: x0 * gpuTileSide,
+          top: y0 * gpuTileSide,
+          rightExclusive: (x0 + columns) * gpuTileSide,
+          bottomExclusive: (y0 + rows) * gpuTileSide,
+        ),
+      );
     } finally {
       picture.free();
     }

@@ -14,6 +14,7 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/rows_as_printed.dart';
 import '../../models/sheet_marks.dart' show SheetPicture;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
@@ -24,7 +25,8 @@ import '../brush/brush_canvas_panel.dart'
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
+import '../sheet/sheet_ink_layer.dart'
+    show SheetInkStrokes, SheetPictureWindow, SheetWindow;
 import '../sheet/sheet_photo_drop.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
@@ -34,11 +36,11 @@ import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
-import '../timeline/memo_token.dart' show ByIdentity;
+import '../timeline/memo_token.dart' show AsPrinted;
 import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
-import '../timesheet/cut_sheet_document.dart' show sheetOlWord;
+import '../timesheet/cut_sheet_document.dart' show paperWords;
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_bar.dart' show viewerPage;
 import 'conte_book_page.dart';
@@ -130,8 +132,23 @@ class ConteTabHost extends StatefulWidget {
   /// they are shot through — and the active cut's canvas, which the next
   /// cut a stroke makes is planned from ([_ConteTabHostState._brushPageOf]).
   /// The models are immutable, so a new one is the only way either moves.
+  ///
+  /// The project is compared as printed (`projectAsPrinted`): the rail's
+  /// folds and twirls at rest, which no page prints — card
+  /// a-twirl-rebuilds-the-open-conte-on-the-next-notice (11-20; a twirl
+  /// rebuilt the whole conte at the next word, 171 elements in the test VM,
+  /// as much as an eye).
+  ///
+  /// ⛔THE EYE IS PRINTED HERE, so it is kept, not left out as the
+  /// timesheet leaves it: a cell's picture is the cut as it shows, and the
+  /// page asks the picture store for it again as it prints — the store keys
+  /// a picture by its rows' eyes (`StoryboardCutThumbnailStore`), card
+  /// an-eye-toggle-holds-the-ui-thread (11-18).
   static Object printedBy(EditorSessionManager session) => (
-    project: ByIdentity(session.repository.requireProject()),
+    project: AsPrinted(
+      session.repository.requireProject(),
+      (project) => projectAsPrinted(project, EyeOnThePage.printed),
+    ),
     activeCanvas: session.activeCutOrNull?.canvasSize,
   );
 
@@ -227,6 +244,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ActiveStrokeOverlayModel _strokeOf(String picture) =>
       _strokes.putIfAbsent(picture, ActiveStrokeOverlayModel.new);
 
+  /// The bands' strokes in flight, by window — the pen's views write them
+  /// and the pages' ink screens show them ([SheetInkStrokes]), so they are
+  /// held here, above both, as the pictures' are.
+  final SheetInkStrokes _inkStrokes = SheetInkStrokes();
+
   // The cells with no block — picture and band — take the pen or refuse it
   // as the canvas's 「프레임 자동 생성」 says, so the page is laid again when
   // it flips.
@@ -285,29 +307,30 @@ class _ConteTabHostState extends State<ConteTabHost> {
     for (final stroke in _strokes.values) {
       stroke.dispose();
     }
+    _inkStrokes.dispose();
     super.dispose();
   }
 
   (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
     final project = _session.repository.requireProject();
     final aspect = _session.camera.cameraFrameAspect;
-    final olWord = sheetOlWord(_session);
+    final words = paperWords(_session);
     return _sheet.resolve(
       identity: project,
-      key: (aspect, olWord),
-      build: () => _laidOut(project, aspect, olWord: olWord),
+      key: (aspect, words),
+      build: () => _laidOut(project, aspect, words: words),
     );
   }
 
   /// [project] as the conte prints it, cells shaped by the camera's
-  /// [aspect] and an O.L printed as [olWord]: the source it reads, and the
-  /// book it lays.
+  /// [aspect] and its fixed lines written in [words]: the source it reads,
+  /// and the book it lays.
   static (ConteSheetSource, List<ContePageLayout>) _laidOut(
     Project project,
     double aspect, {
-    required String olWord,
+    required PaperWords words,
   }) {
-    final source = buildConteSheetSource(project, olWord: olWord);
+    final source = buildConteSheetSource(project, words: words);
     return (
       source,
       layoutConteBook(
@@ -329,29 +352,33 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// cut shows it (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
   /// 그대로둠」).
   void _selectCell(ContePlacedCell cell) {
-    final cutId = CutId(cell.cutId);
     final before = _session.activeLayerId;
-    if (_session.activeCutOrNull?.id != cutId) {
-      _session.selectCut(cutId);
-    }
-    // 🚨T4 — 「여기 서라」 IS the verb, on this panel too. 유저 2026-08-13:
-    // 「어떤 행이든 액티브 바꾸면 풀리도록」. Pressing a conte cell moves you
-    // to another cut's storyboard row, which is moving, so it lets a live
-    // selection go exactly as a row click and an arrow step do.
-    //
-    // ⚠️The frame is passed IN rather than seeked afterwards: the standing
-    // law asks whether you are landing inside the current selection, and
-    // asking that about the frame you are LEAVING answers the wrong
-    // question.
-    final seat = _session.standing.layerAConteStandSeats(before: before);
-    if (seat != null) {
-      _session.standOnRow(
-        LayerRowAddress(seat),
-        frameIndex: cell.source.startFrame,
-      );
-    } else {
-      _session.selectFrameIndex(cell.source.startFrame);
-    }
+    final frame = cell.source.startFrame;
+    // The cut, the row and the frame land together, once the frame is
+    // there ([EditorSessionManager.goToCut]): the row is seated in the cut
+    // it lands in.
+    _session.goToCut(
+      CutId(cell.cutId),
+      frame,
+      stand: () {
+        // 🚨T4 — 「여기 서라」 IS the verb, on this panel too. 유저
+        // 2026-08-13: 「어떤 행이든 액티브 바꾸면 풀리도록」. Pressing a conte
+        // cell moves you to another cut's storyboard row, which is moving,
+        // so it lets a live selection go exactly as a row click and an
+        // arrow step do.
+        //
+        // ⚠️The frame is passed IN rather than seeked afterwards: the
+        // standing law asks whether you are landing inside the current
+        // selection, and asking that about the frame you are LEAVING
+        // answers the wrong question.
+        final seat = _session.standing.layerAConteStandSeats(before: before);
+        if (seat != null) {
+          _session.standOnRow(LayerRowAddress(seat), frameIndex: frame);
+        } else {
+          _session.selectFrameIndex(frame);
+        }
+      },
+    );
   }
 
   /// A cell's picture at the size its window shows it — the zoom and the
@@ -443,17 +470,17 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ) {
     final project = _session.repository.requireProject();
     final aspect = _session.camera.cameraFrameAspect;
-    final olWord = sheetOlWord(_session);
+    final words = paperWords(_session);
     final next = _nextSheet.resolve(
       identity: project,
-      key: (aspect, _session.activeCutOrNull?.canvasSize, olWord),
+      key: (aspect, _session.activeCutOrNull?.canvasSize, words),
       build: () {
         final next = _session.autoFrame.nextConteCut();
         if (next == null) {
           return null;
         }
         final withNext = _withCutAtTheEnd(project, next.trackId, next.cut);
-        final pages = _laidOut(withNext, aspect, olWord: olWord).$2;
+        final pages = _laidOut(withNext, aspect, words: words).$2;
         return (project: withNext, pages: pages);
       },
     );
@@ -604,17 +631,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// the stack's own space, so the pen is heard on every page on screen.
   Widget _book(BuildContext context, CanvasViewport viewport, Size box) {
     final (source, pages) = _resolveSheet();
-    final stack = _stackOf(pages);
-    final ratio = EffectiveDevicePixelRatio.of(context);
-    final shown = [
-      for (final index in stack.pagesMeeting(
-        canvasRectShown(viewport, box),
-      ))
-        (
-          page: pages[index],
-          at: _onDevicePixels(stack.pageRect(index).topLeft, viewport, ratio),
-        ),
-    ];
+    final shown = _pagesShown(
+      pages,
+      viewport,
+      box,
+      EffectiveDevicePixelRatio.of(context),
+    );
     final ink = _inkMount(shown);
     final awaited = _awaitingPrints ? widget.thumbnails : null;
     final pictures = ink != null
@@ -640,8 +662,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
               pictureFor: _pictureFor,
               onSelectCell: _selectCell,
               wordsRefusalOf: _wordsRefusalOf,
-              drawing: _drawing,
-              strokeHold: _strokeHold,
+              // Drawing while the pen's views are mounted, through windows.
+              drawing: ink != null,
+              inkWindows: conteInkWindows(
+                (ink?.pages ?? shown)[index].page,
+                unwrittenInkIdOf: ink == null ? null : _unwrittenInkIdOf,
+              ),
+              inkStrokes: _inkStrokes,
               imageFor: widget.imageFor,
               imageRepaint: widget.imageRepaint,
               picturesLanded: _picturesLandedOn(shown[index].page),
@@ -661,6 +688,24 @@ class _ConteTabHostState extends State<ConteTabHost> {
         if (awaited != null) _waitFor(awaited),
       ],
     );
+  }
+
+  /// The pages of [pages] a panel of [box] meets through [viewport], each
+  /// with its corner on the device's pixels at [ratio].
+  List<ConteShownPage> _pagesShown(
+    List<ContePageLayout> pages,
+    CanvasViewport viewport,
+    Size box,
+    double ratio,
+  ) {
+    final stack = _stackOf(pages);
+    return [
+      for (final index in stack.pagesMeeting(canvasRectShown(viewport, box)))
+        (
+          page: pages[index],
+          at: _onDevicePixels(stack.pageRect(index).topLeft, viewport, ratio),
+        ),
+    ];
   }
 
   /// A pool picture dropped on the pages on screen is a photo in the band
@@ -819,6 +864,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         historyManager: _session.historyManager,
         viewport: viewport,
         strokeActive: _strokeHold,
+        strokes: _inkStrokes,
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
         pictureWindows: _pictureWindowsOf(ink.pages, pictures),

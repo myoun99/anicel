@@ -615,7 +615,8 @@ pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: 
 /// engine's thread for waits waits for the work behind `readout`, and calls
 /// `then` once its bytes are mapped for [`gpu_engine_readout_rows`] — or
 /// are not, which the rows then fail by — with `wait`, the number its
-/// caller knows this wait by: one `then` serves every wait of a caller.
+/// caller knows this wait by, and whether they were: one `then` serves
+/// every wait of a caller.
 /// From that thread; from this one where that thread is gone, or the bytes
 /// were mapped already.
 ///
@@ -627,14 +628,14 @@ pub unsafe extern "C" fn gpu_engine_readout_map(engine: *const Engine, readout: 
 pub unsafe extern "C" fn gpu_engine_readout_map_then(
     engine: *const Engine,
     readout: *mut Readout,
-    then: extern "C" fn(u64),
+    then: extern "C" fn(u64, bool),
     wait: u64,
 ) {
     // SAFETY: see the function's contract.
     let (engine, readout) = unsafe { (&*engine, &mut *readout) };
     engine.on_thread(|| {
         // SAFETY: the readout is the caller's to leave alone (the contract).
-        unsafe { readout.map_then(engine, move || then(wait)) };
+        unsafe { readout.map_then(engine, move |mapped| then(wait, mapped)) };
     })
 }
 
@@ -694,21 +695,22 @@ impl Readout {
     }
 
     /// [`Self::map`] with no wait for its caller ([`Engine::map_then`]):
-    /// `then` is called once the wait has ended, how it did kept for
-    /// [`Self::rows`] — at once where one had.
+    /// `then` is told whether the bytes were mapped once the wait has
+    /// ended, how it did kept for [`Self::rows`] — at once where one had.
     ///
     /// # Safety
     /// `self` stays where it is, asked nothing, till `then` is called.
-    unsafe fn map_then(&mut self, engine: &Engine, then: impl FnOnce() + Send + 'static) {
-        if self.mapped.is_some() {
-            return then();
+    unsafe fn map_then(&mut self, engine: &Engine, then: impl FnOnce(bool) + Send + 'static) {
+        if let Some(mapped) = &self.mapped {
+            return then(mapped.is_ok());
         }
         let staged = self.staged(engine);
         let waited = Waited(std::ptr::from_mut(self));
         engine.map_then(staged, move |ended| {
+            let mapped = ended.is_ok();
             // SAFETY: the contract — nothing else has it till `then`.
             unsafe { waited.end(ended) };
-            then();
+            then(mapped);
         });
     }
 

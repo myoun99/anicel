@@ -179,6 +179,11 @@ abstract class ToolbarPanelContext {
   /// this panel's 복사 takes, or with [lifted] its 잘라내기.
   Iterable<Object> drawingsTaken({required bool lifted});
 
+  /// 🗣️F-615 — what this panel's 복사 reads of what it takes, or with
+  /// [lifted] its 잘라내기, worked out ahead of it off the UI thread; null
+  /// where it reads no picture.
+  WorkAhead? takeAhead({required bool lifted});
+
   /// The drawings a paste here lays down, independent or linked.
   Iterable<Object> get drawingsPasted;
 
@@ -231,7 +236,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editCut,
           cutRun,
-          blocks: () => drawingsTaken(lifted: true),
+          reaches: () => (
+            blocks: drawingsTaken(lifted: true),
+            ahead: takeAhead(lifted: true),
+          ),
         )
       : null;
 
@@ -239,7 +247,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editCopy,
           copyFrame,
-          blocks: () => drawingsTaken(lifted: false),
+          reaches: () => (
+            blocks: drawingsTaken(lifted: false),
+            ahead: takeAhead(lifted: false),
+          ),
         )
       : null;
 
@@ -247,8 +258,8 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editPasteIndependent,
           pasteIndependentFrame,
-          blocks: () => drawingsPasted,
-          ahead: () => independentPasteAhead,
+          reaches: () => (blocks: drawingsPasted, ahead: null),
+          holding: () => independentPasteAhead,
         )
       : null;
 
@@ -259,7 +270,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editUnlink,
           unlink,
-          blocks: () => drawingsUnlinked,
+          reaches: () => (blocks: drawingsUnlinked, ahead: null),
         )
       : null;
 
@@ -267,19 +278,23 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       ? _behindTheWaitWindow(
           EditorActionIds.editDuplicate,
           duplicate,
-          blocks: () => drawingsDuplicated,
+          reaches: () => (blocks: drawingsDuplicated, ahead: null),
         )
       : null;
 
-  /// [press] behind [actionId]'s window ([_windowOf]) where it lands on more
-  /// than one of [blocks] — or, holding something [ahead] of it, behind it
-  /// whatever it lands on — each asked as it is pressed; at once where the
-  /// panel has no [waitIn].
+  /// [press] behind [actionId]'s window ([_windowOf]) where it [reaches]
+  /// more than one block, what it works out ahead of them worked out there
+  /// first — or, [holding] something ahead of it, behind it whatever it
+  /// lands on — each asked as it is pressed; at once where the panel has no
+  /// [waitIn].
+  ///
+  /// The blocks a press lands on and the work it does ahead of them are one
+  /// reach: the work is over those very blocks, asked of the same board.
   void Function() _behindTheWaitWindow(
     String actionId,
     void Function() press, {
-    required Iterable<Object> Function() blocks,
-    WorkAhead? Function()? ahead,
+    required ({Iterable<Object> blocks, WorkAhead? ahead}) Function() reaches,
+    WorkAhead? Function()? holding,
   }) => () {
     final context = waitIn;
     if (context == null) {
@@ -287,21 +302,26 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       return;
     }
     final named = _windowOf(actionId);
-    final held = ahead?.call();
+    final held = holding?.call();
+    if (held != null) {
+      unawaited(
+        workAheadBehindTheWaitWindow(
+          context,
+          press,
+          window: named,
+          ahead: held,
+        ),
+      );
+      return;
+    }
+    final (:blocks, :ahead) = reaches();
     unawaited(
-      held == null
-          ? takeBehindTheWaitWindow(
-              context,
-              press,
-              window: named,
-              blocks: blocks(),
-            )
-          : workAheadBehindTheWaitWindow(
-              context,
-              press,
-              window: named,
-              ahead: held,
-            ),
+      takeBehindTheWaitWindow(
+        context,
+        (ahead: ahead, step: press),
+        window: named,
+        blocks: blocks,
+      ),
     );
   };
 
@@ -511,6 +531,15 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         _Board.text || _Board.effects || _Board.keys || null => const [],
       };
 
+  /// Off the board [_boardTaken] names, as [drawingsTaken] reads it.
+  @override
+  WorkAhead? takeAhead({required bool lifted}) => switch (_boardTaken) {
+    _Board.rows => session.layerClipboard.takeAhead(lifted: lifted),
+    _Board.cuts => session.cutClipboard.takeAhead,
+    _Board.frames => session.clipboard.takeAheadAt(clipboardPlace),
+    _Board.text || _Board.effects || _Board.keys || null => null,
+  };
+
   /// Whether a paste here puts down ROWS: the hand holds them, and rows are
   /// this panel's. ⛔Not asked of the selection — one copy is in hand
   /// (`AppClipboard`), so what a paste brings is already said; where it
@@ -671,9 +700,12 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       unawaited(
         takeBehindTheWaitWindow(
           context,
-          _pastesCuts
-              ? session.cutClipboard.pasteLinked
-              : session.layerClipboard.pasteRowsLinked,
+          (
+            ahead: null,
+            step: _pastesCuts
+                ? session.cutClipboard.pasteLinked
+                : session.layerClipboard.pasteRowsLinked,
+          ),
           window: window,
           blocks: drawingsPasted,
         ),

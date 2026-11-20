@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
-import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:flutter/services.dart' show HardwareKeyboard, SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/app_progress_dialog.dart' show runWithAppProgress;
@@ -23,6 +23,7 @@ import '../native/device_battery.dart';
 import '../native/drawing_engines.dart';
 import '../native/engine_refusals.dart';
 import '../native/handed_files.dart';
+import '../native/lost_screen.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
@@ -70,6 +71,7 @@ import 'brush/transform_tool_options.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
 import 'input/one_pointer_shows_the_cursor.dart';
+import 'input/warmer_hand.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
@@ -113,6 +115,8 @@ import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
 import 'session/app_clipboard.dart';
 import 'session/editor_app_settings.dart';
+import 'lost_screen_evidence.dart';
+import 'lost_screen_restart.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
@@ -307,9 +311,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The active canvas tool, hoisted here so the tool shortcuts and the
   /// workspace's tool/brush panels drive one notifier. Paint tools keep
   /// per-tool settings memory (R11-④: the brush and the eraser each
-  /// remember their own preset/settings).
-  final PaintToolStateNotifier _brushTool = PaintToolStateNotifier(
+  /// remember their own preset/settings). A press brings a tool once the
+  /// canvas has landed what its box holds (F-615-Q2).
+  late final PaintToolStateNotifier _brushTool = PaintToolStateNotifier(
     BrushToolState.defaults,
+    landsFirst: _canvasSelectionCommands.landPendingMoveThen,
   );
 
   /// The transform tool's options, hoisted beside [_brushTool] for the same
@@ -510,7 +516,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     temporaryTool: TemporaryTool(
       memory: _toolHold,
       current: () => _brushTool.value,
-      change: (next) => _brushTool.value = next,
+      bring: _brushTool.bringTool,
     ),
     strokeLive: _session.brushInputActive,
   );
@@ -541,6 +547,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// Whether a contact is down, and every way it learns that one is over.
   final ContactCensus _contacts = ContactCensus();
+
+  /// What the hand does, told to the warmer of the project on screen.
+  late final WarmerHand _warmerHand = WarmerHand(
+    () => _onScreen?.playbackRig.prerenderScheduler,
+  );
 
   /// The system's one cursor, the pointer's that moved last (F-562).
   final OnePointerShowsTheCursor _cursorOwner = OnePointerShowsTheCursor();
@@ -573,6 +584,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       first: widget.initialProject ?? newUntitledProject(),
       openSession: _openSession,
       letGo: _letGo,
+      landsFirst: _canvasSelectionCommands.landPendingMoveThen,
     )..addListener(_followProjectOnScreen);
     _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
@@ -623,8 +635,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // instead ([SessionScratch.ensureThisRunsFolder]).
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
+    HardwareKeyboard.instance.addHandler(_warmerHand.heardKey);
     EngineRefusals.told.addListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.addListener(_sayTheDeviceStartedAgain);
+    LostScreen.went.addListener(_keepTheWorkOfALostScreen);
+    // Gone before this shell listened — a reset during the launch.
+    scheduleMicrotask(_keepTheWorkOfALostScreen);
     appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
     // A launch is held from before its first frame. `runApp` builds the
     // tree, then draws it: asked between the two — a microtask of that
@@ -946,7 +962,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ⛔Do not quietly put it back. If it should return it returns as the
   /// user's call, not as a fix for a bug report that is really this.
 
-  /// Any pointer activity — the clock only wants to know about the PEN.
+  /// Any pointer activity — the clock only wants to know about the PEN;
+  /// the warmer of the project on screen, about every hand ([WarmerHand]).
   ///
   /// Watched through the global pointer route rather than a [Listener]
   /// wrapped around the app: a global route OBSERVES events without
@@ -955,6 +972,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _noteUserActivity(PointerEvent event) {
     _contacts.note(event);
     _autosaveClock.noteActivity(strokeInFlight: _contacts.anyDown);
+    _warmerHand.heard(event, down: _contacts.anyDown);
     // What the undo door will be told is down, where a screenshot can read
     // it (F-232). ⛔Built only while the inspector is shown: this runs on
     // every pointer event, a stroke's moves included.
@@ -1090,14 +1108,50 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ///
   /// 🗣️gpu-canonical-store-Q14 (유저 2026-11-11): 「공통 알림 창으로 한 번
   /// 알린다」 · 「획이 사라진 경우와 캔버스가 멈춘 경우 둘 다 같은 창이다」.
-  void _sayWhatTheEngineRefused() => unawaited(
-    showAppNotice(
-      context,
-      windowKey: const ValueKey<String>('gpu-refused-notice'),
-      title: AppText.strings.commonNotice,
-      message: AppText.strings.gpuRefusedNotice,
-    ),
-  );
+  void _sayWhatTheEngineRefused() {
+    if (LostScreen.hasGone) {
+      return;
+    }
+    unawaited(
+      showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('gpu-refused-notice'),
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.gpuRefusedNotice,
+      ),
+    );
+  }
+
+  /// 🗣️a-lost-gpu-leaves-the-window-unpainted-Q1 (유저 2026-11-16): 「윈도
+  /// 창으로 알리고 저장하고 다시 시작할지 묻는다」 — once the screen's own
+  /// device went ([LostScreen]), Windows' window asks, and saves and starts
+  /// Anicel again on its answer ([keepTheWorkOfALostScreen]).
+  ///
+  /// ⛔And the engine's two notices are not said meanwhile
+  /// ([_sayWhatTheEngineRefused], [_sayTheDeviceStartedAgain]). The same
+  /// reset takes the canvas engine's device, and they would come up as
+  /// Windows' windows over that question — one saying 「you can go on
+  /// working」 of a screen that draws no more. Q1's window is the one the
+  /// user chose for this loss.
+  void _keepTheWorkOfALostScreen() {
+    if (!LostScreen.hasGone || !mounted || _keepsTheWorkOfALostScreen) {
+      return;
+    }
+    // H63: what the app was doing, before the save changes it.
+    LostScreenEvidence.noteOnce(_projects.active);
+    _keepsTheWorkOfALostScreen = true;
+    unawaited(
+      keepTheWorkOfALostScreen(
+        context,
+        () => _projects.sessions,
+      ).whenComplete(() => _keepsTheWorkOfALostScreen = false),
+    );
+  }
+
+  /// Whether the question stands now: asked once a loss — heard by the
+  /// listener, or found by the launch's own look — and again at the app
+  /// window's X once it was taken down ([_handleExitRequested]).
+  bool _keepsTheWorkOfALostScreen = false;
 
   /// The graphics device started again and the app stands on another
   /// engine: said in the common window, with why the device went as far as
@@ -1107,17 +1161,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 🗣️유저 2026-11-11 (a-lost-gpu-device-keeps-the-unsaved-tiles-Q1):
   /// 「그래픽 장치가 다시 시작되었다고 알린다」 · 「그래픽장치가 왜
   /// 다시시작되었는지는 알수있게」.
-  void _sayTheDeviceStartedAgain() => unawaited(
-    showAppNotice(
-      context,
-      windowKey: const ValueKey<String>('gpu-started-again-notice'),
-      title: AppText.strings.commonNotice,
-      message: gpuStartedAgainMessage(
-        AppText.strings,
-        EngineRefusals.wentBy,
+  void _sayTheDeviceStartedAgain() {
+    if (LostScreen.hasGone) {
+      return;
+    }
+    unawaited(
+      showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('gpu-started-again-notice'),
+        title: AppText.strings.commonNotice,
+        message: gpuStartedAgainMessage(
+          AppText.strings,
+          EngineRefusals.wentBy,
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   /// The app behind its one wait window while it gets its engine ready
   /// ([appEngineGetsReady]), as it is behind it for an open or a save: the
@@ -1158,8 +1217,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
+    HardwareKeyboard.instance.removeHandler(_warmerHand.heardKey);
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
+    LostScreen.went.removeListener(_keepTheWorkOfALostScreen);
     appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();
@@ -1255,6 +1316,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!zoomPasses && _consumedByPlayback()) {
       return;
     }
+    // 🗣️Q6 = turn (the-standing-canvas-composes-a-frame-twice-before-its-
+    // picture, 유저 2026-11-18 「차례를 기다린다」): what a key does, it does
+    // in its turn — pressed while a move waits for its frame, once the move
+    // lands, on the frame it lands on, after the steps pressed before it;
+    // a key held is not lined up (Q4 = 1). The two above answer the press
+    // itself: the window the app waits behind, and a run it stops.
+    _session.standsWithItsPicture.inTurn(
+      () {
+        if (mounted) {
+          _act(actionId, definition);
+        }
+      },
+      repeated: EditorShortcutManager.actsForARepeat,
+    );
+  }
+
+  /// What [actionId] does, in its turn ([_invokeAction]).
+  void _act(String actionId, EditorActionDefinition? definition) {
     // 🗣️I-19 (유저 2026-09-13): 「툴 자체에 설정할수도있고 툴 내부의 세부툴도
     // 설정가능하게」 — a tool action presses what its rail button or tile
     // presses, through the one [pressTool]; a colour edit action runs its
@@ -1329,21 +1408,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.brushSizeDown:
         _stepBrushSize(-1);
       case EditorActionIds.framePrevious:
-        _session.frameVerbs.selectPreviousFrame();
-        _session.revealSelection();
+        _stepThePlayhead(_session.frameVerbs.selectPreviousFrame);
       case EditorActionIds.frameNext:
-        _session.frameVerbs.selectNextFrame();
-        _session.revealSelection();
+        _stepThePlayhead(_session.frameVerbs.selectNextFrame);
       // ↩️With a live canvas selection the arrows used to NUDGE it instead —
       // PS arbitration (R16-③). 유저 2026-09-12: 「선택툴 선택한채로
       // 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드
       // 싹 삭제」 (F-86).
       case EditorActionIds.drawingPrevious:
-        _session.frameVerbs.flipRow(forward: false);
-        _session.revealSelection();
+        _stepThePlayhead(() => _session.frameVerbs.flipRow(forward: false));
       case EditorActionIds.drawingNext:
-        _session.frameVerbs.flipRow(forward: true);
-        _session.revealSelection();
+        _stepThePlayhead(() => _session.frameVerbs.flipRow(forward: true));
       // 🗣️F-261: the transport's buttons, pressed by key on the panel being
       // worked in — the panel the flip follows (유저 2026-10-02: 「콘티패널에
       // 포커스있으면 플립이 콘티패널기준 작동 … 그거랑 동일하게 법 통일해서
@@ -1614,6 +1689,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (wall != null) {
       _canvasSelectionCommands.invertSelection(pasteboard: wall, reach: reach);
     }
+  }
+
+  /// One step of the playhead — a frame, a block — [walk]ed, and the rails
+  /// bring it into view: in its turn, as every key is ([_invokeAction]).
+  void _stepThePlayhead(VoidCallback walk) {
+    walk();
+    _session.revealSelection();
   }
 
   /// One step of the size bar's ± from the keys, where the bar would take
@@ -1904,8 +1986,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// PEN-12 #5: the desktop window-close request routes through the SAME
   /// gate — Cancel keeps the window open.
-  Future<AppExitResponse> _handleExitRequested() async =>
-      await _closing() ? AppExitResponse.exit : AppExitResponse.cancel;
+  ///
+  /// ⛔Not once the screen's device went ([LostScreen]): the gate's window
+  /// would be drawn on a screen that draws no more. The X asks the loss's
+  /// own question again instead — a-lost-gpu-leaves-the-window-unpainted-Q5
+  /// (유저 2026-11-18, read by 관제 as the card's dismiss): [닫기] takes it
+  /// down, and the X brings it back.
+  Future<AppExitResponse> _handleExitRequested() async {
+    if (LostScreen.hasGone) {
+      _keepTheWorkOfALostScreen();
+      return AppExitResponse.cancel;
+    }
+    return await _closing() ? AppExitResponse.exit : AppExitResponse.cancel;
+  }
 
   /// Whether the app may close ([_mayLeaveForGood]) — and when it may, its
   /// usage statistics' `app_away` written down first (I-70-Q11, 유저
@@ -1932,7 +2025,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // exists to protect work. ⚠️"Nothing to lose" is no longer only the
     // dirty flag: a saved cel lives as a ref into the `.anicel`, so a
     // clean session whose file has gone is asked too. The predicate is
-    // [ensureUnsavedWorkSettled]'s first statement, not this one.
+    // [ProjectFile.wouldLoseWork], one for every tear-down.
     //
     // The question itself lives in [ensureUnsavedWorkSettled] now, shared
     // with a tab's close button — which closes a project just as surely as
@@ -1957,13 +2050,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// screen when there is anything to ask (A PROJECT SPEAKS WHEN IT IS ON
   /// SCREEN — see [_sayAbout]). One with nothing to lose is not brought
   /// forward just to be let go.
+  ///
+  /// 🗣️F-615-Q2 (유저 2026-11-19, 「착지하고 나서 바꾼다」): the project on
+  /// screen going away takes its box away too, so what the box holds lands
+  /// FIRST — behind 확정's window where it lands on many cels — and the
+  /// question asks about the project with it: a save keeps it. ↩️The
+  /// question came first, and the tab's close landed the range on the UI
+  /// thread as the shell followed the next tab (`confirmPendingMove`), into
+  /// a project already saved and on its way out (F-615-Q1's round).
   Future<bool> _settleWithItOnScreen(EditorSessionManager session) async {
-    if (!session.projectFile.hasUnsavedChanges &&
-        !session.projectFile.hasVanished()) {
+    if (identical(session, _session)) {
+      final landed = Completer<void>();
+      _canvasSelectionCommands.landPendingMoveThen(landed.complete);
+      await landed.future;
+      if (!mounted) {
+        return false;
+      }
+    }
+    if (!session.projectFile.wouldLoseWork()) {
       return true;
     }
     if (!identical(session, _session)) {
-      _projects.activate(session);
+      await _projects.activate(session);
       // The question waits for the frame that shows its project.
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) {
@@ -2120,6 +2228,9 @@ final class _ProjectHooks {
         shell._canvasSelectionCommands.transformActive ||
         shell._canvasTextCommands.holdsAnything;
     history.addListener(shell._recordRecentColor);
+    // F-615-Q2: a run takes the canvas once what its box holds has landed.
+    session.playbackRig.playback.landsBeforeARun =
+        shell._canvasSelectionCommands.landPendingMoveThen;
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its
     // snackbar path never runs.

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, ValueListenable, ValueNotifier;
+    show ChangeNotifier, ValueListenable, ValueNotifier, VoidCallback;
 
 import '../../services/editing/active_cut_helpers.dart';
 import '../../services/editing/layer_standing_after_change.dart'
@@ -684,14 +684,34 @@ class Standing {
         selectRow(row);
         onTheStoryboard = true;
     }
+    _standOnTheFrame(
+      frameIndex: frameIndex,
+      globalFrameIndex: globalFrameIndex,
+      then: () {
+        if (onTheStoryboard) {
+          _seatTimelineOnStoryboardStand(before: before);
+        }
+      },
+    );
+  }
+
+  /// The frame a stand names, and [then] once it lands: a press on another
+  /// cut's frame waits with its cut (the-standing-canvas-composes-a-frame-
+  /// twice-before-its-picture-Q3 = stand), and what follows it is done in
+  /// the cut it lands in — the timeline seated after the seat the cut
+  /// switch makes, as it always came.
+  void _standOnTheFrame({
+    required int? frameIndex,
+    required int? globalFrameIndex,
+    required VoidCallback then,
+  }) {
     if (frameIndex != null) {
       _selection.selectFrameIndex(frameIndex);
     }
     if (globalFrameIndex != null) {
-      _selection.selectGlobalFrame(globalFrameIndex);
-    }
-    if (onTheStoryboard) {
-      _seatTimelineOnStoryboardStand(before: before);
+      _selection.selectGlobalFrame(globalFrameIndex, then: then);
+    } else {
+      then();
     }
   }
 
@@ -1383,21 +1403,34 @@ class Standing {
   ///
   /// ⚠️Only the cut, the row and the frame move (유저: 「화면 확대·스크롤·
   /// 선택범위·도구는 그대로」).
-  void standOn(StandingPlace place) {
+  ///
+  /// [landed] once the user stands there — the walk waits for the frame's
+  /// picture, and a move that comes first takes its place: one that never
+  /// lands calls nothing.
+  void standOn(StandingPlace place, {VoidCallback? landed}) {
     if (_project.cutById(place.cut) == null) {
       return;
     }
-    selectCut(place.cut);
-    final row = place.layer;
-    if (row != null && _project.layers.any((layer) => layer.id == row)) {
-      _openFoldersAbove(row);
-      // The walk moves where the timeline stands, not which panel you are
-      // working in — an undo is a key, not a touch.
-      _seatLayer(row);
-    }
-    _selection.selectFrameIndex(place.frame);
-    keepStandingShown(reveal: true);
-    _rangeSelections.revealSelection();
+    // Its cut, its row and its frame land together, once the frame has its
+    // picture (the-standing-canvas-composes-a-frame-twice-before-its-
+    // picture-Q3 = stand: 「되돌리기」 among the doors that switch the cut).
+    _selection.goToCut(
+      place.cut,
+      place.frame,
+      stand: () {
+        final row = place.layer;
+        if (row != null && _project.layers.any((layer) => layer.id == row)) {
+          _openFoldersAbove(row);
+          // The walk moves where the timeline stands, not which panel you
+          // are working in — an undo is a key, not a touch.
+          _seatLayer(row);
+        }
+        _selection.selectFrameIndex(place.frame);
+        keepStandingShown(reveal: true);
+        _rangeSelections.revealSelection();
+        landed?.call();
+      },
+    );
   }
 
   /// Opens every shut folder above [row], OUTSIDE history.

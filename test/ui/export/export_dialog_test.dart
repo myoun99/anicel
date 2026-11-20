@@ -41,8 +41,6 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart'
-    show ExportAccordion;
 import 'package:anicel/src/ui/export/held_pictures.dart';
 import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
@@ -484,10 +482,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await pickExportStill(tester, ExportStillFormat.png);
-      // The Naming accordion is collapsed by default — open, then edit.
-      await tester.ensureVisible(find.textContaining('Naming'));
-      await tester.tap(find.textContaining('Naming'));
-      await tester.pump();
       await tester.ensureVisible(
         find.byKey(const ValueKey<String>('export-naming-base-field')),
       );
@@ -618,8 +612,12 @@ void main() {
     testWidgets('audio accordion reports the toggle in its summary',
         (tester) async {
       await pumpDialog(tester, exportSession());
+      final audio = find.text('Audio');
+      // It stands open (F-618 ②): folded, its head says what it does.
+      await tester.ensureVisible(audio);
+      await tester.tap(audio);
+      await tester.pump();
       expect(find.textContaining('SE muxed'), findsOneWidget);
-      await tester.ensureVisible(find.textContaining('Audio'));
       await tester.tap(find.textContaining('Audio'));
       await tester.pump();
       await tester.ensureVisible(
@@ -629,8 +627,8 @@ void main() {
         find.byKey(const ValueKey<String>('export-audio-toggle')),
       );
       await tester.pump();
-      await tester.ensureVisible(find.text('Audio'));
-      await tester.tap(find.text('Audio'));
+      await tester.ensureVisible(audio);
+      await tester.tap(audio);
       await tester.pump();
       expect(find.textContaining('Audio — Off'), findsOneWidget);
     });
@@ -783,6 +781,10 @@ void main() {
           processStarter: (executable, arguments) async => fake,
         ),
       );
+      // It stands open (F-618 ②): folded, its head says what it does.
+      await tester.ensureVisible(find.text(AppText.strings.exAudio));
+      await tester.tap(find.text(AppText.strings.exAudio));
+      await tester.pump();
       expect(find.textContaining('SE 먹싱 · AAC'), findsOneWidget);
 
       await tester.runAsync(state.export);
@@ -1907,17 +1909,6 @@ void main() {
         'webp': true,
       });
       await switchTab(tester, 'cels');
-      // On the Cels tab the cel format stands folded (the F-289 mock).
-      tester
-          .widget<ExportAccordion>(
-            find.byWidgetPredicate(
-              (widget) =>
-                  widget is ExportAccordion &&
-                  widget.title == AppText.strings.exCelFormat,
-            ),
-          )
-          .onToggle();
-      await tester.pump();
       expect(await listed(), {
         'png': true,
         'jpg': true,

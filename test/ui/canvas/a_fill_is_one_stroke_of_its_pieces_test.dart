@@ -307,7 +307,7 @@ void main() {
     await paintBytes(tester, painterOf(tester), logicalSize);
     final shown = await paintBytes(tester, painterOf(tester), logicalSize);
     // ⚠️Short of the fill's edge, which the display's reduction reads a
-    // little past a block (`stage_at`). 🗣️유저 11-08: 「지금화면이랑
+    // little past a block (`Screen::show`). 🗣️유저 11-08: 「지금화면이랑
     // 맞출필요는없어 … 바뀌고 나서만 동일하면되」.
     for (var y = 1; y < 7; y += 1) {
       for (var x = 1; x < 7; x += 1) {

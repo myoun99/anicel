@@ -10,7 +10,7 @@ import '../../models/se_take_placement.dart' show placedSoundBlockOf;
 import '../../services/import/raster_cel_import.dart' show fitPose;
 import '../dialogs/instance_edit_dialog.dart';
 import '../dialogs/instance_edit_preview.dart';
-import '../import/import_file_settings.dart' show importFitLabel;
+import '../import/fit_flyout_button.dart';
 import '../text/app_strings.dart';
 import '../text/typed_text.dart';
 import '../theme/app_theme.dart';
@@ -269,18 +269,11 @@ class _MediaPresetWindowState extends State<MediaPresetWindow> {
 
   Widget _fitField(AppStrings strings) => AppWindowField(
     label: strings.imFit,
-    child: PanelFlyoutButton(
-      key: const ValueKey<String>('media-preset-fit'),
-      label: importFitLabel(_preset.fit),
+    child: FitFlyoutButton(
+      keyPrefix: 'media-preset-fit',
+      fit: _preset.fit,
       expand: true,
-      entriesBuilder: () => MediaFitMode.values.asFlyoutValueChoices(
-        current: _preset.fit,
-        choiceOf: (fit) => PanelFlyoutChoice(
-          key: 'media-preset-fit-${fit.name}',
-          label: importFitLabel(fit),
-        ),
-        onPicked: (fit) => setState(() => _preset = _preset.copyWith(fit: fit)),
-      ),
+      onPicked: (fit) => setState(() => _preset = _preset.copyWith(fit: fit)),
     ),
   );
 }

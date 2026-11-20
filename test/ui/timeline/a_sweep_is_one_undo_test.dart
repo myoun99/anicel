@@ -120,6 +120,28 @@ void main() {
     );
   });
 
+  testWidgets('a press that sweeps nothing is up as it lifts — the edit '
+      'after it is its own step', (tester) async {
+    final s = await _timeline(tester);
+    final depth = s.historyManager.undoCount;
+    final hold = await _press(tester, 'visibility', 'l4');
+    await hold.release();
+    expect(
+      (s.historyManager.undoCount, s.historyManager.gestures.heldSteps),
+      (depth + 1, 0),
+      reason: 'the press\'s line went up as the press lifted',
+    );
+    const later = LayerId('l0');
+    final sheetWas = _row(s, later).onTimesheet;
+    s.layerSwitches.toggleLayerTimesheet(later);
+
+    s.undo();
+    await tester.pumpAndSettle();
+
+    expect(_row(s, later).onTimesheet, sheetWas);
+    expect(_eyes(s, const ['l4']), [false], reason: 'the press stays');
+  });
+
   // F-182 (유저 2026-09-25): 「레이어 라벨 버튼 드래그 일괄조작, 원래 위치로
   // 돌아가면 원복하도록. 지금은 커서 원래 위치로 돌아가도 원복안됨. 언두는
   // 지금처럼 동일하게 손 떼면 1언두」.

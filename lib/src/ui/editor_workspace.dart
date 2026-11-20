@@ -11,18 +11,18 @@ import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../services/flutter_test_run.dart';
+import '../models/attached_layer_resolve.dart' show attachGroupRowsBySide;
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
 import '../models/cut_id.dart';
-import '../models/cut_piece.dart' show CutPiece;
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../models/project_font_file.dart';
-import '../services/command.dart' show Command;
+import '../services/command.dart' show Command, PressedStep;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
@@ -98,6 +98,7 @@ import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
 import 'media/media_pool_view.dart';
 import 'media/media_preset_flow.dart';
+import 'media/media_sync_flow.dart';
 import 'media/media_pool_pictures.dart';
 import 'media/media_relink_flow.dart';
 import 'media/open_viewer_document.dart' show openViewerDocument;
@@ -106,6 +107,7 @@ import 'media/viewer_ink.dart';
 import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'layout/scroll_stood_in_layout.dart';
+import 'layout/scroll_window_part.dart';
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
@@ -323,8 +325,9 @@ class EditorWorkspace extends StatefulWidget {
   final ValueNotifier<ColorPaletteState>? colorPalette;
   final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
-  /// The shell-owned rotate/flip shortcut channel (P8, R/Shift+R/H),
-  /// forwarded to the canvas panel.
+  /// The shell-owned view shortcut channel (P8, R/Shift+R/H, the zoom
+  /// steps, fit, 1:1), handed to whichever panel lies on the floor
+  /// (`CanvasFloorInsets.viewCommands`, F-623).
   final CanvasViewCommands? canvasViewCommands;
 
   /// D13: the canvas panel's subtree key — forwarded to the canvas area,
@@ -2168,7 +2171,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// reach: an unbounded parent, or a dock too small to pay every section's
   /// floor at once.
   // No panel insists on a WIDTH any more — see [_defaultRegionMinWidth] for
-  // the two decisions (R3 #11, scrollbar-unify-Q1) that took it off.
+  // the two decisions (R3 #11, scrollbar-unify-Q1) that took it off. The
+  // tool settings' RAIL does ([_railWidthFloor]): the rail stops, and the
+  // panel still draws at its slot's width.
 
   double? _minContentHeightFor(String tabId) => switch (tabId) {
     // NOT one number for this tab: the x-sheet is the timeline toggled on
@@ -2202,6 +2207,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return 0;
     }
     return panelGroupFloorExtent([for (final tabId in tabs) _tabs.tabFor(tabId)]);
+  }
+
+  /// The width a rail is neither dragged nor drawn under while one of its
+  /// groups holds the tool settings — what they need
+  /// ([ToolSettingsPanel.minPanelWidthIn]) and the splitter's band their
+  /// group keeps them off ([DockSplitterEdges]). Null for a rail without
+  /// them.
+  ///
+  /// 🗣️tool-settings-segments-overlap-at-the-narrowest-Q1 (유저 2026-11-17):
+  /// 「도구 설정이 든 레일은 설정 칸이 서는 폭보다 좁아지지 않게 한다」 —
+  /// ⛔held in ANY group of the rail, open or shut, shown or behind another
+  /// tab: opening or picking it must not move the rail (Q3, 유저 11-18:
+  /// 「닫혀 있어도 건다 — 그 레일은 늘 바닥 이상」).
+  double? _railWidthFloor({required bool right}) {
+    const tabId = EditorWorkspace.brushSettingsTabId;
+    final at = _layout.locateTab(tabId);
+    if (at == null || !_rail._railGroups(right: right).contains(at.dockId)) {
+      return null;
+    }
+    final grid = DeviceGrid.of(context);
+    final spared = _tabs.tabFor(tabId).sparesSplitters
+        ? grid.position(DockEdgeSplitter.thickness)
+        : 0.0;
+    // A floor the words need is a clearance: landing short cuts one.
+    return grid.clearance(ToolSettingsPanel.minPanelWidthIn(context) + spared);
   }
 
   bool _bottomDockCollapsed = false;
@@ -2661,16 +2691,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // rebuild on it is this one wrapper: `updateShouldNotify` keeps the
       // panels still until a colour actually moves, and the identical child
       // instance means the tree below is never rebuilt at all.
+      //
+      // As SHOWN: a colour window's planes ride the preview channel, which
+      // notifies no session (F-620-Q1), so this hears that too.
       child: ListenableBuilder(
-        listenable: widget.session,
+        listenable: Listenable.merge([
+          widget.session,
+          widget.session.dragPreview,
+        ]),
         builder: (context, child) {
           final project = widget.session.repository.currentProject;
+          final planes = project == null
+              ? null
+              : widget.session.projectSettings.shownPlanes;
           return CanvasStageColors(
-            backdropArgb: project?.backdropArgb ?? defaultProjectBackdropArgb,
+            backdropArgb: planes?.backdrop.argb ?? defaultProjectBackdropArgb,
             pasteboardArgb:
-                project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
-            backdropNone: project?.backdropNone ?? false,
-            pasteboardNone: project?.pasteboardNone ?? false,
+                planes?.pasteboard.argb ?? defaultProjectPasteboardArgb,
+            backdropNone: planes?.backdrop.none ?? false,
+            pasteboardNone: planes?.pasteboard.none ?? false,
             pasteboardSize: project?.pasteboardSize ?? PasteboardSize.three,
             pasteboardInUse: project?.pasteboardInUse ?? true,
             child: child!,
@@ -2858,8 +2897,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       gaps: gaps,
       minCentreWidth: minCenterWidth,
     );
-    leftWidth = math.min(leftWidth, ceiling);
-    rightWidth = math.min(rightWidth, ceiling);
+    // The tool settings' floor before the ceiling: a window too narrow for
+    // both gives the canvas its room first.
+    leftWidth = math.min(
+      math.max(leftWidth, _railWidthFloor(right: false) ?? 0),
+      ceiling,
+    );
+    rightWidth = math.min(
+      math.max(rightWidth, _railWidthFloor(right: true) ?? 0),
+      ceiling,
+    );
     // ⛔The proportional squeeze that stood here is GONE.
     // It scaled BOTH sides by one factor whenever the pair
     // overflowed, which is the other half of 「한쪽을
@@ -3275,6 +3322,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 ),
           // F-607 ②: where the pill stood, kept for whoever lies here next.
           leftPillBeside: _floorPillBeside,
+          // F-623: the view keys drive whatever lies here.
+          viewCommands: widget.canvasViewCommands,
           child: floor!,
         ),
         child: floor,

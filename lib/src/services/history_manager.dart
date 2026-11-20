@@ -39,11 +39,6 @@ int deviceScaledUndoByteBudget({required int? physicalMemoryBytes}) =>
       ceiling: HistoryManager.retainedByteBudget,
     );
 
-/// Where a [HistoryManager] stood when a gesture began: how many entries it
-/// had pushed and taken back ([HistoryGestures.retractSince]), and how deep
-/// its undo stack was.
-typedef HistoryMark = ({int pushed, int retracted, int depth});
-
 /// The undo/redo stacks. A [ChangeNotifier] so stack-state consumers (the
 /// app bar's undo/redo buttons) can subscribe directly: brush strokes
 /// execute here from the canvas WITHOUT a session notify, so nothing else
@@ -139,13 +134,24 @@ class HistoryManager extends ChangeNotifier {
   ///
   /// ⚠️It clears nothing: a walk is not an edit, and the redo stack under
   /// it is still the user's to take.
+  ///
+  /// One way back at a time: it takes the place of one the last walk left
+  /// (card F-624 ②). The user walked off that one's place on their own
+  /// before this walk, so it leads where they no longer were. ↩️Each walk
+  /// to the same edit stacked one more, and the redos after the edit's
+  /// walked the user to each place in turn.
   void leaveWalkBack(WalkBack step) {
+    if (_redoStack.lastOrNull is WalkBack) {
+      _redoStack.removeLast();
+    }
     _redoStack.add(step);
     _revision += 1;
     notifyListeners();
   }
 
-  bool get canUndo => _undoStack.isNotEmpty;
+  /// Whether there is an undo — a gesture's line still being written is
+  /// one ([HistoryGestures]): the undo puts it up and takes it back.
+  bool get canUndo => _undoStack.isNotEmpty || gestures._holding != null;
 
   bool get canRedo => _redoStack.isNotEmpty;
 
@@ -183,6 +189,7 @@ class HistoryManager extends ChangeNotifier {
   /// because by the budget's own reckoning there was nothing to free.
   int get retainedBytes =>
       retainedBytesOf(_undoStack, undone: false) +
+      retainedBytesOf(gestures._held, undone: false) +
       retainedBytesOf(_redoStack, undone: true);
 
   /// Collects everything executed inside [body] into ONE undo entry.
@@ -213,8 +220,7 @@ class HistoryManager extends ChangeNotifier {
     // anything a second time.
     final step = oneStepOf(description, group);
     if (step != null) {
-      _push(step);
-      _made.keep(step, made);
+      _file(step, made);
     }
   }
 
@@ -239,6 +245,16 @@ class HistoryManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Files [step], which has run and [made] what it made: into the line of
+  /// the gesture under way where there is one ([HistoryGestures]), and
+  /// otherwise onto the stack.
+  void _file(Command step, List<Object> made) {
+    _made.keep(step, made);
+    if (!gestures._takeIn(step)) {
+      _push(step);
+    }
+  }
+
   /// 🚨How each step is run against the project behind this history, and
   /// what a step made that its own undo does not take back
   /// ([HistoryStepScope]) — the session's (F-343). Null in a history no
@@ -254,9 +270,7 @@ class HistoryManager extends ChangeNotifier {
       group.add(command);
       return;
     }
-    final made = _made.run(command.execute);
-    _push(command);
-    _made.keep(command, made);
+    _file(command, _made.run(command.execute));
   }
 
   void _push(Command command) {
@@ -264,6 +278,7 @@ class HistoryManager extends ChangeNotifier {
     windows.stamp(command);
     _undoStack.add(command);
     gestures._pushed += 1;
+    gestures._pushedAt[command] = gestures._pushed;
     if (_undoStack.length > maxEntries) {
       // The oldest commands fall off the deep end, PS-style — and take
       // whatever they parked with them.
@@ -271,6 +286,15 @@ class HistoryManager extends ChangeNotifier {
       dropPayloadsOf(_undoStack.getRange(0, fallen));
       _undoStack.removeRange(0, fallen);
     }
+    _anEdit();
+    _trimRetainedBytes();
+    _revision += 1;
+    notifyListeners();
+  }
+
+  /// What an edit does to the history around it — the first step of a
+  /// gesture's line as much as an entry pushed.
+  void _anEdit() {
     // ⚠️REDO GOES FIRST, and the order is not cosmetic any more: a new
     // edit throws the redo stack away, so trimming before the clear
     // measured bytes that were about to leave on their own — and now
@@ -281,9 +305,6 @@ class HistoryManager extends ChangeNotifier {
     // A fresh entry is fresh evidence that the room may be writable
     // again — the same re-arming `BrushFrameStore` does on a new edit.
     _spillStoodDown = false;
-    _trimRetainedBytes();
-    _revision += 1;
-    notifyListeners();
   }
 
   /// 🚨THE OS SAID MEMORY IS TIGHT — and this stack used to be deaf to it.
@@ -611,12 +632,16 @@ class HistoryManager extends ChangeNotifier {
   /// ⚠️The empty stack THROWS on entry but RETURNS after the hook — the
   /// first is a caller that asked for something impossible, the second is
   /// the hook doing its job.
+  ///
+  /// A gesture's line still being written goes up first
+  /// ([HistoryGestures.putUp]): the step is taken of it, whole.
   void _step({
     required List<Command> from,
     required List<Command> to,
     required void Function(Command command) apply,
     required String nothingToDo,
   }) {
+    gestures.putUp();
     if (from.isEmpty) {
       throw StateError(nothingToDo);
     }
@@ -649,6 +674,7 @@ class HistoryManager extends ChangeNotifier {
 
   /// Every entry let go of, and what each parked in the room with it.
   void _emptyStacks() {
+    gestures._drop();
     dropPayloadsOf(_undoStack);
     dropPayloadsOf(_redoStack);
     _undoStack.clear();
@@ -656,98 +682,229 @@ class HistoryManager extends ChangeNotifier {
   }
 }
 
-/// A GESTURE's own entries in its [HistoryManager] — what a gesture that
-/// writes across many events (the rail's column swipe) needs while the hand
-/// is down: a [mark] before its first write, [retractSince] to take back its
-/// newest write, [foldSince] to make what it kept one entry on release.
+/// What a GESTURE needs of its [HistoryManager] while the hand is down: one
+/// entry from its first step, put up when it is over ([open], [line]).
+///
+/// 🗣️a-gesture-at-the-history-cap-does-not-fold-Q1 (유저 2026-11-19):
+/// 「스트로크랑 똑같은 도구인데 스트로크는 dab당 언두 줄 차지하지않잖아.
+/// 걸음당 여러줄 차지하는게 버그아닌가? 그런거 전부 동작하나에 1줄로 하는게
+/// 근본적인 구조해결아닌가?」 — a gesture is ONE entry however many events
+/// it writes across, as a stroke is one however many dabs it lays: its
+/// steps go into its [HistoryLine] while it is under way, and the line goes
+/// up as one entry when it is over. The stack never holds them one by one,
+/// so nothing falls off the deep end under a gesture but the one entry it
+/// costs, and there is nothing to fold after it. It is
+/// [HistoryManager.runAsOneStep]'s group, held across events.
+///
+/// ↩️Each step went on the stack as it was written and the gesture folded
+/// them on release (`foldSince`, 038c8e0a6): with the stack at its depth
+/// cap the fold could not find where the gesture began, and every step had
+/// pushed an old entry out — 24 stamps in one drag were 24 undos, and 24
+/// old entries gone (서피스 실측, 11-19).
 ///
 /// Its own object because the stack does not care whether a gesture is
-/// under way — the three verbs took [HistoryManager] past the six hundred
-/// lines the class ratchet holds it to (2026-09-26). The same library, so
-/// it works the stack directly rather than through a wider surface.
+/// under way — the verbs took [HistoryManager] past the six hundred lines
+/// the class ratchet holds it to (2026-09-26). The same library, so it
+/// works the stack directly rather than through a wider surface.
 class HistoryGestures {
   HistoryGestures._(this._history);
 
   final HistoryManager _history;
 
-  /// Every entry the history has pushed, and every one [retractSince] took
-  /// back, ever — what [mark] counts by, because the stack's length stops
-  /// moving once the deep end trims.
+  /// Every entry the history has pushed, ever — what a line counts what was
+  /// pushed since it began by ([HistoryLine.adopt]).
   int _pushed = 0;
-  int _retracted = 0;
+
+  /// When each entry was pushed, as [_pushed] counted it.
+  final Expando<int> _pushedAt = Expando('pushed at');
+
+  /// The line whose steps are not up yet — null while none holds any.
+  HistoryLine? _holding;
+
+  /// The line every step filed now goes into, whoever files it: the
+  /// gesture [open], until it closes.
+  HistoryLine? _open;
+
+  /// The line a [HistoryLine.write] is writing into, while it runs.
+  HistoryLine? _writing;
+
+  /// The steps a line holds, not up yet.
+  List<Command> get _held => _holding?._steps ?? const [];
+
+  /// How many steps a line holds, not up yet — what a test counts a hold's
+  /// grabs by, as [HistoryManager.undoCount] counts what is up.
+  @visibleForTesting
+  int get heldSteps => _held.length;
 
   /// Runs [body] as ONE entry — a gesture that writes many rows in ONE
-  /// event (the legend's twirl-all), so it needs no [mark]: the synchronous
-  /// run [HistoryManager.runAsOneStep] groups before anything is pushed.
-  /// ⛔Not [foldSince] after it: a stack at its depth cap trims under the
-  /// writes, and the fold leaves them a step per row.
+  /// event (the legend's twirl-all), so it needs no line: the synchronous
+  /// run [HistoryManager.runAsOneStep] groups before anything is filed.
   void runAsOneStep(String description, void Function() body) =>
       _history.runAsOneStep(description, body);
 
-  /// Where the stack stands now — taken before a gesture's first write.
-  HistoryMark get mark => (
-    pushed: _pushed,
-    retracted: _retracted,
-    depth: _history._undoStack.length,
-  );
-
-  /// Takes back the newest entry pushed since [since] and FORGETS it —
-  /// undone, and not handed to redo: a gesture withdrawing its own latest
-  /// write while it is still under way (F-182, 유저 09-25: 「레이어 라벨 버튼
-  /// 드래그 일괄조작, 원래 위치로 돌아가면 원복하도록」 — the rail swipe's
-  /// cursor drawing back over rows it painted). A redo of something the
-  /// hand already took back would be a step the user never made.
+  /// A gesture called [description] whose line takes EVERY step filed from
+  /// now until it closes ([HistoryLine.close]) — a span where nothing but
+  /// the gesture writes: a press on a rail and the sweep after it, a stroke
+  /// across a sheet's cells, an import or a bake behind the wait window.
   ///
-  /// ⛔Nothing at or below [since] is touched. False when the gesture has
-  /// nothing of its own left to take.
-  bool retractSince(HistoryMark since) {
-    if (!keepsSince(since)) {
+  /// ⛔It must close on every way out — a line left open takes everything
+  /// written after it into one entry.
+  HistoryLine open(String description) {
+    final line = HistoryLine._(this, description);
+    _open = line;
+    return line;
+  }
+
+  /// A line called [description] that takes only what its own
+  /// [HistoryLine.write] writes — a HOLD ([HistoryRun]), which lasts while
+  /// other hands write: one of theirs puts the line's steps so far up first,
+  /// so the stack keeps the order things were done in.
+  HistoryLine line(String description) => HistoryLine._(this, description);
+
+  /// Puts up what a line holds as its one entry, now — asked as an undo or
+  /// a redo is pressed, so the step taken is the gesture's, whole.
+  void putUp() {
+    final line = _holding;
+    if (line == null) {
+      return;
+    }
+    _holding = null;
+    final steps = List.of(line._steps);
+    line._steps.clear();
+    // Already executed, as a group's are: this files them, it runs nothing
+    // a second time.
+    final step = oneStepOf(line.description, steps)!;
+    _history._push(step);
+    _history.windows.fold(step, steps);
+    _history._made.fold(step, steps);
+  }
+
+  /// Takes [step] into the line it belongs to — the one writing, or the one
+  /// open. False when it belongs to none: whatever a line held goes up
+  /// first, and the step after it.
+  bool _takeIn(Command step) {
+    final line = _writing ?? _open;
+    if (line == null) {
+      putUp();
       return false;
     }
-    final command = _history._undoStack.removeLast();
-    _history._made.undo(command);
-    dropPayloadsOf([command]);
-    _retracted += 1;
+    if (!identical(_holding, line)) {
+      putUp();
+      _holding = line;
+      _history._anEdit();
+    }
+    _history.windows.stamp(step);
+    line._steps.add(step);
+    _history._trimRetainedBytes();
     _history._changed();
     return true;
   }
 
-  /// Whether the stack holds an entry above [since] for [retractSince] to
-  /// take back — asked by an undo door before it opens, which must not
-  /// take anything to find out.
-  bool keepsSince(HistoryMark since) =>
-      _history._undoStack.length > since.depth;
+  int _writeInto(HistoryLine line, void Function() body) {
+    final before = identical(_holding, line) ? line._steps.length : 0;
+    final writing = _writing;
+    _writing = line;
+    try {
+      body();
+    } finally {
+      _writing = writing;
+    }
+    return identical(_holding, line) ? line._steps.length - before : 0;
+  }
 
-  /// Folds every entry pushed since [since] into ONE — for a gesture that
-  /// writes across many events, which [HistoryManager.runAsOneStep]'s
-  /// synchronous body cannot span: the rail's column swipe, whose press and
-  /// sweep land row by row (swipe-is-one-undo, 유저 08-28: 「일괄로 버튼
-  /// 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」).
-  ///
-  /// ⛔Only a run still whole: the entries pushed since [since] and not
-  /// taken back, exactly them, on top of the stack. An undo, a redo or the
-  /// deep end in between leaves something else there, and folding that
-  /// would take back what the gesture did not do — so the entries are left
-  /// as they are.
-  void foldSince(HistoryMark since, String description) {
-    final stack = _history._undoStack;
-    final kept = (_pushed - since.pushed) - (_retracted - since.retracted);
-    // Fewer than two is one step already, or none — [oneStepOf]'s first
-    // two answers, with nothing to re-file.
-    if (kept < 2 || stack.length != since.depth + kept) {
+  void _takeBack(HistoryLine line, int steps) {
+    if (!identical(_holding, line)) {
       return;
     }
-    final run = stack.sublist(since.depth);
-    stack.removeRange(since.depth, stack.length);
-    // Already executed, as a group's are: this re-files them, it runs
-    // nothing a second time.
-    final folded = oneStepOf(description, run)!;
-    _history.places.stamp(folded);
-    _history.windows.fold(folded, run);
-    _history._made.fold(folded, run);
-    stack.add(folded);
+    for (var left = steps; left > 0 && line._steps.isNotEmpty; left -= 1) {
+      final step = line._steps.removeLast();
+      _history._made.undo(step);
+      dropPayloadsOf([step]);
+    }
+    if (line._steps.isEmpty) {
+      _holding = null;
+    }
     _history._changed();
   }
+
+  bool _adopt(HistoryLine line) {
+    final stack = _history._undoStack;
+    final top = stack.lastOrNull;
+    if (top == null ||
+        _pushed != line._since + 1 ||
+        _pushedAt[top] != _pushed ||
+        _holding != null) {
+      return false;
+    }
+    stack.removeLast();
+    _holding = line;
+    line._steps.add(top);
+    _history._changed();
+    return true;
+  }
+
+  void _close(HistoryLine line) {
+    if (identical(_open, line)) {
+      _open = null;
+    }
+    if (identical(_holding, line)) {
+      putUp();
+    }
+  }
+
+  /// Lets go of what a line holds without putting it up — the history is
+  /// emptied under it.
+  void _drop() {
+    final line = _holding;
+    if (line == null) {
+      return;
+    }
+    _holding = null;
+    dropPayloadsOf(line._steps);
+    line._steps.clear();
+  }
+}
+
+/// One gesture's ONE entry while it is under way ([HistoryGestures]): the
+/// steps it has written, not up yet.
+final class HistoryLine {
+  HistoryLine._(this._gestures, this.description)
+    : _since = _gestures._pushed;
+
+  final HistoryGestures _gestures;
+
+  /// What the entry is called once it is up.
+  final String description;
+
+  /// The steps written into this line and not up yet.
+  final List<Command> _steps = [];
+
+  /// Every entry pushed before this line began ([adopt]).
+  final int _since;
+
+  /// The steps this line holds: written, not taken back, not up yet.
+  int get written => identical(_gestures._holding, this) ? _steps.length : 0;
+
+  /// Runs [body], and takes what it files into this line — the line's own
+  /// steps. How many it wrote.
+  int write(void Function() body) => _gestures._writeInto(this, body);
+
+  /// Takes the newest [steps] back and FORGETS them — undone, and not
+  /// handed to redo: a gesture withdrawing its own latest write while it is
+  /// still under way (F-182, 유저 09-25: 「레이어 라벨 버튼 드래그 일괄조작,
+  /// 원래 위치로 돌아가면 원복하도록」 — the rail swipe's cursor drawing back
+  /// over rows it painted; F-377, a hold's grab taken back). A redo of
+  /// something the hand already took back would be a step the user never
+  /// made.
+  void takeBack(int steps) => _gestures._takeBack(this, steps);
+
+  /// Takes the ONE entry another hand filed since this line began into it,
+  /// as its first step — where it is all that was filed, and still on top.
+  /// Whether it did.
+  bool adopt() => _gestures._adopt(this);
+
+  /// Puts what the line holds up as ONE entry, and ends it.
+  void close() => _gestures._close(this);
 }
 
 /// What each step of a [HistoryManager] made that its own undo does not

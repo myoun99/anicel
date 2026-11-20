@@ -40,6 +40,11 @@ class ContentScrollbar extends StatefulWidget {
   /// lists from code as well — or null for one this widget owns.
   final ScrollController? controller;
 
+  /// How much of the width the lane takes from the content where [context]
+  /// lays one out — what a panel that sizes itself across counts it as.
+  static double laneIn(BuildContext context) =>
+      AppScrollbarLaneScope.of(context);
+
   @override
   State<ContentScrollbar> createState() => _ContentScrollbarState();
 }
@@ -58,7 +63,7 @@ class _ContentScrollbarState extends State<ContentScrollbar> {
 
   @override
   Widget build(BuildContext context) {
-    final lane = AppScrollbarLaneScope.of(context);
+    final lane = ContentScrollbar.laneIn(context);
     final controller = _controller;
     // A STACK, not a Row: the content keeps deciding the size, exactly as it
     // did before the lane (a panel pumped somewhere unbounded still lays

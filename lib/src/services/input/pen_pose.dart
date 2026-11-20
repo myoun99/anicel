@@ -74,14 +74,14 @@ PenLean? recordedPenLean(Duration at, double azimuthDegrees) {
 /// 0..360 clockwise — null where nothing measured one (F-176-Q9, Clip
 /// Studio's ペン軸の回転).
 ///
-/// Only Windows' driver-side streams carry it ([PenSidecars.freshTwist]).
+/// Only Windows' driver-side streams carry it ([PenSidecars.twistOf]).
 /// Flutter's pointer has no field for it on any platform — the Windows
 /// embedder reads POINTER_PEN_INFO's rotation into a pan-zoom field that a
 /// pen's event never shows — and the macOS pen ledger records no rotation
 /// yet, so everywhere else this is null: the twist base turns nothing
 /// there, as 없음 does.
 double? penTwistOf(PointerEvent event) =>
-    _pointerCarriesLean ? null : PenSidecars.freshTwist();
+    _pointerCarriesLean ? null : PenSidecars.twistOf(event);
 
 /// The lean as [event]'s carrier states it, before the ledger's later
 /// measurement ([penLeanOf]).
@@ -91,7 +91,7 @@ PenLean? _carriedLean(PointerEvent event) {
     if (appKit != null) {
       return penLeanFromAppKitTilt(x: appKit.x, y: appKit.y);
     }
-    return PenSidecars.freshLean();
+    return PenSidecars.leanOf(event);
   }
   if (!PenSidecars.isPenKind(event.kind)) {
     return null;

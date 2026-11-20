@@ -8,6 +8,7 @@ import 'brush_tool_state.dart';
 import 'tool_press.dart';
 import 'transform_tool_options.dart';
 import '../widgets/content_scrollbar.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../text/app_strings.dart';
 
@@ -258,7 +259,13 @@ class _SubToolTile extends StatelessWidget {
           size: 18,
           color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
         ),
-        title: Text(editorActionLabel(actionId)),
+        // One line, the guide rows' and the settings names' rule: a name
+        // longer than its room ends in … and its tooltip says it whole.
+        // 🗣️유저 2026-11-20 「한 줄 + 넘치면 …」 (card
+        // a-long-word-breaks-mid-word-in-the-tool-list-at-the-floor-width,
+        // Q1). ↩️It wrapped, and a word longer than the row broke in its
+        // middle — 「Transform / ation libre」.
+        title: EllipsisText(editorActionLabel(actionId), maxLines: 1),
         trailing: ShortcutKeysText(
           actionIds: [actionId],
           enabled: pressed != null,

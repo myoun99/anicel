@@ -1,32 +1,28 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/timesheet_words.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
 import '../sheet/sheet_strata.dart';
 import '../text/app_face.dart';
 import '../sliced_value_listenable_builder.dart'
     show SlicedValueListenableScope;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timesheet_document_painter.dart';
-import 'timesheet_ink_controller.dart';
-import 'timesheet_ink_layer.dart' show timesheetInkWindows;
+import 'timesheet_ink_layer.dart' show TimesheetInkScreens;
 
 /// The timesheet through the sheets' one shell ([SheetStrata]): the
-/// printed form, the values and the saved ink, each baked on its own.
+/// printed form and the values, each baked on its own. Its saved ink is
+/// not a stratum: the engine shows it over them ([TimesheetInkScreens]),
+/// the brush switch on or off.
 ///
-/// The saved ink prints whatever the brush switch says — but for the
-/// windows a live brush view is showing ([ink]'s `live`), which stand down
-/// so translucent ink never composites twice. ⛔The sheet printed no ink
-/// of its own: its writing showed only through the brush's windows, so
-/// with the switch off it vanished while the conte's and the envelope's
-/// stayed (유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」).
+/// ⛔The sheet once printed no ink of its own: its writing showed only
+/// through the brush's windows, so with the switch off it vanished while
+/// the conte's and the envelope's stayed (유저 2026-09-26: 「다
+/// 통일해줘. 기능은 어차피 생길수있어」).
 class TimesheetStrata extends StatelessWidget {
   const TimesheetStrata({
     super.key,
@@ -35,8 +31,6 @@ class TimesheetStrata extends StatelessWidget {
     required this.words,
     required this.dragPreview,
     required this.cutId,
-    required this.stroking,
-    this.ink,
     this.imageFor,
     this.imageRepaint,
   });
@@ -58,16 +52,8 @@ class TimesheetStrata extends StatelessWidget {
   /// it already previewed.
   final CutId cutId;
 
-  /// Raised while a stroke is in progress on the sheet.
-  final ValueListenable<bool> stroking;
-
-  /// The saved ink, and whether the live brush layer is showing its
-  /// windows; null prints none.
-  final ({TimesheetInkController controller, bool live})? ink;
-
-  /// The pool files the sheet's pictures are drawn from — the ink's photos
-  /// (I-97) and an XDTS sheet's logo (I-162-Q5) — and what says one has
-  /// landed, for the strata that print them.
+  /// The pool files the sheet's pictures are drawn from — an XDTS sheet's
+  /// logo (I-162-Q5) — and what says one has landed.
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
@@ -112,12 +98,10 @@ class TimesheetStrata extends StatelessWidget {
           return SheetStrata(
             sheet: 'timesheet',
             painters: _painters(context, printed),
-            liveNow: (stratum) => switch (stratum) {
-              SheetStratum.content => printed.slice != committed,
-              SheetStratum.ink => stroking.value,
-              SheetStratum.form || SheetStratum.picture => false,
-            },
-            liveChanges: Listenable.merge([printed, stroking]),
+            liveNow: (stratum) =>
+                stratum == SheetStratum.content &&
+                printed.slice != committed,
+            liveChanges: printed,
           );
         },
       );
@@ -136,10 +120,6 @@ class TimesheetStrata extends StatelessWidget {
     TimesheetDocumentPainter painterOf(
       SheetStratum stratum, {
       ValueListenable<TimelineDragPreview?>? dragPreview,
-      List<SheetInkWindow> ink = const [],
-      BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor,
-      Set<BrushFrameKey> liveInkKeys = const {},
-      Listenable? inkRepaint,
       Listenable? imageRepaint,
     }) => TimesheetDocumentPainter(
       document: layout.document,
@@ -151,18 +131,9 @@ class TimesheetStrata extends StatelessWidget {
       words: words,
       dragPreview: dragPreview,
       cutId: cutId,
-      ink: [for (final window in ink) window.mark],
-      inkSurfaceFor: inkSurfaceFor,
-      liveInkKeys: liveInkKeys,
       imageFor: imageFor,
-      inkRepaint: inkRepaint,
       imageRepaint: imageRepaint,
     );
-    final ink = this.ink;
-    // The walk the live brush layer mounts its windows from.
-    final windows = ink == null
-        ? const <SheetInkWindow>[]
-        : timesheetInkWindows(layout: layout, cutId: cutId);
     return {
       SheetStratum.form: painterOf(SheetStratum.form),
       // The values print a picture too, where the sheet prints a logo.
@@ -171,17 +142,6 @@ class TimesheetStrata extends StatelessWidget {
         dragPreview: printed,
         imageRepaint: _valuesHear,
       ),
-      if (ink != null)
-        SheetStratum.ink: painterOf(
-          SheetStratum.ink,
-          ink: windows,
-          inkSurfaceFor: (key) => ink.controller.surfaceFor(null, key),
-          liveInkKeys: ink.live
-              ? {for (final window in windows) window.key}
-              : const {},
-          inkRepaint: ink.controller,
-          imageRepaint: imageRepaint,
-        ),
     };
   }
 }

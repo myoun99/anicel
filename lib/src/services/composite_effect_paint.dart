@@ -245,7 +245,9 @@ _PaintPart _paintPartOf(ResolvedLayerEffect effect, {ui.Rect? paper}) {
     EffectKind.plugin => _pluginPart(effect, paper),
     // A sound's filter is no paint: its sample is a no-op, caught above
     // ([EffectKind.filtersSound]).
-    EffectKind.equalizer || EffectKind.compressor => const _NoPart(),
+    EffectKind.equalizer ||
+    EffectKind.compressor ||
+    EffectKind.noiseRemoval => const _NoPart(),
   };
 }
 

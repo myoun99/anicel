@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
+import '../../../core/telling.dart';
 import '../../../models/bitmap_surface.dart';
 import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
@@ -93,7 +94,7 @@ class _Holding {
     this.cel, {
     required HistoryGestures? gestures,
     this.celMade,
-  }) : boxSteps = gestures == null ? null : HistoryRun(gestures);
+  }) : boxSteps = gestures == null ? null : HistoryRun(gestures, 'Set text');
 
   final CelTextSession session;
   final CelTextCel cel;
@@ -119,7 +120,7 @@ class _Holding {
   _StepOf? owed;
 
   /// The box lets go: what it landed is ONE step.
-  void closeBoxSteps() => boxSteps?.end('Set text');
+  void closeBoxSteps() => boxSteps?.end();
 
   /// For a text begun by the press that MADE its cel: the run that press
   /// began ([CelTextTool.beginRun]), which the text's first landing joins
@@ -153,11 +154,6 @@ class _Holding {
   /// its cel's drawing, and for the tool it is no text from the moment
   /// this is set ([CelTextTool.takeableOn]).
   bool becomesDrawing = false;
-}
-
-/// Tells of one thing, and holds nothing.
-class _Telling extends ChangeNotifier {
-  void tell() => notifyListeners();
 }
 
 /// THE TEXT TOOL'S HAND (R9-rest): the one text it holds, how it holds it,
@@ -227,7 +223,7 @@ class CelTextTool extends ChangeNotifier {
 
   /// Told when the cross is carried ([carryCross]).
   Listenable get crossCarried => _crossCarried;
-  final _Telling _crossCarried = _Telling();
+  final Telling _crossCarried = Telling();
 
   /// Whether a carry of the text in hand is under way ([carry]).
   bool get carrying => _held?.carry != null;
@@ -338,7 +334,9 @@ class CelTextTool extends ChangeNotifier {
   /// is no history.
   HistoryRun? beginRun() {
     final gestures = host.gestures;
-    return gestures == null ? null : (HistoryRun(gestures)..begin());
+    return gestures == null
+        ? null
+        : (HistoryRun(gestures, 'Set text on a new frame')..begin());
   }
 
   /// Starts a text on [cel] at [anchor] and takes it by its letters — as

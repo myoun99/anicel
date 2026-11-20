@@ -43,7 +43,8 @@ void main() {
 
   test('a run waits while the window is open, says for whom and till when '
       'once, and runs once it is closed', () async {
-    final open = openTheWindow(line, who: '브러시  측정', lasting: thirty);
+    final (window: open, opened: _) =
+        openTheWindow(line, who: '브러시  측정', lasting: thirty);
     Timer(const Duration(milliseconds: 80), () => closeTheWindow(line));
 
     final (:said, :ranClosed) = await runIn();
@@ -125,6 +126,69 @@ void main() {
     expect(said.last, contains('open — 브러시 측정'));
     expect(ask(['close']), 0);
     expect(openWindow(line), isNull);
+  });
+
+  group('🔒one window, its opener\'s — a second measurement neither takes '
+      'it over nor closes it (a-second-measurement-window-overwrites-the-'
+      'first)', () {
+    final said = <String>[];
+    int ask(List<String> args) =>
+        windowCommand(line, args, describe: (_) => const [], say: said.add);
+    setUp(said.clear);
+
+    test('another name opens nothing while it is open, and is told whose '
+        'it is and till when', () {
+      expect(ask(['10', '타임라인/콘티', '측정']), 0);
+      final first = openWindow(line)!;
+
+      expect(ask(['25', '보드/인프라']), 1);
+
+      expect(openWindow(line), first);
+      expect(said.last, contains("타임라인/콘티 측정's, till"));
+      expect(said.last, contains('not opened'));
+    });
+
+    test('its own name extends it', () {
+      expect(ask(['10', '보드/인프라']), 0);
+      final first = openWindow(line)!;
+
+      expect(ask(['25', '보드/인프라']), 0);
+
+      expect(openWindow(line)!.until.isAfter(first.until), isTrue);
+    });
+
+    test('a window past its deadline holds no name off', () {
+      openTheWindow(
+        line,
+        who: '잊은 창',
+        lasting: thirty,
+        now: DateTime.now().subtract(const Duration(hours: 1)),
+      );
+
+      expect(ask(['10', '보드/인프라']), 0);
+
+      expect(openWindow(line)?.who, '보드/인프라');
+    });
+
+    test('a name closes only its own window', () {
+      expect(ask(['10', '타임라인/콘티']), 0);
+
+      expect(ask(['close', '보드/인프라']), 1);
+      expect(openWindow(line)?.who, '타임라인/콘티');
+      expect(said.last, contains('not closed'));
+
+      expect(ask(['close', '타임라인/콘티']), 0);
+      expect(openWindow(line), isNull);
+    });
+
+    test('a close with no name closes whatever is open — 관제 clearing a '
+        'window its opener left', () {
+      expect(ask(['10', '타임라인/콘티']), 0);
+
+      expect(ask(['close']), 0);
+
+      expect(openWindow(line), isNull);
+    });
   });
 
   group('⚠️two readers, not three — the shell reads the same file and says '

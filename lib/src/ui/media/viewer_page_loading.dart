@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/app_spinner.dart';
+
 /// What a surface showing a document's pages stands at its middle while a
 /// page it shows has no picture yet — the file still opening, or the page
 /// not drawn yet.
@@ -13,7 +15,8 @@ import 'package:flutter/material.dart';
 /// cache ([PageRasters]). The canvas stands the same one while a frame it
 /// shows waits for the engine (`FrameWaitMark`, gpu-canonical-store-Q12).
 ///
-/// The app's spinner, as its progress window has it, and no words. It
+/// The app's spinner ([AppSpinner]), as its progress window has it, and no
+/// words. It
 /// takes no press — what the hand does goes to the page under it — and
 /// turns on a layer of its own, so the page beside it is not painted again
 /// for every turn.
@@ -29,7 +32,7 @@ class ViewerPageLoading extends StatelessWidget {
         child: SizedBox(
           width: _box,
           height: _box,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: AppSpinner(),
         ),
       ),
     ),

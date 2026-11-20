@@ -99,6 +99,10 @@ void main() {
 
   TvpImportPlan plan(TvpImportClip parsed) => planTvpImport(
         parsed: parsed,
+        camera: planTvpCamera(
+          camera: parsed.camera,
+          frameCount: parsed.frameCount,
+        ),
         resolveFile: (relative) => relative,
         mint: mint(),
         unnamedMark: defaultUnnamedDrawingMark,
@@ -170,17 +174,15 @@ void main() {
 
     test('Add keeps the picture it has always drawn: the 発光 formula, until '
         'it is measured (brush-fidelity-Q15)', () {
-      for (final name in ['Add', 'Add (Gamma)']) {
-        final result = plan(
-          clip(
-            layers: [
-              layer('A', blendingMode: name, blocks: [block(0, 1)]),
-            ],
-          ),
-        );
-        final a = result.cut.layers.firstWhere((l) => l.name == 'A');
-        expect(a.blendMode, LayerBlendMode.glowAdd, reason: name);
-      }
+      final result = plan(
+        clip(
+          layers: [
+            layer('A', blendingMode: 'Add', blocks: [block(0, 1)]),
+          ],
+        ),
+      );
+      final a = result.cut.layers.firstWhere((l) => l.name == 'A');
+      expect(a.blendMode, LayerBlendMode.glowAdd);
     });
 
     test('an unmapped blending mode falls back to normal and says so', () {
@@ -301,8 +303,8 @@ void main() {
         sizeX: sizeX,
         sizeY: sizeY,
       );
-      return planTvpImport(
-        parsed: clip(
+      return plan(
+        clip(
           width: 2339,
           height: 1653,
           frameCount: 2,
@@ -313,9 +315,6 @@ void main() {
             positions: [pose],
           ),
         ),
-        resolveFile: (relative) => relative,
-        mint: mint(),
-        unnamedMark: defaultUnnamedDrawingMark,
       ).cut.camera;
     }
 

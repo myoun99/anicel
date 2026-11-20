@@ -313,7 +313,7 @@ void main() {
     // ⛔And the press is a no-op rather than an exception: a gate and a verb
     // that disagree is the bug T25 exists to prevent.
     expect(
-      () => pixelVerbsOf(session).runPixelVerb(CelPixelVerb.replaceColour),
+      () => pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.replaceColour).step(),
       returnsNormally,
     );
   });
@@ -408,7 +408,7 @@ void main() {
       );
       expect(alphaAt(session, 20, 20), 255, reason: 'fixture: ink is here');
 
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.clearPixels).step();
       await tester.pump();
       final hard = alphaAt(session, 38, 38);
 
@@ -421,7 +421,7 @@ void main() {
         argb: 0xFF000000,
         mask: const SelectionMaskOptions(featherPx: 8),
       );
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.clearPixels).step();
       await tester.pump();
       final feathered = alphaAt(session, 38, 38);
 
@@ -454,7 +454,7 @@ void main() {
         },
       );
 
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.binarize);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.binarize).step();
       await tester.pump();
       expect(pixelAt(session, 0, 0), [10, 20, 30, 0], reason: 'under half');
       expect(pixelAt(session, 1, 0), [10, 20, 30, 255]);
@@ -466,7 +466,7 @@ void main() {
       PixelVerbSettings.settings.value = const PixelVerbSettings(
         binarizeThreshold: 127,
       );
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.binarize);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.binarize).step();
       await tester.pump();
       expect(
         pixelAt(session, 0, 0),
@@ -485,14 +485,14 @@ void main() {
         mask: SelectionMaskOptions.none,
       );
 
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.deleteColour);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.deleteColour).step();
       await tester.pump();
       expect(alphaAt(session, 0, 0), 255, reason: 'at 0 two off is not it');
 
       PixelVerbSettings.settings.value = const PixelVerbSettings(
         deleteColourTolerance: 2,
       );
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.deleteColour);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.deleteColour).step();
       await tester.pump();
       expect(alphaAt(session, 0, 0), 0, reason: 'at 2 it is');
     });
@@ -594,8 +594,42 @@ void main() {
       );
       await tester.pump();
 
+      final asked = debugRowsReached;
       expect(pixelVerbsOf(session).transformCellKeys(), hasLength(6));
+      expect(
+        debugRowsReached - asked,
+        2,
+        reason: 'each row inside the folder asked once, not once a frame',
+      );
       expect(pixelVerbsOf(session).pixelVerbCellKeys(), isEmpty);
+    });
+
+    /// 🗣️관제 2026-11-20 (card opening-a-transform-box-holds-the-ui-over-
+    /// half-a-second, ⓐ): the box over 62 rows × 36 frames asked all 2,232
+    /// cels whether they hold a drawing, and kept the 62 the canvas shows.
+    testWidgets('what a range lifts where you stand asks the cels the canvas '
+        'shows alone whether they hold a drawing', (tester) async {
+      final session = await pump(tester);
+      final (:a, b: _) = await rowsInAFolder(tester, session);
+      session.frameRangeSelection.value = const TimelineFrameRangeSelection(
+        layerId: folder,
+        startIndex: 0,
+        endIndexExclusive: 3,
+      );
+      await tester.pump();
+      final verbs = pixelVerbsOf(session);
+      expect(
+        verbs.transformCellKeys(),
+        hasLength(6),
+        reason: '⛔premise: the range names six cels with a drawing',
+      );
+
+      final asked = debugDrawingsAsked;
+      expect(underfoot(verbs.transformCelsUnderfoot()), [
+        '${a.id.value}-cel-0',
+        'twin-cel-0',
+      ]);
+      expect(debugDrawingsAsked - asked, 2);
     });
 
     testWidgets('standing on a drawing row nothing is underfoot, and the '
@@ -832,7 +866,7 @@ void main() {
         argb: 0xFF000000,
         mask: SelectionMaskOptions.none,
       );
-      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.clearPixels);
+      pixelVerbsOf(session).pixelVerbStep(CelPixelVerb.clearPixels).step();
       await tester.pump();
     }
 

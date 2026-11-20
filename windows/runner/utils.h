@@ -1,6 +1,8 @@
 #ifndef RUNNER_UTILS_H_
 #define RUNNER_UTILS_H_
 
+#include <windows.h>
+
 #include <string>
 #include <vector>
 
@@ -11,6 +13,14 @@ void CreateAndAttachConsole();
 // Takes a null-terminated wchar_t* encoded in UTF-16 and returns a std::string
 // encoded in UTF-8. Returns an empty std::string on failure.
 std::string Utf8FromUtf16(const wchar_t* utf16_string);
+
+// Takes a std::string encoded in UTF-8 and returns a std::wstring encoded in
+// UTF-16 — empty for an empty one.
+std::wstring Utf16FromUtf8(const std::string& utf8_string);
+
+// The full path of the executable |process| runs — this one's for
+// GetCurrentProcess() — or empty where Windows does not say.
+std::wstring ExecutableOf(HANDLE process);
 
 // Gets the command line arguments passed in as a std::vector<std::string>,
 // encoded in UTF-8. Returns an empty std::vector<std::string> on failure.

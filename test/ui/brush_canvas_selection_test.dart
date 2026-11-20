@@ -1,13 +1,7 @@
+import 'dart:async' show Timer;
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
-import 'dart:ui' as ui show PointerChange, PointerData;
-import 'package:flutter/gestures.dart'
-    show
-        PointerDeviceKind,
-        PointerDownEvent,
-        PointerMoveEvent,
-        PointerUpEvent,
-        kPrimaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +13,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/shape_tool_options.dart';
@@ -33,9 +28,9 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show solveHomography;
 import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/native/qa_pen_points.dart';
-import 'package:anicel/src/services/input/pen_path.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/command.dart' show Command;
+import 'package:anicel/src/services/commands/brush_lift_move_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/stamp_carry.dart' show applyHomography;
 import 'package:anicel/src/services/layer_pose_matrix.dart'
@@ -58,6 +53,7 @@ import 'package:anicel/src/ui/canvas/float_warp.dart'
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart'
     show InputInspectorHost;
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
@@ -67,9 +63,11 @@ import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
+import '../helpers/the_points_the_os_saw.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
-import '../helpers/wait_window.dart' show stepBehind, windowBehind;
+import '../helpers/wait_window.dart'
+    show expectOneBar, stepBehind, watchTheBar, windowBehind;
 import '../helpers/surface_rgba_in_place.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
@@ -161,13 +159,15 @@ void main() {
     // …and where each cel of the ladder's row stands (④). Null = every cel
     // through the standing row's.
     LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf,
+    // The history the panel lands in. Null = a plain one.
+    HistoryManager? withHistory,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
       canvasSize: canvasSize,
     );
-    final history = HistoryManager();
+    final history = withHistory ?? HistoryManager();
     final commands = CanvasSelectionCommands();
     // 🚨★★★**ONE SINK, HELD.** It was built inline in `pumpWith`, so every
     // pump handed the panel a NEW one and nothing outside could tell the
@@ -1926,6 +1926,410 @@ void main() {
     );
   });
 
+  /// 🗣️F-615 (유저 2026-11-19): 「항상 하듯이 ui안멈추게 뒤에서 돌게?하고
+  /// 대상 프레임 수에 맞춰서 몇퍼센트인지 표시. 말한것들은 다른 진행창뜨는거에
+  /// 다 통일적용」. A confirm over a range works every cel past the one it
+  /// lifted out ahead of its step, behind its window, a cel at a time — and
+  /// the step lands what was worked out.
+  group('🗣️F-615: a confirm over a range works the range out ahead', () {
+    /// Frames two and three drawn at (45,45) beside the fixture's frame one,
+    /// a box opened over frame one — over [selecting], or with nothing
+    /// selected — and moved by (10,5), and [history] the panel lands in.
+    Future<
+      ({
+        BrushFrameEditingCoordinator coordinator,
+        List<BrushFrameKey> keys,
+        CanvasSelectionCommands commands,
+        Future<void> Function(CanvasTool tool) setTool,
+      })
+    >
+    moved(
+      WidgetTester tester,
+      HistoryManager history, {
+      CanvasSelectionRegion? selecting,
+    }) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => keys,
+        withHistory: history,
+      );
+      for (final key in keys.skip(1)) {
+        env.coordinator.selectFrame(key);
+        env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      }
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      if (selecting != null) {
+        env.commands.setRegion(selecting);
+        await tester.pump();
+      }
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+      return (
+        coordinator: env.coordinator,
+        keys: keys,
+        commands: env.commands,
+        setTool: env.setTool,
+      );
+    }
+
+    /// 🗣️F-615 (관제 2026-11-19, 절대명령 1): every other path that lands
+    /// the session takes 확정's door, and does what it is for once the
+    /// window is down — so what it writes stands behind no window (F-566).
+    final selection = CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 20, top: 20, right: 70, bottom: 70),
+    );
+
+    testWidgets('a deselect lands the range behind the window first, and '
+        'deselects as an entry no window stood over', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history, selecting: selection);
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(tester, () async => env.commands.deselect()),
+        isNotNull,
+      );
+      expectOneBar(told, [2 / 3, 1]);
+      expect(history.derivesAtTheStep, [0, 1, 1]);
+      expect(env.commands.region, isNull, reason: 'it deselected');
+      expect(
+        history.stepBehind(undo: true),
+        isNull,
+        reason: 'the deselect is undone at once — no window stood over it',
+      );
+      env.coordinator.selectFrame(env.keys[2]);
+      expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+    });
+
+    testWidgets('an inverse lands the range behind the window first, and '
+        'inverts what the landing left', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history, selecting: selection);
+      final pasteboard = env.coordinator.sessionStore.canvasSize.pasteboardAt(
+        PasteboardReach.whole,
+      );
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(
+          tester,
+          () async => env.commands.invertSelection(
+            pasteboard: pasteboard,
+            reach: InvertReach.pasteboard,
+          ),
+        ),
+        isNotNull,
+      );
+      expectOneBar(told, [2 / 3, 1]);
+      expect(history.derivesAtTheStep, [0, 1, 1]);
+      final inverse = env.commands.region!;
+      expect(
+        inverse.containsPoint(CanvasPoint(x: 25, y: 22)),
+        isTrue,
+        reason: 'the inverse of the outline the box moved away from there',
+      );
+      expect(inverse.containsPoint(CanvasPoint(x: 60, y: 60)), isFalse);
+      expect(
+        history.stepBehind(undo: true),
+        isNull,
+        reason: 'the inverse is undone at once — no window stood over it',
+      );
+    });
+
+    testWidgets('a switch to another selecting tool lands the range behind '
+        'the window', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history);
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(tester, () async {
+          await env.setTool(CanvasTool.select);
+        }),
+        isNotNull,
+      );
+      expectOneBar(told, [2 / 3, 1]);
+      expect(history.derivesAtTheStep, [0, 1, 1]);
+      env.coordinator.selectFrame(env.keys[2]);
+      expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+    });
+
+    testWidgets('over one cel the door lands at once, and the deselect '
+        'follows in the same call', (tester) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      env.commands.setRegion(selection);
+      await tester.pump();
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(tx: 10, ty: 5),
+      );
+      await tester.pump();
+
+      env.commands.deselect();
+
+      expect(
+        env.commands.region,
+        isNull,
+        reason: 'no window to wait for, so nothing waited',
+      );
+      await tester.pump();
+      expect(find.byType(AppProgressDialog), findsNothing);
+    });
+
+    testWidgets('a session that holds no change lands on nothing — a '
+        'deselect over the range stands behind no window', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => keys,
+      );
+      for (final key in keys.skip(1)) {
+        env.coordinator.selectFrame(key);
+        env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      }
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.setRegion(selection);
+      await tester.pump();
+      env.commands.beginTransform();
+      await tester.pump();
+      expect(env.commands.movePending, isTrue, reason: '⛔premise: lifted');
+
+      expect(
+        await windowBehind(tester, () async => env.commands.deselect()),
+        isNull,
+      );
+      expect(env.commands.region, isNull);
+    });
+
+    testWidgets('it tells the range\'s share a cel at a time, and its step '
+        'makes none of what was made ahead', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history);
+
+      final told = watchTheBar(tester);
+      expect(
+        await windowBehind(tester, () async => env.commands.applyTransform()),
+        isNotNull,
+      );
+      // Frame one is the lift's own; frames two and three, a third each.
+      expectOneBar(told, [2 / 3, 1]);
+      expect(
+        history.derivesAtTheStep,
+        [0, 1, 1],
+        reason:
+            'the step came to frames two and three made — the lifted cel\'s '
+            'own is made in it',
+      );
+      expect(history.derivesAfterIt, [1, 1, 1], reason: 'and made no more');
+      env.coordinator.selectFrame(env.keys[2]);
+      expect(inkAt(env.coordinator, 55, 50), isNonZero, reason: 'it moved');
+      expect(inkAt(env.coordinator, 45, 45), 0, reason: 'and left nothing');
+    });
+
+    testWidgets('a cel drawn on after it was worked out is worked again '
+        'over what it holds — its new ink moves with the rest', (tester) async {
+      final history = _StepsKept();
+      final env = await moved(tester, history);
+      final drawnOn = env.keys[1];
+      var drawn = false;
+
+      watchTheBar(
+        tester,
+        onShare: (share) {
+          // Frame two's share told: it is worked out and made, and the step
+          // has not come. ⚠️Straight into the cel, not by standing on it —
+          // a walk would carry the session off.
+          if (drawn || share < 0.5) {
+            return;
+          }
+          drawn = true;
+          env.coordinator.restoreSurfaceSnapshot(
+            drawnOn,
+            env.coordinator.deriveSurfaceWith([dab(30, 30)], key: drawnOn)!,
+          );
+        },
+      );
+      await windowBehind(tester, () async => env.commands.applyTransform());
+
+      expect(drawn, isTrue, reason: '⛔premise: drawn on behind the window');
+      expect(
+        history.derivesAtTheStep,
+        [0, 0, 1],
+        reason: 'frame two was worked again in the step, frame three not',
+      );
+      env.coordinator.selectFrame(drawnOn);
+      expect(
+        inkAt(env.coordinator, 40, 35),
+        isNonZero,
+        reason: 'the ink drawn on it moved with the rest of its picture',
+      );
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        0,
+        reason: '⛔left behind is a landing worked out over the old picture',
+      );
+    });
+
+    testWidgets('the bar closes full when the range ends on a cel already '
+        'landing', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        // The standing cel named again last: it tells no share of its own.
+        transformTargetKeys: () => [keys[0], keys[1], keys[0]],
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+
+      final told = watchTheBar(tester);
+      await windowBehind(tester, () async => env.commands.applyTransform());
+      expectOneBar(told, [2 / 3, 1]);
+    });
+
+    // A cel that lands nothing has no making to wait on, so nothing else
+    // gives the screen its turn after it.
+    testWidgets('🚨the screen has its turn between two cels it works out — '
+        'cels that land nothing too', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        // Frames two and three were never drawn on.
+        transformTargetKeys: () => keys,
+      );
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+
+      final events = <String>[];
+      watchTheBar(
+        tester,
+        onShare: (share) {
+          if (share <= 0) {
+            return;
+          }
+          events.add('cel');
+          Timer.run(() => events.add('turn'));
+        },
+      );
+      await windowBehind(tester, () async => env.commands.applyTransform());
+
+      final cels = [
+        for (final (index, event) in events.indexed)
+          if (event == 'cel') index,
+      ];
+      expect(cels, hasLength(2), reason: '⛔premise: two cels told');
+      expect(
+        events.sublist(cels[0], cels[1]),
+        contains('turn'),
+        reason: '$events',
+      );
+    });
+
+    // Linked rows are windows onto one bank, so a range can name one cel
+    // under two row keys — and the two rows may be placed differently. The
+    // cel lands once, through the first row that lands it.
+    testWidgets('a cel two rows name lands once, through the first of them',
+        (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final linked = BrushFrameKey(
+        projectId: BrushCanvasFixture.projectId,
+        trackId: BrushCanvasFixture.trackId,
+        cutId: BrushCanvasFixture.cutId,
+        layerId: const LayerId('linked-row'),
+        frameId: keys[1].frameId,
+      );
+      // The linked row shows the cel twice its size: a move of (10,5) on
+      // the canvas is (5,2.5) in the cel through it.
+      final doubled = (
+        pose: TransformPose(
+          center: CanvasPoint(x: 0, y: 0),
+          scaleX: 2,
+          scaleY: 2,
+        ),
+        anchorPoint: CanvasPoint(x: 0, y: 0),
+      );
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => [keys[0], keys[1], linked],
+        cellPlacementOf: (key) => key == linked ? doubled : null,
+      );
+      env.coordinator.frameStore.setLinkResolver(
+        (key) => key == linked ? keys[1] : key,
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
+      );
+      await tester.pump();
+      await windowBehind(tester, () async => env.commands.applyTransform());
+
+      env.coordinator.selectFrame(keys[1]);
+      expect(
+        inkAt(env.coordinator, 55, 50),
+        isNonZero,
+        reason: 'moved (10,5) — through its own, unplaced row',
+      );
+      expect(
+        inkAt(env.coordinator, 50, 47),
+        0,
+        reason: '⛔(5,2.5) is the linked row landing it over the first',
+      );
+    });
+  });
+
   /// 🚨★★★**H41 — WITH NOTHING SELECTED, EVERY CEL MOVES ITS WHOLE PICTURE.**
   ///
   /// 🗣️유저 2026-09-24, 실기: 「현재 프레임의 그림을 기준으로 선택해서 다른
@@ -3097,6 +3501,69 @@ void main() {
     );
     expect(inkAt(env.coordinator, 40, 35), 0, reason: '옮겨진 자리는 비었다');
   });
+
+  /// 🗣️undoing-every-box-step-leaves-the-session-moved (관제 2026-11-19, from
+  /// F-615): a box dragged and then stepped back to where it opened holds
+  /// no change — its ants read as before the drag, and a 확정 or a deselect
+  /// over a range lands nothing, so neither stands behind the wait window.
+  for (final press in ['확정', 'deselect']) {
+    testWidgets('a box stepped back to where it opened holds no change — '
+        '$press stands behind no window', (tester) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => keys,
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+      );
+      for (final key in keys.skip(1)) {
+        env.coordinator.selectFrame(key);
+        env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45)]);
+      }
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(36.5, 36.5),
+        byCanvas: const Offset(10, 0),
+      );
+      expect(
+        antsOnScreen(tester)?.sessionHasChanges,
+        isTrue,
+        reason: '⛔premise: a dragged box is red (H28)',
+      );
+
+      expect(env.commands.undoTransformStep(), isTrue);
+      await tester.pump();
+      expect(
+        env.commands.transformValues!.tx,
+        0,
+        reason: '⛔premise: the drag is stepped back',
+      );
+
+      // Read together, so a red run shows all three at once.
+      final redAfter = antsOnScreen(tester)?.sessionHasChanges;
+      final entries = env.history.undoCount;
+      final waited = await windowBehind(
+        tester,
+        () async => press == '확정'
+            ? env.commands.applyTransform()
+            : env.commands.deselect(),
+      );
+      expect(
+        (
+          red: redAfter,
+          waited: waited != null,
+          landed: env.history.undoCount - entries,
+        ),
+        (red: false, waited: false, landed: 0),
+        reason:
+            'nothing the box holds is a change any more: its ants read so, '
+            'and nothing lands, so nothing waits',
+      );
+    });
+  }
 
   /// 🚨★★★**⑤변형 중에는 조작 하나가 한 걸음이다.**
   ///
@@ -7319,7 +7786,6 @@ void main() {
     'H56: a lasso traces every point the OS merged into a move, as the '
     'same points moved one by one',
     (tester) async {
-      addTearDown(() => QaPenPoints.debugTake = null);
       // Each move a list of the points the OS saw of its message — the
       // newest its own — paired as the door pairs a datum.
       Future<CanvasSelectionRegion?> lasso(List<List<Offset>> moves) async {
@@ -7328,59 +7794,11 @@ void main() {
           shapeKind: CanvasShapeKind.lasso,
         );
         final origin = tester.getTopLeft(find.byKey(layerKey));
-        tester.binding.handlePointerEvent(
-          PointerDownEvent(
-            pointer: 9,
-            kind: PointerDeviceKind.mouse,
-            buttons: kPrimaryButton,
-            position: origin + const Offset(10, 10),
-          ),
-        );
-        await tester.pump();
-        var before = origin + const Offset(10, 10);
-        for (final points in moves) {
-          final at = origin + points.last;
-          final move = PointerMoveEvent(
-            pointer: 9,
-            kind: PointerDeviceKind.mouse,
-            buttons: kPrimaryButton,
-            position: at,
-            delta: at - before,
-          );
-          before = at;
-          QaPenPoints.debugTake = (_, _) => [
-            for (final point in points)
-              (
-                x: (origin + point).dx,
-                y: (origin + point).dy,
-                at: Duration.zero,
-                pressure: null,
-                tilt: null,
-                orientation: null,
-                driven: null,
-              ),
-          ];
-          PenPath.arrived(
-            move,
-            ui.PointerData(
-              change: ui.PointerChange.move,
-              physicalX: at.dx,
-              physicalY: at.dy,
-            ),
-            1,
-          );
-          QaPenPoints.debugTake = null;
-          tester.binding.handlePointerEvent(move);
-          await tester.pump();
-        }
-        tester.binding.handlePointerEvent(
-          PointerUpEvent(
-            pointer: 9,
-            kind: PointerDeviceKind.mouse,
-            position: before,
-          ),
-        );
-        await tester.pump();
+        await dragThroughMergedMoves(tester, origin + const Offset(10, 10), [
+          for (final points in moves) [
+            for (final point in points) origin + point,
+          ],
+        ]);
         return env.commands.region;
       }
 
@@ -9379,4 +9797,19 @@ void main() {
       }
     });
   });
+}
+
+/// A history that keeps how many landings each move landing of a step had
+/// made as the step came to it, and once it had landed.
+class _StepsKept extends HistoryManager {
+  final derivesAtTheStep = <int>[];
+  final derivesAfterIt = <int>[];
+
+  @override
+  void executeAsOneStep(String description, List<Command> commands) {
+    final landings = commands.whereType<BrushLiftMoveHistoryCommand>();
+    derivesAtTheStep.addAll([for (final one in landings) one.derivesHere]);
+    super.executeAsOneStep(description, commands);
+    derivesAfterIt.addAll([for (final one in landings) one.derivesHere]);
+  }
 }

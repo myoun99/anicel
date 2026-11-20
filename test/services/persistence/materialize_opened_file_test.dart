@@ -79,16 +79,25 @@ void main() {
     final provider = Completer<bool>();
     FolderPicker.debugCoordinatedInPlaceReader = (_) => provider.future;
     final seen = <Duration>[];
+    final cloud = <bool>[];
 
     final opening = FolderPicker.materializeOpenedFile(
       path,
       within: null,
       step: const Duration(milliseconds: 5),
-      onWaiting: (waited, _) => seen.add(waited),
+      onWaiting: (waited, _, {required fromTheCloud}) {
+        seen.add(waited);
+        cloud.add(fromTheCloud);
+      },
       isCancelled: () => false,
     );
     await Future<void>.delayed(const Duration(milliseconds: 80));
     expect(seen, isNotEmpty, reason: 'the fetch is the wait a window draws');
+    expect(
+      cloud,
+      everyElement(isTrue),
+      reason: 'the provider holds the file — the cloud\'s words (F-621-Q2)',
+    );
     provider.complete(true);
 
     final source = await opening;
@@ -140,7 +149,7 @@ void main() {
       path,
       within: null,
       step: const Duration(seconds: 3),
-      onWaiting: (waited, _) => seen.add(waited),
+      onWaiting: (waited, _, {required fromTheCloud}) => seen.add(waited),
       isCancelled: () => false,
     );
 
@@ -272,6 +281,7 @@ void main() {
     final path = placeholder('watched.tvpp');
     FolderPicker.debugDownloadRequester = (_) async {};
     final seen = <Duration>[];
+    final cloud = <bool>[];
 
     // ⚠️A ROOMY deadline, because what is reported is now a CLOCK and not
     // the probe spacing's running total (F-141). With 20ms here a loaded
@@ -284,11 +294,20 @@ void main() {
         path,
         within: const Duration(milliseconds: 500),
         step: const Duration(milliseconds: 5),
-        onWaiting: (waited, _) => seen.add(waited),
+        onWaiting: (waited, _, {required fromTheCloud}) {
+          seen.add(waited);
+          cloud.add(fromTheCloud);
+        },
       ),
       throwsA(isA<FileSystemException>()),
     );
     expect(seen, isNotEmpty);
+    expect(
+      cloud,
+      everyElement(isTrue),
+      reason: 'a placeholder asked to come down — the cloud\'s words '
+          '(F-621-Q2)',
+    );
     expect(
       seen.first,
       greaterThan(Duration.zero),

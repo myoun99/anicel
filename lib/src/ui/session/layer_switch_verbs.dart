@@ -1,10 +1,12 @@
 import '../../services/editing/default_layer_helpers.dart';
 import '../../models/attached_layer_resolve.dart' show groupFoldOpen;
 import '../../models/attached_placement.dart';
+import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_kind_choices.dart' show canTurnInto;
 import '../../models/se_sound.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
@@ -12,6 +14,7 @@ import '../../services/commands/update_layer_clip_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
 import '../../services/project_lookup.dart'
     show
+        cutWritingRow,
         layerAnywhereOrNull,
         requireLayerAnywhere,
         rowTwirlsOf,
@@ -20,11 +23,10 @@ import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'active_cut_controllers.dart';
 import 'row_sweep.dart';
 import 'session_roles.dart';
-import 'storyboard_cursor.dart';
 
 /// THE LAYER SWITCHES — a row's eye, its mute, its audio, its blend mode
-/// (one row or many), the all-rows visibility and SE mute, and the
-/// target-kind toggle. Each is a command over the layer controller; the
+/// (one row or many), the all-rows visibility and SE mute, and a row's
+/// kind. Each is a command over the layer controller; the
 /// session stays the facade that names them.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP
@@ -38,15 +40,11 @@ class LayerSwitchVerbs {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required StoryboardCursor storyboardCursor,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _controllers = controllers,
-       _storyboardCursor = storyboardCursor;
-
-  final StoryboardCursor _storyboardCursor;
+       _controllers = controllers;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -325,37 +323,29 @@ class LayerSwitchVerbs {
     }
   }
 
-  bool get canToggleTargetLayerKind {
-    final targetLayer = _selection.activeLayer;
-    // Only the animation ⇄ storyboard pair; other kinds have their own
-    // toggles (SE) or are fixed (camera/instruction/attach rows).
-    if (targetLayer == null ||
-        isAttachedLayer(targetLayer) ||
-        targetLayer.kind != LayerKind.animation &&
-            targetLayer.kind != LayerKind.storyboard) {
-      return false;
-    }
-    if (targetLayer.kind == LayerKind.storyboard) {
-      return true;
-    }
-
-    // The cut's ONE conte ([holdsSingletonOfKind]) — the target is not a
-    // storyboard row here, so it cannot be the one found.
-    return !holdsSingletonOfKind(
-      _controllers.layerController.layers,
-      LayerKind.storyboard,
-    );
+  /// Whether [layerId]'s row can turn into [kind] now ([canTurnInto]) —
+  /// what its type button's menu offers (F-613).
+  bool canChangeLayerKind(LayerId layerId, LayerKind kind) {
+    final row = _rowInItsCut(layerId);
+    return row != null && canTurnInto(row.layer, kind, cut: row.cut);
   }
 
-  void toggleTargetLayerKind() {
-    final targetLayer = _selection.activeLayer;
-    if (targetLayer == null ||
-        _storyboardCursor.targetLayerStoryboardRefusal != null) {
+  /// Turns [layerId]'s row into [kind] where it [canChangeLayerKind] — the
+  /// type button's pick (F-613).
+  ///
+  /// ↩️The layer button's 「콘티 레이어」 row toggled the row stood on
+  /// between animation and storyboard; 🗣️F-613 replaced that door with the
+  /// type button (「레이어버튼의 콘티레이어로 변경은 입구 대체되니 삭제」),
+  /// and its fill is this verb's.
+  void changeLayerKind(LayerId layerId, LayerKind kind) {
+    final row = _rowInItsCut(layerId);
+    if (row == null ||
+        row.layer.kind == kind ||
+        !canTurnInto(row.layer, kind, cut: row.cut)) {
       return;
     }
-
-    final toStoryboard = targetLayer.kind != LayerKind.storyboard;
-    final nextKind = toStoryboard ? LayerKind.storyboard : LayerKind.animation;
+    final targetLayer = row.layer;
+    final toStoryboard = kind == LayerKind.storyboard;
 
     // A storyboard row TILES its cut, so a row that becomes one is filled
     // to cover before it changes kind — otherwise its holes would show as
@@ -367,7 +357,7 @@ class LayerSwitchVerbs {
     // carried over and nothing else — what the row wears went, its label
     // first (F-424). The panel is the birth's; the row stays the row.
     if (toStoryboard) {
-      final cut = _project.requireActiveCut;
+      final cut = row.cut;
       final filled = storyboardTimelineFilledToCover(
         timeline: targetLayer.timeline,
         cutDuration: cut.duration,
@@ -400,11 +390,25 @@ class LayerSwitchVerbs {
     }
 
     _project.cutCommandCoordinator.updateLayerKind(
-      cutId: _project.requireActiveCut.id,
+      cutId: row.cut.id,
       layerId: targetLayer.id,
-      kind: nextKind,
+      kind: kind,
     );
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
+  }
+
+  /// [layerId]'s row and the cut writing it — the cut stood in for the
+  /// timeline's rows, any cut for the conte rail's (I-73).
+  ({Layer layer, Cut cut})? _rowInItsCut(LayerId layerId) {
+    final project = _project.repository.requireProject();
+    final cutId = cutWritingRow(
+      project,
+      layerId,
+      standing: _project.activeCutId,
+    );
+    final cut = cutId == null ? null : _project.cutById(cutId);
+    final layer = cut?.layers.where((row) => row.id == layerId).firstOrNull;
+    return layer == null ? null : (layer: layer, cut: cut!);
   }
 }

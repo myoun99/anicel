@@ -47,7 +47,7 @@ impl Lift {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
-        let read = pages.source();
+        let read = pages.stored();
         let lift = include_str!("lift.wgsl");
         let sources = [TILE_WGSL, PREMULTIPLY_WGSL, &read, BYTE_WGSL, WALK_WGSL, lift];
         Some(Self {
@@ -72,6 +72,39 @@ impl Lift {
         self.run_by(engine, pool, cel, mask, whole, (self.pages.per_pass(), most))
     }
 
+    /// [`Self::run`], the body that asks waiting for no GPU: `then` is
+    /// told what the selection took on a thread of the engine's once the
+    /// GPU has said whether it took any ([`Engine::map_then`]) — or
+    /// nothing where the lift failed, and at once, here, where the walk
+    /// met no tile or nothing was submitted.
+    ///
+    /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second
+    /// (브러시/렌더링 2026-11-20): a box at rest lifts the cels it frames
+    /// ahead of the press, and each lift waited for that word on the
+    /// UI's thread (`Write::changed_then` has the numbers).
+    pub(crate) fn lifted_then(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        cel: &TileSet,
+        mask: &Mask,
+        whole: bool,
+        then: impl FnOnce(Option<Lifted>) + Send + 'static,
+    ) {
+        let cut = most(engine, mask).map(|most| (self.pages.per_pass(), most));
+        match cut.and_then(|cut| self.submitted_by(engine, pool, cel, mask, whole, cut)) {
+            None => then(None),
+            Some((rgba, None)) => then(Some(Lifted { rgba, anything: false })),
+            Some((rgba, Some(flag))) => {
+                let bytes = flag.size();
+                engine.map_then(engine.staged(&flag, bytes), move |mapped| {
+                    let read = |flag: wgpu::Buffer| Some(words(&flag.get_mapped_range(..).ok()?)[0] != 0);
+                    then(mapped.ok().and_then(read).map(|anything| Lifted { rgba, anything }));
+                });
+            }
+        }
+    }
+
     /// `run`, its passes binding `per_pass` pages and taking `most` tiles at
     /// most — a smaller device's passes, which the tests take.
     pub(super) fn run_by(
@@ -81,8 +114,29 @@ impl Lift {
         cel: &TileSet,
         mask: &Mask,
         whole: bool,
-        (per_pass, most): (usize, usize),
+        cut: (usize, usize),
     ) -> Option<Lifted> {
+        let (rgba, flag) = self.submitted_by(engine, pool, cel, mask, whole, cut)?;
+        let anything = match flag {
+            Some(flag) => words(&engine.read_buffer(&flag)?)[0] != 0,
+            None => false,
+        };
+        Some(Lifted { rgba, anything })
+    }
+
+    /// The lift submitted, its passes binding `per_pass` pages and taking
+    /// `most` tiles at most: the box's pixels, and the buffer the GPU
+    /// writes whether it took any to — none where the walk met no tile,
+    /// and nothing is submitted.
+    fn submitted_by(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        cel: &TileSet,
+        mask: &Mask,
+        whole: bool,
+        (per_pass, most): (usize, usize),
+    ) -> Option<(wgpu::Buffer, Option<wgpu::Buffer>)> {
         cut_by(&self.pages, (per_pass, most))?;
         let walk = walk(cel, pool.len(), Some(mask))?;
         let row = u64::from(mask.size.width) * 4;
@@ -92,7 +146,7 @@ impl Lift {
         let rgba = plane(engine, "lifted pixels", bytes.max(4));
         let anything = plane(engine, "lifted anything", 4);
         if walk.is_empty() {
-            return Some(Lifted { rgba, anything: false });
+            return Some((rgba, None));
         }
         // A pass reaches no more tile rows than it takes tiles, as the verbs'
         // do under a mask, and none tells the rows from none here either
@@ -135,8 +189,7 @@ impl Lift {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let anything = words(&engine.read_buffer(&anything)?)[0] != 0;
-        Some(Lifted { rgba, anything })
+        Some((rgba, Some(anything)))
     }
 }
 

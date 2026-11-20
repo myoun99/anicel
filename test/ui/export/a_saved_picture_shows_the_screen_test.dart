@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/sync_image_upload.dart'
+    show debugPictureOfUploads, pictureOfUploads;
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -662,7 +664,7 @@ void main() {
           ExportSizeMode.canvas,
           guideInk: guideInk,
         )!;
-        expect(at(await bytesOf(await row.draw()), 40, 40)[3], greaterThan(0));
+        expect(at((await row.draw()).pixels, 40, 40)[3], greaterThan(0));
       });
     });
 
@@ -681,7 +683,7 @@ void main() {
           guideInk: guideInk,
         );
         expect(row, isNotNull, reason: 'the names stand a row of their own');
-        final drawn = await bytesOf(await row!.draw());
+        final drawn = (await row!.draw()).pixels;
         expect(
           [for (var i = 3; i < drawn.length; i += 4) drawn[i]].any(
             (alpha) => alpha > 0,
@@ -689,6 +691,32 @@ void main() {
           isTrue,
           reason: 'the tag\'s letters lie in it',
         );
+      });
+    });
+
+    testWidgets('🚨its rows are read off the engine, none of them a picture '
+        'the door uploads — Impeller holds no texture of one till its raster '
+        'thread turns, and read back at once it was none (F-547 ⑦: '
+        '「Image was null.」)', (tester) async {
+      await tester.runAsync(() async {
+        final s = sessionOf();
+        ink(s, earlier, 40, 40);
+        ink(s, stood, 100, 100);
+        s.onionSkin.toggleLayerOnionSkin(rowId);
+        // The test runner is Skia and refuses every upload: told it
+        // uploads, the first picture through the door turns the run's
+        // door to drawing (`pictureOf`).
+        debugPictureOfUploads = true;
+        addTearDown(() => debugPictureOfUploads = null);
+
+        final rows = (await psdOf(s)).layers.map((row) => row.name);
+
+        expect(
+          rows,
+          containsAll([AppText.notation.exOnScreen, 'A']),
+          reason: '⛔premise: a row of the cut and the row shown over it',
+        );
+        expect(pictureOfUploads, isTrue);
       });
     });
   });

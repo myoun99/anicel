@@ -81,8 +81,9 @@ Future<void> _resizeActiveCutCanvas(
   EditorSessionManager session,
 ) => askAboutThenCommit<Cut, CanvasResizeRequest>(
   context,
-  // Gap state: no cut canvas to resize.
-  session.activeCutOrNull,
+  // The cuts the pick is about, opened on the first as 컷 설정 is
+  // ([CutVerbs.addressedCut]) — none in the gap state.
+  session.cutVerbs.addressedCut,
   dialog: (cut) => CanvasSizeDialog(
     initialSize: cut.canvasSize,
     onAdjustOnCanvas: () => session.canvasAdjust.begin(
@@ -94,11 +95,13 @@ Future<void> _resizeActiveCutCanvas(
     () => session.cutVerbs.resizeActiveCutCanvas(
       request.size,
       anchor: request.anchor,
+      fit: request.fit,
     ),
     title: AppText.strings.canvasSizeTitle,
     ahead: (report) => session.cutVerbs.resizeActiveCutCanvasAhead(
       request.size,
       anchor: request.anchor,
+      fit: request.fit,
       report: report,
     ),
   ),
@@ -122,13 +125,14 @@ Future<void> landCanvasAdjust(
     case CameraSizeDraft(:final size):
       session.camera.setProjectCameraSize(size);
       adjust.end();
-    case CanvasEdgesDraft(:final size, :final contentOffset):
+    case CanvasEdgesDraft(:final size, :final contentOffset, :final fit):
       await resizeBehindTheWaitWindow(
         context,
         () {
           session.cutVerbs.placeActiveCutCanvas(
             size,
             contentOffset: contentOffset,
+            fit: fit,
           );
           adjust.end();
         },
@@ -136,6 +140,7 @@ Future<void> landCanvasAdjust(
         ahead: (report) => session.cutVerbs.placeActiveCutCanvasAhead(
           size,
           contentOffset: contentOffset,
+          fit: fit,
           report: report,
         ),
       );

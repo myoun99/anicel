@@ -108,6 +108,7 @@ class TransportBar extends StatelessWidget {
     required this.currentFrame,
     required this.playing,
     required this.onSeek,
+    required this.onStep,
     required this.onPlayPause,
     this.range,
     this.sound,
@@ -136,6 +137,12 @@ class TransportBar extends StatelessWidget {
   /// a run writes what it shows: the track and the four steps stay where
   /// they are and are off.
   final ValueChanged<int>? onSeek;
+
+  /// A press on a step, by one frame either way — null where [onSeek] is.
+  /// Told as a step, not as the frame it goes to: the surface counts it
+  /// from where the playhead lands, and one pressed while a move waits for
+  /// its picture is taken in its turn (F-617, `MediaRun.stepBy`).
+  final ValueChanged<int>? onStep;
 
   /// Null when there is nothing to play — a still, a PDF: the button stays
   /// where it is and is off.
@@ -335,6 +342,7 @@ class TransportBar extends StatelessWidget {
   Widget _buttons(TransportRange? kept) {
     final strings = AppText.strings;
     final seek = _lastFrame > 0 ? onSeek : null;
+    final step = _lastFrame > 0 ? onStep : null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -352,7 +360,7 @@ class TransportBar extends StatelessWidget {
           tooltip: strings.transportPrevFrame,
           icon: const Icon(Icons.chevron_left),
           size: AppIconButtonSize.strip,
-          onPressed: seek == null ? null : () => seek(_clamp(currentFrame - 1)),
+          onPressed: step == null ? null : () => step(-1),
         ),
         AppIconButton(
           keyValue: _key('play'),
@@ -367,7 +375,7 @@ class TransportBar extends StatelessWidget {
           tooltip: strings.transportNextFrame,
           icon: const Icon(Icons.chevron_right),
           size: AppIconButtonSize.strip,
-          onPressed: seek == null ? null : () => seek(_clamp(currentFrame + 1)),
+          onPressed: step == null ? null : () => step(1),
         ),
         AppIconButton(
           keyValue: _key('last'),

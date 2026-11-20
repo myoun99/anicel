@@ -12,7 +12,7 @@
 // and if the rig reached back out for `selectCut` neither could be built.
 
 
-import 'package:flutter/foundation.dart' show Listenable;
+import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut_id.dart';
@@ -69,8 +69,10 @@ class PlaybackRig implements PlaybackRun {
     )
     stackOf,
     required Object Function() treeStamp,
+    required bool Function() framesInFlight,
   }) : _stackOf = stackOf,
        _treeStamp = treeStamp,
+       _framesInFlight = framesInFlight,
        _project = project,
        _selection = selection,
        _changes = changes,
@@ -114,6 +116,11 @@ class PlaybackRig implements PlaybackRun {
   /// cels ([FramePictures.treeStamp]).
   final Object Function() _treeStamp;
 
+  final bool Function() _framesInFlight;
+
+  @override
+  bool framesInFlight() => _framesInFlight();
+
   // ── what the screen shows a frame from ──────────────────────────────
 
   /// A frame as every screen shows it — the canvas a cut, the track stack
@@ -130,13 +137,18 @@ class PlaybackRig implements PlaybackRun {
       canvasSize: picture.cut.canvasSize,
       pasteboardReach: _project.repository.requireProject().pasteboardReach,
       paintPaper: picture.paintPaper,
-      paperBackground: _settings.projectBackground,
+      // As shown: a colour window's paper rides the channel the tree stamp
+      // holds (F-620-Q1).
+      paperBackground: _settings.shownPlanes.paper,
     ),
     line: playbackCache,
   );
 
   @override
   FramePictures get pictures => framePictures;
+
+  @override
+  ValueListenable<bool> get handOn => prerenderScheduler.handOn;
 
   /// Whether the canvas shows the run — a cut played alone, through the
   /// camera or not — and not the track stack, which shows the whole film.
@@ -169,6 +181,19 @@ class PlaybackRig implements PlaybackRun {
         // warmer resumes only in REAL pauses; per-tile abort granularity
         // covers whatever still collides at the resume boundary. A run
         // that PLAYS does not wait it out ([FrameDemand.yieldsToEditing]).
+        //
+        // 🔬AI 가 잰 값 — kept, the shortest that cost the pen nothing
+        // (관제 2026-11-20 R13-4: 「the shortest harmless value」). On the
+        // Surface Pro 11, S5_BA cut 352, profile: the band dropped by a
+        // blur new each pause on a drawn row, strokes started 300 / 600 /
+        // 900 ms after the last one ended — frames past 16.7 ms in a
+        // stroke, its run's first (cold) one apart: 1200 → 0 of 46, 800 →
+        // 1 of 46, 400 → 2 of 69 (22.2 ms), 0 → 4 of 23 (32.0 ms). The
+        // band is full again ~0.8 s sooner at 400. ⛔Not shortened on that
+        // without the user: the pen's frame is theirs to trade
+        // (`cel_number_probe_test.dart` pstroke, CN_PSTROKE_BLUR=1, on the
+        // branch measure/measure-drag-value). 🗣️F-620-Q7 (유저 2026-11-20
+        // 13:13): 「1.2초 그대로」.
         //
         // ⚠️MUTANT SURVIVES, wrong axis (2026-09-08): swapping the two
         // branches leaves every suite green. What the DELAY does is pinned

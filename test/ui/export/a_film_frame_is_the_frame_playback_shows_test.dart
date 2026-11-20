@@ -399,7 +399,7 @@ void main() {
           .frameRows(task, ExportSizeMode.camera)
           .whereType<ExportLayerRow>()
           .singleWhere((row) => row.name == 'parked');
-      final layered = await bytesOf(await parkedRow.draw());
+      final layered = (await parkedRow.draw()).pixels;
       expect(
         pixelOf(layered, canvas.width, px, py),
         (0, 0, 0, 0),

@@ -336,7 +336,8 @@ List<CanvasShapeKind> canvasToolShapes(CanvasTool tool) => switch (tool) {
 ///
 /// What is genuinely the tool state's own is [tool] and the NON-BRUSH tools'
 /// settings ([fillBlendMode], [cutStampBlendMode], [fillOpacity],
-/// [cutStampOpacity]): those tools have no preset for a value to belong to.
+/// [cutStampOpacity], [cutStampSpacing]): those tools have no preset for a
+/// value to belong to.
 /// ↩️The stabilizer was here too, as hand feel (P7); it is the brush's own
 /// now, as in Clip Studio ([correction], 유저 2026-10-20 F-418-Q6).
 class BrushToolState {
@@ -397,6 +398,7 @@ class BrushToolState {
     bool cutDeletesSource = false,
     CanvasReadSource cutSource = CanvasReadSource.layer,
     double cutStampOpacity = 1.0,
+    double cutStampSpacing = 1.0,
   }) {
     return BrushToolState.clamped(
       size: size,
@@ -455,6 +457,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource,
       cutSource: cutSource,
       cutStampOpacity: cutStampOpacity,
+      cutStampSpacing: cutStampSpacing,
     );
   }
 
@@ -471,6 +474,7 @@ class BrushToolState {
     this.shapeOptions = const ShapeToolOptions(),
     this.fillOpacity = 1.0,
     this.cutStampOpacity = 1.0,
+    this.cutStampSpacing = 1.0,
     this.cutDeletesSource = false,
     this.cutSource = CanvasReadSource.layer,
     this.presetId,
@@ -501,6 +505,7 @@ class BrushToolState {
     bool cutDeletesSource = false,
     CanvasReadSource cutSource = CanvasReadSource.layer,
     double cutStampOpacity = 1.0,
+    double cutStampSpacing = 1.0,
     Set<BrushSettingsRow> shown = BrushSettingsRow.shownByDefault,
   }) {
     return BrushToolState._raw(
@@ -518,6 +523,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource,
       cutSource: cutSource,
       cutStampOpacity: clampOpacity(cutStampOpacity),
+      cutStampSpacing: clampSpacing(cutStampSpacing),
       shown: shown,
     );
   }
@@ -584,6 +590,7 @@ class BrushToolState {
     bool? cutDeletesSource,
     CanvasReadSource? cutSource,
     double? cutStampOpacity,
+    double? cutStampSpacing,
   }) {
     return BrushToolState.fromShape(
       BrushShape(
@@ -652,6 +659,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource ?? false,
       cutSource: cutSource ?? CanvasReadSource.layer,
       cutStampOpacity: cutStampOpacity ?? 1.0,
+      cutStampSpacing: cutStampSpacing ?? 1.0,
     );
   }
 
@@ -1020,6 +1028,15 @@ class BrushToolState {
   final double fillOpacity;
   final double cutStampOpacity;
 
+  /// How far apart a stamp's drag lays its stamps: a share of the piece's
+  /// own size, as a brush's spacing is a share of its tip's
+  /// (`cutStampCentersAlong`) — a whole piece, by default.
+  ///
+  /// 🗣️a-stamp-drag-undoes-a-stamp-at-a-time-Q1 (유저 2026-11-19): 「간격
+  /// 지금 고정이니까 스탬프 도구설정에 간격설정도 두도록」 — the stamp tool's
+  /// own, as its opacity is: there is no preset for it to belong to.
+  final double cutStampSpacing;
+
   /// The opacity the ACTIVE tool paints with.
   ///
   /// The brush and the eraser keep theirs in [shape] (it is a brush
@@ -1326,6 +1343,7 @@ class BrushToolState {
     bool? cutDeletesSource,
     CanvasReadSource? cutSource,
     double? cutStampOpacity,
+    double? cutStampSpacing,
     Set<BrushSettingsRow>? shown,
   }) {
     // The base is the caller's shape when it gave one; the named arguments
@@ -1408,6 +1426,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource ?? this.cutDeletesSource,
       cutSource: cutSource ?? this.cutSource,
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
+      cutStampSpacing: clampSpacing(cutStampSpacing ?? this.cutStampSpacing),
       presetId: presetId,
       shown: shown ?? this.shown,
     );
@@ -1469,6 +1488,7 @@ class BrushToolState {
     cutDeletesSource: cutDeletesSource,
     cutSource: cutSource,
     cutStampOpacity: cutStampOpacity,
+    cutStampSpacing: cutStampSpacing,
     presetId: presetId,
     shown: shown,
   );
@@ -1607,6 +1627,7 @@ class BrushToolState {
           other.shapeOptions == shapeOptions &&
           other.fillOpacity == fillOpacity &&
           other.cutStampOpacity == cutStampOpacity &&
+          other.cutStampSpacing == cutStampSpacing &&
           other.cutDeletesSource == cutDeletesSource &&
           other.cutSource == cutSource &&
           // H25-again: which brush a state holds is part of the state — two
@@ -1631,6 +1652,7 @@ class BrushToolState {
     cutDeletesSource,
     cutSource,
     cutStampOpacity,
+    cutStampSpacing,
     presetId,
     Object.hashAllUnordered(shown),
   );

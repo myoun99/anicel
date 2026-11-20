@@ -19,6 +19,7 @@ import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_splice.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show resizeBitmapSurfaceCanvas;
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/cel_picture_replace_command.dart';
 import '../../services/editing/cut_duplicate_helpers.dart'
     show MirrorCopies, mirrorCopiesFor;
@@ -28,7 +29,8 @@ import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
-import 'frame_verbs.dart' show blocksLandAsPicturesOn, rowTakesNewCels;
+import 'frame_verbs.dart'
+    show blocksLandAsPicturesOn, rowTakesCopiesOf, rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'lane_homes.dart' show KeyCopy, LanesAlone;
 import 'lane_verbs.dart';
@@ -287,7 +289,7 @@ class FrameClipboard implements BringsMedia {
   /// standing, the one the cursor's cell shows; under a band, every one its
   /// run holds on each row it seats ([_seatsOf]) — the wait window's
   /// measure (`reachesManyBlocks`).
-  Iterable<Object> drawingsTakenAt(ClipboardPlace? place) sync* {
+  Iterable<(LayerId, FrameId)> drawingsTakenAt(ClipboardPlace? place) sync* {
     if (place == null || place._bandMissesTheRow) {
       return;
     }
@@ -310,6 +312,21 @@ class FrameClipboard implements BringsMedia {
         }
       }
     }
+  }
+
+  /// The pictures a copy — or a cut — at [place] reads
+  /// ([_picturesCarriedBy]), thawed ahead of it ([picturesShownAhead]).
+  WorkAhead takeAheadAt(ClipboardPlace? place) {
+    final cut = _project.activeCutOrNull;
+    return picturesShownAhead(
+      store: _renderCaches.brushFrameStore,
+      drawings: [
+        if (cut != null)
+          for (final (row, cel) in drawingsTakenAt(place))
+            (cut: cut, row: row, cel: cel),
+      ],
+      keyOf: _project.brushFrameKeyForCut,
+    );
   }
 
   /// The drawings a paste at [place] lays down — linked or not — each on
@@ -503,6 +520,7 @@ class FrameClipboard implements BringsMedia {
     return _CopiedRow(
       layerId: row.id,
       linkable: row.kind.isDrawingCel,
+      playsSound: row.kind.playsSound,
       clip: clip,
       keys: keys,
       cels: cels,
@@ -1020,6 +1038,15 @@ class FrameClipboard implements BringsMedia {
       if (board.length > 1 && i >= board.length) {
         break;
       }
+      // The board's rows meet the seats in the band's order ([_seatsOf]) —
+      // the pictures live on rows.
+      final mine = board[board.length <= 1 ? 0 : i];
+      // A row that does not take what was copied keeps its seat and takes
+      // nothing — a sound's blocks on a picture's row, or a picture's on a
+      // sound's (F-609, [rowTakesCopiesOf]).
+      if (!rowTakesCopiesOf(target, playsSound: mine.playsSound)) {
+        continue;
+      }
       // A picture row the selection leaves holding its picture has no room
       // for a block — it keeps its SEAT, [i], and a link lands nothing
       // there. Asked of the anchor too: its gate asked the same
@@ -1040,30 +1067,16 @@ class FrameClipboard implements BringsMedia {
       // track's frames, and the cut-local index landed it on an earlier
       // cut's. Each row places the band's start on ITS OWN axis ([_band]):
       // two rows swept together need not key the same frames.
-      final at = lift == null
-          ? (index: place._index, liftCount: 0)
-          : (index: lift.index, liftCount: lift.count);
-      // The board's rows meet the seats in the band's order ([_seatsOf]) —
-      // the pictures live on rows.
-      final mine = board[board.length <= 1 ? 0 : i];
-      final clip = board.length <= 1 ? copied.clip : mine.clip;
-      landings.add((
-        target: target,
-        at: at,
-        hangsPictures: hangs,
-        source: board.length <= 1 ? copied.layerId : mine.layerId,
-        linkable: mine.linkable,
-        keys: mine.keys,
-        // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
-        // holds ONE picture takes the clip's first, as one comma. The write
-        // lays that as the row's held block; a second cel minted beside it
-        // would sit in the bank with nothing showing it.
-        clip: target.kind.holdsSingleCel ? _firstPictureOf(clip) : clip,
-        cels: board.length <= 1 ? copied.cels : mine.cels,
-        sounds: board.length <= 1 ? copied.sounds : mine.sounds,
-        pictures: mine.pictures,
-        handwriting: mine.handwriting,
-      ));
+      landings.add(
+        mine._landingOn(
+          target,
+          copied,
+          at: lift == null
+              ? (index: place._index, liftCount: 0)
+              : (index: lift.index, liftCount: lift.count),
+          hangs: hangs,
+        ),
+      );
     }
     return landings;
   }
@@ -1335,19 +1348,25 @@ class FrameClipboard implements BringsMedia {
       }
     });
     final cut = _project.activeCutOrNull;
-    for (final (targetId, minted, pictures) in mintedByLayer) {
-      if (cut == null) {
-        break; // Gap state: no cut, so no key to store a picture under.
+    // 🔬F-615: ONE edit of the cels, as 링크 독립's copies are
+    // ([unlinkRuns]) — S5_BA cut 352, a band of 341 drawings pasted over
+    // 61 linked rows stood 2.6 s on the UI thread.
+    final store = _renderCaches.brushFrameStore;
+    store.asOneEdit(() {
+      for (final (targetId, minted, pictures) in mintedByLayer) {
+        if (cut == null) {
+          break; // Gap state: no cut, so no key to store a picture under.
+        }
+        carryBakedPictures(
+          project: _project,
+          store: store,
+          cut: cut,
+          to: targetId,
+          minted: minted,
+          pictureOf: (source) => pictures[source],
+        );
       }
-      carryBakedPictures(
-        project: _project,
-        store: _renderCaches.brushFrameStore,
-        cut: cut,
-        to: targetId,
-        minted: minted,
-        pictureOf: (source) => pictures[source],
-      );
-    }
+    });
     for (final (copies, handwriting) in handwritten) {
       if (cut == null) {
         break;
@@ -1691,15 +1710,24 @@ class FrameClipboard implements BringsMedia {
     _splice(runs: splices, description: 'Unlink frames', riders: riders);
     final cut = _project.activeCutOrNull;
     if (cut != null) {
-      for (final (layerId, minted) in mintedByLayer) {
-        copyBakedPictures(
-          project: _project,
-          store: _renderCaches.brushFrameStore,
-          minted: minted,
-          from: (cut: cut, row: layerId),
-          to: (cut: cut, row: layerId),
-        );
-      }
+      // 🔬F-615: the pictures the minted cels are given, after the
+      // splice's step, are ONE edit of the cels as a step is
+      // (`RepositoryStepScope` ⑤). Each copy announced its crossing alone,
+      // to every listener of the cels' content: S5_BA cut 352, a band over
+      // 61 linked rows — 274 copies, their announcements 1.6 s of a 1.8 s
+      // step.
+      final store = _renderCaches.brushFrameStore;
+      store.asOneEdit(() {
+        for (final (layerId, minted) in mintedByLayer) {
+          copyBakedPictures(
+            project: _project,
+            store: store,
+            minted: minted,
+            from: (cut: cut, row: layerId),
+            to: (cut: cut, row: layerId),
+          );
+        }
+      });
     }
     _changes.notifyChanged();
   }
@@ -1883,6 +1911,7 @@ class _CopiedRow {
   const _CopiedRow({
     required this.layerId,
     required this.linkable,
+    required this.playsSound,
     required this.clip,
     this.keys,
     this.cels = const [],
@@ -1902,6 +1931,11 @@ class _CopiedRow {
   /// and their names (the dialogue) repeat. A synced attach row's copy is
   /// one of drawings (I-71), though the row itself takes no paste.
   final bool linkable;
+
+  /// Whether the row this was copied off plays SOUND — what a row the paste
+  /// lands on asks of it ([rowTakesCopiesOf], F-609). Taken at the copy for
+  /// [linkable]'s reason: the paste may stand where that row is not.
+  final bool playsSound;
   final TimelineClipRow clip;
 
   /// The keys the band held on the row's lanes, by their frame from its
@@ -1929,6 +1963,38 @@ class _CopiedRow {
   /// copied, by each block's id — BY VALUE for [pictures]' reason. A block
   /// never written on is simply absent.
   final Map<String, BitmapSurface> handwriting;
+
+  /// What [target] takes of this row of [copied]'s board, landing [at] —
+  /// the copy's own run where the board holds this row alone, which is how
+  /// a one-row clip goes to every target (결정 14 ③ⓐ).
+  _PasteLanding _landingOn(
+    Layer target,
+    _CopiedFrameReference copied, {
+    required ({int index, int liftCount}) at,
+    required bool hangs,
+  }) {
+    final alone = copied.rows.length <= 1;
+    final run = alone ? copied.clip : clip;
+    return (
+      target: target,
+      at: at,
+      hangsPictures: hangs,
+      source: alone ? copied.layerId : layerId,
+      linkable: linkable,
+      keys: keys,
+      // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
+      // holds ONE picture takes the clip's first, as one comma. The write
+      // lays that as the row's held block; a second cel minted beside it
+      // would sit in the bank with nothing showing it.
+      clip: target.kind.holdsSingleCel
+          ? FrameClipboard._firstPictureOf(run)
+          : run,
+      cels: alone ? copied.cels : cels,
+      sounds: alone ? copied.sounds : sounds,
+      pictures: pictures,
+      handwriting: handwriting,
+    );
+  }
 }
 
 /// What the app holds from the last FRAME copy — ONE board for every open

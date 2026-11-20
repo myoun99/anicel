@@ -451,6 +451,45 @@ const kKinds = <String>{
   'item', 'decision', 'law', 'meta', 'check', 'record', 'build',
 };
 
+/// The `state` a line may carry: the two endings, which the story cannot
+/// overturn. Every other state is the story's to compute from `at`, and one
+/// written by hand is covered by the next line or says what the story does
+/// not. `board_say` refuses the rest before they are written, and
+/// `board_check` names the ones already there — ONE list for both, or the
+/// tool lets through a line the gate then holds every turn on.
+/// 🧪2026-11-18 07:46: a decision written with `"state":"ask"` beside its
+/// `at:"질문"` went through `board_say` and held every session's Stop until
+/// it was acked — a line cannot be mended by appending
+/// (board-say-takes-a-hand-written-state).
+const kWrittenStates = <String>{'archived', 'deleted'};
+
+/// Matches a PR named in prose — 「#1302」, 「PR #1302」 — which the board
+/// cannot file by. Four digits only: three-digit issue numbers and 「#1」
+/// style round tags are not PRs.
+final kPrInProse = RegExp(r'#\d{4}\b');
+
+/// The entries of [card]'s story that name a PR in my own words while the
+/// card claims none — what the gate's 「PR을 본문에만 적은 카드」 is about.
+///
+/// ⚠️`!byUser`: the user quoting a number in their own feedback is theirs to
+/// write. A card that claims a PR is not asked at all — which also covers
+/// the entry that claims it.
+/// 🚨ONE answer for both readers — `board_say` refuses such a line before it
+/// is written and `board_check` names the ones already there, or the tool
+/// lets through a line the gate then holds every turn on. 🧪2026-11-19
+/// (board-say-takes-a-pr-number-cited-in-a-note): a cause report on F-621
+/// quoted the first decoder's PR by number, held 관제's and 공통's Stop, and
+/// had no way out but an ack — over fifty such acks stood in `.gate-ack`.
+Iterable<BoardLog> prsQuotedInProse(BoardCard card) => card.prs.isNotEmpty
+    ? const []
+    : card.log
+        .where((entry) => !entry.byUser && kPrInProse.hasMatch(entry.text));
+
+/// The card [json] makes by itself, folded exactly as the board folds a line
+/// — so a writer can ask of one line what the gate will ask of its card.
+List<BoardCard> cardsOfALine(Map<String, dynamic> json) =>
+    [...(_Fold()..add(jsonEncode(json), 0, 0)).byId.values];
+
 /// One thing a record said that nobody reads. ⚠️Three fields rather than one
 /// formatted string, because the gate has to ANSWER WITH THEM: the id to
 /// match an ack, the line to be findable, the field to be fixed.

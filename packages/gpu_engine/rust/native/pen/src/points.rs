@@ -43,28 +43,154 @@ pub(crate) struct Point {
     pub(crate) pressure: f64,
     pub(crate) tilt: f64,
     pub(crate) orientation: f64,
-    /// The tablet DRIVER's pressure, 0..1, at the point's own moment — the
-    /// Wintab packet nearest it (wintab.rs) — where the point is the pen's
-    /// or a mouse's (a pen the OS hands over as a mouse) and a Wintab
-    /// context is open; NaN elsewhere.
-    pub(crate) driven: f64,
+    /// What the tablet DRIVER's packet that put the pen at the point says
+    /// ([`Driven`]) — where the point is the pen's or a mouse's (a pen the
+    /// OS hands over as a mouse) and a Wintab context heard that packet;
+    /// None elsewhere.
+    pub(crate) driven: Option<Driven>,
+    /// Where that packet is asked for: the move as the OS kept it — the
+    /// screen's pixel and the message clock's millisecond —, asked again as
+    /// the app reads the point while it has no [`Point::driven`] yet
+    /// (wintab.rs `pair`). None where no driver is asked.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) asked: Option<(i32, i32, u32)>,
+}
+
+/// What the tablet DRIVER's packet that put the pen at a point says of the
+/// pen (wintab.rs `Heard::at`, read as `Scales::reading` reads it): its
+/// pressure, 0..1 of the device's axis; the pen top's compass bearing in
+/// degrees (0 toward the top of the tablet, clockwise) and its altitude as
+/// a part of a right angle (1 upright; below 0 with the eraser end down) —
+/// None while the device declares no orientation —; and its twist about
+/// the barrel in degrees, clockwise — None while it declares none.
+///
+/// 🚨ONE PACKET FOR THE WHOLE PEN (pen-points-are-taken-off-the-ui-thread,
+/// 2026-11-18): the packet that gives a point its pressure gives it its
+/// lean and its twist. The app read those off the driver's NEWEST packet
+/// after the pressure had become the point's own, so a stall's merged
+/// points leant as the pen leant when the message was handled.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Driven {
+    pub(crate) pressure: f64,
+    pub(crate) lean: Option<(f64, f64)>,
+    pub(crate) twist: Option<f64>,
 }
 
 /// The numbers a point is handed to the app as ([`Point::words`]).
-pub(crate) const POINT_WORDS: usize = 7;
+pub(crate) const POINT_WORDS: usize = 10;
 
 impl Point {
     /// A point the OS says nothing of but where and when.
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) fn at(x: f64, y: f64, micros: i64) -> Self {
-        Self { x, y, micros, pressure: f64::NAN, tilt: f64::NAN, orientation: f64::NAN, driven: f64::NAN }
+        Self {
+            x,
+            y,
+            micros,
+            pressure: f64::NAN,
+            tilt: f64::NAN,
+            orientation: f64::NAN,
+            driven: None,
+            asked: None,
+        }
     }
 
     /// The point as the app reads it (`qa_pen_points_take`): x, y, its time
     /// in microseconds — whole, below 2⁵³ for 285 years of a clock — the
-    /// pressure, the tilt, the orientation and the driver's pressure.
+    /// pressure, the tilt, the orientation, and the driver's pressure,
+    /// bearing, altitude and twist ([`Driven`]); NaN for each that is none.
     pub(crate) fn words(&self) -> [f64; POINT_WORDS] {
-        [self.x, self.y, self.micros as f64, self.pressure, self.tilt, self.orientation, self.driven]
+        let driven = self.driven;
+        let lean = driven.and_then(|driven| driven.lean);
+        [
+            self.x,
+            self.y,
+            self.micros as f64,
+            self.pressure,
+            self.tilt,
+            self.orientation,
+            driven.map_or(f64::NAN, |driven| driven.pressure),
+            lean.map_or(f64::NAN, |(bearing, _)| bearing),
+            lean.map_or(f64::NAN, |(_, altitude)| altitude),
+            driven.and_then(|driven| driven.twist).unwrap_or(f64::NAN),
+        ]
+    }
+}
+
+/// 🚨WHAT MADE A CONTACT, AS ITS EMBEDDER NAMES A DATUM'S KIND TO FLUTTER
+/// (H61): a datum's batch is one a contact of ITS OWN kind wrote
+/// ([`Book::take`]) — a pen's two ends one kind, as the app reads them.
+///
+/// 🗣️유저 2026-11-18: 「정기적으로 일정구간에서 스트로크가 2개
+/// 겹쳐지는거같은데」. Windows hands a pen over twice: its pointer messages,
+/// and the moves of the cursor that follows it, which carry no pen's
+/// signature and come in as a mouse (F-400) — the two ending on the same
+/// pixel. The book paired by the pixel alone, and a mouse move hands the
+/// cursor's NEWEST place however many of the pen's messages still wait
+/// behind it, so a pen's datum could take the cursor's batch: the cursor's
+/// history, every place the pen had gone since the cursor's last move —
+/// and the stroke drew that stretch over again. ⚠️Read off the code and the
+/// embedder (flutter_window.cc), not yet seen with a pen.
+///
+/// The number each is handed across the FFI by is its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub(crate) enum Kind {
+    Touch = 0,
+    Mouse = 1,
+    Pen = 2,
+    Trackpad = 3,
+    Unknown = 4,
+}
+
+impl Kind {
+    const ALL: [Self; 5] = [Self::Touch, Self::Mouse, Self::Pen, Self::Trackpad, Self::Unknown];
+
+    /// The kind the app names a datum by (`qa_pen_points_take`) — none for
+    /// a number no kind has.
+    pub(crate) fn named(number: i32) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| *kind as i32 == number)
+    }
+
+    /// A Windows pointer's, by its `POINTER_INFO.pointerType`, as
+    /// flutter_window.cc names the datum (Flutter 3.47.4): a finger, a pen
+    /// and a touchpad by theirs, every other a mouse. The mouse's own moves
+    /// are a mouse's.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn of_windows_pointer(pointer_type: i32) -> Self {
+        match pointer_type {
+            2 => Self::Touch,    // PT_TOUCH
+            3 => Self::Pen,      // PT_PEN
+            5 => Self::Trackpad, // PT_TOUCHPAD
+            _ => Self::Mouse,
+        }
+    }
+
+    /// A `UITouch`'s, by its `type`, as FlutterViewController.mm names the
+    /// datum (`DeviceKindFromTouchType`): a finger direct or not a touch,
+    /// the Pencil a pen, a pointer a mouse, any other a touch.
+    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    pub(crate) fn of_uikit_touch(touch_type: isize) -> Self {
+        match touch_type {
+            2 => Self::Pen,   // UITouchTypePencil
+            3 => Self::Mouse, // UITouchTypeIndirectPointer
+            _ => Self::Touch,
+        }
+    }
+
+    /// An Android pointer's, by `MotionEvent.getToolType`, as
+    /// AndroidTouchProcessor.java names the datum
+    /// (`getPointerDeviceTypeForToolType`): the eraser a pen's other end,
+    /// a tool it does not know unknown.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn of_android_tool(tool: i32) -> Self {
+        match tool {
+            1 => Self::Touch,     // TOOL_TYPE_FINGER
+            2 | 4 => Self::Pen,   // TOOL_TYPE_STYLUS · TOOL_TYPE_ERASER
+            3 => Self::Mouse,     // TOOL_TYPE_MOUSE
+            _ => Self::Unknown,
+        }
     }
 }
 
@@ -72,12 +198,13 @@ impl Point {
 /// Flutter its point — in the shape the embedder hands it (Windows: the
 /// message's whole screen pixels, put in the view; iOS: `locationInView`,
 /// not the finer place; Android: `getX`/`getY`): the key a datum is paired
-/// with its batch by, compared exactly. And the OS's own name of the
-/// contact (a pointer's id; the mouse's one): what a pairing passes by
-/// is the earlier messages of that contact alone.
+/// with its batch by, compared exactly, among its [`Kind`]'s. And the OS's
+/// own name of the contact (a pointer's id; the mouse's one): what a
+/// pairing passes by is the earlier messages of that contact alone.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Batch {
     pub(crate) contact: u64,
+    pub(crate) kind: Kind,
     pub(crate) handed: (f64, f64),
     pub(crate) points: Vec<Point>,
 }
@@ -95,9 +222,9 @@ pub(crate) const MOST_BATCHES: usize = 256;
 /// reader writes ([`Book::write`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Lost {
-    /// The OS kept no more before them: Windows' mouse history full
-    /// (`GetMouseMovePointsEx`'s 64), every move in it newer than the
-    /// one written last.
+    /// The OS kept no more before them: every move Windows' mouse history
+    /// handed back (`GetMouseMovePointsEx`, from the move asked) newer than
+    /// the one written last (points_win.rs `mouse_lost`).
     Full,
     /// The history could not be read — the message's own point alone. A
     /// mouse move Windows made and keeps none of reads so too.
@@ -146,9 +273,9 @@ impl Book {
 
     /// The end of that message: what was gathered, as its batch.
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-    pub(crate) fn end(&mut self, contact: u64, handed: (f64, f64)) {
+    pub(crate) fn end(&mut self, contact: u64, kind: Kind, handed: (f64, f64)) {
         let points = std::mem::take(&mut self.gathered);
-        self.write(Batch { contact, handed, points });
+        self.write(Batch { contact, kind, handed, points });
     }
 
     /// Writes a message's batch, every point of it.
@@ -165,14 +292,16 @@ impl Book {
         self.batches.push_back(batch);
     }
 
-    /// The points of the datum Flutter was handed at `handed`: the first
-    /// batch, from the oldest unread, that ends there — every earlier batch
-    /// of its contact passed by; another contact's wait for their own
-    /// datums, which a platform may hand in another order (UIKit's set of
-    /// touches). None where none ends there, and nothing is read: the
+    /// The points of the datum of `kind` Flutter was handed at `handed`: the
+    /// first batch of that kind, from the oldest unread, that ends there —
+    /// every earlier batch of its contact passed by; another contact's wait
+    /// for their own datums, which a platform may hand in another order
+    /// (UIKit's set of touches, the cursor that follows a pen on Windows:
+    /// [`Kind`]). None where none ends there, and nothing is read: the
     /// datum's own point is all there is of it (a message no reader wrote).
-    pub(crate) fn take(&mut self, handed: (f64, f64)) -> Option<Vec<Point>> {
-        let at = self.batches.iter().position(|batch| batch.handed == handed)?;
+    pub(crate) fn take(&mut self, kind: Kind, handed: (f64, f64)) -> Option<Vec<Point>> {
+        let at =
+            self.batches.iter().position(|batch| batch.kind == kind && batch.handed == handed)?;
         let batch = self.batches.remove(at)?;
         let before = self.batches.len();
         let mut index = 0;

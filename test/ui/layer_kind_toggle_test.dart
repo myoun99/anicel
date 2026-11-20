@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/main.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -24,13 +23,12 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
-import '../helpers/boolean_dot_probe.dart';
 import 'flyout_test_helpers.dart';
+import '../helpers/home_page_probes.dart' show pickLayerKind;
 import '../helpers/named_finders.dart';
 import '../helpers/room_for_the_pills.dart';
 import '../helpers/timeline_host.dart';
 
-const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
 const _seToggleKey = ValueKey<String>('toggle-se-layer-button');
 const _artToggleKey = ValueKey<String>('toggle-art-layer-button');
 const _undoKey = ValueKey<String>('undo-button');
@@ -83,7 +81,7 @@ CutId? _mainCanvasCutId(WidgetTester tester) {
   return host.selection?.cutId;
 }
 
-// Menu-aware (R-toolbar round): kind toggles live in the Layer ▾ flyout.
+// Menu-aware (R-toolbar round): a command in a flyout opens it first.
 Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
     tapCommandButton(tester, key);
 
@@ -108,17 +106,11 @@ Layer _layer(ProjectRepository repository) {
   return repository.requireProject().tracks.single.cuts.single.layers.single;
 }
 
-Future<bool> _isCommandEnabled(WidgetTester tester, ValueKey<String> key) =>
-    readCommandEnabled(tester, key);
-
-/// The app's ring on the storyboard toggle — its flyout opened, the dot
-/// read, the flyout closed.
-Future<bool> _storyboardRing(WidgetTester tester) async {
-  await openOwningFlyout(tester, _toggleKey.value);
-  final on = tester.booleanDotIn(find.byKey(_toggleKey)).value;
-  await dismissFlyout(tester);
-  return on;
-}
+/// Turns the row into [kind] through its type button's list — the one
+/// door since F-613 (↩️a toggle in the Layer ▾ flyout, whose ring read
+/// whether the row was the conte).
+Future<void> _pickKind(WidgetTester tester, LayerKind kind) =>
+    pickLayerKind(tester, '$_layerId', kind);
 
 Project _projectWithLayer({
   LayerKind kind = LayerKind.animation,
@@ -180,60 +172,20 @@ Project _projectWithLayer({
   );
 }
 
-Project _projectWithNoLayers() {
-  return Project(
-    id: const ProjectId('phase-73-empty-layer-project'),
-    name: 'Phase 73 No Layers Project',
-    createdAt: DateTime.utc(2026, 6, 11),
-    tracks: [
-      Track(
-        id: const TrackId('phase-73-track'),
-        name: 'Video Track',
-        cuts: [
-          Cut(
-            id: _cutId,
-            name: 'No Layer Cut',
-            duration: 1,
-            canvasSize: const CanvasSize(width: 1280, height: 720),
-            layers: const [],
-          ),
-        ],
-      ),
-    ],
-  );
-}
-
 void main() {
-  testWidgets('toggle lives in the Layer flyout', (tester) async {
-    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const AnicelApp());
-
-    // Not a standalone toolbar button anymore (R-toolbar round)…
-    expect(find.byKey(_toggleKey), findsNothing);
-    // …but the Layer ▾ flyout carries it under the same key.
-    await openOwningFlyout(tester, _toggleKey.value);
-    expect(find.byKey(_toggleKey), findsOneWidget);
-    await dismissFlyout(tester);
-  });
-
-  testWidgets('toggles animation layer to storyboard', (tester) async {
+  testWidgets('the type button turns an animation row into the conte', (
+    tester,
+  ) async {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
     expect(_layer(repository).kind, LayerKind.animation);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
-    expect(
-      await _storyboardRing(tester),
-      isFalse,
-      reason: 'a TOGGLE while it is off too — the ring is there, empty',
-    );
 
-    await _tapKey(tester, _toggleKey);
+    await _pickKind(tester, LayerKind.storyboard);
 
     expect(_layer(repository).kind, LayerKind.storyboard);
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
-    expect(await _storyboardRing(tester), isTrue);
   });
 
   // storyboard→animation (model + metadata) is covered at the service level by
@@ -241,7 +193,7 @@ void main() {
   // test; the forward gesture above anchors the display-label contract, which
   // reads layer.kind through the same widget code in either direction.
 
-  testWidgets('undo and redo work after toggling to storyboard', (
+  testWidgets('undo and redo work after turning the row into the conte', (
     tester,
   ) async {
     late ProjectRepository repository;
@@ -251,7 +203,7 @@ void main() {
       onRepositoryCreated: (repo) => repository = repo,
     );
 
-    await _tapKey(tester, _toggleKey);
+    await _pickKind(tester, LayerKind.storyboard);
     expect(_layer(repository).kind, LayerKind.storyboard);
     expect(_mainCanvasCutId(tester), _cutId);
 
@@ -268,21 +220,6 @@ void main() {
   // (same command, same canvas-retarget path); the model undo/redo itself is
   // covered by UpdateLayerKindCommand's 'undo restores previous kind' test.
 
-  testWidgets('active cut with no layers is safe and disabled', (tester) async {
-    late ProjectRepository repository;
-    await _pumpHome(
-      tester,
-      project: _projectWithNoLayers(),
-      onRepositoryCreated: (repo) => repository = repo,
-    );
-
-    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
-    expect(
-      repository.requireProject().tracks.single.cuts.single.layers,
-      isEmpty,
-    );
-  });
-
   // Data preservation across the kind change (metadata, strokes, frames,
   // timeline, visibility, opacity, cut metadata) is pinned more thoroughly at
   // the service level by UpdateLayerKindCommand's 'preserves data' test.
@@ -290,18 +227,18 @@ void main() {
   // The SE kind toggle is retired (entrance unification): SE rows are
   // created by the unified Add Layer with an SE row active, never by
   // converting a cel.
-  testWidgets('the SE kind toggle is gone and SE rows refuse the '
-      'storyboard toggle', (tester) async {
+  testWidgets('the SE kind toggle is gone', (tester) async {
     await _pumpHome(tester, project: _projectWithLayer(kind: LayerKind.se));
 
     expect(find.byKey(_seToggleKey), findsNothing);
-    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
   });
 
   // The ART kind (and its toggle) is retired: art always behaved exactly
   // like animation, so the kind collapsed into it. Picture rows are the
   // IMAGE kind now, created through Add Layer — never by conversion.
-  testWidgets('the art toggle is gone from the Layer flyout', (tester) async {
+  testWidgets('the art and conte toggles are gone from the Layer flyout', (
+    tester,
+  ) async {
     // The floating region opens at 2/3 of the window now, so at the 800px
     // test default the timeline toolbar compresses far enough to shed the
     // Layer flyout's own button — the tab as the app's window of 1600 × 900
@@ -315,11 +252,17 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('toggle-storyboard-layer-button')),
+      find.byKey(const ValueKey<String>('timeline-rename-layer-button')),
       findsOneWidget,
       reason: 'the flyout is open (its surviving sibling shows)',
     );
     expect(find.byKey(_artToggleKey), findsNothing);
+    // 🗣️F-613 (유저 2026-11-19): 「레이어버튼의 콘티레이어로 변경은 입구
+    // 대체되니 삭제」 — the row's type button turns it now.
+    expect(
+      find.byKey(const ValueKey<String>('toggle-storyboard-layer-button')),
+      findsNothing,
+    );
   });
 
   // The dedicated instruction-add button is retired: the unified Add Layer
@@ -348,8 +291,6 @@ void main() {
     expect(layers[0].name, 'Target Layer');
     expect(layers[1].kind, LayerKind.instruction);
     expect(layers[1].name, 'Direction 1');
-    // No kind toggle applies to instruction rows.
-    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
   });
 
   testWidgets('Add Layer with an SE row active adds the next S-numbered '

@@ -66,9 +66,17 @@ int? endWhatThisStartsWithIt() {
 }
 
 /// One process of the machine, as [readProcessTable] found it: what it has
-/// committed in [bytes] (the figure the machine runs out of), and when it
-/// began in [born], which only ever orders two rows of one table.
-typedef ProcessRow = ({int pid, int parent, int born, String name, int bytes});
+/// committed in [bytes] (the figure the machine runs out of), when it began
+/// in [born], which only ever orders two rows of one table, and the CPU it
+/// has spent in [cpu], in 100-nanosecond ticks — 0 where it cannot be read.
+typedef ProcessRow = ({
+  int pid,
+  int parent,
+  int born,
+  String name,
+  int bytes,
+  int cpu,
+});
 
 const _gib = 1 << 30;
 
@@ -145,24 +153,120 @@ String _inGb(int bytes) => (bytes / _gib).toStringAsFixed(1);
 /// process older than the one its number now names is not that one's child
 /// (the law `flutter_room`'s `_launchersOf` keeps for the walk upwards).
 ProcessRow? largestInTree(Iterable<ProcessRow> table, int root) {
+  ProcessRow? largest;
+  for (final process in treeIn(table, root)) {
+    if (largest == null || process.bytes > largest.bytes) largest = process;
+  }
+  return largest;
+}
+
+/// [root] and every process under it in [table] — none when [root] is not
+/// in it ([largestInTree] has the law of the walk).
+List<ProcessRow> treeIn(Iterable<ProcessRow> table, int root) {
   final children = <int, List<ProcessRow>>{};
   ProcessRow? top;
   for (final row in table) {
     children.putIfAbsent(row.parent, () => []).add(row);
     if (row.pid == root) top = row;
   }
-  if (top == null) return null;
-  var largest = top;
+  if (top == null) return const [];
+  final tree = [top];
   final seen = {top.pid};
   final ahead = [top];
   while (ahead.isNotEmpty) {
     final process = ahead.removeLast();
-    if (process.bytes > largest.bytes) largest = process;
     for (final child in children[process.pid] ?? const <ProcessRow>[]) {
-      if (child.born >= process.born && seen.add(child.pid)) ahead.add(child);
+      if (child.born >= process.born && seen.add(child.pid)) {
+        ahead.add(child);
+        tree.add(child);
+      }
     }
   }
-  return largest;
+  return tree;
+}
+
+/// What [CpuWatch] saw spent: the watched tree's own and the rest's, each
+/// by name, most first.
+///
+/// 🔍ITS OWN BY NAME TOO (the-wide-check-takes-five-hours, 2026-11-20): the
+/// wide check of 11-20 spent ten CPU-seconds a file in its heavy batches
+/// and its light ones alike — a cost of the file, not of its tests — and
+/// one sum could not say whether the compiler, the tool or the testers
+/// spent it, which is what decides the next cut.
+typedef CpuSpent = ({
+  List<(String, Duration)> ours,
+  List<(String, Duration)> others,
+});
+
+/// All of [named] together.
+Duration cpuOf(List<(String, Duration)> named) =>
+    named.fold(Duration.zero, (sum, one) => sum + one.$2);
+
+/// What the machine's processes spend of the CPU while a test batch runs,
+/// by name, the batch's own tree ([treeIn] of its root) apart.
+///
+/// 🔍WHAT ELSE RAN (the-wide-check-takes-five-hours, 2026-11-20): at the
+/// same nine suites the wide check's batches of 11-15 and 11-16 took two to
+/// three times those of 11-18, and what else the machine was doing then
+/// could not be named — the line's record counts its own suites only.
+///
+/// ⚠️IT LOOKS AS OFTEN AS [MemoryWatch], because a tester lives as long as
+/// its one test file: a look at the batch's start and end alone would miss
+/// every one another run started and ended in between. A process first
+/// seen after the first look is counted from naught; one that lived and
+/// ended between two looks is missed.
+class CpuWatch {
+  CpuWatch(
+    this._root, {
+    List<ProcessRow> Function() read = readProcessTable,
+    Duration every = kLookAtMemory,
+  }) : _read = read {
+    look();
+    _clock = Timer.periodic(every, (_) => look());
+  }
+
+  final int _root;
+  final List<ProcessRow> Function() _read;
+  late final Timer _clock;
+  var _looked = false;
+  final _from = <(int, int), int>{};
+  final _seen = <(int, int), ({String name, int cpu, bool ours})>{};
+
+  /// Reads the machine once.
+  void look() {
+    final table = _read();
+    final ours = {for (final row in treeIn(table, _root)) row.pid};
+    for (final row in table) {
+      final key = (row.pid, row.born);
+      _from.putIfAbsent(key, () => _looked ? 0 : row.cpu);
+      _seen[key] = (
+        name: row.name,
+        cpu: row.cpu,
+        ours: ours.contains(row.pid) || (_seen[key]?.ours ?? false),
+      );
+    }
+    _looked = true;
+  }
+
+  /// Stops looking, and says what was spent: the batch's own and the
+  /// rest's, each by name, most first.
+  CpuSpent stop() {
+    _clock.cancel();
+    look();
+    final ours = <String, int>{};
+    final others = <String, int>{};
+    for (final MapEntry(:key, value: seen) in _seen.entries) {
+      final spent = seen.cpu - _from[key]!;
+      if (spent <= 0) continue;
+      final side = seen.ours ? ours : others;
+      side[seen.name] = (side[seen.name] ?? 0) + spent;
+    }
+    List<(String, Duration)> named(Map<String, int> side) => [
+      for (final MapEntry(:key, :value) in side.entries)
+        (key, Duration(microseconds: value ~/ 10)),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    return (ours: named(ours), others: named(others));
+  }
 }
 
 /// The machine's processes; empty when they cannot be read, for a watch
@@ -197,6 +301,7 @@ List<ProcessRow> rowsFromPs(String text) => [
         born: 0,
         name: found[4]!,
         bytes: int.parse(found[3]!) * 1024,
+        cpu: 0,
       ),
 ];
 
@@ -228,6 +333,7 @@ List<ProcessRow> _readWindowsTable() {
         born: times[0],
         name: _exeName(entry.ref),
         bytes: counters.ref.committed,
+        cpu: times[2] + times[3],
       ));
     }
   } finally {

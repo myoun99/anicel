@@ -148,14 +148,23 @@ class CameraMarkSizes {
   );
 }
 
-/// [trails], and over them each of [keys]: its frame, its cross and its
-/// label — at [sizes], in [layer]. A key is all three on every surface
-/// (I-82), so no surface can write one without its frame.
+/// [trails], and over them each of [keys]: its frame, its cross where
+/// [crossed] and its label — at [sizes], in [layer]. A key's frame and
+/// label are on every surface (I-82), so no surface can write one without
+/// its frame.
+///
+/// 🗣️F-622 (유저 2026-11-19): 「콘티용지패널만 예외로 카메라 오버레이
+/// 중앙의 십자사각형 없도록. 혹시나 궤도가 온다면 궤도도 중앙에 없도록」 —
+/// the conte's paper alone writes no cross; its trails are the corners'
+/// already (「궤도는 중앙이아니라 각 꼭짓점 4개 전부야」). ↩️Every surface
+/// crossed every key at its centre (유저 2026-10-12: 「아까처럼 중앙에
+/// 두자 … 즉 법 통일」).
 Iterable<SheetMark> cameraWorkMarks({
   required Iterable<List<Offset>> trails,
   required Iterable<CameraMarkedKey> keys,
   required CameraMarkSizes sizes,
   required SheetPaintLayer layer,
+  required bool crossed,
 }) sync* {
   for (final trail in trails) {
     yield SheetStroke(
@@ -177,14 +186,16 @@ Iterable<SheetMark> cameraWorkMarks({
       );
     }
     final at = cameraFrameCentre(key.corners);
-    yield* cameraCrossMarks(
-      key.corners,
-      at: at,
-      argb: argb,
-      arm: sizes.crossArm,
-      width: sizes.crossWidth,
-      layer: layer,
-    );
+    if (crossed) {
+      yield* cameraCrossMarks(
+        key.corners,
+        at: at,
+        argb: argb,
+        arm: sizes.crossArm,
+        width: sizes.crossWidth,
+        layer: layer,
+      );
+    }
     yield cameraPlaceIsAPoint(key.corners)
         ? cameraCrossLabel(
             key.label,

@@ -355,8 +355,11 @@ void main() {
         'whatever the timeline\'s own cursor holds', () {
       standOnTheSoundRow(3);
       rail.copyFrame();
-      session.selectLayer(cel);
-      session.selectFrameIndex(0);
+      // The timeline stands on the sound it copied, a place that copy lands
+      // on: a sound's lands on a sound's row alone (F-609). ↩️It stood on
+      // [cel], a picture's row, which took an S row's copy until F-609.
+      session.selectLayer(s1);
+      session.selectFrameIndex(3);
       expect(
         fourOf(timeline),
         [true, true, true, false],

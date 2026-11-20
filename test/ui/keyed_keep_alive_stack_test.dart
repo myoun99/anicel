@@ -132,6 +132,171 @@ void main() {
       reason: 'the cached subtree must keep its element state',
     );
   });
+
+  // 🔬A kept child off stage was laid out with the shown one at every
+  // change of the stack's box — the brush's tool panels with the fill's on
+  // every frame a rail scrolled them to its window (2026-11-20).
+  group('only the child shown is laid out', () {
+    Widget stack(
+      String active,
+      Widget Function(String key) child, {
+      BoxConstraints box = const BoxConstraints.tightFor(
+        width: 100,
+        height: 100,
+      ),
+      TextDirection direction = TextDirection.ltr,
+    }) => Directionality(
+      textDirection: direction,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: box,
+          child: KeyedKeepAliveStack<String, int>(
+            keys: const ['a', 'b'],
+            activeKey: active,
+            stateOf: () => 0,
+            builder: (context) => child(active),
+          ),
+        ),
+      ),
+    );
+
+    Widget sized(String key) => SizedBox.fromSize(
+      key: ValueKey<String>('child-$key'),
+      size: key == 'a' ? const Size(40, 20) : const Size(80, 60),
+    );
+
+    testWidgets('a child kept off stage is not laid out as the box changes, '
+        'and is laid to the box it comes back to', (tester) async {
+      final heights = <String, List<double>>{'a': [], 'b': []};
+      Widget recorded(String key) => LayoutBuilder(
+        builder: (context, box) {
+          heights[key]!.add(box.maxHeight);
+          return const SizedBox.expand();
+        },
+      );
+      const taller = BoxConstraints.tightFor(width: 100, height: 200);
+
+      await tester.pumpWidget(stack('a', recorded));
+      await tester.pumpWidget(stack('b', recorded));
+      await tester.pumpWidget(stack('b', recorded, box: taller));
+      expect(heights['b'], [100, 200]);
+      expect(heights['a'], [100], reason: 'off stage, it kept its layout');
+
+      await tester.pumpWidget(stack('a', recorded, box: taller));
+      expect(heights['a'], [100, 200], reason: 'laid to the box it came to');
+    });
+
+    testWidgets('a finder sees the child shown, and not the one kept', (
+      tester,
+    ) async {
+      await tester.pumpWidget(stack('b', sized));
+      await tester.pumpWidget(stack('a', sized));
+
+      expect(find.byKey(const ValueKey<String>('child-a')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('child-b')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('child-b'), skipOffstage: false),
+        findsOneWidget,
+        reason: 'premise: it is kept',
+      );
+    });
+
+    testWidgets('a stack given room is as big as the child shown — laid out '
+        'and dry — not as the bigger one kept', (tester) async {
+      const room = BoxConstraints(maxWidth: 100, maxHeight: 100);
+      await tester.pumpWidget(stack('b', sized, box: room));
+      await tester.pumpWidget(stack('a', sized, box: room));
+
+      final box = tester.renderObject<RenderBox>(
+        find.byType(KeyedKeepAliveStack<String, int>),
+      );
+      expect(box.size, const Size(40, 20));
+      expect(box.getDryLayout(room), const Size(40, 20));
+    });
+
+    testWidgets('the child shown stands where an IndexedStack stands it — at '
+        'the start of the reading direction', (tester) async {
+      await tester.pumpWidget(
+        stack('a', sized, direction: TextDirection.rtl),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('child-a'))),
+        const Offset(60, 0),
+      );
+    });
+
+    testWidgets('a child kept off stage that changes, and changes again, is '
+        'laid out to the box it was last shown in', (tester) async {
+      final width = ValueNotifier<double>(10);
+      addTearDown(width.dispose);
+      Widget changing(String key) => key == 'a'
+          ? sized(key)
+          : ValueListenableBuilder<double>(
+              valueListenable: width,
+              builder: (context, value, _) => SizedBox(
+                key: const ValueKey<String>('child-b'),
+                width: value,
+              ),
+            );
+      await tester.pumpWidget(stack('b', changing));
+      await tester.pumpWidget(stack('a', changing));
+
+      for (final value in [20.0, 30.0]) {
+        width.value = value;
+        await tester.pump();
+      }
+      expect(
+        tester.getSize(
+          find.byKey(const ValueKey<String>('child-b'), skipOffstage: false),
+        ),
+        const Size(30, 0),
+      );
+    });
+
+    testWidgets('a child kept off stage cannot take the focus', (
+      tester,
+    ) async {
+      final nodes = {'a': FocusNode(), 'b': FocusNode()};
+      addTearDown(() {
+        for (final node in nodes.values) {
+          node.dispose();
+        }
+      });
+      Widget focusable(String key) =>
+          Focus(focusNode: nodes[key], child: const SizedBox.expand());
+      await tester.pumpWidget(stack('b', focusable));
+      await tester.pumpWidget(stack('a', focusable));
+
+      nodes['b']!.requestFocus();
+      await tester.pump();
+      expect(nodes['b']!.hasFocus, isFalse);
+      nodes['a']!.requestFocus();
+      await tester.pump();
+      expect(nodes['a']!.hasFocus, isTrue, reason: 'premise: the shown can');
+    });
+
+    testWidgets('a stack given room follows the child shown as it changes '
+        'its size', (tester) async {
+      final width = ValueNotifier<double>(10);
+      addTearDown(width.dispose);
+      Widget changing(String key) => ValueListenableBuilder<double>(
+        valueListenable: width,
+        builder: (context, value, _) => SizedBox(width: value, height: 20),
+      );
+      const room = BoxConstraints(maxWidth: 100, maxHeight: 100);
+      await tester.pumpWidget(stack('a', changing, box: room));
+
+      final box = tester.renderObject<RenderBox>(
+        find.byType(KeyedKeepAliveStack<String, int>),
+      );
+      for (final value in [20.0, 30.0]) {
+        width.value = value;
+        await tester.pump();
+        expect(box.size, Size(value, 20));
+      }
+    });
+  });
 }
 
 class _Counter extends StatefulWidget {

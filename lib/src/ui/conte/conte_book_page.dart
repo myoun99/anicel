@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -14,11 +13,16 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/cut_id.dart';
-import '../brush/sheet_canvas_panel.dart' show SheetStrokeHold;
 import '../editor_session_manager.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
+import '../sheet/sheet_ink_layer.dart'
+    show
+        SheetInkScreens,
+        SheetInkStrokes,
+        SheetInkWindow,
+        sheetInkAbovePicture;
 import '../sheet/sheet_strata.dart';
 import '../sheet/sheet_text_edit_layer.dart';
 import '../sheet_painting.dart' show SheetPictureLookup, SheetPictureOverInk;
@@ -51,7 +55,8 @@ class ConteBookPage extends StatelessWidget {
     required this.onSelectCell,
     required this.wordsRefusalOf,
     required this.drawing,
-    required this.strokeHold,
+    this.inkWindows = const [],
+    this.inkStrokes,
     this.imageFor,
     this.imageRepaint,
     this.picturesLanded,
@@ -77,13 +82,18 @@ class ConteBookPage extends StatelessWidget {
   /// Why a cell with no block takes no words.
   final String Function(ContePlacedCell cell) wordsRefusalOf;
 
-  /// Whether the sheet takes ink now — the live windows' keys stand down
-  /// in the printed ink while it does.
+  /// Whether the sheet takes ink now — its windows show the surfaces the
+  /// pen draws on ([SheetInkController.shownSurfaceFor]).
   final bool drawing;
 
-  /// Raised while the pen is down on the sheet: the ink stratum stands down
-  /// from its bake for the stroke.
-  final SheetStrokeHold strokeHold;
+  /// The windows this page's ink shows through, in its own space: the
+  /// pen's own while it is on, which take a stroke where no block has been
+  /// written on yet ([conteInkWindows]).
+  final List<SheetInkWindow> inkWindows;
+
+  /// The strokes in flight on [inkWindows], which the pen's views write
+  /// ([ConteInkLayer]) and this page's ink screens show.
+  final SheetInkStrokes? inkStrokes;
 
   /// A media image by its asset path — the logo, the cover's picture.
   final SheetImageLookup? imageFor;
@@ -113,6 +123,22 @@ class ConteBookPage extends StatelessWidget {
     return Stack(
       children: [
         _strata(context),
+        // Over the page and under its ink: the pictures the brush draws
+        // into, composited live while it is on — where the brush off prints
+        // them, the picture stratum, so the switch moves no pixel (F-215).
+        if (pictures.isNotEmpty)
+          Positioned.fill(
+            key: const ValueKey<String>('conte-live-pictures'),
+            child: _livePictures(context),
+          ),
+        // Its ink over them, the brush on or off (F-215): the pen's views
+        // lie over every page (`ConteInkLayer`). Keyed: the pictures come
+        // and go before it with the switch, and it stays.
+        if (_inkScreens() case final screens?)
+          Positioned.fill(
+            key: const ValueKey<String>('conte-ink-screens'),
+            child: screens,
+          ),
         // Under the ink window: reachable exactly when the brush is off
         // (the switch doubles as the edit-mode switch, the timesheet's
         // header-edit rule).
@@ -125,11 +151,31 @@ class ConteBookPage extends StatelessWidget {
             barrierKey: 'conte-action-edit-barrier',
           ),
         ),
-        // Under the pen, over the page: the pictures the brush draws into,
-        // composited live while it is on.
-        if (pictures.isNotEmpty)
-          Positioned.fill(child: _livePictures(context)),
       ],
+    );
+  }
+
+  /// This page's ink as it shows ([SheetInkScreens]) — yielding to its
+  /// pictures where they show their cuts' canvases (F-216) — or null with
+  /// no ink to show.
+  Widget? _inkScreens() {
+    final ink = inkController;
+    final strokes = inkStrokes;
+    if (ink == null || strokes == null) {
+      return null;
+    }
+    return SheetInkScreens(
+      windows: inkWindows,
+      keyPrefix: 'conte',
+      viewport: viewport,
+      surfaceOf: (window) =>
+          ink.shownSurfaceFor(null, window.key, drawing: drawing),
+      strokes: strokes,
+      inkChanges: ink,
+      above: [for (final over in picturesOverInk) sheetInkAbovePicture(over)],
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
+      photoHold: session.sheetPhotoHold,
     );
   }
 
@@ -263,11 +309,9 @@ class ConteBookPage extends StatelessWidget {
   }
 
   Positioned _strata(BuildContext context) {
-    final ink = inkController;
     ContePagePainter painterOf(
       SheetStratum stratum, {
       ValueListenable<TimelineDragPreview?>? dragPreview,
-      Set<BrushFrameKey> liveInkKeys = const {},
       List<SheetPictureOverInk> picturesOverInk = const [],
       List<Listenable?> repaint = const [],
     }) => ContePagePainter(
@@ -282,11 +326,6 @@ class ConteBookPage extends StatelessWidget {
       viewport: viewport,
       effectiveRatio: EffectiveDevicePixelRatio.of(context),
       layers: stratum.layers,
-      // Saved sheet ink shows whatever the ink mode says (R5), as the live
-      // window would draw it (F-215); a live input window's key stands down
-      // so translucent ink never composites twice.
-      inkSurfaceFor: ink == null ? null : (key) => ink.surfaceFor(null, key),
-      liveInkKeys: liveInkKeys,
       picturesOverInk: picturesOverInk,
       dragPreview: dragPreview,
       repaint: repaint.isEmpty ? null : Listenable.merge(repaint),
@@ -331,27 +370,14 @@ class ConteBookPage extends StatelessWidget {
                 picturesOverInk: picturesOverInk,
                 repaint: [picturesLanded, imageRepaint],
               ),
-              if (ink != null)
-                SheetStratum.ink: painterOf(
-                  SheetStratum.ink,
-                  liveInkKeys: drawing
-                      ? {for (final window in conteInkWindows(page)) window.key}
-                      : const {},
-                  picturesOverInk: picturesOverInk,
-                  // And a landed decode of a photo it holds (I-97).
-                  repaint: [ink, imageRepaint],
-                ),
             },
             // ⚠️A stratum stands down while it changes on every step — the
-            // ink while the pen is down, the numbers while a drag re-prints
-            // them (F-88): capturing costs a full paint PLUS a full copy a
-            // step.
-            liveNow: (stratum) => switch (stratum) {
-              SheetStratum.ink => strokeHold.value,
-              SheetStratum.content => printed.slice != committed,
-              SheetStratum.form || SheetStratum.picture => false,
-            },
-            liveChanges: Listenable.merge([strokeHold, printed]),
+            // numbers while a drag re-prints them (F-88): capturing costs a
+            // full paint PLUS a full copy a step.
+            liveNow: (stratum) =>
+                stratum == SheetStratum.content &&
+                printed.slice != committed,
+            liveChanges: printed,
           );
         },
       ),

@@ -41,7 +41,11 @@ void main() {
         .toIso8601String();
   }
 
-  String complaintsFor(List<String> lines, {Set<int>? openPrs}) {
+  String complaintsFor(
+    List<String> lines, {
+    Set<int>? openPrs,
+    String? proseSince,
+  }) {
     final file = File('${dir.path}/board.jsonl')
       ..writeAsStringSync(lines.map((l) => '$l\n').join());
     // ⚠️The line rules start at a constant that is AFTER the bogus stamps in
@@ -56,6 +60,7 @@ void main() {
       file,
       since: base.toIso8601String(),
       linesSince: base.toIso8601String(),
+      proseSince: proseSince ?? base.toIso8601String(),
       now: base.add(const Duration(hours: 2)),
       openPrs: openPrs,
     );
@@ -283,6 +288,19 @@ void main() {
             '"note":"#1302 에서 고쳤다","ts":"${at('09:00')}"}',
       ]);
       expect(out, contains('본문에만'));
+    });
+
+    test('⛔a quote written before board_say refused it is history', () {
+      // Its pair is the case above: the same line, judged since before it.
+      // A line cannot be mended and a quoted PR cannot be claimed, so the
+      // only exit was an ack that left the whole card alone (kProseSince).
+      final out = complaintsFor([
+        '{"kind":"item","id":"A","at":"남은 것","rest":"남음",'
+            '"note":"#1302 에서 고쳤다","ts":"${at('09:00')}"}',
+        '{"kind":"item","id":"A","note":"그 뒤 이야기",'
+            '"ts":"${at('10:00')}"}',
+      ], proseSince: at('09:30'));
+      expect(out, isNot(contains('본문에만')));
     });
 
     test('🚨a check written into `rest` files the card as startable work', () {

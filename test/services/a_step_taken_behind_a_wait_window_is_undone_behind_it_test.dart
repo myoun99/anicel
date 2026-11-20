@@ -67,13 +67,13 @@ void main() {
     expect(undoBehind(), same(window));
   });
 
-  test('a gesture\'s writes folded into one keep the window they stood '
+  test('a gesture\'s writes put up as one keep the window they stood '
       'behind', () {
-    final mark = history.gestures.mark;
+    final line = history.gestures.open('swipe');
     behindWaitWindow(window, () => history.execute(_Step()));
     history.execute(_Step());
-    history.gestures.foldSince(mark, 'swipe');
-    expect(history.undoCount, 1, reason: 'premise: folded');
+    line.close();
+    expect(history.undoCount, 1, reason: 'premise: one entry');
     expect(undoBehind(), same(window));
   });
 

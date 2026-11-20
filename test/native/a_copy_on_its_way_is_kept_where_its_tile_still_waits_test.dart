@@ -52,9 +52,6 @@ void main() {
     engine.close();
   });
 
-  // A cel, by the name a painter gives one.
-  const cel = (1, 1);
-
   /// A tile of [value] at every byte, its bytes here.
   BitmapTile tileOf(int value) => BitmapTile(
     size: gpuTileSide,
@@ -62,7 +59,7 @@ void main() {
   );
 
   List<BitmapTile> landed(List<BitmapTile?> unders, int value) =>
-      landedOn(ledger, cel, unders, value);
+      landedOn(ledger, unders, value);
 
   test('the isolate that asks waits for no GPU: a batch is on its way as '
       'the call returns, and each tile\'s own bytes are here once it has '
@@ -217,7 +214,7 @@ Future<void> _twoCopiesComeAndNoMore(SendPort told) async {
   final engine = GpuEngine.onFirstAdapter();
   final ledger = EngineTileLedger(engine);
   for (final value in [7, 9]) {
-    final tile = landedOn(ledger, (1, 1), [null], value).single;
+    final tile = landedOn(ledger, [null], value).single;
     await ledger.copyHereABatch();
     if (tile.isOnlyOnEngine) {
       throw StateError('no copy came of $value');

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/sheet_memo_side.dart';
@@ -15,8 +16,9 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart'
+    show LiveCelScreen;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
-import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -33,7 +35,13 @@ void main() {
   late BrushFrameStore inkStore;
   late ValueNotifier<BrushToolState> brushTool;
 
-  Future<void> pumpHost(WidgetTester tester, {bool brushAllowed = true}) async {
+  /// The host over a new session, its brush switch at [brushAllowed] —
+  /// what [inked] stores before it is first built standing in it.
+  Future<void> pumpHost(
+    WidgetTester tester, {
+    bool brushAllowed = true,
+    void Function()? inked,
+  }) async {
     session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
     inkStore = BrushFrameStore();
@@ -41,6 +49,7 @@ void main() {
     addTearDown(inkController.dispose);
     brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(brushTool.dispose);
+    inked?.call();
 
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -86,31 +95,37 @@ void main() {
     // printed no ink of its own, so with the switch off (every sheet's
     // default since 09-25) its writing vanished; the conte's and the
     // envelope's stayed.
-    testWidgets('🚨the saved ink prints with the brush OFF too; with it ON, '
-        'the windows the live layer shows stand down', (tester) async {
-      await pumpHost(tester, brushAllowed: false);
-      final page = timesheetInkPageKey(session.requireActiveCut.id, 0);
-      inkStore.storeBakedSurface(page, _inkedSurface());
-      await tester.pump();
-      TimesheetDocumentPainter printed() =>
-          tester
-                  .widget<CustomPaint>(
-                    find.byKey(const ValueKey<String>('timesheet-ink-paint')),
-                  )
-                  .painter!
-              as TimesheetDocumentPainter;
+    testWidgets('🚨the saved ink shows with the brush OFF too, and the '
+        'switch shows it on the very same screen (F-215)', (tester) async {
+      late final BrushFrameKey page;
+      await pumpHost(
+        tester,
+        brushAllowed: false,
+        inked: () {
+          page = timesheetInkPageKey(session.requireActiveCut.id, 0);
+          inkStore.storeBakedSurface(page, _inkedSurface());
+        },
+      );
+      final shown = find.descendant(
+        of: find.byKey(const ValueKey<String>('timesheet-ink-screens')),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is LiveCelScreen && widget.cel == page,
+        ),
+      );
 
       expect(find.byKey(_inkLayerKey), findsNothing, reason: 'the premise');
-      expect(printed().ink.map((window) => window.key), contains(page));
-      // On screen the print draws the surface itself, as the live window
-      // does (F-215).
-      expect(printed().inkSurfaceFor!(page), isNotNull);
-      expect(printed().liveInkKeys, isEmpty);
+      expect(shown, findsOneWidget);
+      final off = tester.element(shown);
 
       await tester.tap(find.byKey(_inkToggleKey));
       await tester.pumpAndSettle();
       expect(find.byKey(_inkLayerKey), findsOneWidget);
-      expect(printed().liveInkKeys, contains(page));
+      expect(
+        tester.element(shown),
+        same(off),
+        reason: 'the switch mounts the views that take the pen over it, and '
+            'moves nothing that shows it',
+      );
     });
 
     // H40 ② (2026-09-24): the ink layer was rebuilt on every brush change —
@@ -317,11 +332,11 @@ void main() {
 /// A small inked surface — what a landed stroke leaves in a store.
 BitmapSurface _inkedSurface() => BitmapSurface(
   canvasSize: const CanvasSize(width: 16, height: 16),
-  tileSize: 8,
+  tileSize: 128,
   tiles: {
     TileCoord(x: 0, y: 0): BitmapTile(
-      size: 8,
-      pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 255),
+      size: 128,
+      pixels: Uint8List(128 * 128 * 4)..fillRange(0, 128 * 128 * 4, 255),
     ),
   },
 );

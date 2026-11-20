@@ -24,12 +24,14 @@ import 'tile_cutter.dart' show RowSink, TileCutter;
 ///    then 64×64 tiles in row-major order (edge tiles truncated). Two tile
 ///    encodings exist, selected by X:
 ///      X > 0: tile 0 is X bytes of bare rows; after that each tile is a
-///        12-byte copy marker `(0, 0, srcTile)` or `u32 size` + rows.
+///        12-byte copy marker — `(0, 0, srcTile)` of this picture,
+///        `(0, 1, srcTile)` of the picture before ([TvppMakeup]) — or
+///        `u32 size` + rows.
 ///      X == 0: every tile is a 12-byte record `(a, anchor, c)`; `c == 0`
 ///        is empty, `c > 0` starts a chain — the c bytes belong to the
 ///        NEXT tile, then `u32 size` continues tile-by-tile until a zero.
 ///  * v11 and later wrap records in a zlib chain (64KB blocks); v10 stores them
-///    raw. [tvppSlotRows] reads both, by [TvppSlot.compressed].
+///    raw. [readTvppPicture] reads both, by [TvppSlot.compressed].
 class TvppRasterDecodeException implements Exception {
   const TvppRasterDecodeException(this.message);
 
@@ -39,22 +41,36 @@ class TvppRasterDecodeException implements Exception {
   String toString() => 'TvppRasterDecodeException: $message';
 }
 
-/// [slot]'s picture as rows of straight RGBA, handed to [row] from the top
-/// — the rows a [TileCutter] cuts, as every picture a file holds is cut.
-/// A row with no ink is not handed on, which a cut reads as clear; a hold
-/// slot hands on none. A row's bytes are the next one's once [row] returns.
+/// A tile shows the picture before's (`(0, 1, s)`), and the picture was
+/// read on its own: it is made, and laid over the one before, in order
+/// ([TvppMakeup]).
+class TvppNeedsThePictureBefore extends TvppRasterDecodeException {
+  const TvppNeedsThePictureBefore()
+    : super('A tile shows the picture before, which was not read.');
+}
+
+/// [slot]'s picture read on its own, as rows of straight RGBA handed to
+/// [row] from the top — the rows a [TileCutter] cuts, as every picture a
+/// file holds is cut. A row with no ink is not handed on, which a cut reads
+/// as clear; a hold slot hands on none. A row's bytes are the next one's
+/// once [row] returns.
+///
+/// A picture with a tile that shows the picture before's throws
+/// [TvppNeedsThePictureBefore]: it is made on its own and laid over the
+/// one before ([TvppMakeup]), and drawn from what it is then made of
+/// ([TvppTileSources.read]).
 ///
 /// [recordBytes] need hold no more than the slot's own record: a window of
 /// it, sent to a worker, is the same input by a different name.
 ///
 /// 🚨NEVER THE WHOLE CANVAS AT ONCE (card F-608 ③). ↩️Till 2026-11-16 a
 /// cel was decoded whole — its words, then its straight bytes: two
-/// canvases, 136 MB each at the user's 7751 × 4396 — and sliced into tiles
-/// by a cut of its own beside the [TileCutter]. Eight workers held over
-/// 2 GB at once, and the open showed no percent till all eight were done.
-/// A tiled record is read a band of its 64-pixel tiles at a time now, a
-/// whole-canvas one a row at a time.
-void tvppSlotRows({
+/// canvases, 136 MB each at the user's 7751 × 4396 — and sliced into
+/// tiles by a cut of its own beside the [TileCutter]. Eight workers held
+/// over 2 GB at once, and the open showed no percent till all eight were
+/// done. A tiled record is read a band of its 64-pixel tiles at a time
+/// now, a whole-canvas one a row at a time.
+void readTvppPicture({
   required Uint8List recordBytes,
   required TvppSlot slot,
   required CanvasSize size,
@@ -63,14 +79,261 @@ void tvppSlotRows({
   if (slot.kind == TvppSlotKind.hold) {
     return;
   }
-  final CanvasSize(:width, :height) = size;
+  _recordRows(
+    _recordOf(recordBytes, slot),
+    size,
+    null,
+    _straightInto(row, size.width),
+  );
+}
+
+/// [row] handed each row of words as straight RGBA, [width] pixels of it —
+/// but a row with no ink, which a cut reads as clear ([_straightRow]).
+_WordRows _straightInto(RowSink row, int width) {
   final rgba = Uint8List(width * 4);
-  _recordRows(_recordOf(recordBytes, slot), width, height, (y, words, from) {
+  return (y, words, from) {
     if (_straightRow(words, from, rgba)) {
       row(y, rgba);
     }
-  });
+  };
 }
+
+/// What a picture is made of on its own ([TvppMakeup.of]) — the tiles it
+/// shows of the picture before only pointed at — and then over the picture
+/// before ([over]): a layer's pictures in the order its file holds them,
+/// each over the one before, for a tile of a picture may be `(0, 1, s)` —
+/// 「the picture before's tile s」.
+///
+/// 🗣️F-621 ② (유저 2026-11-19, the user's file): two layers wrote each
+/// picture as the tiles it changed and pointed the rest at the picture
+/// before, and every picture of theirs but the first failed to read — 515.
+/// 🔬It is the picture BEFORE's tile, not the layer's first's: filled from
+/// it, a pointed tile meets the tiles around it with a mean difference of
+/// 0.0–1.1 a channel; from the first, 1.5–2.9; left empty, 190–608 (six
+/// records of that file). ↩️The decoder knew `(0, 0, s)` alone from its
+/// first version (96d111583) and read the third shape's words as a size.
+///
+/// ⚡ONLY [over] IS IN ORDER (bake card
+/// tvpp-bake-waits-on-the-isolate-that-hands-out-records, 2026-11-20, the
+/// user's file on the Surface, in measurement windows). ↩️Till then a
+/// reader read each picture over the one it read before, its pixels and
+/// all: a step of the longest run was 63–69 ms — the record inflated on a
+/// worker, 46–50 of them beside seven workers decoding, 12 waiting for the
+/// window — and its 243 pictures were 15–17 s of the bake's 28–31 s.
+/// Nothing of [of] asks the picture before, so the pictures after go
+/// through it beside it; [over] goes over the tile table and copies out
+/// what the picture shows, and the picture is drawn from that, beside the
+/// others ([TvppTileSources.read]): the bake 25.3 / 30.6 s against 34.5 /
+/// 41.0, and with three workers 34.3 / 35.5 against 37.7 / 35.7.
+final class TvppMakeup {
+  TvppMakeup._(this._alone);
+
+  /// [slot]'s picture gone over as [readTvppPicture] goes over it —
+  /// refused where it would be refused, but for the picture before it
+  /// needs — with no row of it made and no picture before asked for. A
+  /// run's PackBits are counted, not written ([_PackBits.take] with no
+  /// words).
+  factory TvppMakeup.of({
+    required Uint8List recordBytes,
+    required TvppSlot slot,
+    required CanvasSize size,
+  }) {
+    if (slot.kind == TvppSlotKind.hold) {
+      return TvppMakeup._(null);
+    }
+    final made = _recordRows(
+      _recordOf(recordBytes, slot),
+      size,
+      _PointedAt(),
+      null,
+    );
+    return TvppMakeup._(made());
+  }
+
+  /// What the picture is made of alone — the picture before's tiles in it
+  /// pointed at ([_PointedAt]) — or nothing for a hold, which is the
+  /// picture before.
+  final TvppTileSources? _alone;
+
+  /// What the picture is made of over [before], what the picture before
+  /// it is made of — [before] itself for a hold: every tile that points at
+  /// the picture before shows that picture's tile, as much of it as both
+  /// cover. Where a tile points at the picture before and there is none, it
+  /// throws [TvppNeedsThePictureBefore].
+  TvppTileSources? over(TvppTileSources? before) {
+    final alone = _alone;
+    if (alone == null) {
+      return before;
+    }
+    if (!alone._roots.any(_pointsBefore)) {
+      return alone;
+    }
+    if (before == null) {
+      throw const TvppNeedsThePictureBefore();
+    }
+    final roots = List.of(alone._roots);
+    final kept = List.of(alone._kept);
+    for (var t = 0; t < roots.length; t += 1) {
+      final root = roots[t];
+      if (root != null && _pointsBefore(root)) {
+        final (shown, keeps) = before._shownOn(root.start, kept[t]);
+        roots[t] = shown;
+        kept[t] = keeps;
+      }
+    }
+    return _compacted(roots, kept);
+  }
+}
+
+/// What a picture is made of, tile by tile: the PackBits rows each of the
+/// 64-pixel tiles of its grid is read from — its own, another tile's of
+/// it, or a tile's of the picture before — and how much of them the tile
+/// shows. The picture before for the one after it ([TvppMakeup.over]), and
+/// what the picture is drawn from ([read]).
+///
+/// Every root's rows once, copied out of the records they lie in: a
+/// picture's sources hold no record, and none of the pictures before it.
+///
+/// 🚨WHAT A PICTURE IS MADE OF, NEVER ITS PIXELS: the bytes its tiles are
+/// read from, at most a record's worth, where its pixels would be a canvas
+/// (F-608 ③).
+class TvppTileSources {
+  TvppTileSources._(this._roots, this._kept);
+
+  final List<_Root?> _roots;
+  final List<_Kept> _kept;
+
+  /// Where tile [tile]'s rows are read from. The picture after is on the
+  /// same grid, and a tile it points at is one of its own grid's
+  /// ([_TileGrid.readSizedTiles]).
+  _Root? _rootAt(int tile) => _roots[tile];
+
+  /// How much of its root tile [tile] shows.
+  _Kept _keptAt(int tile) => _kept[tile];
+
+  /// The picture this is made of, [size] large, as rows of straight RGBA
+  /// handed to [row] from the top — the rows [readTvppPicture] hands on
+  /// for a picture it reads: each tile its root's rows, as much of them as
+  /// it shows, and a row with no ink not handed on. A row's bytes are the
+  /// next one's once [row] returns.
+  ///
+  /// 🔬Drawn so, every picture of the user's file is the picture read
+  /// through the record over the one before — 1,629, 1,436 of them over
+  /// one, no row different (bake card
+  /// tvpp-bake-waits-on-the-isolate-that-hands-out-records, 2026-11-20).
+  void read({required CanvasSize size, required RowSink row}) {
+    final grid = _TileGrid(
+      Uint8List(0),
+      width: size.width,
+      height: size.height,
+      rowsOut: _straightInto(row, size.width),
+      before: null,
+    );
+    for (var t = 0; t < grid.total; t += 1) {
+      grid._show(t, _rootAt(t), _keptAt(t));
+    }
+    grid.handOn();
+  }
+
+  /// Tile [tile] shown on a tile that keeps no more of it than [room]:
+  /// its root, and as much of it as both cover.
+  (_Root?, _Kept) _shownOn(int tile, _Kept room) {
+    final kept = _keptAt(tile);
+    return (
+      _rootAt(tile),
+      (
+        width: math.min(kept.width, room.width),
+        height: math.min(kept.height, room.height),
+      ),
+    );
+  }
+}
+
+/// The picture before, not yet known ([TvppMakeup.of]): each of its tiles
+/// a root that says only which tile it is, as large as a tile — so a tile
+/// that shows it, and a tile that shows that tile, keep as much of it as
+/// they would of any root, and it is found once the picture before is
+/// known ([TvppMakeup.over]).
+final class _PointedAt extends TvppTileSources {
+  _PointedAt() : super._(const [], const []);
+
+  @override
+  _Root? _rootAt(int tile) => (
+    bytes: Uint8List(0),
+    start: tile,
+    length: _pointing,
+    width: _TileGrid.tile,
+    height: _TileGrid.tile,
+  );
+
+  @override
+  _Kept _keptAt(int tile) => (width: _TileGrid.tile, height: _TileGrid.tile);
+}
+
+/// The length of a root that points at the picture before ([_PointedAt]) —
+/// a length no root's bytes have.
+///
+/// 🚨NOT BY WHICH BYTES IT HOLDS: a makeup is made on a worker and laid over
+/// the picture before here, and an object the worker made is another one
+/// here. Told by an empty list of its own, the first measurement of the
+/// bake card (tvpp-bake-waits-on-the-isolate-that-hands-out-records,
+/// 2026-11-20, the user's file on the Surface) failed 498 cels — with
+/// every test green, their workers run here.
+const _pointing = -1;
+
+bool _pointsBefore(_Root? root) => root != null && root.length == _pointing;
+
+/// A picture made of [roots], [kept] of each: every root its tiles show
+/// copied out once into bytes of its own — the picture before's with them,
+/// so the next picture holds neither record. A root that points at the
+/// picture before is no bytes, and stays as it points ([_PointedAt]).
+TvppTileSources _compacted(List<_Root?> roots, List<_Kept> kept) {
+  final copiedTo = <_Root, int>{};
+  var length = 0;
+  for (final root in roots) {
+    if (root != null && !_pointsBefore(root) && !copiedTo.containsKey(root)) {
+      copiedTo[root] = length;
+      length += root.length;
+    }
+  }
+  final bytes = Uint8List(length);
+  for (final MapEntry(key: root, value: at) in copiedTo.entries) {
+    bytes.setRange(at, at + root.length, root.bytes, root.start);
+  }
+  return TvppTileSources._([
+    for (final root in roots)
+      if (root == null || _pointsBefore(root))
+        root
+      else
+        (
+          bytes: bytes,
+          start: copiedTo[root]!,
+          length: root.length,
+          width: root.width,
+          height: root.height,
+        ),
+  ], List.of(kept));
+}
+
+/// What a picture read is made of ([TvppTileSources]) — worked out only
+/// where it is asked for ([TvppMakeup.of]).
+typedef _MadeOf = TvppTileSources Function();
+
+/// Where a tile's rows are read from: [bytes] from [start], [length] of
+/// them, as many rows of [width] pixels as [height] says — the root tile's
+/// own size, which the tile that shows it may not share.
+typedef _Root = ({
+  Uint8List bytes,
+  int start,
+  int length,
+  int width,
+  int height,
+});
+
+/// How much of its root a tile shows: no more than the smaller of the two
+/// in each direction — the canvas cuts the grid's last column and row
+/// short, and a copy keeps what both cover, from the top-left.
+typedef _Kept = ({int width, int height});
 
 /// The record [slot] holds, its magic first.
 Uint8List _recordOf(Uint8List recordBytes, TvppSlot slot) {
@@ -312,8 +575,19 @@ class _PackBits {
 typedef _WordRows = void Function(int y, Uint32List words, int from);
 
 /// [record]'s rows, handed to [rows] from the top — but rows of tiles it
-/// left empty, which hold no ink.
-void _recordRows(Uint8List record, int width, int height, _WordRows rows) {
+/// left empty, which hold no ink — read over [before], what the picture
+/// before is made of — none made where [rows] is null. Answers what the
+/// record's picture is made of, for the picture after it to ask.
+///
+/// 🔬Not only a tiled picture is a picture before: both layers of the
+/// user's file that read in order open on a whole-canvas record (`DBOD`),
+/// and the next picture's tiles point into it (F-621 ②, 2026-11-19).
+_MadeOf _recordRows(
+  Uint8List record,
+  CanvasSize size,
+  TvppTileSources? before,
+  _WordRows? rows,
+) {
   if (record.length < 8) {
     throw const TvppRasterDecodeException('The record is too short.');
   }
@@ -324,35 +598,185 @@ void _recordRows(Uint8List record, int width, int height, _WordRows rows) {
     // Type 5 (28 bytes, zero payload): a BLANK instance — 12.0.6 writes
     // these where 12.1 writes a contentless type-64 (288's A_KAKI runs
     // blank cels on 2s this way). An instance boundary with no pixels.
-    return;
+    return () => _blankSources(size);
   }
   if (magic == 'DBOD') {
-    _wholeCanvasRows(record, width, height, rows);
-    return;
+    _wholeCanvasRows(record, size.width, size.height, rows);
+    return () => _wholeCanvasSources(record, size);
   }
   if (magic == 'SRAW') {
-    _tiledRows(record, width, height, rows);
-    return;
+    return _tiledRows(record, size, before, rows).sources;
   }
   throw TvppRasterDecodeException('Unknown raster magic «$magic».');
 }
 
-/// A `DBOD`'s rows, the whole canvas's, read one at a time.
+/// A `DBOD`'s rows, the whole canvas's, read one at a time — counted only,
+/// where no [rows] are wanted.
 void _wholeCanvasRows(
   Uint8List record,
   int width,
   int height,
-  _WordRows rows,
+  _WordRows? rows,
 ) {
   final pb = _PackBits(record, 8);
-  final words = Uint32List(width);
+  final words = rows == null ? null : Uint32List(width);
   for (var y = 0; y < height; y++) {
     pb.take(width, words, _itself);
-    rows(y, words, 0);
+    if (words != null) {
+      rows!(y, words, 0);
+    }
   }
 }
 
 int _itself(int nth) => nth;
+
+/// How many 64-pixel tiles of the grid [pixels] takes.
+int _tilesAcross(int pixels) =>
+    (pixels + _TileGrid.tile - 1) ~/ _TileGrid.tile;
+
+/// A blank picture as the picture before: its grid, no tile showing any.
+TvppTileSources _blankSources(CanvasSize size) {
+  final total = _tilesAcross(size.width) * _tilesAcross(size.height);
+  return TvppTileSources._(
+    List.filled(total, null),
+    List.filled(total, (width: 0, height: 0)),
+  );
+}
+
+/// What a whole-canvas picture is made of ([TvppTileSources]), on the grid
+/// a tiled one is cut into: its rows read again a band of the grid at a
+/// time, each tile packed anew as a tiled record packs one
+/// ([_PackedWords]), none for a tile without ink — so a tile of the picture
+/// after shows it as it shows any other's, and it carries packed rows, not
+/// the canvas.
+TvppTileSources _wholeCanvasSources(Uint8List record, CanvasSize size) {
+  const tile = _TileGrid.tile;
+  final CanvasSize(:width, :height) = size;
+  final pb = _PackBits(record, 8);
+  final band = Uint32List(width * tile);
+  final packed = _PackedWords(band, width);
+  final places = <({int start, int length, int width, int height})?>[];
+  for (var top = 0; top < height; top += tile) {
+    final rows = math.min(tile, height - top);
+    for (var y = 0; y < rows; y += 1) {
+      final at = y * width;
+      pb.take(width, band, (nth) => at + nth);
+    }
+    for (var left = 0; left < width; left += tile) {
+      places.add(packed.tile(left, math.min(tile, width - left), rows));
+    }
+  }
+  final bytes = packed.bytes;
+  return TvppTileSources._(
+    [
+      for (final place in places)
+        if (place == null)
+          null
+        else
+          (
+            bytes: bytes,
+            start: place.start,
+            length: place.length,
+            width: place.width,
+            height: place.height,
+          ),
+    ],
+    [
+      for (final place in places)
+        (width: place?.width ?? 0, height: place?.height ?? 0),
+    ],
+  );
+}
+
+/// Tiles of a [band] of rows, [stride] words each, packed one after
+/// another as a tiled record packs a tile: row by row, a run of equal
+/// words as `257 - n` and the word (no longer than 128, so never `0x80`
+/// — [_PackBits.skips]), anything else literal, `n - 1` and the words.
+///
+/// ⚖️THE SECOND PACKBITS ENCODER — PSD's `packBitsRow` packs bytes, this
+/// packs four-byte pixels, which moves where a run pays: two equal words
+/// cost five bytes as a run and nine as literals, where two equal bytes
+/// cost the same either way. Not one code until a third wants it (rule of
+/// three, `when-rules-conflict`).
+class _PackedWords {
+  _PackedWords(this.band, this.stride);
+
+  final Uint32List band;
+  final int stride;
+  final _bytes = <int>[];
+
+  /// A word's four bytes as a record stores them, big-endian.
+  final _four = ByteData(4);
+  late final _fourBytes = _four.buffer.asUint8List();
+
+  /// Every tile packed so far, back to back.
+  Uint8List get bytes => Uint8List.fromList(_bytes);
+
+  /// The tile [width] wide and [height] tall from column [left] of the
+  /// band, packed — where it lies in [bytes] — or null where it has no ink.
+  ({int start, int length, int width, int height})? tile(
+    int left,
+    int width,
+    int height,
+  ) {
+    if (!_inked(left, width, height)) {
+      return null;
+    }
+    final start = _bytes.length;
+    for (var y = 0; y < height; y += 1) {
+      _row(y * stride + left, y * stride + left + width);
+    }
+    return (
+      start: start,
+      length: _bytes.length - start,
+      width: width,
+      height: height,
+    );
+  }
+
+  bool _inked(int left, int width, int height) {
+    for (var y = 0; y < height; y += 1) {
+      for (var x = left; x < left + width; x += 1) {
+        if (band[y * stride + x] != 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  void _row(int from, int end) {
+    var at = from;
+    while (at < end) {
+      var run = 1;
+      while (at + run < end && run < 128 && band[at + run] == band[at]) {
+        run += 1;
+      }
+      if (run >= 2) {
+        _bytes.add(257 - run);
+        _word(band[at]);
+        at += run;
+        continue;
+      }
+      final start = at;
+      at += 1;
+      while (at < end &&
+          at - start < 128 &&
+          !(at + 1 < end && band[at] == band[at + 1])) {
+        at += 1;
+      }
+      _bytes.add(at - start - 1);
+      for (var k = start; k < at; k += 1) {
+        _word(band[k]);
+      }
+    }
+  }
+
+  void _word(int word) {
+    _four.setUint32(0, word);
+    _bytes.addAll(_fourBytes);
+  }
+}
 
 /// One frame of a DEEP animation — a TVPaint brush tip's `.dip` — as
 /// premultiplied BGRA words: a `DBOD` [body] read as a whole canvas, or a
@@ -382,7 +806,9 @@ Uint32List _readRows(_PackBits pb, Uint32List img, int width) {
 
 /// One tiled raster being read: the 64×64 grid the picture is cut into,
 /// the PackBits cursor walking the record, and the grid's row of tiles
-/// under way — its [band] — handed on to [rowsOut] as the walk leaves it.
+/// under way — its [band] — handed on to [rowsOut] as the walk leaves it;
+/// no band at all where there is no [rowsOut], only what the picture is
+/// made of ([TvppMakeup.of]).
 ///
 /// ⛔The record's shape is measured, not documented — see
 /// `tvpp-format-notes.md`. Nothing here may change what bytes are read
@@ -391,16 +817,18 @@ Uint32List _readRows(_PackBits pb, Uint32List img, int width) {
 /// 🚨NO TILE IS HELD PAST ITS BAND (card F-608 ③): the walk meets the
 /// tiles in order, a row of the grid after another, so the band is all of
 /// the picture there is at once. A tile that copies one of a band already
-/// handed on reads that one's bytes again ([_readAgain]).
+/// handed on — or one of the picture before — reads that one's bytes again
+/// ([_readAgain]).
 class _TileGrid {
   _TileGrid(
     this.record, {
     required this.width,
     required this.height,
     required this.rowsOut,
+    required this.before,
   }) : cols = (width + tile - 1) ~/ tile,
        rows = (height + tile - 1) ~/ tile,
-       band = Uint32List(width * tile),
+       band = Uint32List(rowsOut == null ? 0 : width * tile),
        pb = _PackBits(record, 24);
 
   static const tile = 64;
@@ -408,10 +836,14 @@ class _TileGrid {
   final Uint8List record;
   final int width;
   final int height;
-  final _WordRows rowsOut;
+  final _WordRows? rowsOut;
   final int cols;
   final int rows;
   final _PackBits pb;
+
+  /// What the picture before is made of — pointed at, not yet known, for a
+  /// picture made on its own ([_PointedAt]); none for one read on its own.
+  final TvppTileSources? before;
 
   /// The grid's row of tiles under way: its [tile] rows of pixels, [width]
   /// words each, zero where no tile was written.
@@ -423,24 +855,18 @@ class _TileGrid {
 
   int get total => cols * rows;
 
-  /// The tile whose bytes tile t shows — itself where it was read — or null
-  /// where it shows none: never written, or a copy of one that showed none.
-  late final List<int?> _roots = List.filled(total, null);
+  /// Where tile t's rows are read from — its own where it was read — or
+  /// null where it shows none: never written, or a copy of one that showed
+  /// none.
+  late final List<_Root?> _roots = List.filled(total, null);
 
-  /// Where a read tile's rows begin in [record].
-  late final Int32List _starts = Int32List(total);
+  /// How much of its root tile t shows ([_Kept]).
+  late final List<_Kept> _kept = List.filled(total, (width: 0, height: 0));
 
-  /// How many columns of its root's pixels tile t shows: a copy keeps no
-  /// more than the narrower of the two (the grid's last column is cut short
-  /// by the canvas). Rows need no keeping — a copy's root was read before
-  /// it, so stands no lower in the grid, and only the grid's last row is
-  /// short.
-  late final Uint8List _keptWidths = Uint8List(total);
-
-  /// A tile's pixels read again ([_readAgain]), rows of its own width, and
-  /// which tile they are.
+  /// A root's pixels read again ([_readAgain]), rows of its own width, and
+  /// which root they are.
   final Uint32List _again = Uint32List(tile * tile);
-  int? _againOf;
+  _Root? _againOf;
 
   /// The thumbnail's pixels, as many as the head says it is wide and tall
   /// — 96 × 54 in every tiled record of the user's 7751 × 4396 file (240 of
@@ -480,21 +906,25 @@ class _TileGrid {
     final tc = t % cols;
     final tw = _tileWidth(tc);
     final th = _tileHeight(t ~/ cols);
-    _enterBandOf(t);
+    final out = _bandFor(t);
     final from = pb.at;
     for (var y = 0; y < th; y++) {
       final at = y * width + tc * tile;
-      pb.take(tw, band, (nth) => at + nth);
+      pb.take(tw, out, (nth) => at + nth);
     }
     if (pb.at - from != declaredSize) {
       throw TvppRasterDecodeException(
         'Tile $t size mismatch: ${pb.at - from} ≠ $declaredSize.',
       );
     }
-    _starts[t] = from;
-    _roots[t] = t;
-    _keptWidths[t] = tw;
-    _written.add(t);
+    _roots[t] = (
+      bytes: record,
+      start: from,
+      length: declaredSize,
+      width: tw,
+      height: th,
+    );
+    _kept[t] = (width: tw, height: th);
   }
 
   /// Copies an already-decoded tile onto another — how the format says
@@ -511,39 +941,71 @@ class _TileGrid {
     }
     // A source the walk has not written yet — later in it, or left empty —
     // shows nothing, and so does its copy.
-    final root = _roots[src];
+    _show(dst, _roots[src], _kept[src]);
+  }
+
+  /// Shows the picture before's tile [src] on tile [dst] — how the format
+  /// says 「this tile is the same as that one, the picture before」.
+  void copyFromBefore(int dst, int src) {
+    final before = this.before;
+    if (before == null) {
+      throw const TvppNeedsThePictureBefore();
+    }
+    _show(dst, before._rootAt(src), before._keptAt(src));
+  }
+
+  /// Tile [dst] shows [root], as much of it as [kept] says and the tile
+  /// covers — nothing where there is no root.
+  void _show(int dst, _Root? root, _Kept kept) {
     if (root == null) {
       return;
     }
     final dc = dst % cols;
-    final keptWidth = math.min(_keptWidths[src], _tileWidth(dc));
-    _enterBandOf(dst);
-    final pixels = _readAgain(root);
-    final rootWidth = _tileWidth(root % cols);
-    for (var y = 0; y < _tileHeight(dst ~/ cols); y++) {
-      final at = y * width + dc * tile;
-      band.setRange(at, at + keptWidth, pixels, y * rootWidth);
-    }
+    final shown = (
+      width: math.min(kept.width, _tileWidth(dc)),
+      height: math.min(kept.height, _tileHeight(dst ~/ cols)),
+    );
     _roots[dst] = root;
-    _keptWidths[dst] = keptWidth;
-    _written.add(dst);
+    _kept[dst] = shown;
+    final out = _bandFor(dst);
+    if (out == null) {
+      return;
+    }
+    final pixels = _readAgain(root);
+    for (var y = 0; y < shown.height; y++) {
+      final at = y * width + dc * tile;
+      out.setRange(at, at + shown.width, pixels, y * root.width);
+    }
   }
 
-  /// Read tile [t]'s pixels, read again from its bytes — rows of its own
-  /// width, in a buffer the next tile read again reuses.
-  Uint32List _readAgain(int t) {
-    if (_againOf == t) {
+  /// [band], moved on to tile [t]'s row of the grid, with [t] to be cleared
+  /// in it once it is handed on — none where no rows are wanted ([rowsOut]).
+  Uint32List? _bandFor(int t) {
+    if (rowsOut == null) {
+      return null;
+    }
+    _enterBandOf(t);
+    _written.add(t);
+    return band;
+  }
+
+  /// [root]'s pixels, read again from its bytes — rows of its own width, in
+  /// a buffer the next root read again reuses.
+  Uint32List _readAgain(_Root root) {
+    if (_againOf == root) {
       return _again;
     }
-    final again = _PackBits(record, _starts[t]);
-    final tw = _tileWidth(t % cols);
-    for (var y = 0; y < _tileHeight(t ~/ cols); y++) {
-      final at = y * tw;
-      again.take(tw, _again, (nth) => at + nth);
+    final again = _PackBits(root.bytes, root.start);
+    for (var y = 0; y < root.height; y++) {
+      final at = y * root.width;
+      again.take(root.width, _again, (nth) => at + nth);
     }
-    _againOf = t;
+    _againOf = root;
     return _again;
   }
+
+  /// What this picture is made of ([TvppTileSources], [_compacted]).
+  TvppTileSources sources() => _compacted(_roots, _kept);
 
   /// [band] moved on to tile [t]'s row of the grid — the rows before it
   /// handed on first.
@@ -556,9 +1018,11 @@ class _TileGrid {
   }
 
   /// [band]'s rows handed on, and the band cleared where it was written —
-  /// a band no tile was written in hands on nothing.
+  /// a band no tile was written in hands on nothing — nor does a walk that
+  /// wants no rows, which writes none ([_bandFor]).
   void handOn() {
-    if (_written.isEmpty) {
+    final rowsOut = this.rowsOut;
+    if (rowsOut == null || _written.isEmpty) {
       return;
     }
     final bandHeight = _tileHeight(_bandRow);
@@ -576,17 +1040,22 @@ class _TileGrid {
   }
 
   /// Layout A (X > 0): tile 0 is [firstTileSize] bytes long, and every
-  /// tile after it is either a 12-byte reference to an earlier tile
-  /// (0, 0, source) or a 4-byte size followed by its pixels.
+  /// tile after it is either a 12-byte reference — to an earlier tile
+  /// (0, 0, source), or to the picture before's (0, 1, source) — or a
+  /// 4-byte size followed by its pixels.
   void readSizedTiles(int firstTileSize) {
     readTile(0, firstTileSize);
     for (var t = 1; t < total; t++) {
       if (pb.at + 12 <= record.length) {
         final v = ByteData.sublistView(record, pb.at, pb.at + 12);
-        if (v.getUint32(0) == 0 &&
-            v.getUint32(4) == 0 &&
-            v.getUint32(8) < total) {
-          copyTile(t, v.getUint32(8));
+        final ofBefore = v.getUint32(4);
+        final source = v.getUint32(8);
+        if (v.getUint32(0) == 0 && ofBefore <= 1 && source < total) {
+          if (ofBefore == 0) {
+            copyTile(t, source);
+          } else {
+            copyFromBefore(t, source);
+          }
           pb.at += 12;
           continue;
         }
@@ -642,8 +1111,19 @@ class _TileGrid {
 /// every canvas measured (near 3:2), and wrong for any other: a 16:9
 /// file's pictures after each layer's first keyframe all failed, the tile
 /// table looked for 1,248 pixels late (card F-608 — 240 in one file).
-void _tiledRows(Uint8List record, int width, int height, _WordRows rows) {
-  final grid = _TileGrid(record, width: width, height: height, rowsOut: rows);
+_TileGrid _tiledRows(
+  Uint8List record,
+  CanvasSize size,
+  TvppTileSources? before,
+  _WordRows? rows,
+) {
+  final grid = _TileGrid(
+    record,
+    width: size.width,
+    height: size.height,
+    rowsOut: rows,
+    before: before,
+  );
   grid.pb.take(grid.thumbnailPixels, null, null);
   final x = grid.readTileTable();
   if (x > 0) {
@@ -652,6 +1132,7 @@ void _tiledRows(Uint8List record, int width, int height, _WordRows rows) {
     grid.readTileRuns();
   }
   grid.handOn();
+  return grid;
 }
 
 // ---------------------------------------------------------------------------

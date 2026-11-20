@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/sync_image_upload.dart'
+    show debugPictureOfUploads, pictureOfUploads;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -152,14 +154,8 @@ void main() {
   }
 
   /// [row]'s picture, straight RGBA.
-  Future<Uint8List> pictureOf(ExportLayerRow row) async {
-    final image = await row.draw();
-    final bytes = await image.toByteData(
-      format: ui.ImageByteFormat.rawStraightRgba,
-    );
-    image.dispose();
-    return bytes!.buffer.asUint8List();
-  }
+  Future<Uint8List> pictureOf(ExportLayerRow row) async =>
+      (await row.draw()).pixels;
 
   List<ExportLayerRow> rowsOf(EditorSessionManager session, ui.Color ground) =>
       ExportFrameRenderer(session: session, ground: ground).celGroupRows(
@@ -295,6 +291,48 @@ void main() {
         'A',
         'A 影',
       ]);
+    });
+  });
+
+  testWidgets('🚨its rows are read off the engine, none of them a picture the '
+      'door uploads — Impeller holds no texture of one till its raster '
+      'thread turns, and read back at once it was none (F-547 ⑦: 「Image was '
+      'null.」)', (tester) async {
+    await tester.runAsync(() async {
+      final session = film();
+      draw(session);
+      final renderer = ExportFrameRenderer(session: session, ground: white);
+      final task = celOf(session);
+      final frame = (await renderer.celGroupFrame(
+        task,
+        ExportSizeMode.canvas,
+        guideColor: noGuidesLaid,
+      ))!;
+      // The test runner is Skia and refuses every upload: told it uploads,
+      // the first picture through the door turns the run's door to drawing
+      // (`pictureOf`).
+      debugPictureOfUploads = true;
+      addTearDown(() => debugPictureOfUploads = null);
+
+      final bytes = await encodePsd(
+        frame,
+        const ExportFormatSelection(
+          kind: ExportMediaKind.still,
+          stillFormat: ExportStillFormat.psd,
+        ),
+        renderer.celGroupRows(
+          task,
+          ExportSizeMode.canvas,
+          guideColor: noGuidesLaid,
+        ),
+      );
+
+      expect(
+        readPsdDocument(Uint8List.fromList(bytes!)).layers.map((l) => l.name),
+        [AppText.notation.exBackground, 'A', 'A 影'],
+        reason: '⛔premise: the rows were written',
+      );
+      expect(pictureOfUploads, isTrue);
     });
   });
 

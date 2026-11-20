@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart'
+    show timelineRowWindowMargin;
 import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -24,6 +26,10 @@ import '../../helpers/named_finders.dart';
 /// the timeline's rail and cells, the storyboard's rail and strips — and
 /// builds nothing of the frame around them (④, 2026-10-29).
 /// ↩️Every move built every row the window held again.
+///
+/// A build of the host hands back a timeline row whose facts held, as a
+/// move does (card an-eye-toggle-holds-the-ui-thread, 11-19): ↩️it laid
+/// every row afresh, around rows their memos handed back whole.
 void main() {
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
@@ -39,14 +45,17 @@ void main() {
       .position;
 
   /// [rows] — a host's rows, top first — through a move of its window
-  /// that keeps a row in view, then through a build of the [host]. The row
-  /// watched is the one a third down the view, else [probe].
+  /// that keeps a row in view, then through a build of the [host] that
+  /// changes nothing of it, which hands it back where [keptThroughABuild]
+  /// and lays it afresh where not. The row watched is the one a third down
+  /// the view, else [probe].
   Future<void> expectKeptThroughAMove(
     WidgetTester tester, {
     required String viewport,
     required List<Finder> rows,
     required Finder host,
     Finder? probe,
+    bool keptThroughABuild = false,
   }) async {
     final position = rowsIn(tester, viewport);
     position.jumpTo(0);
@@ -85,8 +94,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widgetList(watched).first,
-      isNot(same(widgetBefore)),
-      reason: 'a build of the host lays $watched afresh',
+      keptThroughABuild ? same(widgetBefore) : isNot(same(widgetBefore)),
+      reason: keptThroughABuild
+          ? 'a build of the host that changed nothing of $watched hands it '
+                'back'
+          : 'a build of the host lays $watched afresh',
     );
   }
 
@@ -134,6 +146,7 @@ void main() {
         viewport: 'timeline-vertical-scroll-viewport',
         rows: [for (final id in ids) find.named('timeline-rail-row-$id-row')],
         host: find.byType(LayerTimelineGrid),
+        keptThroughABuild: true,
       );
     });
 
@@ -144,6 +157,7 @@ void main() {
         viewport: 'timeline-vertical-scroll-viewport',
         rows: [for (final id in ids) find.named('timeline-row-$id-cells')],
         host: find.byType(LayerTimelineGrid),
+        keptThroughABuild: true,
       );
     });
 
@@ -314,6 +328,10 @@ void main() {
             ),
         ],
         host: find.byType(StoryboardPanel),
+        // A head's unit is handed back across a build while its rows are:
+        // the wrapper its head wears its layer in is kept by the eye it
+        // shows (card the-conte-rail-row-holders-are-new-each-pass).
+        keptThroughABuild: true,
       );
     });
 
@@ -328,7 +346,8 @@ void main() {
       await tester.pumpAndSettle();
       final view = tester.getRect(find.byKey(const ValueKey(viewport)));
       final top = tester.widget(label(_rows));
-      // Two thirds down: a move of half the view leaves it in view.
+      // Two thirds down: a move of half the view, and the notch the window
+      // builds past it, leaves it built — and the top row not.
       var slot = _rows;
       while (tester.getRect(label(slot)).top <
           view.top + view.height * 2 / 3) {
@@ -336,7 +355,7 @@ void main() {
       }
       final stayed = tester.widget(label(slot));
 
-      position.jumpTo(view.height / 2);
+      position.jumpTo(view.height / 2 + timelineRowWindowMargin);
       await tester.pumpAndSettle();
       expect(label(_rows), findsNothing, reason: '⛔전제: the top row left');
       tester.element(find.byType(StoryboardPanel)).markNeedsBuild();
@@ -378,6 +397,10 @@ void main() {
             unitOf(find.byKey(ValueKey<String>('storyboard-se-row-0-$slot'))),
         ],
         host: find.byType(StoryboardPanel),
+        // An S strip's unit is handed back across a build while its row
+        // is: the row and its gate are kept by what they are built from
+        // (card the-conte-rail-row-holders-are-new-each-pass).
+        keptThroughABuild: true,
       );
     });
   });

@@ -66,37 +66,21 @@ class _TimelineDelete {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    final removedFrameIds = <FrameId>{};
     for (final startIndex in blockStartIndexes) {
       final entry = before.timeline[startIndex];
       if (entry == null || !entry.isDrawing || entry.ghost) {
         continue;
       }
       nextTimeline.remove(startIndex);
-      final frameId = entry.frameId;
-      if (frameId != null) {
-        removedFrameIds.add(frameId);
-      }
     }
     if (nextTimeline.length == before.timeline.length) {
       return null;
     }
-    var nextFrames = before.frames;
     // F-136: a cel another lane of the bank still exposes is not this row's
     // to take — the same answer the second 「1」 on this row gets.
-    final bank = _controller.bankLanesOf(before.id);
-    final unreferenced = removedFrameIds
-        .where((frameId) => !bank.exposes(frameId, lane: nextTimeline))
-        .toSet();
-    if (unreferenced.isNotEmpty) {
-      nextFrames = before.frames
-          .where((frame) => !unreferenced.contains(frame.id))
-          .toList(growable: false);
-    }
-    return before.copyWith(
-      frames: nextFrames,
-      timeline: nextTimeline,
-      audioClips: _controller._audioClipsForFrames(before, nextFrames),
+    return _controller._leavingWhatItOrphaned(
+      before,
+      before.copyWith(timeline: nextTimeline),
     );
   }
 }

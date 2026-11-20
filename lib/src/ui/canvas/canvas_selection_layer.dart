@@ -23,6 +23,7 @@ import '../../models/app_input_settings.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/command.dart' show WorkAhead;
 import '../../services/guide_geometry.dart';
 import '../../services/guide_stroke_input.dart' show ShiftLine;
 import '../../services/input/modifier_keys.dart';
@@ -74,11 +75,62 @@ import 'canvas_viewport_offset.dart';
 ///
 /// [landsOn] is the cel it lands on, for the row that shows it
 /// ([SelectionFloatPaint.shownOn]) — null where nothing shows it in a row.
+///
+/// [surface] is [stampDab] laid on a surface of its own ahead of the lift
+/// ([floatSurfaceOf]) — by a box at rest; null: the layer lays it when it
+/// floats.
 typedef LiftedFloat = ({
   BrushDab stampDab,
   SelectionFloatOverlay? showsOn,
   FloatLandsOn? landsOn,
+  BitmapSurface? surface,
 });
+
+/// What [CanvasSelectionLayer.contentBoundsProvider] answers, asked.
+typedef _InkOf =
+    ({int left, int top, int rightExclusive, int bottomExclusive})?
+    Function();
+
+/// [dab] laid on a surface of its own on [pasteboard] — the floating copy
+/// of a lift's pixels the box draws, made at the lift or ahead of it
+/// (🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1, 「상자가
+/// 뜰 때 미리 들기」: by a box at rest, as its cuts are).
+BitmapSurface floatSurfaceOf(BrushDab dab, PasteboardWall pasteboard) {
+  debugFloatSurfacesMade += 1;
+  return materializeBrushDabSequenceOnBitmapSurface(
+    surface: _floatGround(pasteboard),
+    sequence: BrushDabSequence([dab]),
+  ).surface;
+}
+
+/// [floatSurfaceOf] with no wait for the GPU
+/// ([materializeStampOnceTold]): the float a box at rest lays ahead of
+/// the press. [unput] is called where the surface's tiles were not put
+/// after all: it is forgotten there, and the press lays its own.
+Future<BitmapSurface> floatSurfaceOnceTold(
+  BrushDab dab,
+  PasteboardWall pasteboard, {
+  required void Function() unput,
+}) async {
+  debugFloatSurfacesMade += 1;
+  final laid = await materializeStampOnceTold(
+    surface: _floatGround(pasteboard),
+    dab: dab,
+    unput: unput,
+  );
+  return laid.surface;
+}
+
+/// What a float is laid on: a surface of its own on [pasteboard], bare.
+BitmapSurface _floatGround(PasteboardWall pasteboard) => BitmapSurface(
+  canvasSize: pasteboard.canvas,
+  pasteboardReach: pasteboard.reach,
+);
+
+/// How many floats' surfaces [floatSurfaceOf] laid — a test's count of
+/// what a press lays that a box at rest laid already.
+@visibleForTesting
+int debugFloatSurfacesMade = 0;
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -117,9 +169,11 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onDragActiveChanged,
     this.onModifierTouchDragActiveChanged,
     this.onLiftRequested,
+    this.onBoxAtRest,
     this.onLiftConfirmed,
     this.onLiftReverted,
     this.confirmLandsOn,
+    this.confirmAhead,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
@@ -314,6 +368,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   )?
   onLiftRequested;
 
+  /// What the box at rest frames — the region a press on it would lift
+  /// ([_restingBox]) — told at every build, null with none: the host cuts
+  /// its cels ahead of that press (🗣️opening-a-transform-box-holds-the-ui-
+  /// over-half-a-second-Q1, 「상자가 뜰 때 미리 들기」).
+  final ValueChanged<CanvasSelectionRegion?>? onBoxAtRest;
+
   /// CONFIRM of a move session (R16-①): the host lands [stampDabs] — one
   /// per float, in the order the lift gave them — and adopts the whole
   /// session (raw lift + landed stamps) as ONE history entry
@@ -338,6 +398,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// pressed: its wait window's measure (F-566). Null for a host that lands
   /// on the one cel it shows.
   final Iterable<Object> Function()? confirmLandsOn;
+
+  /// 🗣️F-615: the work a confirm of the session [liftToken] has ahead of
+  /// it, given what the open box does to the canvas ([StampCarry]) — asked
+  /// beside [confirmLandsOn] as 확정 is pressed, and worked behind the same
+  /// wait window before the confirm lands. Null for a host with nothing to
+  /// work out ahead.
+  final WorkAhead? Function(int liftToken, StampCarry? carry)? confirmAhead;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -395,8 +462,8 @@ enum _SessionEnd {
 
 /// One open move session, as ONE value.
 ///
-/// ⛔Its floats' stamps and [moved] are mutable because a drag changes them
-/// while the session stays the same session; [token] is what the session
+/// ⛔Its floats' stamps are mutable because a fold changes them while the
+/// session stays the same session; [token] is what the session
 /// IS and cannot change without it being a different one.
 class _MoveSession {
   _MoveSession({required this.token, required this.floats});
@@ -417,9 +484,6 @@ class _MoveSession {
   /// the range's other cels are to be put through — and one flag answering
   /// two is how a third writer breaks one of them.
   bool get holdsAChange => floats.any((float) => float.holdsAChange);
-
-  /// True once the session actually MOVED.
-  bool moved = false;
 
   /// What the confirm landed with, as a mapping of the canvas — for the
   /// cels the confirm reaches that this session never floated.
@@ -658,10 +722,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ([CanvasSelectionShape.wholePicture], from the host's ink bounds).
   /// Lifting it lifts the whole picture (the tool guard upstream already
   /// refuses the MOVE tool when the cel has no picture at all).
-  CanvasSelectionShape _wholeCanvasShape() => CanvasSelectionShape.wholePicture(
-    widget.pasteboard,
-    widget.contentBoundsProvider?.call(),
-  );
+  ///
+  /// [ink] is the host's ink bounds as a build asked them once — else they
+  /// are asked here.
+  CanvasSelectionShape _wholeCanvasShape({_InkOf? ink}) =>
+      CanvasSelectionShape.wholePicture(
+        widget.pasteboard,
+        (ink ?? widget.contentBoundsProvider)?.call(),
+      );
 
   /// Installs [shape] as the live implicit whole-picture selection.
   /// Callers wrap in setState.
@@ -688,10 +756,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// What floats now — nothing outside a session.
   List<_Float> get _floats => _session?.floats ?? const [];
-
-  /// True once the session actually MOVED — the ants turn red until the
-  /// confirm (green = confirmed / untouched).
-  bool get _moveSessionDirty => _session?.moved ?? false;
 
   bool get _movePending => _session != null;
 
@@ -751,6 +815,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// cannot be mistimed. ⛔So the wait lives HERE, at the one door, rather
   /// than in each caller — a caller that had to remember is a caller that
   /// will forget, which is the shape F-164 already was.
+  /// Tells the host what the box at rest frames now
+  /// ([CanvasSelectionLayer.onBoxAtRest]) — the host keeps what it was
+  /// told last, so a build that changed nothing costs it a comparison.
+  void _tellTheBoxAtRest(CanvasSelectionRegion? region) {
+    final tell = widget.onBoxAtRest;
+    if (tell != null) {
+      _tellHost(() => tell(region));
+    }
+  }
+
   void _tellHost(VoidCallback say) {
     if (_disposing ||
         SchedulerBinding.instance.schedulerPhase ==
@@ -790,6 +864,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ⛔It is not a quieter revert — it is the same ending, and the host is
   /// told either way.
   void _letGoOfSession() => _endSession(_SessionEnd.letGo);
+
+  /// A press that begins a NEW outline — a marquee's drag, a polygon's
+  /// first point — meets no session: a box open takes every press before
+  /// it ([_pressOnImplicitBox] hands the press the box), and a session
+  /// lives in its box ([_session]). So it lands nothing, and nothing is
+  /// left for it to land.
+  ///
+  /// F-615-Q1 asked what this press does with a range open (🗣️유저
+  /// 2026-11-19: 「누름은 착지만」): it never meets one — measured 11-19,
+  /// 3,073 selection tests with a probe here, none reached it holding a
+  /// session.
+  /// R16-① (never revert, always confirm) is kept where a session does
+  /// end: a switch of tool lands it behind 확정's door first (F-615-Q2), and
+  /// a committed region confirms it ([applyCommittedRegion]). ↩️Both
+  /// presses confirmed the session here, a no-op since the box took them.
+  void _noSessionUnderANewOutline() {
+    assert(_session == null, 'a box open takes every press');
+  }
 
   /// CONFIRM (R16-①): lands the floating stamp and adopts the whole
   /// session as ONE history entry. Safe to call from any event context;
@@ -1252,6 +1344,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // with it ([_endSession]) — their pictures and an ask still waiting on
     // the frame alike.
     _interrupted(SessionInterruption.land);
+    // No box rests over a layer that is gone.
+    _tellTheBoxAtRest(null);
     _cursor.dispose();
     _ants.dispose();
     super.dispose();
@@ -1280,6 +1374,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // movePending false, a ghost float painter still mounted, and Escape
       // the only way out.
       confirmPendingMove: _confirmSession,
+      landPendingMoveThen: (then) => _landBehindTheWaitWindow(then: then),
       transformValues: _transformValuesNow,
       editTransformValues: _editTransformValues,
       editWarpPoint: _editWarpPoint,
@@ -1371,12 +1466,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// What 적용 would do now, or null when it has nothing to do — the ONE
   /// answer both the press and the buttons' enablement read.
-  VoidCallback? _applyAction() {
-    if (!_canEditTransform()) {
+  VoidCallback? _applyAction() => _applyActionWhere(_canEditTransform());
+
+  /// [_applyAction] where [canEdit] is what [_canEditTransform] answered —
+  /// asked once by a build that reads it more than once ([_confirmPill]).
+  VoidCallback? _applyActionWhere(bool canEdit) {
+    if (!canEdit) {
       return null;
     }
     if (_sessionHasChanges) {
-      return _confirmBehindTheWaitWindow;
+      return _landBehindTheWaitWindow;
     }
     // 🚨THE ARMED MODE'S OWN MEMORY (유저 2026-08-29: 「툴마다 기억하는게
     // 다름」). One shared slot could only answer for whichever mode
@@ -1394,16 +1493,50 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// every cel of a range or a folder is drawn again (🗣️F-551, 유저
   /// 2026-11-04). A cel's own lands at once (🗣️F-566: 「변형도 셀 하나만
   /// 할때는 진행창안띄움」).
-  void _confirmBehindTheWaitWindow() {
+  ///
+  /// 🗣️F-615: what the confirm works out cel by cel goes ahead of it,
+  /// behind the window, told as a share of the range
+  /// ([CanvasSelectionLayer.confirmAhead]) — the box as it stands when 확정
+  /// is pressed is what the range lands with.
+  ///
+  /// 🚨★★★**EVERY OTHER PATH THAT LANDS THE SESSION TAKES THIS SAME DOOR**
+  /// (F-615, 관제 2026-11-19: 「같은 착지를 문 하나가 창으로 받고 다른 넷은
+  /// 안 받으면 같은 일에 두 길이다」) — a deselect, an inverse, an undo or a
+  /// redo, a switch between selecting tools — and does what it was for
+  /// ([then]) once the window is down.
+  ///
+  /// ⛔[then] runs AFTER the window, never inside it: an entry it writes
+  /// there is stamped with 확정's window (`StepWindows`), and its undo would
+  /// stand behind one over a single cel (F-566).
+  ///
+  /// A session that holds no change lands on nothing ([_sessionHasChanges],
+  /// the question 확정 itself asks), so it works nothing out ahead and the
+  /// door takes it at once.
+  void _landBehindTheWaitWindow({VoidCallback? then}) {
+    final landing = switch (_session) {
+      final session? when _sessionHasChanges => session,
+      _ => null,
+    };
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        _confirmSession,
+        (
+          ahead: switch (landing) {
+            final session? => widget.confirmAhead?.call(
+              session.token,
+              floatWarp.carry,
+            ),
+            null => null,
+          },
+          step: _confirmSession,
+        ),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.confirm),
         ),
-        blocks: widget.confirmLandsOn?.call() ?? const [],
-      ),
+        blocks: landing == null
+            ? const []
+            : widget.confirmLandsOn?.call() ?? const [],
+      ).then((_) => then?.call()),
     );
   }
 
@@ -1423,6 +1556,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!mounted) {
       return;
     }
+    // In the same step as the landing, whichever door it came through
+    // ([_landOpenSession] says why).
+    _takeBackFloats();
     _confirmMoveSession();
     if (_transform != null) {
       // Untouched, a degenerate quad, or a box a walk carried onto a cel
@@ -1458,18 +1594,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Whether the session is holding changes that have not landed — the ONE
   /// question the ants, the transform box and the confirm button all draw
-  /// (see `AppColors.selectionSession`).
+  /// (see `AppColors.selectionSession`) — read off the box, which is where
+  /// every change a session holds lives, and which the box's own steps put
+  /// back.
   ///
-  /// Two terms because a session has two ways to hold a change.
-  /// [_moveSessionDirty] is set by a drag that carried the box, and by
-  /// nothing else — ↩️it was also set where a box was closed onto the
-  /// session, and the session ends before any box closes now
-  /// ([_endLanded]). While a box is OPEN that flag is false however far
-  /// the user has dragged a handle — 유저 2026-08-27: 「**변형중일땐**.
-  /// 그니까 변경사항이 있으면 … 빨간색」. [_boxIsTransformed] is the answer
-  /// for exactly that window and already existed; ⛔a second dirty flag
-  /// would have been a second place to forget to clear.
-  bool get _sessionHasChanges => _moveSessionDirty || _boxIsTransformed;
+  /// ↩️A second term stood beside it: a session's `moved`, set by a drag
+  /// that carried the box and by nothing else. Once the move became the
+  /// affine's tx/ty it said nothing the box did not — until the box's steps
+  /// took the drag back, when it went on saying 「moved」: the ants stayed
+  /// red, and 확정 or a deselect stood a landing of nothing behind the wait
+  /// window over a range (undoing-every-box-step-leaves-the-session-moved,
+  /// measured 2026-11-19). ↩️Before that it was also set where a box was
+  /// closed onto the session, and the session ends before any box closes
+  /// now ([_endLanded]). While a box is OPEN the flag was false however far
+  /// the user had dragged a handle — 유저 2026-08-27: 「**변형중일땐**.
+  /// 그니까 변경사항이 있으면 … 빨간색」 — and [_boxIsTransformed] answered
+  /// for exactly that window. ⛔A dirty flag held beside the box is a second
+  /// place to forget to clear, and this one was forgotten.
+  bool get _sessionHasChanges => _boxIsTransformed;
 
   /// Records what a commit just applied, for the next 재현.
   void _recordTransformRecall(TransformBox box) {
@@ -1509,9 +1651,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// blank passed it, and the lift then came back empty and rolled the
   /// session back with nothing on screen to explain why.
   ///
-  /// The provider memoizes on the surface instance, so asking every build
-  /// costs a comparison — which is what "갱신되도록. 렉없이" requires.
-  bool _canEditTransform() {
+  /// It is asked every build, which is what "갱신되도록. 렉없이" requires:
+  /// the provider memoizes each cel's ink on its surface instance, and the
+  /// cels it reads them from — every row a range names, since F-329 — are
+  /// walked a row at a time (`PixelVerbs.transformCelsUnderfoot`).
+  /// ↩️「costs a comparison」 was true of the one cel you stood on.
+  ///
+  /// [ink] as at [_wholeCanvasShape].
+  bool _canEditTransform({_InkOf? ink}) {
     if (widget.onLiftRequested == null) {
       return false;
     }
@@ -1521,7 +1668,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_transform != null) {
       return true;
     }
-    final content = widget.contentBoundsProvider?.call();
+    final content = (ink ?? widget.contentBoundsProvider)?.call();
     return content != null &&
         content.rightExclusive > content.left &&
         content.bottomExclusive > content.top;
@@ -1555,12 +1702,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// [SessionInterruption.land]: whatever the box shows becomes the cel.
   ///
-  /// ⛔**THE FLOAT THIS LAYER PUBLISHED IS TAKEN BACK HERE**, for every
-  /// landing and not just the dispose one. [_publishFloats] runs from BUILD,
-  /// so an ending that does not rebuild — a dispose, or a land that closes
-  /// the session in the same frame — leaves the composite holding a
-  /// picture nobody owns, drawn over the one that just landed (유저
-  /// 2026-09-22: 「캔버스 사라지고 이상해지는데」).
+  /// ⛔**THE FLOAT THIS LAYER PUBLISHED IS TAKEN BACK WITH THE LANDING**,
+  /// for every landing and not just the dispose one. [_publishFloats] runs
+  /// from BUILD, so an ending that does not rebuild — a dispose, or a land
+  /// that closes the session in the same frame — leaves the composite
+  /// holding a picture nobody owns, drawn over the one that just landed
+  /// (유저 2026-09-22: 「캔버스 사라지고 이상해지는데」).
+  ///
+  /// 🗣️F-615: a landing that stands behind the wait window keeps its float
+  /// up while the range is worked out — it is the picture the range is
+  /// about to become — and takes it back in the step ([_confirmSession]).
   void _landOpenSession() {
     // R27 #18: the box is folded in FIRST, so whatever it showed is what
     // lands rather than the stamp's pre-transform place — through the fold
@@ -1574,8 +1725,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // through its transform a second time (measured 2026-10-06).
     // ↩️It folded here itself, ahead of the landing, while the fold closed
     // the box; the fold is the landing's own first step now.
-    _takeBackFloats();
     if (_disposing) {
+      _takeBackFloats();
       // ⚠️SAME LANDING, NO UI TO UPDATE. The widget is going, so the part
       // of a commit that paints — re-running the ants — has nothing to
       // paint on, and `setState` on a defunct element is an assertion, not
@@ -1593,7 +1744,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _publishTransformValues();
       return;
     }
-    _confirmSession();
+    _landBehindTheWaitWindow();
   }
 
   /// Remembers where the box stands, just before an operation moves it
@@ -2018,12 +2169,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ↩️The Move tool was asked for twice — here, and by a flag the host set
   /// to that very answer (`alwaysShowTransformBox: tool == move`, since
   /// R17-U) — so either could be dropped and nothing told.
-  ({CanvasSelectionRegion region, _OpenBox box})? _restingBox() {
+  ///
+  /// [ink] as at [_wholeCanvasShape].
+  ({CanvasSelectionRegion region, _OpenBox box})? _restingBox({_InkOf? ink}) {
     if (_box != null || widget.tool != CanvasSelectionTool.move) {
       return null;
     }
     final region =
-        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
+        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape(ink: ink));
     return (region: region, box: _boxOver(region));
   }
 
@@ -2289,7 +2442,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // frame, row and cut moves and a `deferDragNotify` for a reset run from
     // a build. Those moves CARRY the session (2026-09-17) and never came
     // here any more; what is left of the reset is the lines below.
-    _confirmSession();
+    //
+    // 🗣️F-615: through 확정's own door, and the deselect once it is down.
+    _landBehindTheWaitWindow(then: _deselectLanded);
+  }
+
+  /// [_deselect], once the session it found has landed.
+  void _deselectLanded() {
+    if (!mounted) {
+      return;
+    }
     // The outline as the landing left it — what the deselect's own entry
     // has to put back.
     final before = _region;
@@ -2371,12 +2533,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the one box ([_floatWarpOf]).
   _Float _floatOf(LiftedFloat lifted) {
     late final _Float float;
-    return float = _Float(
+    float = _Float(
       stamp: lifted.stampDab,
       showsOn: lifted.showsOn,
       landsOn: lifted.landsOn,
       preview: FloatResamplePreview(this, () => _floatWarpOf(float)),
     );
+    // Laid ahead: kept as [_buildFloatSurface] keeps one it laid itself.
+    if (lifted.surface case final surface?) {
+      float
+        ..surface = surface
+        ..surfaceCentre = lifted.stampDab.center
+        ..surfaceStamp = lifted.stampDab.stamp;
+    }
+    return float;
   }
 
   /// What [float] shows right now, in canvas space — see
@@ -2570,8 +2740,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // region already selected STAYS on screen through the drag (R26
       // #16: with add/subtract/intersect the user must see what the new
       // polygon is about to fold into — the PS/CSP read), and the RELEASE
-      // records the combination as one undoable step. A pending move
-      // session confirms first (R16-①: never revert, always confirm).
+      // records the combination as one undoable step.
       //
       // The shape tool on a frame with no cel asks for one first
       // ([CanvasSelectionLayer.onPressNeedsCel]). A press refused traces
@@ -2580,7 +2749,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           !(widget.onPressNeedsCel?.call(canvasPoint) ?? true)) {
         return;
       }
-      _confirmMoveSession();
+      _noSessionUnderANewOutline();
       final folds = _toolFolds;
       final byTouch = event.kind == PointerDeviceKind.touch;
       // [_shiftHeld], of the drag this press starts — there is none yet.
@@ -2889,9 +3058,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               ty: drag.tyAtStart + moved.y,
             );
           }
-          if (moved.x != 0 || moved.y != 0) {
-            _session?.moved = true;
-          }
         });
         _publishTransformValues();
         // ↩️「⛔A PURE TRANSLATION DOES NOT RESAMPLE. `transformStampDab`
@@ -3192,9 +3358,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     if (points.isEmpty) {
-      // Starting a fresh outline, like the first press of a marquee drag:
-      // a pending move confirms rather than reverts (R16-①).
-      _confirmMoveSession();
+      // Starting a fresh outline, like the first press of a marquee drag.
+      _noSessionUnderANewOutline();
     }
     // The first vertex is where the outline begins, so the chord is read
     // at it (I-110-Q1) — a tap's press and its lift are one moment.
@@ -3558,13 +3723,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     float
       ..surfaceCentre = pending.center
       ..surfaceStamp = pending.stamp;
-    return materializeBrushDabSequenceOnBitmapSurface(
-      surface: BitmapSurface(
-        canvasSize: widget.pasteboard.canvas,
-        pasteboardReach: widget.pasteboard.reach,
-      ),
-      sequence: BrushDabSequence([pending]),
-    ).surface;
+    return floatSurfaceOf(pending, widget.pasteboard);
   }
 
   /// Every float's surface, built or kept ([_buildFloatSurface]).
@@ -3634,8 +3793,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // chrome even before any session opens (the box at rest —
     // [_restingBox]; grabbing a handle opens the session at that moment).
     // R26 #13: no selection = the box frames the WHOLE picture.
+    //
+    // 🗣️관제 2026-11-20 (card opening-a-transform-box-holds-the-ui-over-
+    // half-a-second, ⓑ): the host's ink bounds asked ONCE a build, the box
+    // at rest and the pill handed what it answered — each walks every cel
+    // the box frames. ↩️Each asked its own.
+    late final ink = widget.contentBoundsProvider?.call();
+    final atRest = _restingBox(ink: () => ink);
+    _tellTheBoxAtRest(atRest?.region);
     final chrome = _onScreen(
-      _box ?? (_drag == null ? _restingBox()?.box : null),
+      _box ?? (_drag == null ? atRest?.box : null),
     ).transformChrome();
     // While a hold is up, whichever float is drawn is drawn ONLY over the
     // tiles the base cannot paint yet — screen space, because it wraps
@@ -3719,7 +3886,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             //
             // ⚠️Its own [Positioned.fill]: the pill is laid out against
             // the layer's SIZE, and this is the only child that needs it.
-            Positioned.fill(child: _confirmPill(chrome)),
+            Positioned.fill(child: _confirmPill(chrome, ink: () => ink)),
           if (_selectionFinished && displayShape != null)
             Positioned.fill(child: _selectionPill(displayShape)),
         ],
@@ -3813,25 +3980,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   );
 
   /// 좌우반전 / 상하반전 on the box's pill — the transform settings' two
-  /// (F-527), pressed the same: [_flipTransform], under their keys.
-  Widget _flipButton({required bool horizontal}) => AppIconButton(
-    keyValue: horizontal
-        ? 'selection-move-flip-horizontal'
-        : 'selection-move-flip-vertical',
-    shortcuts: [
-      if (horizontal)
-        EditorActionIds.transformFlipHorizontal
-      else
-        EditorActionIds.transformFlipVertical,
-    ],
-    tooltip: horizontal
-        ? AppText.strings.trFlipHorizontal
-        : AppText.strings.trFlipVertical,
-    icon: flipGlyph(horizontal: horizontal),
-    onPressed: _canEditTransform()
-        ? () => _flipTransform(horizontal: horizontal)
-        : null,
-  );
+  /// (F-527), pressed the same: [_flipTransform], under their keys; lit
+  /// where [canEdit] — [_canEditTransform], asked once for the pill.
+  Widget _flipButton({required bool horizontal, required bool canEdit}) =>
+      AppIconButton(
+        keyValue: horizontal
+            ? 'selection-move-flip-horizontal'
+            : 'selection-move-flip-vertical',
+        shortcuts: [
+          if (horizontal)
+            EditorActionIds.transformFlipHorizontal
+          else
+            EditorActionIds.transformFlipVertical,
+        ],
+        tooltip: horizontal
+            ? AppText.strings.trFlipHorizontal
+            : AppText.strings.trFlipVertical,
+        icon: flipGlyph(horizontal: horizontal),
+        onPressed: canEdit
+            ? () => _flipTransform(horizontal: horizontal)
+            : null,
+      );
 
   /// 확정 and 취소, side by side in the pill under the box.
   ///
@@ -3863,9 +4032,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// shape it carries, so a pill placed under the shape would sit on the
   /// box's lower corner. The handles stand on the outline and need no
   /// asking of their own.
-  Widget _confirmPill(SelectionTransformChrome chrome) {
+  Widget _confirmPill(SelectionTransformChrome chrome, {_InkOf? ink}) {
     final turn = widget.onTransformOptionsChanged;
     final options = widget.transformOptions;
+    // Asked once for the pill's three — a box at rest answers it by
+    // walking every cel it frames (🔬0.8 ms a walk, three a build: S5_BA
+    // cut 352, 62 rows, 공통 2026-11-20) — so a build hands its own [ink].
+    final canEdit = _canEditTransform(ink: ink);
     return CanvasTargetPill(
       keyValue: 'selection-confirm-pill',
       target: pointsBounds(chrome.box),
@@ -3879,11 +4052,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               ? null
               : (on) => turn(options.withAntiAlias(on)),
         ),
-        _flipButton(horizontal: true),
-        _flipButton(horizontal: false),
+        _flipButton(horizontal: true, canEdit: canEdit),
+        _flipButton(horizontal: false, canEdit: canEdit),
         ...targetPillVerbs(
           'selection-move',
-          onConfirm: _applyAction() == null ? null : _applyTransform,
+          onConfirm: _applyActionWhere(canEdit) == null
+              ? null
+              : _applyTransform,
           onCancel: _sessionHasChanges ? _cancelTransform : null,
           changed: _sessionHasChanges,
         ),

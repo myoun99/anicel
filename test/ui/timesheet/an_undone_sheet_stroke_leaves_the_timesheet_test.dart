@@ -9,8 +9,9 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart'
+    show LiveCelScreen;
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -56,16 +57,18 @@ void main() {
     await tester.pumpAndSettle();
 
     final page = timesheetInkPageKey(session.requireActiveCut.id, 0);
-    // Page 0's window — what it DRAWS, which is what its last build handed it. (Its view asks for the
-    // cel as it stands whenever a pen lands, so reading that would say
-    // nothing about whether the window was built again.)
+    // Page 0's screen — what it SHOWS, which is what its last build handed
+    // it: a sheet's ink is its screen's, the brush on or off (F-215). (Its
+    // input view asks for the cel as it stands whenever a pen lands, so
+    // reading that would say nothing about whether the window was built
+    // again.)
     BitmapSurface onScreen() => tester
-        .widget<BrushEditCanvasView>(
-          find.descendant(
-            of: find.byKey(const ValueKey<String>('timesheet-ink-page-0')),
-            matching: find.byType(BrushEditCanvasView),
+        .widget<LiveCelScreen>(
+          find.byWidgetPredicate(
+            (widget) => widget is LiveCelScreen && widget.cel == page,
           ),
         )
+        .painter
         .surface;
 
     ink.commitStroke(

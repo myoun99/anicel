@@ -243,19 +243,35 @@ class PlaybackPrerenderScheduler {
   /// its end: a frame is one composite, one submission (H59 B2, 11-17).
   int _inputHolds = 0;
 
+  /// Whether any hold is open ([beginInputHold]) — what a bar that counts
+  /// the frames ready waits behind while the hand moves what they are made
+  /// of ([PlaybackCacheBudget.playbackReadyRunsForCut], F-620-Q3).
+  ValueListenable<bool> get handOn => _handOn;
+  final ValueNotifier<bool> _handOn = ValueNotifier<bool>(false);
+
   void beginInputHold() {
     _inputHolds += 1;
+    _tellTheHand();
   }
 
   void endInputHold() {
     if (_inputHolds > 0) {
       _inputHolds -= 1;
     }
+    _tellTheHand();
     // The release opens a fresh quiet window: warming resumes idleDelay
     // after the pen lifts, not the instant it lifts.
     notifyEditActivity();
     if (_inputHolds == 0) {
       _holdsClosed();
+    }
+  }
+
+  /// [handOn] as the holds stand — told nobody once disposed: a press a
+  /// project closed under lets go of its warmer after (`WarmerHand`).
+  void _tellTheHand() {
+    if (!_disposed) {
+      _handOn.value = _inputHolds > 0;
     }
   }
 
@@ -378,6 +394,7 @@ class PlaybackPrerenderScheduler {
     _progress.dispose();
     _landings.dispose();
     _changes.dispose();
+    _handOn.dispose();
   }
 
   /// How many steps a walk passes over before it lets interactive work in:
@@ -494,7 +511,10 @@ class PlaybackPrerenderScheduler {
       if (_isStale(generation)) {
         return;
       }
-      final pictureBytes = pictures.bytesToMake(missing);
+      final pictureBytes = await pictures.bytesToMake(missing);
+      if (_isStale(generation)) {
+        return;
+      }
       final step = (lead + reached) % length;
       final madeRoom =
           room?.makeRoomFor(bytes: pictureBytes, step: step) ?? true;
@@ -533,6 +553,7 @@ class PlaybackPrerenderScheduler {
         making: (bytes: pictureBytes, parts: making),
       );
       final landed = await landing;
+      askedAhead.madeItsOwn();
       if (_isStale(generation)) {
         return;
       }
@@ -703,8 +724,7 @@ typedef _Pass = ({
 /// rounds): the whole cut made 7–30% sooner.
 ///
 /// One per walk ([PlaybackPrerenderScheduler]'s): the pictures it asked for
-/// ahead while they are being made, by cut and frame, each with what it was
-/// to weigh and the parts it makes.
+/// ahead while they are on their way, by cut and frame ([_OnItsWay]).
 final class _AskedAhead {
   _AskedAhead(this._scheduler, this._generation, this._demand);
 
@@ -715,8 +735,22 @@ final class _AskedAhead {
   final PlaybackPrerenderScheduler _scheduler;
   final int _generation;
   final FrameDemand _demand;
-  final _onTheirWay =
-      <(CutId, int), ({Future<bool> landing, int bytes, Set<Object> parts})>{};
+  final _onTheirWay = <(CutId, int), _OnItsWay>{};
+
+  /// What the walk makes itself, while it is being made ([askPast]'s
+  /// `making`, till [madeItsOwn]): not in the cache yet, so a picture
+  /// ahead asks room for it as well.
+  ({int bytes, Set<Object> parts})? _walksOwn;
+
+  /// The walk's own picture has landed, or will not ([_walksOwn]).
+  void madeItsOwn() => _walksOwn = null;
+
+  /// The bytes of what is being made and not in the cache yet: the walk's
+  /// own, and each picture ahead whose room is made.
+  int _beingMade() => _onTheirWay.values.fold(
+    _walksOwn?.bytes ?? 0,
+    (bytes, asked) => bytes + asked.bytes,
+  );
 
   /// The landing of the picture at [picture] — cut and frame — while it is
   /// on its way.
@@ -740,24 +774,34 @@ final class _AskedAhead {
   /// place ahead. Its landing is told when it lands, as the walk tells its
   /// own: a run waiting for that frame learns it then, not when the walk
   /// gets there.
+  ///
+  /// 🚨ON ITS WAY FROM THE ASK, ITS ROOM MADE ONCE IT IS WEIGHED (F-610,
+  /// 2026-11-19): a picture is weighed on the engine's thread, behind the
+  /// pictures asked for before it ([PlaybackPictures.bytesToMake]) — so
+  /// each asked for here takes its place at once, as one being made does,
+  /// and asks its room when its weight is told ([_weighedThenMade]). One
+  /// with no room then is not made, nor any asked for after it in the same
+  /// ask: the walk gets to it and says what is held is the window. ↩️Its
+  /// room was made here, before it took its place, by a weight counted on
+  /// this isolate: every tile its plan lays on, several times what it
+  /// comes to weigh.
   void askPast(
     _Pass pass, {
     required int from,
-    ({int bytes, Set<Object> parts}) making = const (
-      bytes: 0,
-      parts: <Object>{},
-    ),
+    ({int bytes, Set<Object> parts})? making,
     (CutId, int)? waitingFor,
   }) {
     final scheduler = _scheduler;
+    if (making != null) {
+      _walksOwn = making;
+    }
     int ahead() =>
         _onTheirWay.length - (_onTheirWay.containsKey(waitingFor) ? 1 : 0);
-    var pending = making.bytes;
-    final spoken = {...making.parts};
-    for (final asked in _onTheirWay.values) {
-      pending += asked.bytes;
-      spoken.addAll(asked.parts);
-    }
+    final spoken = {
+      ...?_walksOwn?.parts,
+      for (final asked in _onTheirWay.values) ...asked.parts,
+    };
+    final asking = _Asking();
     for (var look = from;
         ahead() < _most &&
             scheduler.pictures.roomToAskAhead &&
@@ -776,31 +820,75 @@ final class _AskedAhead {
       if (_onTheirWay.containsKey(key) || spoken.containsAll(parts)) {
         continue;
       }
-      // ⚠️Weighed by what is in hand, without reading first as the walk's
-      // own is: an ask ahead is made so as not to wait. A row whose cel is
-      // not read yet is weighed as the canvas, and the room is asked again
-      // by what it lands as ([PlaybackPrerenderScheduler._landed]).
-      final bytes = scheduler.pictures.bytesToMake(picture);
-      final step = pass.stepAt(look);
-      if (!(scheduler.room?.makeRoomFor(bytes: pending + bytes, step: step) ??
-          true)) {
-        return;
-      }
-      pending += bytes;
       spoken.addAll(parts);
-      final landing = scheduler._compose(_generation, _demand, picture).then((
-        landed,
-      ) {
-        _onTheirWay.remove(key);
-        if (!scheduler._isStale(_generation)) {
-          if (landed) {
-            scheduler._landed(step);
-          }
-          scheduler._changes.value += 1;
-        }
-        return landed;
-      });
-      _onTheirWay[key] = (landing: landing, bytes: bytes, parts: parts);
+      final asked = _onTheirWay[key] = _OnItsWay(
+        picture,
+        parts,
+        step: pass.stepAt(look),
+      );
+      asked.landing = _weighedThenMade(asked, asking);
     }
   }
+
+  /// The picture [asked] for ahead weighed, its room made and then made
+  /// ([askPast]): true when it landed — false with no room for it, or for
+  /// one of its ask ([asking]) before it, and as the walk's own compose
+  /// says.
+  Future<bool> _weighedThenMade(_OnItsWay asked, _Asking asking) async {
+    final scheduler = _scheduler;
+    final _OnItsWay(:picture, :step) = asked;
+    final key = (picture.cut.id, picture.frameIndex);
+    // ⚠️Weighed by what is in hand, without reading first as the walk's
+    // own is: an ask ahead is made so as not to wait. A row whose cel is
+    // not read yet is weighed as the canvas, and the room is asked again
+    // by what it lands as ([PlaybackPrerenderScheduler._landed]).
+    final int bytes;
+    try {
+      bytes = await scheduler.pictures.bytesToMake(picture);
+    } on Object {
+      // What will not be weighed is said where the walk gets to it, and
+      // weighs it itself: here it is a picture not asked for.
+      _onTheirWay.remove(key);
+      return false;
+    }
+    final room = scheduler.room;
+    if (scheduler._isStale(_generation) ||
+        asking.full ||
+        !(room?.makeRoomFor(bytes: _beingMade() + bytes, step: step) ??
+            true)) {
+      asking.full = true;
+      _onTheirWay.remove(key);
+      return false;
+    }
+    asked.bytes = bytes;
+    final landed = await scheduler._compose(_generation, _demand, picture);
+    _onTheirWay.remove(key);
+    if (!scheduler._isStale(_generation)) {
+      if (landed) {
+        scheduler._landed(step);
+      }
+      scheduler._changes.value += 1;
+    }
+    return landed;
+  }
+}
+
+/// A picture asked for ahead, on its way ([_AskedAhead]): the picture, the
+/// parts it makes and the step it is wanted at, what it was weighed as once
+/// its room is made — none till then, nothing of it is being made —, and
+/// its landing.
+final class _OnItsWay {
+  _OnItsWay(this.picture, this.parts, {required this.step});
+
+  final DemandedPicture picture;
+  final Set<Object> parts;
+  final int step;
+  int bytes = 0;
+  late final Future<bool> landing;
+}
+
+/// One ask ahead ([_AskedAhead.askPast]): whether one of its pictures
+/// found no room — none asked for after it in it is made.
+final class _Asking {
+  bool full = false;
 }

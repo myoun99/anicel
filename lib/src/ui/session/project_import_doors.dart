@@ -14,7 +14,6 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
-import '../../models/dirty_region.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -69,7 +68,6 @@ import 'import_landing.dart';
 import 'independent_clip_mint.dart' show givePanelsTheirPictures;
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
-import '../canvas/tile_origin.dart' show surfaceContentWorldRect;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';
@@ -1299,45 +1297,10 @@ class ProjectImportDoors {
         read: CelRead.look,
       );
       if (cel != null && cel.tiles.isNotEmpty) {
-        moved[key] = await _celMoved(cel, move);
+        moved[key] = await celLaidAnew(cel, move);
       }
     }
     return moved;
-  }
-
-  /// [cel]'s picture where [move] carries it, on a cel of the same canvas —
-  /// laid from the cel's own tiles as every picture a door bakes is laid
-  /// ([layCelRegion]), whole (F-374-Q8).
-  ///
-  /// 🚨Laid from where its FILE lies, not from the cel: the clear canvas
-  /// round a small picture is no part of it, and a move that grows the
-  /// picture grows that too — an 8×8 still fitted ×206 to its canvas asked
-  /// ONE raster 590080×538240 for its 8×8 of ink, and the raster failed. No
-  /// brush reaches a reference row, so where its file lies is all it holds.
-  /// A cel that does not know where its file lies (an older build's, cut at
-  /// the wall) is moved as the picture it is, cut at the wall.
-  static Future<BitmapSurface> _celMoved(
-    BitmapSurface cel,
-    LayerPlacement move,
-  ) {
-    final laid = cel.laidBounds;
-    final region =
-        laid ?? DirtyRegion.wholePixelsOf(surfaceContentWorldRect(cel));
-    return layCelRegion(
-      cel: cel,
-      region: region,
-      placement: move.compose(
-        GuideTransform(
-          1,
-          0,
-          0,
-          1,
-          region.left.toDouble(),
-          region.top.toDouble(),
-        ),
-      ),
-      whole: laid != null,
-    );
   }
 
   /// I-47: [layerId] — a reference row of the active cut — shows [path]

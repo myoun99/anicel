@@ -458,4 +458,73 @@ void main() {
     );
     expect(ids(selection.celLayers), ['a', 'inst']);
   });
+
+  group('🗣️F-618 ①: the film is drawn of the rows the label picks — not of '
+      'what the canvas shows', () {
+    final rows = [
+      layer('a'),
+      layer('lo', mark: layout),
+      layer('bg', kind: LayerKind.image),
+      layer('p', mark: paper),
+      layer('hidden', isVisible: false),
+      layer('dir', kind: LayerKind.instruction),
+      layer('sb', kind: LayerKind.storyboard),
+      layer('se', kind: LayerKind.se),
+      layer('cam', kind: LayerKind.camera),
+    ];
+    Set<String> film({
+      CelsExportSpec spec = const CelsExportSpec(),
+      ExportCelsCutDelta? delta,
+    }) => {
+      for (final id in exportFilmLayersOf(
+        cut: cut(rows),
+        spec: spec,
+        delta: delta,
+      ))
+        id.value,
+    };
+
+    test('it offers every row whose pictures export', () {
+      expect(ids(rows.where(exportFilmOffers)), [
+        'a',
+        'lo',
+        'bg',
+        'p',
+        'hidden',
+        'dir',
+        'sb',
+      ]);
+    });
+
+    test('the label picks them, with its paper — whatever kinds of file are '
+        'written, and whatever the canvas hides', () {
+      expect(film(), {'a', 'bg', 'p', 'hidden'});
+      expect(
+        film(spec: const CelsExportSpec(kinds: {ExportCelKind.video})),
+        {'a', 'bg', 'p', 'hidden'},
+      );
+      expect(film(spec: const CelsExportSpec(label: layout)), {'lo'});
+    });
+
+    test('the cels\' answers do not reach it; its own do', () {
+      expect(
+        film(
+          delta: ExportCelsCutDelta()
+              .withLayerOverride(const LayerId('a'), false)
+              .withLayerOverride(const LayerId('lo'), true),
+        ),
+        {'a', 'bg', 'p', 'hidden'},
+      );
+      expect(
+        film(
+          delta: ExportCelsCutDelta()
+              .withFilmLayer(const LayerId('a'), false)
+              .withFilmLayer(const LayerId('dir'), true)
+              .withFilmLayer(const LayerId('cam'), true),
+        ),
+        {'bg', 'p', 'hidden', 'dir'},
+        reason: 'a row it does not offer is not drawn whatever is held',
+      );
+    });
+  });
 }

@@ -40,7 +40,6 @@ void main() {
               metrics: TimelineGridMetrics.defaults.copyWith(
                 frameCellWidth: cell,
               ),
-              onSelectFrame: (_) {},
               rulerView: rulerView,
               pages: pages,
             ),

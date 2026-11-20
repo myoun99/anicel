@@ -11,8 +11,24 @@ class _StoryboardRowsAndLabels {
 
   final _StoryboardPanelState _state;
 
-  /// What the rail keeps of its rows ([_KeptRailRows]).
-  final _KeptRailRows _kept = _KeptRailRows();
+  /// What the rail keeps of its rows (F-244): each row — its label in the
+  /// drag wrapper put on it — held as built while the label's facts and
+  /// what the wrapper is built from hold. A row's address stands through a
+  /// cut crossed, so its wrapper and its label are kept as one; the
+  /// timeline's rail keeps the two apart (`KeptLayerControlsRows`) because
+  /// its berths change address under a kept row.
+  ///
+  /// 🚨I-57 (10-14): every wrapper was built again with the panel on every
+  /// notify and every cut crossed — 🔬64 of a crossing's 330 rebuilds on
+  /// the AMMI OP, each row's gesture layer among them.
+  ///
+  /// It holds the rows of the latest PASS ([railPass]) and no others: a
+  /// row the rail stops drawing lets go of what it was built from once the
+  /// pass is laid (I-57 ㉣: a memo that let go of nothing held every layer
+  /// of every cut it had shown). Every pass is another, so a row is kept
+  /// while its facts hold and no longer — the windowed rows' keep, laid
+  /// so (`_KeptRailRows` was a keep of its own until 11-19).
+  final WindowMoveKeep _kept = WindowMoveKeep();
 
   /// A lane list's labels — [rowId]'s lanes, row for row with [lanes] —
   /// laid as the table lays the lanes ([_laidLanes]), each made to select
@@ -65,7 +81,7 @@ class _StoryboardRowsAndLabels {
     ]);
   }
 
-  /// [_laneRow], kept while what it is built from holds ([_KeptRailRows]):
+  /// [_laneRow], kept while what it is built from holds ([_kept]):
   /// the label [row] it wraps by identity — a label is kept itself
   /// ([laneLabels]) — the lane, the chain it re-orders, where the lane
   /// stands in it and how far, and the host's half ([_dragInputs]). The
@@ -80,9 +96,9 @@ class _StoryboardRowsAndLabels {
     chain,
     ({PropertyLaneRow lane, int index}) at,
     Widget row,
-  ) => _kept.keep(
+  ) => _kept.row(
     (laneRow: LaneRowAddress(chain.rowId, at.lane.laneId)),
-    (
+    () => (
       ByIdentity(row),
       ByIdentity(at.lane),
       chain.chainId,
@@ -91,7 +107,7 @@ class _StoryboardRowsAndLabels {
       _laneExtentOf(chain.rowId, at.lane),
       _dragInputs,
     ),
-    () => _laneRow(chain, at, row),
+    (_) => _laneRow(chain, at, row),
   );
 
   /// One lane label of [chain]'s row at [at]: a group header re-orders the
@@ -177,7 +193,7 @@ class _StoryboardRowsAndLabels {
       return null;
     }
     // The host's span as it stands at the event: a kept row's wrapper
-    // outlives the build it was made in ([_KeptRailRows]).
+    // outlives the build it was made in ([_kept]).
     return (rowDelta) =>
         _state.widget.onRowSelectionSpan?.call(_state._sheet.rows(), rowDelta);
   }
@@ -225,13 +241,14 @@ class _StoryboardRowsAndLabels {
     _state.widget.onRowSelectionSpan != null,
   );
 
-  /// [build]'s rail rows — every track's — kept as one pass
-  /// ([_KeptRailRows.pass]).
+  /// [build]'s rail rows — every track's — kept as one pass ([_kept]),
+  /// whose rows are all the rail keeps once it is laid: the window's moves
+  /// lay labels in no pass of their own.
   List<Widget> railPass(List<Widget> Function() build) => _kept.pass(build);
 
   /// [label] in the drag wrapper [wrap] puts on it — the rail's row [key] —
   /// kept while [label]'s facts and [inputs], what [wrap] builds the
-  /// wrapper from, hold ([_KeptRailRows]); wearing, as a head, the layer
+  /// wrapper from, hold ([_kept]); wearing, as a head, the layer
   /// its row has in hand now ([_wearing]), which a kept row may have been
   /// built for another of.
   Widget _keptRow(
@@ -240,16 +257,20 @@ class _StoryboardRowsAndLabels {
     Object? inputs,
     Widget Function(Widget label) wrap,
   ) {
-    final piece = label.piece;
     // The row is a still region of its own, inside the wrapper [wrap] puts
     // on it, as the timeline's rail rows are ([layerRowDragWrapper]).
-    final row = _kept.keep(
+    final row = _kept.keptPiece(
       key,
-      (inputs, piece.runtimeType, piece.facts),
-      () => wrap(stillRow(piece)),
+      label.piece,
+      inputs,
+      (piece) => wrap(stillRow(piece)),
     );
     return switch (label.wears) {
-      final wears? => _wearing(wears, row),
+      final wears? => _kept.row(
+        (wearing: key),
+        () => _wearingOf(wears, row),
+        _wearing,
+      ),
       null => row,
     };
   }
@@ -272,7 +293,7 @@ class _StoryboardRowsAndLabels {
   /// [label] standing alone, as the folded overlay shows it — wearing, as
   /// a head, the layer its row has in hand ([_wearing]).
   Widget _labelAlone(_RailLabel label) => switch (label.wears) {
-    final wears? => _wearing(wears, label.piece),
+    final wears? => _wearing(_wearingOf(wears, label.piece)),
     null => label.piece,
   };
 
@@ -291,10 +312,19 @@ class _StoryboardRowsAndLabels {
           ? _seatedOf(carrierId, lanes[index])
           : null case final seated?) ...[
         if (seated.extent > 0) rows[index],
-        if (seated.room > 0) SizedBox(height: seated.room),
+        if (seated.room > 0) _laneRoom(carrierId, lanes[index], seated.room),
       ] else
         rows[index],
   ];
+
+  /// An open graph's room after [carrierId]'s [lane], [room] tall — kept
+  /// while it is as tall ([_kept]), so a head's unit is handed back whole.
+  Widget _laneRoom(LayerId carrierId, PropertyLaneRow lane, double room) =>
+      _kept.row(
+        (roomAfter: LaneRowAddress(carrierId, lane.laneId)),
+        () => room,
+        (room) => SizedBox(height: room),
+      );
 
   /// [carrierId]'s [lane] as the table lays it.
   _SeatedLane? _seatedOf(LayerId carrierId, PropertyLaneRow lane) =>
@@ -442,7 +472,7 @@ class _StoryboardRowsAndLabels {
     // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail
     // (11-08): every label was built again at every pass of the rail — a
     // pick of an S row drew both tracks' fx heads again. A label is kept
-    // ([_KeptRailRows]) by the row's own facts as it stands committed
+    // ([_kept]) by the row's own facts as it stands committed
     // ([TimelineLaneControlsRow.facts]) — the lane by identity, and a list
     // read again is new lanes, so what [follow] reads a lane again from
     // holds while the lane does — by the selection its graph is seated
@@ -465,10 +495,10 @@ class _StoryboardRowsAndLabels {
     // else (the timeline rail's own line).
     return [
       for (final lane in lanes)
-        _kept.keep(
+        _kept.row(
           (laneLabel: LaneRowAddress(carrier.id, lane.laneId)),
-          factsOf(lane),
-          () => follow == null
+          () => factsOf(lane),
+          (_) => follow == null
               ? row(carrier, lane)
               : follow(carrier, lane, row),
         ),
@@ -483,17 +513,22 @@ class _StoryboardRowsAndLabels {
   /// 2026-08-09: "S행은 V랑 관련없이 독립적으로 움직일 수 있어야 해"). The
   /// gate guarded a session that committed to the SELECTED track; the
   /// commit resolves the row's own track now.
+  ///
+  /// A rail with no hooks is display-only: the label in no wrapper, kept as
+  /// every row of the rail is. ↩️It stood alone, new at every pass (card
+  /// the-conte-rail-row-holders-are-new-each-pass).
   Widget seLabelRow(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    final hooks = _state.widget.rowDragHooks;
-    if (hooks == null || layer == null) {
-      return _seLabel(track, slot);
-    }
+    if (layer == null) return _seLabel(track, slot);
     final label = _seLabelOf(track, slot, layer);
+    final trackId = track.id;
+    final hooks = _state.widget.rowDragHooks;
+    if (hooks == null) {
+      return _keptRow(('se', trackId, slot), label, null, (label) => label);
+    }
     final shown = _seShownNow(track);
     final at = shown.indexWhere((row) => row.id == layer.id);
     final extent = _state._railRows._seRowGroupExtent(track, slot);
-    final trackId = track.id;
     return _keptRow(
       ('se', trackId, slot),
       label,
@@ -958,19 +993,50 @@ class _StoryboardRowsAndLabels {
         railColumns: layerRailColumnWidthsIn(_state.context),
       );
 
-  /// [row] — a head's, alone or in the wrapper its rail row puts on it —
-  /// wearing [wears]' layer: the one its row has in hand NOW, which a kept
-  /// head may have been built for another of ([BerthRow]). Its eye shows
-  /// that layer's, as the folders of [wears]' stack gate it ([RailEyes]) —
-  /// the timeline rail's own answer for the layer (F-185) — and the sides
-  /// of its attach group that show anything, which the halves of its fold
-  /// say in colour (I-175).
-  Widget _wearing(({Layer layer, List<Layer> stack}) wears, Widget row) =>
-      RailEyes.forLayers(
-        [wears.layer],
-        stack: wears.stack,
-        child: BerthRow(layer: wears.layer, child: row),
-      );
+  /// The row — a head's, alone or in the wrapper its rail row puts on it —
+  /// wearing its layer: the one its row has in hand NOW, which a kept head
+  /// may have been built for another of ([BerthRow]). Its eye shows that
+  /// layer's, as the folders of its stack gate it ([RailEyes]) — the
+  /// timeline rail's own answer for the layer (F-185) — and the sides of
+  /// its attach group that show anything, which the halves of its fold say
+  /// in colour (I-175).
+  Widget _wearing(_Wearing wearing) => RailEyes(
+    eyes: wearing.eyes.value,
+    sidesShown: {
+      for (final MapEntry(:key, :value) in wearing.sides.value.entries)
+        key: value.value,
+    },
+    child: BerthRow(layer: wearing.layer.value, child: wearing.row.value),
+  );
+
+  /// What [row] wearing [wears]' layer is built from ([_wearing]): the
+  /// layer, the eye and the sides [wears]' stack gives it — as VALUES, so a
+  /// head kept across passes hands its wrapper back while what it shows
+  /// holds — and [row] itself.
+  ///
+  /// ⚠️The two answers [RailEyes.forLayers] gives, asked as it asks them:
+  /// a third it comes to hand down is a third field here, or a kept head
+  /// wears the old one.
+  ///
+  /// ↩️The wrapper was built at every pass, a new [RailEyes] around every
+  /// head, so the head's unit could not be handed back whole (card
+  /// the-conte-rail-row-holders-are-new-each-pass, 11-19).
+  _Wearing _wearingOf(({Layer layer, List<Layer> stack}) wears, Widget row) {
+    final layers = [wears.layer];
+    return (
+      layer: ByIdentity(wears.layer),
+      eyes: ByMap(railEyesOf(layers, stack: wears.stack)),
+      sides: ByMap({
+        for (final MapEntry(:key, :value) in railSidesShownOf(
+          layers,
+          stack: wears.stack,
+          groups: attachGroupRowsBySide(wears.stack),
+        ).entries)
+          key: BySet(value),
+      }),
+      row: ByIdentity(row),
+    );
+  }
 
   /// [head]'s row as the timeline's rail builds it, at this rail's width
   /// and the conte rows' height — standing for [seat] of [track]: lit when
@@ -1016,6 +1082,7 @@ class _StoryboardRowsAndLabels {
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       opacityDragPreview: widget.opacityDragPreview,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      kindMenu: widget.layerKindMenu,
       onToggleLayerTimesheet: _sheetToggleOf(rowId),
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
       onionSkinEnabled:
@@ -1059,9 +1126,8 @@ class _StoryboardRowsAndLabels {
   /// The transition row's strip: the track's spans on the GLOBAL axis, live
   /// through the session's edge-drag form while a grip is held.
   Widget transitionStripRow(Track track, TimelineScale scale) {
-    final committed = track.transitionLayer;
     final height = _state._rowHeights.transition;
-    Widget row(Layer layer) => _StoryboardTransitionRow(
+    KeptPiece row(Layer layer) => _StoryboardTransitionRow(
       trackId: track.id,
       layer: _state.widget.transitionRowShown?.call(track, layer) ?? layer,
       height: height,
@@ -1083,11 +1149,39 @@ class _StoryboardRowsAndLabels {
     // The SE strips' gate, as is: a grip or a move publishes the row's two
     // forms on the one channel, and this strip — the track axis — draws the
     // GLOBAL one while the cut's rows draw the projection.
-    return TimelineDragPreviewRowGate(
-      dragPreview: _state.widget.dragPreview,
-      layer: committed,
-      useGlobalForm: true,
-      rowBuilder: (context, layer) => row(layer),
+    return keptGlobalStrip(
+      ('transitionStrip', track.id),
+      track.transitionLayer,
+      row,
+    );
+  }
+
+  /// [row] for [committed] — the track-global strip row [key] — in the gate
+  /// that draws it as an edit in flight shows it on the track axis, kept
+  /// across the panel's builds while the row and its gate are what they
+  /// were built from ([_StoryboardRowsWindow.globalStripKeep]). Asked in
+  /// the panel's pass of them ([_StoryboardRailRows.
+  /// _trackGlobalStripRowsByTrack]).
+  ///
+  /// ↩️Built at every build, a new gate round a new row: the strip's unit
+  /// could not be handed back whole (card
+  /// the-conte-rail-row-holders-are-new-each-pass, 11-19).
+  Widget keptGlobalStrip(
+    Object key,
+    Layer committed,
+    KeptPiece Function(Layer layer) row,
+  ) {
+    final dragPreview = _state.widget.dragPreview;
+    return _state._rowsWindow.globalStripKeep.keptPiece(
+      key,
+      row(committed),
+      (ByIdentity(dragPreview), ByIdentity(committed)),
+      (_) => TimelineDragPreviewRowGate(
+        dragPreview: dragPreview,
+        layer: committed,
+        useGlobalForm: true,
+        rowBuilder: (context, layer) => row(layer),
+      ),
     );
   }
 
@@ -1232,6 +1326,16 @@ class _StoryboardRowsAndLabels {
   }
 }
 
+/// What a head's row wears its layer from
+/// ([_StoryboardRowsAndLabels._wearingOf]), each field comparing as the
+/// keep needs.
+typedef _Wearing = ({
+  ByIdentity<Layer> layer,
+  ByMap<LayerId, RailEye> eyes,
+  ByMap<LayerId, BySet<AttachedPlacement>> sides,
+  ByIdentity<Widget> row,
+});
+
 /// A rail row's label as [_StoryboardRowsAndLabels._keptRow] keeps it: the
 /// [piece] it shows, and — a head's — the layer its row has in hand and the
 /// stack it stands in, which the head [wears] past its keep.
@@ -1239,45 +1343,6 @@ typedef _RailLabel = ({
   KeptPiece piece,
   ({Layer layer, List<Layer> stack})? wears,
 });
-
-/// What the rail keeps of its rows (F-244): each row — its label in the
-/// drag wrapper put on it — held as built while the label's facts and what
-/// the wrapper is built from hold. A row's address stands through a cut
-/// crossed, so its wrapper and its label are kept as one; the timeline's
-/// rail keeps the two apart (`KeptLayerControlsRows`) because its berths
-/// change address under a kept row.
-///
-/// 🚨I-57 (10-14): every wrapper was built again with the panel on every
-/// notify and every cut crossed — 🔬64 of a crossing's 330 rebuilds on the
-/// AMMI OP, each row's gesture layer among them.
-///
-/// It holds the rows of the latest PASS ([pass]) and no others: a row the
-/// rail stops drawing lets go of what it was built from (I-57 ㉣: a memo
-/// that let go of nothing held every layer of every cut it had shown).
-final class _KeptRailRows {
-  Map<Object, Kept<Object?>> _held = {};
-  Map<Object, Kept<Object?>> _before = {};
-
-  /// [build]'s rows, kept as one pass.
-  List<Widget> pass(List<Widget> Function() build) {
-    _before = _held;
-    _held = {};
-    try {
-      return build();
-    } finally {
-      _before = {};
-    }
-  }
-
-  /// The row held for [key] while [facts] are what it was built from, else
-  /// [build]'s, held.
-  Widget keep(Object key, Object? facts, Widget Function() build) {
-    if (_before.remove(key) case final kept?) {
-      _held[key] = kept;
-    }
-    return keptWhileSame(_held, key, facts, build);
-  }
-}
 
 /// A V row's glyph — what its label row shows beside its name
 /// ([storyboardVideoRowName]), and what its chip shows once the row is

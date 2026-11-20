@@ -4,6 +4,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/canvas/canvas_adjust_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
@@ -97,6 +98,26 @@ void main() {
     expect(shown().edges, const Rect.fromLTRB(0, 0, 500, 300));
     expect(sizeShown(tester), '500×300');
     expect(kept().contentOffset, (dx: 0.0, dy: 0.0), reason: 'nothing moved');
+  });
+
+  // 🗣️I-180-Q6 a (「알약에도 같은 맞춤 칸」): the window's fit is on the pill
+  // too, born to begin with, and an edge dragged afterwards keeps it.
+  testWidgets('the pill picks the fit, and the edges dragged keep it', (
+    tester,
+  ) async {
+    final origin = await pumpLayer(tester);
+    expect(shown().fit, MediaFitMode.born);
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-adjust-fit')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-adjust-fit-stretch')),
+    );
+    await tester.pumpAndSettle();
+    expect(kept().fit, MediaFitMode.stretch);
+
+    await drag(tester, origin + const Offset(400, 150), const Offset(100, 30));
+    expect(shown().edges, const Rect.fromLTRB(0, 0, 500, 300));
+    expect(kept().fit, MediaFitMode.stretch);
   });
 
   testWidgets('🚨the top left corner pulled out moves the picture by as '

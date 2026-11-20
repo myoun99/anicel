@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/sheet_marks.dart';
@@ -40,6 +41,71 @@ List<SheetInkWindow> timesheetInkWindows({
     ),
 ];
 
+/// The windows of the pages a [box] of the panel shows through [viewport]
+/// — the pages off it keep their ink on their surfaces, with no window to
+/// draw through or show it by: every page's would be a brush view and a
+/// screen each.
+List<SheetInkWindow> timesheetInkWindowsOn({
+  required TimesheetDocumentLayout layout,
+  required CutId cutId,
+  required CanvasViewport viewport,
+  required Size box,
+}) => timesheetInkWindows(
+  layout: layout,
+  cutId: cutId,
+  pages: layout.pageStack.pagesMeeting(canvasRectShown(viewport, box)),
+);
+
+/// The sheet's ink as it shows, the brush on or off ([SheetInkScreens]):
+/// a screen for each page on screen, its cel the one [surfaceOf] says.
+class TimesheetInkScreens extends StatelessWidget {
+  const TimesheetInkScreens({
+    super.key,
+    required this.controller,
+    required this.layout,
+    required this.cutId,
+    required this.viewport,
+    required this.surfaceOf,
+    required this.strokes,
+    this.imageFor,
+    this.imageRepaint,
+    this.photoHold,
+  });
+
+  final TimesheetInkController controller;
+  final TimesheetDocumentLayout layout;
+  final CutId cutId;
+  final CanvasViewport viewport;
+
+  /// Forwarded to [SheetInkScreens.surfaceOf].
+  final BitmapSurface? Function(SheetWindow window) surfaceOf;
+
+  final SheetInkStrokes strokes;
+  final SheetImageLookup? imageFor;
+  final Listenable? imageRepaint;
+  final SheetPhotoHold? photoHold;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => SheetInkScreens(
+      windows: timesheetInkWindowsOn(
+        layout: layout,
+        cutId: cutId,
+        viewport: viewport,
+        box: box.biggest,
+      ),
+      keyPrefix: 'timesheet',
+      viewport: viewport,
+      surfaceOf: surfaceOf,
+      strokes: strokes,
+      inkChanges: controller,
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
+      photoHold: photoHold,
+    ),
+  );
+}
+
 /// The sheet's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses (current brush/eraser,
 /// live overlay, dab commit), windowed onto its ink surface by a derived
@@ -54,6 +120,7 @@ class TimesheetInkLayer extends StatelessWidget {
     required this.historyManager,
     required this.viewport,
     required this.strokeActive,
+    required this.strokes,
     this.cacheInvalidationSink,
     this.imageFor,
     this.imageRepaint,
@@ -74,6 +141,9 @@ class TimesheetInkLayer extends StatelessWidget {
   /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
 
+  /// Forwarded to [SheetInkLayer.strokes].
+  final SheetInkStrokes strokes;
+
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
@@ -89,14 +159,13 @@ class TimesheetInkLayer extends StatelessWidget {
   );
 
   /// The layer for a [box] of the panel: windows for the pages on screen
-  /// only — the pages off it keep their ink on their surfaces (the sheet's
-  /// strata print it), they just have no window to draw through. Every
-  /// page's would be a brush view each.
+  /// only ([timesheetInkWindowsOn]).
   Widget _windowsOver(Size box) {
-    final windows = timesheetInkWindows(
+    final windows = timesheetInkWindowsOn(
       layout: layout,
       cutId: cutId,
-      pages: layout.pageStack.pagesMeeting(canvasRectShown(viewport, box)),
+      viewport: viewport,
+      box: box,
     );
     return SheetInkLayer(
       windows: windows,
@@ -106,6 +175,7 @@ class TimesheetInkLayer extends StatelessWidget {
       strokeActive: strokeActive,
       history: historyManager.gestures,
       inkChanges: controller,
+      strokes: strokes,
       sessionStateFor: (window) => controller.sessionStateFor(null, window.key),
       onStrokeCommitted: (window, strokeData) => controller.commitStroke(
         plane: null,

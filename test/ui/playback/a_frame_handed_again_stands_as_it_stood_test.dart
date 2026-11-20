@@ -115,13 +115,18 @@ void main() {
     addTearDown(images.dispose);
     final store = layingNothing ? StoreLayingNothing() : aStoreOfPictures();
     addTearDown(store.dispose);
+    final run = runOver(
+      images,
+      store,
+      canvasSize: canvasSize,
+      stackOf: (_) => treeOf(),
+    );
+    // A file on screen already, not one just opened — whose first frame
+    // stands bare till its picture comes (the-standing-canvas-composes-a-
+    // frame-twice-before-its-picture-Q7).
+    run.pictures.putOnScreen();
     return (
-      run: runOver(
-        images,
-        store,
-        canvasSize: canvasSize,
-        stackOf: (_) => treeOf(),
-      ),
+      run: run,
       live: (
         activeSurfacePainter: BitmapSurfacePainter(
           surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
@@ -205,6 +210,50 @@ void main() {
       reason: 'the pen\'s row at another opacity draws its stroke so — the '
           'frame as it stands is another, though its picture is not',
     );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🔬F-620 (2026-11-19, Surface Pro 11, S5_BA cut 352 · 68 rows): each
+  // value of a cel number's box handed the canvas its frame anew, and the
+  // canvas signed the rows twice — once to tell, once to stand by.
+  testWidgets('a frame handed anew is signed once: the key that told it is '
+      'the one it stands by', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (:run, :live) = standing();
+    await tester.pumpWidget(shown(run, live, treeOf()));
+    final picture = run.pictures.keyOfStack(treeOf(), frame);
+    expect(
+      await settleAsync(tester, () => run.pictures.store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    final again = run.pictures.standsSigned;
+    await tester.pumpWidget(
+      shown(run, live, treeOf()),
+      phase: EnginePhase.layout,
+    );
+    expect(
+      run.pictures.standsSigned - again,
+      1,
+      reason: '⛔CONTROL: handed again, told by one signing',
+    );
+    await tester.pump();
+
+    final anew = run.pictures.standsSigned;
+    await tester.pumpWidget(
+      shown(run, live, treeOf(opacity: 0.5)),
+      phase: EnginePhase.layout,
+    );
+    expect(
+      theView(tester).debugNeedsPaint,
+      isTrue,
+      reason: '⛔premise: stood anew',
+    );
+    expect(run.pictures.standsSigned - anew, 1);
     await tester.pump();
     await tester.pumpWidget(const SizedBox());
   });

@@ -110,6 +110,7 @@ class _BottomBarBuild {
           // real.
           none: _bar.paperNone,
           onNone: _bar.onPaperNone,
+          onSettled: _bar.onStagePlanesSettled,
           keepsAlpha: true,
         ),
       if (onPasteboard != null) ...[
@@ -122,6 +123,7 @@ class _BottomBarBuild {
           onChanged: onPasteboard,
           none: _bar.pasteboardNone,
           onNone: _bar.onPasteboardNone,
+          onSettled: _bar.onStagePlanesSettled,
           keepsAlpha: true,
           hostRow: _pasteboardReachRowOf(_bar),
         ),
@@ -145,6 +147,7 @@ class _BottomBarBuild {
           onChanged: onBackdrop,
           none: _bar.backdropNone,
           onNone: _bar.onBackdropNone,
+          onSettled: _bar.onStagePlanesSettled,
           keepsAlpha: true,
         ),
       ],

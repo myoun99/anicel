@@ -12,25 +12,52 @@
 
 namespace {
 
-BOOL CALLBACK FindTheRunningWindow(HWND window, LPARAM found) {
-  if (::GetPropW(window, kRunningWindowProp) == nullptr) {
+// What the search for the running window looks for, and what it finds.
+struct RunningWindowSearch {
+  std::wstring executable;
+  HWND found = nullptr;
+};
+
+// Whether |window| belongs to a process that runs |executable|.
+bool RunsTheExecutable(HWND window, const std::wstring& executable) {
+  DWORD process_id = 0;
+  ::GetWindowThreadProcessId(window, &process_id);
+  HANDLE process =
+      ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+  if (process == nullptr) {
+    return false;
+  }
+  const std::wstring its = ExecutableOf(process);
+  ::CloseHandle(process);
+  // A path names a file case-blind on Windows.
+  return !its.empty() &&
+         ::CompareStringOrdinal(its.c_str(), -1, executable.c_str(), -1,
+                                TRUE) == CSTR_EQUAL;
+}
+
+// 🗣️a-launch-with-a-file-joins-whatever-anicel-runs-Q1 (유저 2026-11-18):
+// 「같은 실행 파일끼리만 넘긴다」 — only a window of THIS executable, the same
+// path, takes the files. ↩️Any Anicel's did: a session's build started with
+// a file for a measurement opened it as a tab of the user's working window,
+// frozen or not (main PC 11-18, the Surface 11-17). A double-click in the
+// Explorer still joins the window of the executable it is associated with.
+BOOL CALLBACK FindTheRunningWindow(HWND window, LPARAM search_param) {
+  auto* search = reinterpret_cast<RunningWindowSearch*>(search_param);
+  if (::GetPropW(window, kRunningWindowProp) == nullptr ||
+      !RunsTheExecutable(window, search->executable)) {
     return TRUE;
   }
-  *reinterpret_cast<HWND*>(found) = window;
+  search->found = window;
   return FALSE;
 }
 
 // |file| as the running Anicel can find it: a path given from a command line
 // is read against THIS process's folder, which the running one does not have.
 std::string Absolute(const std::string& file) {
-  const int wide_length =
-      ::MultiByteToWideChar(CP_UTF8, 0, file.c_str(), -1, nullptr, 0);
-  if (wide_length <= 0) {
+  const std::wstring wide = Utf16FromUtf8(file);
+  if (wide.empty()) {
     return file;
   }
-  std::wstring wide(wide_length, L'\0');
-  ::MultiByteToWideChar(CP_UTF8, 0, file.c_str(), -1, wide.data(),
-                        wide_length);
   const DWORD full_length =
       ::GetFullPathNameW(wide.c_str(), 0, nullptr, nullptr);
   if (full_length == 0) {
@@ -47,15 +74,19 @@ std::string Absolute(const std::string& file) {
 // 🗣️open-door-windows-open-with-Q1 (유저 2026-10-22: 「떠 있는 창의 새
 // 탭으로」): the files this Anicel was started for go to the one already
 // running, which brings itself forward — and this one ends. With no files,
-// no running window, or one that does not take them in time, this Anicel
-// runs and opens them itself. flutter_window.cpp's kHandedFilesChannel says
+// no running window of this executable (FindTheRunningWindow), or one that
+// does not take them in time, this Anicel runs and opens them itself. flutter_window.cpp's kHandedFilesChannel says
 // the rest.
 bool HandToTheRunningWindow(const std::vector<std::string>& files) {
   if (files.empty()) {
     return false;
   }
-  HWND running = nullptr;
-  ::EnumWindows(FindTheRunningWindow, reinterpret_cast<LPARAM>(&running));
+  RunningWindowSearch search{ExecutableOf(::GetCurrentProcess())};
+  if (search.executable.empty()) {
+    return false;
+  }
+  ::EnumWindows(FindTheRunningWindow, reinterpret_cast<LPARAM>(&search));
+  HWND running = search.found;
   if (running == nullptr) {
     return false;
   }

@@ -18,10 +18,10 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 /// 🚨AN S ROW'S SOUND FILTERS ARE WHAT ITS SPANS ARE BAKED THROUGH (board
-/// audio-fx-grows-like-the-pros ③ · Q2 design 1): the row's Equalizer and
-/// Compressor effects, in its chain's order and read at the span's frames,
-/// ride each span's schedule entry to the bake playback and an export
-/// both read.
+/// audio-fx-grows-like-the-pros ③ · Q2 design 1): the row's Equalizer,
+/// Compressor and Noise removal effects, in its chain's order and read at
+/// the span's frames, ride each span's schedule entry to the bake playback
+/// and an export both read.
 ///
 /// 🗣️Q2 (유저 2026-11-17): 「시안 3 · 시안 1 + 성격 프리셋」 — design 1: an
 /// effect added from the Fx pill's 音声 section stacks under the row, keyed
@@ -240,6 +240,32 @@ void main() {
           ),
         ),
       ],
+    ]);
+  });
+
+  LayerEffect noiseRemoval(String id, {double? amount}) => LayerEffect(
+    id: EffectId(id),
+    kind: EffectKind.noiseRemoval,
+    parameters: {
+      if (amount != null) 'amount': EffectParameter(value: amount),
+    },
+  );
+
+  test('a noise removal just added is a stage that takes nothing out', () {
+    expect(filtersOf([noiseRemoval('nr')])!.stages, [
+      [(frame: 0, filter: const AudioDenoiser(amount: 0))],
+    ]);
+  });
+
+  test('🎯a noise removal is a stage of its own, in the chain\'s order with '
+      'an equalizer, its amount read out of a hundred', () {
+    final stages = filtersOf([
+      noiseRemoval('nr', amount: 80),
+      equalizer('eq', parameters: {'lowGain': EffectParameter(value: 3)}),
+    ])!.stages;
+    expect(stages, [
+      [(frame: 0, filter: const AudioDenoiser(amount: 0.8))],
+      [(frame: 0, filter: engineOf(lowDb: 3))],
     ]);
   });
 

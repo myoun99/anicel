@@ -1,8 +1,9 @@
 //! The letters' layers laid on a real GPU — every value worked out by hand
 //! from the executor's formula (`kernels/mod.rs` has why no CPU copy).
 
-use super::{Cover, Layer, Lettered, lettered, paged, rect_of};
+use super::{Cover, Covered, Layer, lettered, paged, rect_of};
 use crate::kernels::chain::tiles_of;
+use crate::kernels::effects::blur::TileRect;
 use crate::kernels::composite::tests::{pixel_at, rig};
 use crate::testing::read_buffer;
 
@@ -22,40 +23,49 @@ fn layer(colour: u32, hard: bool, (x, y): (i32, i32), bytes: &[u8]) -> Layer {
     }
 }
 
-fn laid(layers: &[Layer]) -> Option<Lettered> {
+/// A picture of letters as the land lays it, and the rectangle its
+/// tiles are over.
+pub(super) struct Laid {
+    pub(super) rect: TileRect,
+    pub(super) tiles: wgpu::Buffer,
+}
+
+fn laid(layers: Vec<Layer>) -> Option<Laid> {
     let rig = rig();
-    lettered(rig.engine, &rig.composite, layers)
+    let covered = Covered { rect: rect_of(&layers)?, layers };
+    let tiles = lettered(rig.engine, &rig.composite, &covered)?;
+    Some(Laid { rect: covered.rect, tiles })
 }
 
 /// What `picture` holds at (`x`, `y`), A<<24|B<<16|G<<8|R.
-pub(super) fn at(picture: &Lettered, x: i32, y: i32) -> u32 {
+pub(super) fn at(picture: &Laid, x: i32, y: i32) -> u32 {
     let bytes = read_buffer(rig().engine, &picture.tiles);
     u32::from_le_bytes(pixel_at(&bytes, &tiles_of(picture.rect), x, y))
 }
 
 #[test]
 fn a_whole_cover_lays_the_colour_and_none_lays_nothing() {
-    let picture = laid(&[layer(RED, false, (-3, 5), &[255, 0])]).expect("laid");
+    let picture = laid(vec![layer(RED, false, (-3, 5), &[255, 0])]).expect("laid");
     assert_eq!(at(&picture, -3, 5), RED);
     assert_eq!(at(&picture, -2, 5), 0, "a pixel it does not cover holds nothing");
 }
 
 #[test]
 fn a_part_cover_is_the_pixels_alpha() {
-    let picture = laid(&[layer(RED, false, (0, 0), &[77, 1])]).expect("laid");
+    let picture = laid(vec![layer(RED, false, (0, 0), &[77, 1])]).expect("laid");
     assert_eq!(at(&picture, 0, 0), 77 << 24 | (RED & 0x00FF_FFFF));
     assert_eq!(at(&picture, 1, 0), 1 << 24 | (RED & 0x00FF_FFFF));
 }
 
 #[test]
 fn a_translucent_colour_is_its_layers_strength() {
-    let picture = laid(&[layer(0x40FF_8000, false, (2, 2), &[255])]).expect("laid");
+    let picture = laid(vec![layer(0x40FF_8000, false, (2, 2), &[255])]).expect("laid");
     assert_eq!(at(&picture, 2, 2), 0x40FF_8000);
 }
 
 #[test]
 fn hard_letters_cut_at_half_their_cover() {
-    let picture = laid(&[layer(RED, true, (0, 0), &[127, 128, 255, 1])]).expect("laid");
+    let picture = laid(vec![layer(RED, true, (0, 0), &[127, 128, 255, 1])]).expect("laid");
     assert_eq!(at(&picture, 0, 0), 0, "127 of 255 is under half");
     assert_eq!(at(&picture, 1, 0), RED, "128 is half or more: whole");
     assert_eq!(at(&picture, 2, 0), RED);
@@ -64,14 +74,14 @@ fn hard_letters_cut_at_half_their_cover() {
 
 #[test]
 fn hard_letters_are_laid_at_their_colours_alpha() {
-    let picture = laid(&[layer(0x40FF_8000, true, (0, 0), &[200])]).expect("laid");
+    let picture = laid(vec![layer(0x40FF_8000, true, (0, 0), &[200])]).expect("laid");
     assert_eq!(at(&picture, 0, 0), 0x40FF_8000);
 }
 
 #[test]
 fn a_layer_above_covers_the_one_under_it() {
     // The outline under the fill: where both cover, the fill's colour.
-    let picture = laid(&[
+    let picture = laid(vec![
         layer(RED, false, (0, 0), &[255, 255]),
         layer(WHITE, false, (1, 0), &[255, 255]),
     ])
@@ -85,7 +95,7 @@ fn a_layer_above_covers_the_one_under_it() {
 fn the_rectangle_holds_every_cover_and_nothing_between() {
     // Two layers four tiles apart, one left of the origin: the rectangle
     // spans both, and a tile between them lays nothing.
-    let picture = laid(&[
+    let picture = laid(vec![
         layer(RED, false, (-129, -1), &[255]),
         layer(WHITE, false, (300, 260), &[255]),
     ])
@@ -100,7 +110,7 @@ fn the_rectangle_holds_every_cover_and_nothing_between() {
 #[test]
 fn a_cover_the_hard_cut_drops_whole_holds_no_tile() {
     // Its box reaches a tile of its own, and nothing of it is left there.
-    let picture = laid(&[
+    let picture = laid(vec![
         layer(RED, false, (0, 0), &[255]),
         layer(WHITE, true, (500, 0), &[127]),
     ])
@@ -133,6 +143,6 @@ fn a_tile_a_layer_covers_nothing_of_is_stored_as_none() {
 
 #[test]
 fn letters_that_cover_nothing_are_no_row() {
-    assert!(laid(&[layer(RED, false, (0, 0), &[0, 0])]).is_none());
-    assert!(laid(&[]).is_none());
+    assert!(laid(vec![layer(RED, false, (0, 0), &[0, 0])]).is_none());
+    assert!(laid(vec![]).is_none());
 }

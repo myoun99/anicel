@@ -14,7 +14,8 @@ import '../models/covering_image_normalize.dart';
 import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
-import '../models/cut_content_translation.dart' show translateCutContentModel;
+import '../models/cut_content_translation.dart'
+    show ResizeWalk, carryCutContentModel;
 import '../models/cut_sync_alignment.dart' show projectWithItsSyncsAligned;
 import '../models/drawing_guide.dart';
 import '../models/cut_id.dart';
@@ -744,28 +745,20 @@ class ProjectRepository {
   }
 
   /// D5 (R7): a resize's ONE model write per cut — the new canvas size
-  /// plus the content follow (camera keyframes, guides, text anchors and
-  /// layer transform coordinates, [translateCutContentModel] — see its
-  /// doc for the two offsets). One write per cut keeps the resize
+  /// plus the content follow (camera keyframes, guides, layer transform
+  /// coordinates and the rest, [carryCutContentModel] — see its doc for the
+  /// scale and the two offsets). One write per cut keeps the resize
   /// command's single history entry looking at coherent cuts.
   void resizeCutCanvasContent({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required double dx,
-    required double dy,
-    required double centreDx,
-    required double centreDy,
+    required ResizeWalk walk,
   }) {
     _mutate(
       _cut,
       cutId,
-      (cut) => translateCutContentModel(
-        cut,
-        dx: dx,
-        dy: dy,
-        centreDx: centreDx,
-        centreDy: centreDy,
-      ).copyWith(canvasSize: canvasSize),
+      (cut) =>
+          carryCutContentModel(cut, walk).copyWith(canvasSize: canvasSize),
     );
   }
 

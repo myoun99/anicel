@@ -72,7 +72,7 @@ class CameraPose {
 
 /// The camera pose used when a cut has no keyframes: centered on the canvas,
 /// zoom 1, no rotation. A model's own fact — a canvas resize keys an unkeyed
-/// camera where this put it (`translateCutCamera`), and models may not
+/// camera where this put it (`carryCutCamera`), and models may not
 /// import the resolver that reads it.
 CameraPose defaultCameraPoseFor(CanvasSize canvasSize) {
   return CameraPose(

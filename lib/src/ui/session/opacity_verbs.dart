@@ -74,6 +74,20 @@ class OpacityVerbs {
   final ValueNotifier<({Set<LayerId> layerIds, double opacity})?> dragPreview =
       ValueNotifier(null);
 
+  /// Whether the slider in flight ([dragPreview]) moves what a frame is
+  /// made of: a row of a picture's opacity ([LayerKind.hasPictureOpacity]),
+  /// as [layersShowingOpacityPreview] substitutes it. The camera's dims the
+  /// camera view alone (F-363), which no frame is made of.
+  bool get movesAPicture {
+    final preview = dragPreview.value;
+    return preview != null &&
+        _project.layers.any(
+          (layer) =>
+              preview.layerIds.contains(layer.id) &&
+              layer.kind.hasPictureOpacity,
+        );
+  }
+
   /// The master bar's LAST committed value — the bar rests on this, not a
   /// live average (UI-R6 #2).
   double lastMasterOpacity = 1.0;

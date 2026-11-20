@@ -67,6 +67,7 @@ onToggleLayerTimesheet: (_) {},
 onLayerMarkSelected: (_, _) {},
 attachFoldedRowIds: attachFoldedRowIds,
 onToggleGroupFold: onToggleGroupFold,
+attachGroups: attachGroupRowsBySide(layers),
 attachArrowPlacementOf: (layerId) => attachArrowPlacement(
               layers.firstWhere((layer) => layer.id == layerId),
               layers,

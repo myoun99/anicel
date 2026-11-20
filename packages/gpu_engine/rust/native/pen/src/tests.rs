@@ -11,11 +11,15 @@
 mod apple;
 mod hid_axis;
 mod ledger;
+#[cfg(windows)]
+mod mouse_kept;
 mod points;
 #[cfg(windows)]
 mod points_win;
 #[cfg(windows)]
 mod raw;
+#[cfg(windows)]
+mod receiver;
 mod report;
 #[cfg(windows)]
 mod wintab;

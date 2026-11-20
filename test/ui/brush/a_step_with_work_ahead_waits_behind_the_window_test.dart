@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -220,9 +221,10 @@ void main() {
 
     test('works its resize out ahead: the target\'s pictures moved', () async {
       final size = sizeNow();
-      session.cutCommandCoordinator.resizeCutCanvas(
+      session.cutCommandCoordinator.placeCutCanvas(
         cutId: target,
         canvasSize: CanvasSize(width: size.width - 2, height: size.height - 2),
+        place: PictureMovedBy.none,
       );
       final drawn = draw(target);
       final ahead = session.cutVerbs.convertActiveCutToLinkedAhead(target);

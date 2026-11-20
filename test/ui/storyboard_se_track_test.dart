@@ -13,6 +13,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
@@ -21,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 
+import '../helpers/a_move_lands.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
 
@@ -395,6 +397,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tapAt(_storyboardCutRowPoint(tester, globalFrame: 10));
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    await theMoveLands(tester, session);
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),

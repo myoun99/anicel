@@ -43,7 +43,7 @@ void main() {
     final path = file('drive.tvpp', const [1, 2, 3, 4, 5, 6]);
     final held = Completer<void>();
     final spoke = Completer<void>();
-    final told = <({Duration waited, Duration quiet})>[];
+    final told = <({Duration waited, Duration quiet, bool cloud})>[];
     FolderPicker.debugReadPiece = (file, into, from, to) async {
       if (from > 0) {
         await held.future;
@@ -53,8 +53,8 @@ void main() {
 
     final reading = FolderPicker.readOpenedFile(
       path,
-      onWaiting: (waited, quiet) {
-        told.add((waited: waited, quiet: quiet));
+      onWaiting: (waited, quiet, {required fromTheCloud}) {
+        told.add((waited: waited, quiet: quiet, cloud: fromTheCloud));
         if (!spoke.isCompleted) {
           spoke.complete();
         }
@@ -72,6 +72,13 @@ void main() {
       lessThan(told.first.waited),
       reason: 'the first piece landed before the wait spoke — the wait must '
           'know it, or a file still coming down reads as one that is not',
+    );
+    expect(
+      [for (final beat in told) beat.cloud],
+      everyElement(isFalse),
+      reason: 'the device called the file here, so the app reading it is '
+          'what the line says — never the cloud, which would be a guess '
+          '(F-621-Q2)',
     );
   });
 
@@ -91,7 +98,7 @@ void main() {
 
     final reading = FolderPicker.readOpenedFile(
       path,
-      onWaiting: (_, _) => stop = true,
+      onWaiting: (_, _, {required fromTheCloud}) => stop = true,
       isCancelled: () => stop,
     );
 
@@ -150,7 +157,7 @@ void main() {
 
     final read = await FolderPicker.readOpenedFile(
       path,
-      onWaiting: (waited, _) => told.add(waited),
+      onWaiting: (waited, _, {required fromTheCloud}) => told.add(waited),
       isCancelled: () => false,
     );
 

@@ -349,6 +349,44 @@ void main() {
     ]);
   });
 
+  // 🗣️F-621 ④ (유저 2026-11-19): 「인스턴스 이름 읽는거는 tvp디코드
+  // 기준인가? 클튜도 포함되나? 아무튼 이름은 영문숫자든뭐든 상관없이 그대로
+  // 들여오는게 맞지않나」.
+  test('a name comes in as written, whatever its letters — as text, or as '
+      'the bytes of its UTF-8', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerNextIndex) VALUES (2, '배경 가', 1, 0, 3)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+          'VALUES (3, ?, 1, 0)',
+          [utf8.encode('せりふ・2')],
+        );
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect([for (final layer in document.root.children) layer.name], [
+      '배경 가',
+      'せりふ・2',
+    ]);
+  });
+
   test('a text layer is 800 — or 0 with its text\'s columns filled, as four '
       'in two samples were (10-09)', () {
     final database = databaseBytes((db) {

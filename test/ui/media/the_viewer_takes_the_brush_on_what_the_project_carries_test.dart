@@ -12,13 +12,15 @@ import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart' show sheetRunsTool;
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_ink.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart'
+    show LiveCelScreen;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart'
-    show SheetInkLayer, SheetInkWindow;
+    show SheetInkLayer, SheetInkScreens, SheetInkWindow;
 
+import '../../helpers/a_screen_shows_ink.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/settle_async.dart';
@@ -170,17 +172,20 @@ void main() {
     await tester.tap(brushSwitch());
     await tester.pump();
     expect(find.byType(ViewerInkOverlay), findsNothing);
-    final printer = tester
-        .widget<CustomPaint>(
-          find.byKey(const ValueKey<String>('media-viewer-ink')),
-        )
-        .painter! as ViewerInkPainter;
+    final screens = find.byKey(const ValueKey<String>('media-viewer-ink'));
     expect(
-      [for (final shown in printer.windows) shown.key],
+      [
+        for (final shown in tester.widget<SheetInkScreens>(screens).windows)
+          shown.key,
+      ],
       [window.key],
-      reason: 'the page\'s saved ink is printed over it',
+      reason: 'the page\'s saved ink shows over it, the brush off as on',
     );
-    expect(printer.liveInkKeys, isEmpty);
+    expect(
+      find.descendant(of: screens, matching: find.byType(LiveCelScreen)),
+      findsOneWidget,
+      reason: 'on a screen of its own',
+    );
 
     session.historyManager.undo();
     expect(ink.hasInkFor(plane, window.key), isFalse);
@@ -199,15 +204,8 @@ void main() {
     final overlay = tester.widget<ViewerInkOverlay>(
       find.byType(ViewerInkOverlay),
     );
-    bool viewHoldsInk() => !tester
-        .widget<BrushEditCanvasView>(
-          find.descendant(
-            of: find.byType(ViewerInkOverlay),
-            matching: find.byType(BrushEditCanvasView),
-          ),
-        )
-        .surface
-        .holdsNothing;
+    bool viewHoldsInk() =>
+        aScreenShowsInkOf(tester, overlay.windows.single.key);
 
     final origin = tester.getTopLeft(find.byType(ViewerInkOverlay));
     final rect = overlay.windows.single.screenRect(overlay.viewport);
@@ -221,7 +219,11 @@ void main() {
 
     session.historyManager.undo();
     await tester.pump();
-    expect(viewHoldsInk(), isFalse, reason: 'undone, it is gone from the view');
+    expect(
+      viewHoldsInk(),
+      isFalse,
+      reason: 'undone, it is gone from its screen',
+    );
 
     session.historyManager.redo();
     await tester.pump();

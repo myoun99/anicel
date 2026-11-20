@@ -34,12 +34,14 @@ import 'package:anicel/src/native/engine_floods.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/native/engine_selection_masks.dart';
 import 'package:anicel/src/native/engine_strokes.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 
 import '../helpers/an_effect_sampled.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// 🚨★THE THREAD THE APP'S FRAMES ARE BUILT ON COMPILES NO KERNEL (🗣️관제
 /// 2026-11-10 18:14, gpu-canonical-store ⑦: 「선 = UI 스레드가 직접 하는 커널
@@ -199,7 +201,7 @@ void main() {
 
   // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
   // 「디스크 캐시」): what the list compiled is kept for the next launch, in
-  // the app's folder for it (rust/vendor/wgpu-hal, dxil_cache.rs).
+  // the app's folder for it (rust/vendor/wgpu-hal, compile_cache.rs).
   test(
     'what the list compiled is kept for the next launch',
     () {
@@ -252,6 +254,30 @@ void main() {
 
   test('the blur brush goes by strips once the list is through', () {
     expect(EngineStrokes.blurs.debugGoesByStrips, isTrue);
+  });
+
+  // F-610 (2026-11-19): the fold's kernels are the list's, handed to a
+  // fold compiled — what its body compiled on the engine's thread would
+  // be counted here once it had run —, and the engine keeps the unfold
+  // for the read that first meets a tile lying folded.
+  test('a fold of the ledger\'s tiles builds none, nor the read of a tile '
+      'that lies folded', () async {
+    expect(appGpuFoldKernels.compiled, isNotNull, reason: '⛔premise');
+    // A ledger of its own on the app's engine, of pages its one tile
+    // fills: a page with a slot free is its pool's room, none of whose
+    // tiles is a fold's (rust/src/kernels/pool/folded.rs).
+    final ledger = EngineTileLedger(
+      appGpuEngine,
+      foldKernels: () => appGpuFoldKernels.compiled,
+      debugTilesAPage: 1,
+    );
+    final tile = landedOn(ledger, [null], 9).single;
+    final before = debugKernelsCompiledHere;
+    expect(await ledger.foldABatch(), isTrue, reason: '⛔premise: folded');
+    while (await ledger.foldABatch()) {}
+    await appGpuEngine.done();
+    expect(tile.pixels.toSet(), {9});
+    expect(debugKernelsCompiledHere - before, 0);
   });
 
   // 🗣️관제 2026-11-11 04:09 (④): 「첫 획 · 첫 들어올리기에서도 UI 스레드가

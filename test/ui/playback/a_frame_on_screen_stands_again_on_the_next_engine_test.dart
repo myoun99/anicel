@@ -210,6 +210,10 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final store = StoreLayingNothing();
     final run = runOn(store);
+    // A file on screen already, its frame drawn as it stands — one just
+    // opened stands bare till its picture comes (the-standing-canvas-
+    // composes-a-frame-twice-before-its-picture-Q7).
+    run.pictures.putOnScreen();
     await standOn(tester, run);
     await itsToolsOpen(tester, store);
     await standOn(tester, run);

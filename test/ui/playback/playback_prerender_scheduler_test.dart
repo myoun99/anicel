@@ -945,13 +945,22 @@ void main() {
         );
 
         scheduler.follow(run());
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        expect(gpu.rastered, 0, reason: '⛔premise: the first raster waits');
+        // The asks COME — each once its picture's weight is told, by the
+        // engine's thread (F-610, 2026-11-19) — and are waited for as
+        // anything that comes is: by time, to the one ceiling
+        // (poll_until.dart). ↩️Read a fixed 50 ms after the follow, none
+        // had come yet in a crowded batch (🔬main PC, 2026-11-19: nine
+        // suites beside it).
+        final three = {
+          for (var index = 0; index < 3; index += 1) FrameId('f$index'),
+        };
         expect(
-          asked,
-          {for (var index = 0; index < 3; index += 1) FrameId('f$index')},
+          await pollUntil(() => asked.containsAll(three)),
+          isTrue,
           reason: 'the frame waited for, and the two after it',
         );
+        expect(gpu.rastered, 0, reason: '⛔premise: the first raster waits');
+        expect(asked, three, reason: 'two ahead, and no third');
 
         for (var index = 0; index < 4; index += 1) {
           gpu.letThrough(index);
@@ -1723,6 +1732,7 @@ class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
     bool Function() gone = _stays,
     ({FramePictureKey film, ui.Rect fresh})? over,
     EngineChainHolds? holds,
+    Object? standing,
   }) async {
     await _turns.putIfAbsent(_asked++, Completer<void>.new).future;
     rastered += 1;
@@ -1733,6 +1743,7 @@ class _LaysInTurn extends EngineFramePictureStore<FramePictureKey> {
       gone: gone,
       over: over,
       holds: holds,
+      standing: standing,
     );
   }
 

@@ -116,7 +116,7 @@ class ActiveCutSpan {
   );
 
   int get activeCutPlaybackFrameCount =>
-      math.max(1, _project.activeCutOrNull?.duration ?? 1);
+      playbackFrameCountOf(_project.activeCutOrNull);
 
   /// The active cut's rows whose frame 0 carries a block over from an
   /// earlier cut, each with how far into that block it already is: the SE
@@ -234,3 +234,8 @@ class ActiveCutSpan {
   bool get exportAnchorIsFallback =>
       _project.activeCutOrNull == null && exportAnchorCutOrNull != null;
 }
+
+/// The frames [cut] plays — its 尺, one at least: what a playhead stands
+/// within in it ([ActiveCutSpan.activeCutPlaybackFrameCount] of the open
+/// one).
+int playbackFrameCountOf(Cut? cut) => math.max(1, cut?.duration ?? 1);

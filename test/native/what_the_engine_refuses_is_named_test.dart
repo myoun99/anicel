@@ -30,10 +30,26 @@ void main() {
     final ledger = File(
       'lib/src/native/engine_tile_ledger.dart',
     ).readAsStringSync();
-    for (final short in ['the device lands ', 'the device stores ']) {
+    // One place makes the room and refuses for want of it
+    // (`_allPlaced`), told by each that asks it what it was short of:
+    // a landing, a store, a landing finished unwaited.
+    expect(
+      'throw TileRoomRefused('.allMatches(ledger),
+      hasLength(1),
+      reason: 'one place refuses for want of room',
+    );
+    expect(
+      'throw TileRoomRefused(refused(placed))'.allMatches(ledger),
+      hasLength(1),
+    );
+    for (final short in [
+      'the device lands ',
+      'the device stores ',
+      'the device puts ',
+    ]) {
       expect(
         RegExp(
-          r"throw TileRoomRefused\(\s*'" + RegExp.escape(short),
+          r"\(\w+\) =>\s*'" + RegExp.escape(short),
         ).hasMatch(ledger),
         isTrue,
         reason: short,

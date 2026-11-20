@@ -313,9 +313,16 @@ void main() {
     });
   }
 
+  /// ↩️It swept from 1400. With the app's faces the three tabs first meet
+  /// their list at 990, and the place changes hands down to 430 — the tabs
+  /// come back as the group becomes the button at 772, and leave for the
+  /// list again (measured 2026-11-20). Above 1100 nothing changes, and each
+  /// width there was the whole app laid out again — 30 of the sweep's 111
+  /// (the-heaviest-test-files-of-the-common-areas). The premise below says
+  /// so where that stops being true.
   testWidgets('with several projects open the tabs go to their list before '
       'a bar gives a pixel, and the list keeps its place', (tester) async {
-    await pumpAt(tester, 1400);
+    await pumpAt(tester, 1100);
     for (var i = 0; i < 2; i++) {
       await tester.tap(
         find.byKey(const ValueKey<String>('top-strip-project-button')),
@@ -330,7 +337,7 @@ void main() {
     var narrowedSeen = 0;
     await sweep(
       tester,
-      from: 1400,
+      from: 1100,
       to: 300,
       at: (width, standing) {
         expect(

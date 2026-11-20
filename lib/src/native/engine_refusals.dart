@@ -3,8 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuDeviceWent, GpuRefused;
 
+import '../core/telling.dart';
+import '../services/diagnostics/gpu_loss_log.dart';
 import 'app_gpu_engine.dart'
-    show appGpuEngineIsGone, appGpuEngineOpen, appGpuEngineWentBy;
+    show
+        appGpuEngineIsGone,
+        appGpuEngineLossLines,
+        appGpuEngineOpen,
+        appGpuEngineWentBy;
 import 'app_kernels_ahead.dart' show openTheAppsEngineAgain;
 
 /// 🚨A JOB THE GRAPHICS DEVICE REFUSED IS TOLD — ONCE A CAUSE, A RUN.
@@ -75,7 +81,7 @@ abstract final class EngineRefusals {
   /// 🚨TOLD AFTER THE TURN IT IS HEARD IN: an error ends wherever it is
   /// thrown, in a paint too, and no window can be asked for there.
   static Listenable get told => _told;
-  static final _Told _told = _Told();
+  static final Telling _told = Telling();
   static final Set<Object> _causes = {};
 
   /// The cause of every refusal once the app's device is gone.
@@ -85,7 +91,7 @@ abstract final class EngineRefusals {
   /// whose device went ([wentBy] says why): the shell says so at each
   /// telling (`HomePage`).
   static Listenable get openedAnother => _openedAnother;
-  static final _Told _openedAnother = _Told();
+  static final Telling _openedAnother = Telling();
 
   /// Why the device of the engine last let go went, as far as anything
   /// says ([GpuDeviceWent]).
@@ -104,8 +110,9 @@ abstract final class EngineRefusals {
   /// How the app opens another engine in place of one that is gone.
   static Future<void> Function() _openAnother = openTheAppsEngineAgain;
 
-  /// Whether another is being opened now, and when the last one was.
-  static bool _opensAnother = false;
+  /// Another being opened now — till the app stands on it, or on none —
+  /// and when the last one was.
+  static Future<void>? _opening;
   static DateTime? _openedAnotherAt;
 
   /// Watches both doors, for the app's lifetime: `main`, once — each still
@@ -127,8 +134,25 @@ abstract final class EngineRefusals {
     };
   }
 
+  /// The app on an engine whose device is not gone, as far as one opens:
+  /// the one being opened now awaited, or — the app's own gone — another
+  /// opened in its place as a refusal heard of it opens one ([_hear]).
+  /// Within [openAnotherApart] of the last opening none is, and the app
+  /// stays on the gone one, as a refusal leaves it.
+  ///
+  /// For what cannot wait to hear a refusal: Q1's save once the screen's
+  /// device went (a-lost-gpu-leaves-the-window-unpainted) — a reset takes
+  /// the whole adapter, the canvas engine's device with the screen's, and
+  /// a save reads the drawings back from that engine.
+  static Future<void> standOnAnEngineNotGone() async {
+    if (_opening == null && appGpuEngineIsGone) {
+      _openAnotherIfMay();
+    }
+    await _opening;
+  }
+
   static void _hear(Object error) {
-    if (error is! GpuRefused || _opensAnother) {
+    if (error is! GpuRefused || _opening != null) {
       return;
     }
     if (!appGpuEngineIsGone) {
@@ -143,12 +167,22 @@ abstract final class EngineRefusals {
       if (!error.ofAGoneDevice) {
         _tellOnce(error.runtimeType);
       }
-    } else if (_mayOpenAnother) {
-      _opensAnother = true;
-      scheduleMicrotask(_letGoAndOpenAnother);
-    } else {
+    } else if (!_openAnotherIfMay()) {
       _tellOnce(_deviceGone);
     }
+  }
+
+  /// Opens another engine in place of the app's gone one, after the turn —
+  /// unless the last opened within [openAnotherApart]: answers whether it
+  /// does.
+  static bool _openAnotherIfMay() {
+    if (!_mayOpenAnother) {
+      return false;
+    }
+    final opened = Completer<void>();
+    _opening = opened.future;
+    scheduleMicrotask(() => opened.complete(_letGoAndOpenAnother()));
+    return true;
   }
 
   static void _tellOnce(Object cause) {
@@ -168,11 +202,16 @@ abstract final class EngineRefusals {
   static Future<void> _letGoAndOpenAnother() async {
     // Asked of the engine that is gone, before it is the app's no more.
     final by = appGpuEngineWentBy;
+    // H63: and what it had not finished, which goes with it. A frame's job
+    // waits on this engine far oftener than the runner's watch asks of the
+    // screen's device (each 100 ms), so this loss may be heard first — and
+    // once it is let go, what the screen's loss writes is of the next.
+    GpuLossLog.write("the canvas engine's device went", appGpuEngineLossLines);
     _openedAnotherAt = _now();
     try {
       await _openAnother();
     } finally {
-      _opensAnother = false;
+      _opening = null;
     }
     // Asked of the app's engine, not of what opened it: none is open
     // where one would not open, and one may be gone as it was made ready.
@@ -191,13 +230,9 @@ abstract final class EngineRefusals {
   @visibleForTesting
   static void debugForget() {
     _causes.clear();
-    _opensAnother = false;
+    _opening = null;
     _openedAnotherAt = null;
     _wentBy = GpuDeviceWent.unsaid;
     _openAnother = openTheAppsEngineAgain;
   }
-}
-
-final class _Told extends ChangeNotifier {
-  void tell() => notifyListeners();
 }

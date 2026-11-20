@@ -365,10 +365,11 @@ void main() {
   testWidgets('a ghost out on the pasteboard takes the frame past its film: '
       'laid over it all the same', (tester) async {
     await tester.runAsync(() async {
-      final session = inked(
-        [drawing('under'), theRowWithTheOnion()],
-        ghostAt: CanvasPoint(x: -30, y: 30),
-      );
+      final ghostAt = CanvasPoint(x: -30, y: 30);
+      final session = inked([
+        drawing('under'),
+        theRowWithTheOnion(),
+      ], ghostAt: ghostAt);
       final (:inPlace, :film) = atTheHead(session);
       final whole = besideThe(session);
       await make(whole, inPlace);
@@ -376,9 +377,20 @@ void main() {
       await make(over, film);
       await make(over, inPlace);
 
+      // ↩️Read off the two pictures' weights till 2026-11-19, the frame's
+      // the greater: a picture weighs the tiles it made, and one tile for
+      // the same input (F-610, 🗣️유저 2026-11-18 「같은 타일은 한 벌만」)
+      // leaves a picture whose tiles another keeps none of its own — both
+      // weighed nothing here (🔬master red, the main PC, 2026-11-19).
+      final inTheGhost = CanvasPoint(x: ghostAt.x + 2, y: ghostAt.y + 2);
       expect(
-        over.store.bytesOf(over.keyOf(inPlace)),
-        greaterThan(over.store.bytesOf(over.keyOf(film))!),
+        pixelOf(bytesOf(over, film), inTheGhost),
+        everyElement(0),
+        reason: '⛔premise: the film ends at its page',
+      );
+      expect(
+        pixelOf(bytesOf(over, inPlace), inTheGhost)[3],
+        greaterThan(0),
         reason: '⛔premise: the ghost takes the frame past its film',
       );
       expect(bytesOf(over, inPlace), bytesOf(whole, inPlace));

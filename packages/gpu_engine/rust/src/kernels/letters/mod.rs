@@ -32,7 +32,6 @@ pub(crate) mod words;
 use glyphs::{Affine, Faces, Paint, Placed, covered};
 
 use crate::device::Engine;
-use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::chain::tiles_of;
 use crate::kernels::composite::{Composite, NO_EDGE, Plan, Step, TILE, TILE_TEXELS, TileAt, TileSet};
@@ -101,19 +100,21 @@ pub(crate) struct Pass {
     pub(crate) shapes: Vec<Placed>,
 }
 
+/// Letters set and laid on the grid, not yet laid in tiles: each pass's
+/// cover a layer, bottom to top, and the rectangle of tiles that holds
+/// every pixel they cover.
+pub(crate) struct Covered {
+    pub(crate) layers: Vec<Layer>,
+    pub(crate) rect: TileRect,
+}
+
 /// `passes`, bottom to top, set in `faces` and laid on the grid by
-/// `to_grid`: each pass's cover ([`covered`]) laid as a layer
-/// ([`lettered`]). Submits the work; the caller waits. `Some(None)` for
-/// passes that cover no pixel — letters of spaces, a row named nothing —:
-/// no picture, which the app lays as nothing, where the walk's plate of
-/// them is clear.
-pub(crate) fn set(
-    engine: &Engine,
-    composite: &Composite,
-    faces: &Faces,
-    to_grid: Affine,
-    passes: &[Pass],
-) -> Option<Option<Lettered>> {
+/// `to_grid`: each pass's cover ([`covered`]) a layer, which [`lettered`]
+/// lays. On the CPU, where it is called: no device is taken in hand.
+/// None for passes that cover no pixel — letters of spaces, a row named
+/// nothing —: no picture, which the app lays as nothing, where the walk's
+/// plate of them is clear.
+pub(crate) fn set(faces: &Faces, to_grid: Affine, passes: &[Pass]) -> Option<Covered> {
     let layers: Vec<Layer> = passes
         .iter()
         .filter_map(|pass| {
@@ -124,28 +125,17 @@ pub(crate) fn set(
             })
         })
         .collect();
-    if rect_of(&layers).is_none() {
-        return Some(None);
-    }
-    lettered(engine, composite, &layers).map(Some)
+    let rect = rect_of(&layers)?;
+    Some(Covered { layers, rect })
 }
 
-/// The picture of letters: straight RGBA8 tiles over `rect`, tile after
-/// tile row by row.
-pub(crate) struct Lettered {
-    pub(crate) rect: TileRect,
-    pub(crate) tiles: wgpu::Buffer,
-}
-
-/// `layers`, bottom to top, laid over nothing into the tiles of the one
-/// rectangle that holds every pixel they cover. Submits the work; the
-/// caller waits.
-pub(crate) fn lettered(engine: &Engine, composite: &Composite, layers: &[Layer]) -> Option<Lettered> {
-    let Some(rect) = rect_of(layers) else {
-        return fail("letters that cover no pixel are no row — a plan leaves them out");
-    };
-    let tiles = tiles_of(rect);
-    let (pages, sets) = paged(engine, layers, rect, &tiles)?;
+/// `covered`'s layers, bottom to top, laid over nothing into the tiles of
+/// its rectangle: the picture of letters, straight RGBA8 tiles, tile after
+/// tile row by row. Submits the work; the caller waits.
+pub(crate) fn lettered(engine: &Engine, composite: &Composite, covered: &Covered) -> Option<wgpu::Buffer> {
+    let Covered { layers, rect } = covered;
+    let tiles = tiles_of(*rect);
+    let (pages, sets) = paged(engine, layers, *rect, &tiles)?;
     let steps: Vec<Step> = layers
         .iter()
         .enumerate()
@@ -168,9 +158,10 @@ pub(crate) fn lettered(engine: &Engine, composite: &Composite, layers: &[Layer])
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let done = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest())?;
-    Some(Lettered { rect, tiles: done.out })
+    Some(done.out)
 }
 
 /// The tiles holding every pixel a layer covers, or `None` for none.

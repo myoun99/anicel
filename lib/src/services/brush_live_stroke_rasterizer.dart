@@ -291,7 +291,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// How many times a dab has touched each tile: the revision a tile shown
   /// at a coordinate carries, which pen-up matches to hand the screen's
   /// picture to the committed tile. (Conservative: a dab that writes no
-  /// pixel still bumps.)
+  /// pixel still bumps, and a picture of the tile not put ([_unput]).)
   ///
   /// ↩️Till 2026-11-14 it also told a resident Dart result (`_results`,
   /// under `residentResultByteBudget` — the memory allowance's
@@ -394,8 +394,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         if (_lands(coords[slot])) slot,
     ];
     final landed = _landOnEngine(
-      [for (final slot in slots) coords[slot]],
-      base,
+      _asksOf([for (final slot in slots) coords[slot]], base),
       engineBlendModeOf(mode, erase: erase),
       compared: false,
     );
@@ -427,49 +426,113 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     bottomExclusive: (coord.y + 1) * tileSize,
   );
 
-  /// What the stroke makes of [coords] over [base]: its dabs laid at the
-  /// slider's ceiling in the stroke's mode, under the selection.
+  /// [coords] as a landing asks for them: each over [base]'s tile there.
+  static List<TileAsk> _asksOf(List<TileCoord> coords, BitmapSurface base) => [
+    for (final coord in coords)
+      (column: coord.x, row: coord.y, under: base.tileAt(coord)),
+  ];
+
+  /// What the stroke makes of [asks], each over the tile it names: its
+  /// dabs laid at the slider's ceiling in the stroke's mode, under the
+  /// selection — [again] how, where the landing can be made once more.
   List<LandedTile> _landOnEngine(
-    List<TileCoord> coords,
-    BitmapSurface base,
+    List<TileAsk> asks,
     int mode, {
     required bool compared,
+    LandsAgain? again,
   }) {
     final stroke = _engineStroke!;
-    if (coords.isEmpty) {
+    if (asks.isEmpty) {
       return const [];
     }
-    final mask = _selectionMask();
     return EngineTileLedger.instance.land(
-      EngineTileLedger.landedCel,
-      [
-        for (final coord in coords)
-          (column: coord.x, row: coord.y, under: base.tileAt(coord)),
-      ],
-      by: (pool, cel, asked) => _blurBase == null
-          ? stroke.land(
-              appGpuComposite,
-              pool,
-              cel,
-              asked,
-              // ★F-12 — the ceiling scales the ACCUMULATED stroke, once.
-              opacity: (strokeOpacity * 65535).round(),
-              mode: mode,
-              mask: mask,
-              compared: compared,
-            )
-          : stroke.landBlur(
-              EngineStrokes.blurs,
-              appGpuComposite,
-              pool,
-              cel,
-              asked,
-              opacity: (strokeOpacity * 65535).round(),
-              mask: mask,
-              compared: compared,
-            ),
+      asks,
+      ofTheHand: true,
+      // A stroke on its way waits for no turn of the engine's: its frame
+      // waits for nothing (`GpuStroke.landOnItsWay`, a blur's
+      // `GpuStroke.landBlurOnItsWay`). The finished one compares, which
+      // waits for the GPU.
+      by: _blurBase == null
+          ? _landsLaid(stroke, mode, compared: compared)
+          : _landsBlurred(stroke, compared: compared),
       compared: compared,
+      again: again,
     );
+  }
+
+  /// The stroke's ceiling, as the engine takes it: ★F-12 — it scales the
+  /// ACCUMULATED stroke, once.
+  int get _ceiling => (strokeOpacity * 65535).round();
+
+  /// How [_landOnEngine] lands a stroke that lays its dabs.
+  LandedBy _landsLaid(GpuStroke stroke, int mode, {required bool compared}) {
+    final opacity = _ceiling;
+    final mask = _selectionMask();
+    return (pool, cel, asked) => compared
+        ? stroke.land(
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+            compared: true,
+          )
+        : stroke.landOnItsWay(
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mode: mode,
+            mask: mask,
+            unput: () => _unput(asked),
+          );
+  }
+
+  /// How [_landOnEngine] lands a blur.
+  LandedBy _landsBlurred(GpuStroke stroke, {required bool compared}) {
+    final opacity = _ceiling;
+    final mask = _selectionMask();
+    return (pool, cel, asked) => compared
+        ? stroke.landBlur(
+            EngineStrokes.blurs,
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mask: mask,
+            compared: true,
+          )
+        : stroke.landBlurOnItsWay(
+            EngineStrokes.blurs,
+            appGpuComposite,
+            pool,
+            cel,
+            asked,
+            opacity: opacity,
+            mask: mask,
+            unput: () => _unput(asked),
+          );
+  }
+
+  /// What a landing on its way did not put ([GpuStroke.landOnItsWay]):
+  /// each tile [asked] forgotten as shown — at a revision past the one its
+  /// picture carries, which pen-up then hands to no committed tile — and
+  /// landed again where a dab next moves it, as the letters' plate not put
+  /// is made again (`EngineLetters._plateOf`). Why it was not is the
+  /// engine's to tell, by the next done (`Pool::lands_unwaited`).
+  void _unput(List<GpuTileAsk> asked) {
+    for (final (:column, :row, under: _) in asked) {
+      final key = _tileKey(column, row);
+      // A stroke cleared since holds no revision to move past.
+      final revision = _tileRevisions[key];
+      if (revision != null) {
+        _tileRevisions[key] = revision + 1;
+      }
+    }
   }
 
   /// The selection's mask over every pixel it can select, made on the
@@ -597,8 +660,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         appGpuComposite,
         ledger.pool,
         _engineRubs,
-        under: (met) => hold.slotsOfThose(EngineTileLedger.landedCel, [
-          for (final (:column, :row) in met)
+        under: (read) => hold.slotsOfThose(EngineTileLedger.landedCel, [
+          for (final (:column, :row) in read)
             base.tileAt(TileCoord(x: column, y: row)),
         ]),
         paper: paper,
@@ -619,10 +682,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   ///
   /// The returned tiles are the surface's from here on; [clear] afterwards
   /// lets go of what the stroke still holds.
+  ///
+  /// [dabs] are the stroke's, as they lay again ([mixedAsResolved]): what
+  /// each tile is made of once more, should the engine's device go before
+  /// the tile's bytes are kept anywhere else ([StrokeLandsAgain]).
   List<PromotedStrokeTile> promoteStrokeTiles({
     required BitmapSurface base,
     required BrushBlendMode mode,
     required bool erase,
+    List<BrushDab>? dabs,
   }) {
     assert(
       base.tileSize == tileSize,
@@ -631,7 +699,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (_engineStroke == null) {
       return [];
     }
-    return _promotedFromEngine(base, mode, erase);
+    return _promotedFromEngine(base, mode, erase, dabs);
   }
 
   /// The finished tiles on the engine: the same call that showed the stroke
@@ -641,13 +709,20 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     BitmapSurface base,
     BrushBlendMode mode,
     bool erase,
+    List<BrushDab>? dabs,
   ) {
     final coords = _tileCoords.values.where(_lands).toList();
+    final laid = engineBlendModeOf(mode, erase: erase);
     final landed = _landOnEngine(
-      coords,
-      base,
-      engineBlendModeOf(mode, erase: erase),
+      _asksOf(coords, base),
+      laid,
       compared: true,
+      // ⏳A blur's reads the cel all round each tile it lands
+      // ([_rubOnEngine]): not made of the tile under it alone, and not
+      // made again yet.
+      again: dabs == null || _blurBase != null
+          ? null
+          : StrokeLandsAgain._(this, dabs, laid),
     );
     return [
       for (var at = 0; at < landed.length; at += 1)
@@ -717,13 +792,13 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _viewsAt = _blendedDabCount;
     final coords = _tileCoords.values.toList();
     final landed = EngineTileLedger.instance.land(
-      EngineTileLedger.landedCel,
       [
         for (final coord in coords)
           (column: coord.x, row: coord.y, under: null),
       ],
       by: (pool, cel, asked) =>
           stroke.land(appGpuComposite, pool, cel, asked, mode: GpuBlend.normal),
+      ofTheHand: true,
     );
     for (var at = 0; at < coords.length; at += 1) {
       final tile = landed[at].tile!;
@@ -861,5 +936,63 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       }
     }
     return plan.clip;
+  }
+}
+
+/// A stroke's landing as it is made again ([LandsAgain]): its dabs piled
+/// on a stroke of the engine the app stands on now, as the pen piled them,
+/// and laid once over the tiles asked — by the rasterizer that showed the
+/// stroke and landed it, as a stroke with nothing but its dabs is laid
+/// (`strokeLandedOn`).
+///
+/// 🗣️유저 2026-11-19 (cel-originals-are-held-twice-in-ram-and-on-the-gpu-Q2):
+/// 「픽셀 대신 「한 일의 기록」을 들고, 잃으면 다시 그린다」. What it holds is
+/// what the stroke was made of and nothing of an engine's: its dabs — a
+/// mixing brush's with the colours its steps resolved
+/// ([BrushLiveStrokeRasterizer.mixedAsResolved]) —, its ceiling, its mode,
+/// the selection that cut it, and the wall it stopped at.
+///
+/// 🔬What it weighs beside the tiles it stands for (2026-11-19, the app
+/// with no window, the default pen): a line of 1,424 px is 1,428 dabs over
+/// 12 tiles — 251 KB as the engine is handed them, 786 KB as the tiles'
+/// bytes; forty lines hatched in one place are 5,419 dabs over 4 tiles —
+/// 954 KB and 262 KB. ⏳So it is kept only as long as the tile it landed on
+/// is (`EngineTileLedger`), and what keeps it longer weighs it first.
+final class StrokeLandsAgain implements LandsAgain {
+  StrokeLandsAgain._(
+    BrushLiveStrokeRasterizer stroke,
+    List<BrushDab> dabs,
+    this._mode,
+  ) : _pasteboard = stroke.pasteboard,
+      _tileSize = stroke.tileSize,
+      _selection = stroke.selectionClip,
+      _opacity = stroke.strokeOpacity,
+      _dabs = dabs;
+
+  final PasteboardWall _pasteboard;
+  final int _tileSize;
+  final SelectionClip? _selection;
+  final double _opacity;
+  final List<BrushDab> _dabs;
+
+  /// The engine's mode the stroke was laid in (`engineBlendModeOf`).
+  final int _mode;
+
+  @override
+  List<LandedTile> again(List<TileAsk> asks) {
+    final stroke =
+        BrushLiveStrokeRasterizer(pasteboard: _pasteboard, tileSize: _tileSize)
+          ..selectionClip = _selection
+          ..strokeOpacity = _opacity;
+    try {
+      stroke.blendFrom(_dabs, from: 0);
+      // Dabs that pile nothing lay nothing: each tile as it was.
+      if (stroke._engineStroke == null) {
+        return [for (final _ in asks) (change: GpuChange.same, tile: null)];
+      }
+      return stroke._landOnEngine(asks, _mode, compared: true);
+    } finally {
+      stroke.clear();
+    }
   }
 }

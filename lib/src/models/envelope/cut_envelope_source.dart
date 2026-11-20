@@ -1,3 +1,4 @@
+import '../../core/collection_equality.dart';
 import '../cut_id.dart';
 import '../layer_mark.dart';
 import '../project_frame_rate.dart';
@@ -31,6 +32,18 @@ class CutEnvelopeCutLine {
 
   /// The sheet's `초+コマ` reading, when a form wants it in one box.
   String get lengthLabel => secondsPlusFramesLabel(durationFrames, fps);
+
+  /// Equal lines print the same ([CutEnvelopeSource.==]).
+  @override
+  bool operator ==(Object other) =>
+      other is CutEnvelopeCutLine &&
+      other.cut == cut &&
+      other.name == name &&
+      other.durationFrames == durationFrames &&
+      other.fps == fps;
+
+  @override
+  int get hashCode => Object.hash(cut, name, durationFrames, fps);
 }
 
 /// What a cut envelope reads, with no idea where anything will be drawn —
@@ -76,6 +89,39 @@ class CutEnvelopeSource {
 
   /// The 計 row, derived rather than stored.
   CutEnvelopeCelCount get total => cutEnvelopeCelTotal(cels);
+
+  /// Equal sources print the same envelope — what the panel hears the
+  /// session by (`CutEnvelopeTabHost.printedBy`), so a notify that leaves
+  /// what it prints alone reprints none of it.
+  @override
+  bool operator ==(Object other) =>
+      other is CutEnvelopeSource &&
+      other.title == title &&
+      other.episode == episode &&
+      other.note == note &&
+      listEquals(other.cuts, cuts) &&
+      listEquals(other.cels, cels) &&
+      mapEquals(other.staff, staff) &&
+      other.logoAssetPath == logoAssetPath &&
+      other.canvasWidth == canvasWidth &&
+      other.canvasHeight == canvasHeight &&
+      other.cameraWidth == cameraWidth &&
+      other.cameraHeight == cameraHeight;
+
+  @override
+  int get hashCode => Object.hash(
+    title,
+    episode,
+    note,
+    Object.hashAll(cuts),
+    Object.hashAll(cels),
+    staff.length,
+    logoAssetPath,
+    canvasWidth,
+    canvasHeight,
+    cameraWidth,
+    cameraHeight,
+  );
 }
 
 final RegExp _token = RegExp(r'^\{([^}]*)\}$');

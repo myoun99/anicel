@@ -70,14 +70,15 @@ static SHADERS_KEPT_IN: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Keeps what `device`'s shader compiler makes in the app's folder for
 /// them ([`SHADERS_KEPT_IN`]), for the next launch to hand the driver
-/// instead of compiling it again: on Windows what DXC makes
-/// (vendor/wgpu-hal, dxil_cache.rs). 🗣️유저 2026-11-13,
+/// instead of compiling it again: on Windows what DXC makes, and what the
+/// driver makes of each pipeline on it (vendor/wgpu-hal, compile_cache.rs).
+/// 🗣️유저 2026-11-13,
 /// the-wait-window-stands-seven-seconds-on-the-surface-Q1 「디스크 캐시」.
 #[cfg_attr(not(windows), allow(unused_variables))]
 pub(crate) fn keep_shaders(device: &wgpu::Device) {
     let folder = SHADERS_KEPT_IN.lock().unwrap_or_else(PoisonError::into_inner).clone();
     #[cfg(windows)]
-    windows::keep_dxil(device, folder);
+    windows::keep_shaders(device, folder);
 }
 
 /// Names the folder — `folder`'s `length` bytes of UTF-8 — where each

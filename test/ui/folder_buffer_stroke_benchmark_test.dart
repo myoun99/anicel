@@ -10,6 +10,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/panel_finders.dart';
+import '../helpers/semantics_as_the_app_runs.dart';
 
 /// What a folder's GROUP BUFFER costs while you draw INSIDE it (not a
 /// correctness test — folder_group_buffer_test owns the contract and
@@ -123,5 +124,5 @@ void main() {
           .blendMode,
       LayerBlendMode.multiply,
     );
-  });
+  }, semanticsEnabled: semanticsAsTheAppRuns);
 }

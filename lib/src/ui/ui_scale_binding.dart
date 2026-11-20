@@ -12,6 +12,7 @@ import 'debug/input_inspector.dart';
 import 'input/ignored_fingers.dart';
 import 'input/pen_echoes.dart';
 import 'look_only_frames.dart';
+import 'lost_screen_frames.dart';
 import 'platform_semantics_gate.dart';
 import 'present_pacing.dart';
 import 'ui_scale.dart';
@@ -226,7 +227,8 @@ class AnicelBinding extends WidgetsFlutterBinding
         UiScaleViewConfiguration,
         LookOnlyFrames,
         PresentPacing,
-        PlatformSemanticsGate {
+        PlatformSemanticsGate,
+        LostScreenFrames {
   /// Initializes the binding (creating it on the first call, as
   /// `WidgetsFlutterBinding.ensureInitialized` does) and starts following
   /// the UI scale.

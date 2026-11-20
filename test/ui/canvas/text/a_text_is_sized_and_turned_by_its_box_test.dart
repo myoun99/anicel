@@ -79,7 +79,11 @@ void main() {
     expect(scaled.spans.single.style.fontSize, closeTo(96, 1e-6));
     expect(scaled.anchor.x, closeTo(c.dx - 48, 1e-6));
     expect(scaled.anchor.y, closeTo(c.dy - 30, 1e-6));
-    expect(history.undoCount, steps + 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the text is',
+    );
     expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
     final x = c.dx.toInt();
     final y = c.dy.toInt();
@@ -127,7 +131,11 @@ void main() {
       Offset(c.dx + 128, c.dy + 102),
       Offset(c.dx + 188, c.dy + 144),
     );
-    expect(history.undoCount, steps + 3, reason: '⛔전제: a step each');
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 3),
+      reason: '⛔전제: a step each, held while the text is',
+    );
 
     await pressCtrl(tester, LogicalKeyboardKey.keyZ);
     await pumpFrames(tester);
@@ -198,7 +206,11 @@ void main() {
     // The anchor stood (−48, −30) from the centre; it stands (30, −48) now.
     expect(turned.anchor.x, closeTo(c.dx + 78, 1e-6));
     expect(turned.anchor.y, closeTo(c.dy - 18, 1e-6));
-    expect(history.undoCount, steps + 1);
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (steps, 1),
+      reason: 'one step, held while the text is',
+    );
     expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
 
     history.undo();
@@ -297,7 +309,11 @@ void main() {
       final widened = celOf(tester).texts.single.content;
       expect(widened.wrapWidth, 276);
       expect(widened.anchor, CanvasPoint(x: c.dx + 12, y: c.dy + 12));
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
       expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
     });
 
@@ -316,7 +332,11 @@ void main() {
       final narrowed = celOf(tester).texts.single.content;
       expect(narrowed.wrapWidth, 156);
       expect(narrowed.anchor, CanvasPoint(x: c.dx + 52, y: c.dy + 12));
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
 
       history.undo();
       await pumpFrames(tester);
@@ -420,7 +440,11 @@ void main() {
       expect(turned.anchor.x, closeTo(c.dx + 48, 1e-6));
       expect(turned.anchor.y, closeTo(c.dy + 32, 1e-6));
       expect((crossDrawn(tester) - cross).distance, lessThan(1e-6));
-      expect(history.undoCount, steps + 1);
+      expect(
+        (history.undoCount, history.gestures.heldSteps),
+        (steps, 1),
+        reason: 'one step, held while the text is',
+      );
       expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
     });
 

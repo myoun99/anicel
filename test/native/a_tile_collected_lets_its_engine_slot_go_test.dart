@@ -70,8 +70,8 @@ void main() {
     // it here would keep it alive to the end of this function.
     void landAndDrop() {
       final tile = ledger.land(
-        a,
         [(column: 0, row: 0, under: null)],
+        ofTheHand: true,
         by: (pool, cel, asked) => stroke.land(
           appGpuComposite,
           pool,

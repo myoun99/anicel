@@ -40,6 +40,7 @@ void main() {
     ],
     sizes: sizes,
     layer: SheetPaintLayer.picture,
+    crossed: true,
   ).toList();
 
   test('each of a surface\'s sizes goes to its own mark: the trail\'s line, '

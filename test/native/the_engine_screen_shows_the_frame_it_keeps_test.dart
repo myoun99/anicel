@@ -343,9 +343,8 @@ void main() {
     final frame = cel(7);
 
     await screen.composeOver(
-      film,
       frameOf(frame),
-      fresh: rectOf((10, 10, 20, 20)),
+      over: (film: film, fresh: rectOf((10, 10, 20, 20))),
     );
 
     final (mine, theirs) = (ranOver(frame), ranOver(under));
@@ -368,12 +367,12 @@ void main() {
     final frame = cel(7);
     final fresh = rectOf((10, 10, 20, 20));
 
-    await screen.composeOver(film, frameOf(frame), fresh: fresh);
+    await screen.composeOver(frameOf(frame), over: (film: film, fresh: fresh));
 
     showsThrough(screen, ranOver(frame), views.take(1));
     await film.compose(frameOf(cel(5)));
     await expectLater(
-      screen.composeOver(film, frameOf(frame), fresh: fresh),
+      screen.composeOver(frameOf(frame), over: (film: film, fresh: fresh)),
       throwsA(
         isA<StateError>().having(
           (error) => error.message,
@@ -385,10 +384,12 @@ void main() {
   });
 
   // What the screen keeps is its world's tiles — the page's two and the one
-  // past it — and, once it shows under 1/16, the halvings it shows through;
+  // past it — and nothing more however far it is shown reduced (↩️the
+  // halvings it showed through under 1/16 besides, till 2026-11-19:
+  // F-610-Q4, 유저 「6.25밑에서 두번째소재 만들고 들고있는게 별로잖아」);
   // a frame of another world is kept on that world's tiles alone.
-  test('the screen keeps the bytes of the world it lays, and of its '
-      'halvings', () async {
+  test('the screen keeps the bytes of the world it lays, and nothing more '
+      'shown far reduced', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     expect(screen.bytes, 0, reason: 'nothing laid');
@@ -406,7 +407,7 @@ void main() {
     );
     // Told by the show once it has run on the engine's thread.
     await engine.composite.engine.done();
-    expect(screen.bytes, greaterThan(3 * tile), reason: 'its halvings');
+    expect(screen.bytes, 3 * tile, reason: 'the one composite, read far');
 
     await screen.compose(frameOf(cel(5, over: const [0, 1])));
     expect(screen.bytes, 2 * tile, reason: 'another world');

@@ -401,6 +401,72 @@ void main() {
     expect(railLabelName(seLabel, 'Rain'), findsOneWidget);
   });
 
+  /// Every strip of the track, each family's — the S row's, the
+  /// transition row's, the V row's, the camera's and the conte's.
+  const strips = [
+    'storyboard-se-row-0-1',
+    'storyboard-transition-row-t1',
+    'storyboard-track-row-t1',
+    'storyboard-camera-row-t1',
+    'storyboard-conte-row-t1',
+  ];
+
+  /// What the rows' window lays the strip [strip] in: its unit, held by
+  /// its row's address.
+  Finder stripUnitOf(String strip) => find.ancestor(
+    of: key(strip),
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is Listener && widget.key is ValueKey<TimelineRowAddress>,
+    ),
+  );
+
+  Map<String, Widget> stripsNow(WidgetTester tester) => {
+    for (final strip in strips) strip: tester.widget(stripUnitOf(strip)),
+  };
+
+  testWidgets('built again for nothing, every strip — each family\'s — is '
+      'the unit it had (card the-conte-rail-row-holders-are-new-each-pass)', (
+    tester,
+  ) async {
+    final session = await pumpPanel(tester, film());
+    final before = stripsNow(tester);
+
+    session.notifyChanged();
+    await tester.pump();
+
+    for (final MapEntry(:key, value: unit) in stripsNow(tester).entries) {
+      expect(unit, same(before[key]), reason: key);
+    }
+  });
+
+  testWidgets('an S row\'s layer edited builds its strip again, and no other '
+      'strip', (tester) async {
+    final session = await pumpPanel(tester, film());
+    final before = stripsNow(tester);
+
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(
+          seLayers: [
+            for (final row in track.seLayers) row.copyWith(name: 'Rain'),
+          ],
+        ),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+
+    for (final MapEntry(:key, value: unit) in stripsNow(tester).entries) {
+      expect(
+        unit,
+        key == strips.first ? isNot(same(before[key])) : same(before[key]),
+        reason: key,
+      );
+    }
+  });
+
   testWidgets('🚨an S row added over S1 builds S1\'s wrapper again, its caret '
       'at the slot it stands at now', (tester) async {
     final session = await pumpPanel(tester, film());

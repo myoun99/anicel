@@ -60,7 +60,8 @@ class ExportCelsListing {
   /// The cut's FILE rows, top to bottom as the timeline draws the stack: a
   /// row a stack ([exportCelsHeadsAStack]), its files the drawings the plan
   /// files on its bundle's axis ([sheets]) — none while the stack holds no
-  /// picture, and the row is there all the same, switched off.
+  /// picture, and the row is there all the same, switched off — but for a
+  /// base that wears no label the colour label leaves out ([_listsEmpty]).
   ///
   /// 🗣️(유저 2026-10-09): 「블록 없어도 그냥 행 보이게하는게 좋을거같단
   /// 생각들었어 … 그냥 말없이 출력행에서 안보이면 별로라. 보이더라도
@@ -86,7 +87,7 @@ class ExportCelsListing {
               state: exportRowState(stack.files),
               sheets: stack.files,
             )
-          else
+          else if (_listsEmpty(layer))
             ExportCelsLayerRow(
               layer: layer,
               base: layer.id,
@@ -96,10 +97,30 @@ class ExportCelsListing {
     ];
   }
 
+  /// Whether the base [layer], with no file, is a row of the list: not
+  /// where it wears no label and the colour label leaves it out
+  /// ([exportCelsLabelAdmits]) — under 「라벨 없음」 it is the label's own.
+  ///
+  /// 🗣️F-614 (유저 2026-11-19): 「색라벨 lo했을때 라벨없음행이 마지막
+  /// 출력리스트에서만 사라지면됨」 — the row with no label alone: a row of
+  /// another label stays, off and dimmed, for the hand to switch on
+  /// (F-614-Q1 「지금대로」: the hand's switch wins, of any row), the attach
+  /// column ([stackOf]) is as it was (Q2: 「출력레이어 리스트는 지금처럼
+  /// 다른필터행있어도됨」), and a row with a file is a row whatever its base
+  /// wears (Q2 「지금대로」: the file keeps its base's name). ↩️A row with no
+  /// label stood in every label's list.
+  bool _listsEmpty(Layer layer) =>
+      !layer.mark.isNone ||
+      exportCelsLabelAdmits(
+        layer,
+        exportCelKindOf(layer, cut.layers)!,
+        spec,
+      );
+
   /// What [row]'s files can hold, top to bottom as the timeline draws the
   /// stack: its base — always, as what the stack is — and the attach rows
   /// riding it that the tab's filters admit ([rules]: the rules without
-  /// the hand). A document holds no rows.
+  /// the hand). Another document than the film holds no rows.
   ///
   /// 🗣️(유저 2026-10-09): 「색라벨이나 테이크, 어태치행에도 그거만
   /// 보이게하도록 하는게 맞을거같은데」 — 「너말대로 필터전부」: an attach
@@ -111,6 +132,11 @@ class ExportCelsListing {
             if (layer.id == base ||
                 (layer.attachedToLayerId == base && rules.includes(layer)))
               layer,
+        ],
+        // 🗣️F-618 ①: the film is drawn of rows too — every one it offers.
+        ExportCelsDocumentRow(kind: ExportCelKind.video) => [
+          for (final layer in horizontalLayerDisplayOrder(cut.layers))
+            if (exportFilmOffers(layer)) layer,
         ],
         ExportCelsDocumentRow() => const [],
       };

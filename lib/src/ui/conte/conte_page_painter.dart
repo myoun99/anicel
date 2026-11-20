@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
@@ -15,8 +14,6 @@ import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../repaint_props.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_ink_layer.dart'
-    show SheetInkOnScreen, sheetInkAbovePicture;
 import '../sheet_painting.dart';
 import '../timeline/memo_token.dart';
 import '../timeline/timeline_cut_end_handle.dart'
@@ -57,8 +54,7 @@ Object conteDragPrint(ConteSheetSource source, TimelineDragPreview? preview) =>
 ///
 /// The paper is WHITE and the ink is black whatever the app theme is: this
 /// is a printed page shown on a screen, not a panel.
-class ContePagePainter extends CustomPainter
-    with RepaintOnProps, SheetInkOnScreen {
+class ContePagePainter extends CustomPainter with RepaintOnProps {
   ContePagePainter({
     required this.page,
     required this.source,
@@ -69,8 +65,6 @@ class ContePagePainter extends CustomPainter
     this.layers,
     this.inkImageFor,
     this.inkPhotosFor,
-    this.inkSurfaceFor,
-    this.liveInkKeys = const {},
     this.picturesOverInk = const [],
     this.dragPreview,
     required this.words,
@@ -96,11 +90,9 @@ class ContePagePainter extends CustomPainter
 
   /// The panel's pan/zoom (the canvas-shell mount, #16). Null fits the page
   /// into the size it is given (the export paths).
-  @override
   final CanvasViewport? viewport;
 
   /// The view's DPR — the SAME one the host snapped with.
-  @override
   final double effectiveRatio;
 
   /// The finished composite for a cell, or null while it renders (the cell
@@ -110,7 +102,6 @@ class ContePagePainter extends CustomPainter
 
   /// A media image by its asset path — the company logo, and the files the
   /// ink's photos are drawn from (I-97).
-  @override
   final SheetImageLookup? imageFor;
 
   /// Which strata to draw; null draws every one. [SheetPaintLayer] is the
@@ -127,18 +118,6 @@ class ContePagePainter extends CustomPainter
   /// raster — each drawn from its file by [imageFor].
   final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
 
-  /// The sheet ink's surface for one window key, ON SCREEN: printed as the
-  /// brush's live window paints it ([SheetInkOnScreen], F-215), so the
-  /// brush switch changes no pixel of it.
-  @override
-  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
-
-  /// Keys whose ink a LIVE input window is already showing: skipped, so
-  /// translucent ink never composites twice.
-  @override
-  final Set<BrushFrameKey> liveInkKeys;
-
-  /// This page's pictures and where each shows its cut's canvas — no ink
   /// on the paper shows there (F-216). Empty yields to none.
   final List<SheetPictureOverInk> picturesOverInk;
 
@@ -164,7 +143,6 @@ class ContePagePainter extends CustomPainter
         imageFor: imageFor,
         inkImageFor: inkImageFor,
         inkPhotosFor: inkPhotosFor,
-        liveInkKeys: liveInkKeys,
       ),
       picturesOverInk: picturesOverInk,
     ).paint(
@@ -177,16 +155,6 @@ class ContePagePainter extends CustomPainter
       ),
       printed,
     );
-    if (drawsSheetLayer(layers, SheetPaintLayer.ink)) {
-      printInkAsLive(
-        canvas,
-        size,
-        printed.whereType<SheetInk>().toList(),
-        above: [
-          for (final over in picturesOverInk) sheetInkAbovePicture(over),
-        ],
-      );
-    }
   }
 
   /// The live length of the cut [cutId] names ([conteLiveFramesOf]), or
@@ -218,13 +186,10 @@ class ContePagePainter extends CustomPainter
     ]),
   );
 
-  /// What this painter puts on the page: its strata's marks, less the ink a
-  /// live window is showing.
+  /// What this painter puts on the page: its strata's marks.
   List<SheetMark> _printed() => [
     for (final mark in marks())
-      if (drawsSheetLayer(layers, mark.layer) &&
-          !(mark is SheetInk && liveInkKeys.contains(mark.key)))
-        mark,
+      if (drawsSheetLayer(layers, mark.layer)) mark,
   ];
 }
 

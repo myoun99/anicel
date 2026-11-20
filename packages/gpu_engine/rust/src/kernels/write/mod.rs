@@ -85,7 +85,7 @@ impl Write {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
-        let read = pages.source();
+        let read = pages.stored();
         let sources = [TILE_WGSL, &read, include_str!("write.wgsl")];
         Some(Self { changed: pipeline(engine, &sources, "write_changed"), pages })
     }
@@ -107,6 +107,40 @@ impl Write {
         self.changed_by(engine, pool, put, places, (self.pages.per_pass(), most))
     }
 
+    /// [`Self::changed`], the body that asks waiting for no GPU: `then` is
+    /// told what each tile is on a thread of the engine's once the GPU
+    /// has said ([`Engine::map_then`]) — or nothing where the test
+    /// failed, and at once, here, where it submitted nothing.
+    ///
+    /// 🚨WHY (card opening-a-transform-box-holds-the-ui-over-half-a-second,
+    /// 2026-11-20): a stamp's landing is a finished landing's question,
+    /// and its answer was waited for where it was asked — the UI's
+    /// thread, 🔬4 to 18 ms a cel cut by a box at rest and 31 to 63 with
+    /// the GPU's queue full (공통, S5_BA cut 352, 메인 PC 테스트 VM). As a
+    /// fold's sizes are told (`Fold::folded_then`): the engine's thread
+    /// goes on to the job behind this one.
+    pub(crate) fn changed_then(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        put: &wgpu::Buffer,
+        places: &[Option<TileAt>],
+        then: impl FnOnce(Option<Vec<Change>>) + Send + 'static,
+    ) {
+        let cut = tiles_a_pass(engine, TILE_BYTES, 0).map(|most| (self.pages.per_pass(), most));
+        match cut.and_then(|cut| self.submitted_by(engine, pool, put, places, cut)) {
+            None => then(None),
+            Some(None) => then(Some(Vec::new())),
+            Some(Some(changed)) => {
+                let bytes = changed.size();
+                engine.map_then(engine.staged(&changed, bytes), move |mapped| {
+                    let read = |words: wgpu::Buffer| Some(changes_of(&words.get_mapped_range(..).ok()?));
+                    then(mapped.ok().and_then(read));
+                });
+            }
+        }
+    }
+
     /// `changed`, its passes binding `per_pass` pages and taking `most`
     /// tiles at most — a smaller device's passes, which the tests take.
     fn changed_by(
@@ -115,18 +149,36 @@ impl Write {
         pool: &[wgpu::Buffer],
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
-        (per_pass, most): (usize, usize),
+        cut: (usize, usize),
     ) -> Option<Vec<Change>> {
+        match self.submitted_by(engine, pool, put, places, cut)? {
+            None => Some(Vec::new()),
+            Some(changed) => Some(changes_of(&engine.read_buffer(&changed)?)),
+        }
+    }
+
+    /// The test of `put`'s tiles beside `places` submitted, its passes
+    /// binding `per_pass` pages and taking `most` tiles at most: the
+    /// buffer the GPU writes each tile's word to — none where no tile
+    /// is asked, and nothing is submitted.
+    fn submitted_by(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        put: &wgpu::Buffer,
+        places: &[Option<TileAt>],
+        (per_pass, most): (usize, usize),
+    ) -> Option<Option<wgpu::Buffer>> {
         cut_by(&self.pages, (per_pass, most))?;
         holds(put, places.len())?;
         for at in places.iter().flatten() {
-            stored(pool, at)?;
+            at.stored_on(pool)?;
         }
         // A write of no tiles asks the GPU nothing. Without the return, wgpu
         // makes, copies and maps a buffer of nothing and answers the same, so
         // no test tells the two apart (mutant m13, 11-06).
         if places.is_empty() {
-            return Some(Vec::new());
+            return Some(None);
         }
         let changed_bytes = places.len() as u64 * 4;
         fits(engine, &[changed_bytes], std::iter::empty())?;
@@ -161,9 +213,7 @@ impl Write {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let words = engine.read_buffer(&changed)?;
-        let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
-        Some(words.chunks_exact(4).map(|four| Change::of(word(four))).collect())
+        Some(Some(changed))
     }
 
     /// Copies each of `put`'s tiles that `writes` names — by its place
@@ -178,24 +228,34 @@ impl Write {
         if !put.usage().contains(wgpu::BufferUsages::COPY_SRC) {
             return fail("the tiles put are no copy's source");
         }
+        let mut copies = Vec::with_capacity(writes.len());
         for &(index, at) in writes {
             holds(put, index + 1)?;
-            stored(pool, &at)?;
-            if !pool[usize::from(at.page)].usage().contains(wgpu::BufferUsages::COPY_DST) {
+            at.stored_on(pool)?;
+            let Some(to) = at.as_it_is() else {
+                return fail(format!("{at:?} is a folded place: it takes no tile as it is"));
+            };
+            let page = &pool[usize::from(at.page)];
+            if !page.usage().contains(wgpu::BufferUsages::COPY_DST) {
                 return fail(format!("page {} is no copy's destination", at.page));
             }
+            copies.push((index as u64 * TILE_BYTES, page, to));
         }
         let mut encoder = engine
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        for &(index, at) in writes {
-            let page = &pool[usize::from(at.page)];
-            let to = u64::from(at.slot) * TILE_BYTES;
-            encoder.copy_buffer_to_buffer(put, index as u64 * TILE_BYTES, page, to, TILE_BYTES);
+        for (from, page, to) in copies {
+            encoder.copy_buffer_to_buffer(put, from, page, to, TILE_BYTES);
         }
         engine.queue.submit([encoder.finish()]);
         Some(())
     }
+}
+
+/// What each tile is, by its word of the changed buffer's `bytes`.
+fn changes_of(bytes: &[u8]) -> Vec<Change> {
+    let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
+    bytes.chunks_exact(4).map(|four| Change::of(word(four))).collect()
 }
 
 /// Fails unless `put` holds `tiles` tiles.
@@ -206,13 +266,3 @@ fn holds(put: &wgpu::Buffer, tiles: usize) -> Option<()> {
     Some(())
 }
 
-/// Fails unless `at` is a tile's place on one of the pool's `pool` pages.
-fn stored(pool: &[wgpu::Buffer], at: &TileAt) -> Option<()> {
-    let Some(page) = pool.get(usize::from(at.page)) else {
-        return fail(format!("page {} of a pool of {}", at.page, pool.len()));
-    };
-    if (u64::from(at.slot) + 1) * TILE_BYTES > page.size() {
-        return fail(format!("slot {} past page {}'s {} bytes", at.slot, at.page, page.size()));
-    }
-    Some(())
-}

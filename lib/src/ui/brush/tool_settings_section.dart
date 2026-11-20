@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../../core/set_toggle.dart';
 import '../input/control_press_claim.dart';
@@ -63,6 +64,11 @@ class ToolSettingsSection extends StatelessWidget {
   /// The inset every tool's settings are read at.
   static const EdgeInsets inset = EdgeInsets.all(12);
 
+  /// What a section spends across beside its rows where [context] lays it
+  /// out: its [inset], and the lane of its bar where it [scrolls].
+  static double chromeIn(BuildContext context, {bool scrolls = true}) =>
+      inset.horizontal + (scrolls ? ContentScrollbar.laneIn(context) : 0);
+
   /// The space under a row — and across one, between its name and its
   /// control and between a pair's two cells. The brush's settings set the
   /// rhythm first, and every tool reads at it (tool-settings-panel-tidy, 유저
@@ -102,13 +108,24 @@ class ToolSettingsSection extends StatelessWidget {
         ),
       );
     }
-    return Padding(
+    // A box shorter than the rows — a group the rail shows a part of
+    // (tool-settings-rows-cut-off-under-the-variants-panel-Q1: 「보이는
+    // 부분만큼만 쓴다」), or one dragged to its floor — cuts them from below,
+    // and they come back as it grows. ⛔Not a scroller ([scrolls]).
+    return ClipRect(
       key: keyFor(tool),
-      padding: inset,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: rows,
+      child: OverflowBox(
+        alignment: Alignment.topCenter,
+        maxHeight: double.infinity,
+        fit: OverflowBoxFit.deferToChild,
+        child: Padding(
+          padding: inset,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: rows,
+          ),
+        ),
       ),
     );
   }
@@ -267,6 +284,10 @@ class ToolSettingsPreview extends StatelessWidget {
   /// piece is the thing that most needs room and a stroke reads fine in it.
   static const double height = 88;
 
+  /// How tall the slot stands: the box and the inset over it.
+  static const double extent = _over + height;
+  static const double _over = 12;
+
   /// The handle tests find the slot by — and the one that says a tool has
   /// NO preview when it is absent.
   static const Key slotKey = ValueKey<String>('tool-settings-preview');
@@ -278,7 +299,7 @@ class ToolSettingsPreview extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       key: slotKey,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.fromLTRB(12, _over, 12, 0),
       child: SizedBox(
         height: height,
         child: DecoratedBox(

@@ -7,6 +7,8 @@ import '../models/app_language.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
 import '../models/inbetween_mark.dart';
+import '../models/layer.dart';
+import '../models/rows_as_printed.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
@@ -22,7 +24,7 @@ import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'sliced_value_listenable_builder.dart' show SlicedListenable;
-import 'timeline/memo_token.dart' show ByIdentity, ByList;
+import 'timeline/memo_token.dart' show AsPrinted, ByIdentity, ByList;
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'effective_device_pixel_ratio.dart';
@@ -108,16 +110,17 @@ class TimesheetTabHost extends StatefulWidget {
 
 /// What a sheet prints of the session ([_TimesheetTabHostState._printedBy]),
 /// each model object by IDENTITY — they are immutable, so a new one is the
-/// only way any of them changes.
+/// only way any of them changes — and the rows as it prints them
+/// ([AsPrinted]): beside their eyes and the rail's folds and twirls.
 typedef _Printed = ({
-  ByIdentity<Cut> cut,
+  AsPrinted<Cut> cut,
   int cutStartFrame,
   ByIdentity<Object> info,
   String projectName,
   AppLanguage notation,
   ByIdentity<Object> instructionSet,
-  ByIdentity<Object> trackSe,
-  ByIdentity<Object> transition,
+  AsPrinted<List<Layer>> trackSe,
+  AsPrinted<Layer> transition,
   ByList<String> linkedCuts,
   int fps,
   InbetweenMark unnamedMark,
@@ -156,12 +159,24 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// ([_printedNews]): the sheet shows nothing else of the session, so a
   /// notify that leaves this alone has nothing to show.
   static _Printed? _printedBy(EditorSessionManager session) {
+    const eye = EyeOnThePage.notPrinted;
     final at = session.cutUnderPlayhead.resolve();
     if (at == null) {
       return null;
     }
+    // 🔬The rows are compared as the sheet prints them: a row the same
+    // shown or hidden — its columns are the rows on the sheet
+    // (`onTimesheet`), its のりしろ the transition row's spans as drawn, not
+    // as played — and an eye toggled, keyed on the cut's identity, built
+    // its document again and repainted every page (card
+    // an-eye-toggle-holds-the-ui-thread, 11-18); and no fold or twirl of
+    // the rail's — one made the cut anew without a word to the session, and
+    // the next word built the document again (card
+    // a-frame-lane-band-lets-its-image-go-on-one-row-pick-and-not-another,
+    // 11-20). The conte prints the eye and still hears it
+    // (`ConteTabHost.printedBy`).
     return (
-      cut: ByIdentity(at.cut),
+      cut: AsPrinted(at.cut, (cut) => cutAsPrinted(cut, eye)),
       cutStartFrame: at.startFrame,
       info: ByIdentity(session.timesheetInfo),
       projectName: session.repository.requireProject().name,
@@ -170,18 +185,22 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       instructionSet: ByIdentity(session.camera.cameraInstructionSet),
       // Track-owned SE rows join the memo key: their edits change the track
       // list identity, not the cut's.
-      trackSe: ByIdentity(session.activeTrack.seLayers),
+      trackSe: AsPrinted(
+        session.activeTrack.seLayers,
+        (rows) => ByList(rowsAsPrinted(rows, eye)),
+      ),
       // Same story for the transition row: track-owned, so an edit there
       // changes the track's identity rather than the cut's. It is keyed as
       // it PRINTS (F-229): an O.L writes the cuts it joins and the word of
       // the sheet's language, so a rename next door or a language switch
       // reprints.
-      transition: ByIdentity(
+      transition: AsPrinted(
         session.transitions.names.rowNamed(
           session.activeTrack,
           session.activeTrack.transitionLayer,
           olWord: sheetOlWord(session),
         ),
+        (row) => rowAsPrinted(row, eye),
       ),
       // The 겸용 cuts' names the header writes (F-558), keyed as they
       // print: 🔬a rename on another track hands the printed cut back as

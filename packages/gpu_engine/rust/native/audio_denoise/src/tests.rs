@@ -1,7 +1,7 @@
-//! The Rust denoiser against the app's ledger, bit for bit: asked through
-//! its export, on takes made up here — a voice that glides and pauses,
-//! noise, digital silence, a clipped take, a take shorter than one frame,
-//! and the refusals.
+//! The Rust denoiser against the app's ledger, bit for bit: a take run
+//! through it frame after frame as the C ran one, on takes made up here —
+//! a voice that glides and pauses, noise, digital silence, a clipped take
+//! and a take shorter than one frame.
 //!
 //! Each take's output was pinned beside the C's answer, and so is the C's
 //! to the bit (connection-round-checklist A, 관제 2026-11-07); the C went in
@@ -9,22 +9,37 @@
 //! these tests now. It holds on every device because the kernel and these
 //! takes call libm, never the device's maths library (Cargo.toml).
 
-use super::qa_audio_denoise_f32;
+use super::{FRAME, Suppressor};
 
-/// What the export makes of `take`, and what it answered.
-fn ask(take: &[f32], channels: i32, rate: i32) -> (i32, Vec<f32>) {
-    let mut samples = take.to_vec();
-    let frames = (samples.len() / channels.max(1) as usize) as i64;
-    // SAFETY: `samples` holds `frames` x `channels` floats.
-    let ok = unsafe { qa_audio_denoise_f32(samples.as_mut_ptr(), frames, channels, rate) };
-    (ok, samples)
+/// `take`, interleaved by `channels`, as the C's door ran one: each
+/// channel through a suppressor of its own a frame at a time, its last
+/// frame padded with silence, each frame's output written over the frame
+/// it heard — a frame late, as the C placed a take
+/// (board voice-take-denoise-lands-late).
+fn run(take: &[f32], channels: usize) -> Vec<f32> {
+    let mut out = take.to_vec();
+    let frames = take.len() / channels;
+    for channel in 0..channels {
+        let mut suppressor = Suppressor::at_rest();
+        for start in (0..frames).step_by(FRAME) {
+            let valid = (frames - start).min(FRAME);
+            let mut input = [0.0f32; FRAME];
+            for (i, value) in input.iter_mut().enumerate().take(valid) {
+                *value = take[(start + i) * channels + channel];
+            }
+            let heard = suppressor.frame(&input);
+            for (i, &value) in heard.iter().enumerate().take(valid) {
+                out[(start + i) * channels + channel] = value;
+            }
+        }
+    }
+    out
 }
 
-/// The take denoised — 1, and not the take it was handed — sample for
-/// sample as the app's ledger pins it as `id`.
-fn holds(id: &str, take: &[f32], channels: i32) {
-    let (ok, out) = ask(take, channels, 48_000);
-    assert_eq!(ok, 1, "a 48 kHz take is denoised");
+/// The take run — not the take it was handed — sample for sample as the
+/// app's ledger pins it as `id`.
+fn holds(id: &str, take: &[f32], channels: usize) {
+    let out = run(take, channels);
     assert_ne!(out, take, "LIVENESS: the take was denoised");
     let bytes: Vec<u8> = out.iter().flat_map(|sample| sample.to_le_bytes()).collect();
     ledger::assert_pinned(id, &bytes);
@@ -163,19 +178,49 @@ fn a_take_shorter_than_a_frame_comes_out_as_pinned() {
     holds("audio_denoise/shorter-than-a-frame", &voice(100, 19, 0.1), 1);
 }
 
+// A row's noise removal bakes a span a stretch at a time, keeping each
+// channel's model between stretches as doubles: one read back goes on as
+// the one that was kept would have — the model, its memories, its
+// cepstra's place and its last period alike.
 #[test]
-fn the_takes_it_cannot_denoise_are_refused_untouched() {
-    let take = voice(4_800, 23, 0.1);
-    for (channels, rate) in [(1, 44_100), (1, 16_000), (0, 48_000), (-1, 48_000)] {
-        let (ok, out) = ask(&take, channels, rate);
-        assert_eq!(ok, 0, "{channels} channel(s) at {rate}");
-        assert_eq!(out, take, "a refusal touches nothing");
+fn a_suppressor_kept_and_read_back_goes_on_as_it_would_have() {
+    let take = voice(40 * FRAME, 7, 0.03);
+    let frames: Vec<[f32; FRAME]> = take.chunks_exact(FRAME).map(|f| f.try_into().unwrap()).collect();
+    let mut whole = Suppressor::at_rest();
+    let expected: Vec<[f32; FRAME]> = frames.iter().map(|f| whole.frame(f)).collect();
+    for cut in [1, 9, 23] {
+        let mut first = Suppressor::at_rest();
+        let mut out: Vec<[f32; FRAME]> = frames[..cut].iter().map(|f| first.frame(f)).collect();
+        let mut kept = vec![0.0; Suppressor::VALUES];
+        first.keep(&mut kept);
+        assert!(kept.iter().any(|&v| v != 0.0), "LIVENESS: something was kept");
+        let mut read_back = Suppressor::kept(&kept);
+        out.extend(frames[cut..].iter().map(|f| read_back.frame(f)));
+        assert_eq!(out, expected, "kept after {cut} frames");
     }
-    // SAFETY: a null take and an empty one are the contract's refusals.
-    unsafe {
-        assert_eq!(qa_audio_denoise_f32(std::ptr::null_mut(), 480, 1, 48_000), 0);
-        let mut one = [0.5f32];
-        assert_eq!(qa_audio_denoise_f32(one.as_mut_ptr(), 0, 1, 48_000), 0);
-        assert_eq!(one, [0.5]);
-    }
+    let mut zeros = Suppressor::kept(&vec![0.0; Suppressor::VALUES]);
+    assert_eq!(frames.iter().map(|f| zeros.frame(f)).collect::<Vec<_>>(), expected, "all zeros is at rest");
+}
+
+// 🎯HOW LATE A FRAME COMES BACK (board voice-take-denoise-lands-late — 관제
+// asked it measured, not read off the code): a voice through RNNoise lines
+// up with itself a frame on — the half of its window the overlap waits
+// for, 10 ms at 48 kHz, not two frames. The sample short of the frame is
+// the high-pass RNNoise hears through (`mem_hp_x`): a phase lead on the
+// voice's lowest harmonics, not a lateness.
+#[test]
+fn a_voice_comes_back_a_frame_late() {
+    let take = voice(48_000, 31, 0.0);
+    let mut suppressor = Suppressor::at_rest();
+    let out: Vec<f32> = take
+        .chunks_exact(FRAME)
+        .flat_map(|frame| suppressor.frame(frame.try_into().unwrap()))
+        .collect();
+    let along = |lag: usize| -> f64 {
+        (0..take.len() - 3 * FRAME)
+            .map(|t| f64::from(take[t]) * f64::from(out[t + lag]))
+            .sum()
+    };
+    let lag = (0..=3 * FRAME).max_by(|&a, &b| along(a).total_cmp(&along(b)));
+    assert_eq!(lag, Some(FRAME - 1));
 }

@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart' show seatUnderBlock;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/clipboard/layer_copy_payload.dart';
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/persistence/media_staging_store.dart';
@@ -169,8 +170,23 @@ class LayerClipboard implements BringsMedia {
 
   /// The drawings a copy of the selection takes — or with [lifted], a
   /// 잘라내기 — the wait window's measure (`reachesManyBlocks`).
-  Iterable<Object> drawingsTaken({required bool lifted}) =>
+  Iterable<(LayerId, FrameId)> drawingsTaken({required bool lifted}) =>
       drawingsOf(lifted ? _rowsToCut : _rowsToCopy);
+
+  /// The pictures a copy of the selection reads — or with [lifted], a
+  /// 잘라내기 ([_copyOf]) — thawed ahead of it ([picturesShownAhead]).
+  WorkAhead takeAhead({required bool lifted}) {
+    final cut = _project.activeCutOrNull;
+    return picturesShownAhead(
+      store: _renderCaches.brushFrameStore,
+      drawings: [
+        if (cut != null)
+          for (final (row, cel) in drawingsTaken(lifted: lifted))
+            (cut: cut, row: row, cel: cel),
+      ],
+      keyOf: _project.brushFrameKeyForCut,
+    );
+  }
 
   /// The drawings a paste of the rows in hand puts down, linked or not.
   Iterable<Object> get drawingsHeld => drawingsOf([

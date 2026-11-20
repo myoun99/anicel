@@ -2130,7 +2130,11 @@ void main() {
       carryBy(tool, 4);
       carryBy(tool, 3);
       expect(xOn(cel), 15, reason: '⛔전제: carried 7 from 8');
-      expect(host.history.undoCount, 2, reason: '⛔전제: a step a carry');
+      expect(
+        (host.history.undoCount, host.history.gestures.heldSteps),
+        (0, 2),
+        reason: '⛔전제: a step a carry, held while the text is',
+      );
 
       expect(tool.canStepBack, isTrue);
       tool.stepBack();
@@ -2139,7 +2143,10 @@ void main() {
       expect(tool.hold, CelTextHold.box, reason: 'still in hand');
       expect(tool.session!.shown.content.anchor.x, 12);
       expect(tool.session!.shownAsCarried, isTrue);
-      expect(host.history.undoCount, 1);
+      expect(
+        (host.history.undoCount, host.history.gestures.heldSteps),
+        (0, 1),
+      );
       expect(
         host.history.canRedo,
         isFalse,
@@ -2198,7 +2205,11 @@ void main() {
       final (:tool, :host, :baker, :cel) = holdingAb();
       final taken = pictureOf(cel).texts.single;
       tool.changeParagraphs(toTheRight);
-      expect(host.history.undoCount, 0, reason: '⛔전제: still being set');
+      expect(
+        (host.history.undoCount, host.history.gestures.heldSteps),
+        (0, 0),
+        reason: '⛔전제: still being set',
+      );
 
       expect(tool.canStepBack, isTrue);
       tool.stepBack();
@@ -2212,7 +2223,11 @@ void main() {
         reason: 'shown, it would flash for a frame',
       );
       expect(tool.session!.shown.plate, taken.plate);
-      expect(host.history.undoCount, 0, reason: 'nothing landed');
+      expect(
+        (host.history.undoCount, host.history.gestures.heldSteps),
+        (0, 0),
+        reason: 'nothing landed',
+      );
     });
 
     test('one that lands once its bake is made is a step like any other: '
@@ -2221,7 +2236,11 @@ void main() {
       final taken = pictureOf(cel).texts.single.content;
       tool.changeParagraphs(toTheRight);
       await baker.pending.answer();
-      expect(host.history.undoCount, 1, reason: '⛔전제: landed');
+      expect(
+        (host.history.undoCount, host.history.gestures.heldSteps),
+        (0, 1),
+        reason: '⛔전제: landed, held while the text is',
+      );
 
       tool.stepBack();
 

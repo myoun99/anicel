@@ -425,6 +425,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       ),
     );
     // A move inside one step of the value changes nothing to show.
+    _show(value);
+  }
+
+  /// [value], reached by the operation in hand — a scrub, a turn of the
+  /// dial, a colour the wheel passes — SHOWN, for the release to write
+  /// ([_endScrub]). One that changes nothing shows nothing new.
+  void _show(String? value) {
     if (value == null || value == _scrubbed) {
       return;
     }
@@ -588,20 +595,22 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // with its own face — the box behind a name can be turned off, and
     // [ColorSwatchButton.onNone] is the way back to that. The lane knows
     // whether absence is possible; nothing here switches on a lane id.
+    //
+    // A pick in its window is ONE operation, as a scrub and a turn of the
+    // dial are (F-195 · I-132-Q18 b): every colour the wheel passes is shown,
+    // and the one it rests on is written once the window closes — one undo.
+    // ↩️Every colour the wheel passed was written as it came, a step of
+    // history each and the whole cut's pictures asked again for each
+    // (F-620-Q1, 유저 2026-11-19: 「레인에서 색 바꿀때 컬러휠 드래그할때」).
     if (lane.valueKind == PropertyLaneValueKind.color &&
         laneEdit?.onSetValue != null) {
-      void set(String text) => laneEdit!.onSetValue!.call(
-        layer,
-        lane,
-        _frame,
-        text,
-      );
       return _atValueEnd(
         ColorSwatchButton(
           keyValue: '$_keyPrefix-lane-color-${layer.id}-${lane.laneId}',
           color: parseArgbInput(valueLabel),
-          onChanged: (argb) => set(formatLaneColorValue(argb)),
-          onNone: lane.colorCanBeNone ? () => set('none') : null,
+          onChanged: (argb) => _show(formatLaneColorValue(argb)),
+          onNone: lane.colorCanBeNone ? () => _show('none') : null,
+          onSettled: _endScrub,
         ),
       );
     }
@@ -733,12 +742,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (base == null) {
       return;
     }
-    final value = turnsReadoutText(base + degrees);
-    if (value == _scrubbed) {
-      return;
-    }
-    _scrubbed = value;
-    widget.laneEdit?.onPreviewValue?.call(layer, lane, _frame, value);
+    _show(turnsReadoutText(base + degrees));
   }
 
   /// Where a ring or a swatch stands in the column: at its END, where every

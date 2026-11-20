@@ -14,6 +14,10 @@ import 'dart:async';
 /// spill and the cooling had been kept two on purpose, to be joined by a
 /// third (3의 규칙); four more were already there, and the spill still ran
 /// again after a pass that threw: the spin the cooling had been cured of.
+/// A seventh, the engine's lays of the frames' pictures
+/// (`EngineFramePictureStore`), was found after (F-620, 2026-11-20): its
+/// flag was kept on the lay, where no scan looked, and a lay asked for the
+/// screen went past the one on its way and was laid beside it.
 ///
 /// ⛔NOT `InFlight`: asked while its run goes, an ask JOINS that run — the
 /// same future, the same answer. Here what was asked after a pass began is

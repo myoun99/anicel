@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/pixel_verbs.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/panel_finders.dart' show visibleCanvasPoint;
@@ -90,13 +91,31 @@ void main() {
     expect(blockIsWhite(s), isFalse, reason: 'premise: an empty cel');
     expect(s.appClipboard.pixels.piece, isNull, reason: 'premise');
     expect(headIsLit(tester), isFalse, reason: 'premise: nothing to edit');
+    // Control by control: the pill bakes a zone per group, so the pill
+    // around them stands through any one group built again.
+    final verbs = find.descendant(
+      of: _sharedPill,
+      matching: find.byType(AppIconButton),
+    );
+    final atRest = tester.widgetList<AppIconButton>(verbs).toList();
 
     final press = await penDown(tester);
     expect(s.brushInputActive.value, isTrue, reason: 'premise: a live stroke');
     expect(blockIsWhite(s), isTrue, reason: 'premise: the block went white');
     expect(headIsLit(tester), isTrue, reason: 'the head lights with it');
-
-    final built = tester.widgetList(_sharedPill).toList();
+    // 🔬Card the-shared-pill-is-first-built-on-the-first-stroke-after-launch
+    // (11-20): the head lighting built all eleven verbs again.
+    final built = tester.widgetList<AppIconButton>(verbs).toList();
+    expect(built, hasLength(atRest.length), reason: 'premise: its verbs');
+    expect(
+      {
+        for (var i = 0; i < built.length; i++)
+          if (!identical(built[i], atRest[i])) built[i].keyValue,
+      },
+      {'shared-colour-edit-button'},
+      reason: 'the head lit in its own group, and no verb beside it was '
+          'built again',
+    );
     final bar = tester.widget(_bar);
     await press.moveBy(const Offset(30, 20));
     await tester.pump();
@@ -108,7 +127,8 @@ void main() {
       reason: 'premise: the stroke landed',
     );
     expect(headIsLit(tester), isTrue);
-    final rebuilt = tester.widgetList(_sharedPill).toList();
+    final rebuilt = tester.widgetList(verbs).toList();
+    expect(rebuilt, hasLength(built.length), reason: 'premise: its verbs');
     expect(
       [for (var i = 0; i < built.length; i++) identical(built[i], rebuilt[i])],
       everyElement(isTrue),
@@ -157,8 +177,8 @@ void main() {
       expect(verbs.canRunPixelClipboardVerb(verb), isFalse, reason: verb.name);
     }
     final steps = s.historyManager.undoCount;
-    verbs.runPixelVerb(CelPixelVerb.clearPixels);
-    verbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    verbs.pixelVerbStep(CelPixelVerb.clearPixels).step();
+    verbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     expect(
       s.historyManager.undoCount,
       steps,

@@ -188,6 +188,56 @@ void main() {
       );
     });
 
+    // ↩️The horizontal rail asked the halves of its own list, which it
+    // shows top to bottom — the stack turned over — so an attach folder
+    // above its base read as one below it, and a half with no row on its
+    // side appeared (reported by the 캔버스 베이스 패널 session, 2026-11-19).
+    for (final orientation in TimelineOrientation.values) {
+      testWidgets('🚨an attach folder above its base is the base\'s upper '
+          'half — the lower one stays empty (${orientation.name})', (
+        tester,
+      ) async {
+        await pumpTimelineHost(
+          tester,
+          _organized(),
+          surface: const Size(1400, 700),
+          orientation: orientation,
+        );
+        final grid = orientation == TimelineOrientation.horizontal
+            ? 'timeline'
+            : 'xsheet';
+        Finder half(String side) =>
+            find.named('$grid-attach-twirl-$side-p');
+
+        expect(half('above'), findsOneWidget);
+        expect(half('below'), findsNothing, reason: '「아래쪽은 비어있고」');
+      });
+    }
+
+    testWidgets('🚨the rail colours that half by the rows the sheet colours '
+        'it by — the attach folder among them', (tester) async {
+      Future<bool> litWithItsRiderOff(TimelineOrientation orientation) async {
+        final session = await pumpTimelineHost(
+          tester,
+          _organized(),
+          surface: const Size(1400, 700),
+          orientation: orientation,
+        );
+        final grid = orientation == TimelineOrientation.horizontal
+            ? 'timeline'
+            : 'xsheet';
+        final half = find.named('$grid-attach-twirl-above-p');
+        final lit = tester.glyphInkOf(half);
+        await _eye(tester, session, 'p+1');
+        return tester.glyphInkOf(half) == lit;
+      }
+
+      expect(
+        await litWithItsRiderOff(TimelineOrientation.horizontal),
+        await litWithItsRiderOff(TimelineOrientation.vertical),
+      );
+    });
+
     testWidgets('🚨a half says in colour whether a row on its side shows — '
         'the base\'s own eye is not asked', (tester) async {
       final session = await _pump(tester);
@@ -209,6 +259,26 @@ void main() {
 
       await _eye(tester, session, 'b+1');
       expect(tester.glyphInkOf(_half('above', 'b')), lit, reason: 'back on');
+    });
+
+    testWidgets('🚨the sheet\'s halves say in colour what the rail\'s do', (
+      tester,
+    ) async {
+      final session = await _pump(
+        tester,
+        orientation: TimelineOrientation.vertical,
+      );
+      final above = find.named('xsheet-attach-twirl-above-b');
+      final lit = tester.glyphInkOf(above);
+
+      await _eye(tester, session, 'b+1');
+
+      expect(tester.glyphInkOf(above), isNot(lit));
+      expect(
+        tester.glyphInkOf(find.named('xsheet-attach-twirl-below-b')),
+        lit,
+        reason: 'its side',
+      );
     });
 
     testWidgets('🚨Q1: folded, a half still says in colour whether a row on '
@@ -424,6 +494,34 @@ Project _film() {
               row('o'),
               row('o+1', rides: 'o'),
               row('c'),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+/// Rail top to bottom: g · p+1 · p — an attach folder above its base,
+/// holding the base's one rider.
+Project _organized() {
+  final film = _film();
+  final cut = film.tracks.single.cuts.single;
+  return film.copyWith(
+    tracks: [
+      film.tracks.single.copyWith(
+        cuts: [
+          cut.copyWith(
+            layers: [
+              Layer(id: const LayerId('p'), name: 'p', frames: const []),
+              Layer(
+                id: const LayerId('p+1'),
+                name: 'p+1',
+                frames: const [],
+                attachedToLayerId: const LayerId('p'),
+                folderId: const LayerId('g'),
+              ),
+              createFolderLayer(id: const LayerId('g'), name: 'g'),
             ],
           ),
         ],

@@ -11,6 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/separable_blend_mode.dart';
+import '../../models/sound_preset.dart';
 import '../../services/canvas_selection_region.dart';
 import 'app_strings.dart';
 import '../../models/import/cut_folder_parse.dart' show ExclusionReason;
@@ -60,6 +61,12 @@ extension EffectKindWords on EffectKind {
 extension LayerEffectWords on LayerEffect {
   String labelFor(AppLanguage language) =>
       plugin?.name ?? kind.labelFor(language);
+}
+
+/// A sound preset's name — the Fx pill's プリセット rows.
+extension SoundPresetWords on SoundPreset {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).soundPresetName(jsonValue, label);
 }
 
 /// A key side's kind — the key window's choices (I-89 ②).

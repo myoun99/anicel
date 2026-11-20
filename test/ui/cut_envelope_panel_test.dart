@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -142,53 +141,6 @@ void main() {
       final beside = await pixelAt(rendered, 150, 25);
       expect(beside.$2, greaterThan(200), reason: 'the next box is untouched');
     });
-  });
-
-  testWidgets('a box whose window is LIVE is skipped, so a stroke never '
-      'composites twice', (tester) async {
-    await tester.runAsync(() async {
-      final layout = layoutOn(200);
-      final leftKey = envelopeInkBoxKey(owner, 'left');
-      final ink = await leftQuarter();
-      addTearDown(ink.dispose);
-
-      final rendered = await paintSheet(
-        CutEnvelopePainter(
-          face: const TextStyle(),
-          layout: layout,
-          source: const CutEnvelopeSource(),
-          inkOwner: owner,
-          inkImageFor: (key) => key == leftKey ? ink : null,
-          liveInkKeys: {leftKey},
-        ),
-        200,
-      );
-      addTearDown(rendered.dispose);
-
-      final inside = await pixelAt(rendered, 12, 25);
-      expect(
-        inside.$2,
-        greaterThan(200),
-        reason: 'the live window draws this one; the painter stands down',
-      );
-    });
-  });
-
-  test('mounting or unmounting a window has to repaint the sheet — the '
-      'baked ink under it appears and disappears', () {
-    final layout = layoutOn(200);
-    final leftKey = envelopeInkBoxKey(owner, 'left');
-    CutEnvelopePainter painterWith(Set<BrushFrameKey> live) =>
-        CutEnvelopePainter(
-          face: const TextStyle(),
-          layout: layout,
-          source: const CutEnvelopeSource(),
-          inkOwner: owner,
-          liveInkKeys: live,
-        );
-
-    expect(painterWith({leftKey}).shouldRepaint(painterWith({})), isTrue);
-    expect(painterWith({}).shouldRepaint(painterWith({})), isFalse);
   });
 
   group('host', () {

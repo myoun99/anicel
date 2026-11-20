@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/media_asset.dart' show MediaFitMode;
+import '../import/fit_flyout_button.dart';
 import '../widgets/app_window.dart';
 import 'size_fields_row.dart';
 import '../text/app_strings.dart';
@@ -10,26 +12,35 @@ import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import 'app_confirm_dialog.dart';
 
-/// What the canvas-size dialog confirms: the new size plus the anchor the
-/// existing artwork stays pinned to.
+/// What the canvas-size dialog confirms: the new size, the anchor the
+/// existing artwork stays pinned to, and how the picture goes onto the new
+/// canvas (I-180) — born, the default, moves it by the anchor and changes
+/// nothing in it; a fit stands it in the middle, fitted (🗣️I-180-Q5 a).
 class CanvasResizeRequest {
-  const CanvasResizeRequest({required this.size, required this.anchor});
+  const CanvasResizeRequest({
+    required this.size,
+    required this.anchor,
+    this.fit = MediaFitMode.born,
+  });
 
   final CanvasSize size;
   final CanvasResizeAnchor anchor;
+  final MediaFitMode fit;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CanvasResizeRequest &&
           other.size == size &&
-          other.anchor == anchor;
+          other.anchor == anchor &&
+          other.fit == fit;
 
   @override
-  int get hashCode => Object.hash(size, anchor);
+  int get hashCode => Object.hash(size, anchor, fit);
 
   @override
-  String toString() => 'CanvasResizeRequest(size: $size, anchor: $anchor)';
+  String toString() =>
+      'CanvasResizeRequest(size: $size, anchor: $anchor, fit: $fit)';
 }
 
 /// Canvas-size dialog for a cut. Pops a [CanvasResizeRequest], or nothing on
@@ -104,6 +115,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
     text: '${widget.initialSize.height}',
   );
   CanvasResizeAnchor _anchor = CanvasResizeAnchor.center;
+  MediaFitMode _fit = MediaFitMode.born;
 
   @override
   void dispose() {
@@ -114,7 +126,11 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
 
   CanvasResizeRequest? get _enteredRequest => switch (CanvasSizeDialog
       .enteredSize(_widthController, _heightController)) {
-    final size? => CanvasResizeRequest(size: size, anchor: _anchor),
+    final size? => CanvasResizeRequest(
+      size: size,
+      anchor: _anchor,
+      fit: _fit,
+    ),
     null => null,
   };
 
@@ -156,14 +172,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             onAdjustOnCanvas: widget.onAdjustOnCanvas,
           ),
           const SizedBox(height: 12),
-          // ⛔No caption beside the grid: the rule against explaining a
-          // control under it (no-explanatory-ui-copy). ↩️It said what an
-          // anchor is, that cropped strokes come back, and the size range —
-          // which the fields already enforce by refusing what is outside it.
-          _AnchorGrid(
-            selected: _anchor,
-            onSelected: (anchor) => setState(() => _anchor = anchor),
-          ),
+          ..._placeFields(),
         ],
       ),
       actions: [
@@ -183,6 +192,35 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
       ],
     );
   }
+
+  /// How the picture goes onto the new canvas: fitted to it, or kept to an
+  /// anchor as it was born.
+  List<Widget> _placeFields() => [
+    AppWindowField(
+      label: AppText.strings.imFit,
+      child: FitFlyoutButton(
+        keyPrefix: 'canvas-size-fit',
+        fit: _fit,
+        expand: true,
+        onPicked: (fit) => setState(() => _fit = fit),
+      ),
+    ),
+    const SizedBox(height: 12),
+    // ⛔No caption beside the grid: the rule against explaining a control
+    // under it (no-explanatory-ui-copy). ↩️It said what an anchor is, that
+    // cropped strokes come back, and the size range — which the fields
+    // already enforce by refusing what is outside it.
+    //
+    // 🗣️I-180-Q5 a (「늘 가운데(임포트와 같음)」): a fit stands the picture
+    // in the middle whatever the anchor says, so the grid keeps its place
+    // and goes dark under one — born alone reads it.
+    _AnchorGrid(
+      selected: _anchor,
+      onSelected: _fit == MediaFitMode.born
+          ? (anchor) => setState(() => _anchor = anchor)
+          : null,
+    ),
+  ];
 }
 
 /// The Photoshop-style 3×3 anchor picker.
@@ -208,11 +246,17 @@ class _AnchorGrid extends StatelessWidget {
   ];
 
   final CanvasResizeAnchor selected;
-  final ValueChanged<CanvasResizeAnchor> onSelected;
+
+  /// Null keeps the grid where it is, dark and deaf.
+  final ValueChanged<CanvasResizeAnchor>? onSelected;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final pick = onSelected;
+    final dark = colorScheme.onSurface.withValues(alpha: 0.38);
+    final on = pick == null ? dark : colorScheme.primary;
+    final off = pick == null ? dark : colorScheme.onSurfaceVariant;
     return DecoratedBox(
       decoration: ShapeDecoration(
         shape: AppShapes.container(
@@ -229,13 +273,15 @@ class _AnchorGrid extends StatelessWidget {
               children: [
                 for (final anchor in row)
                   ControlPressClaim(
-                    onPressed: () => onSelected(anchor),
+                    onPressed: pick == null ? null : () => pick(anchor),
                     child: InkWell(
                       mouseCursor: AppCursors.press,
                       key: ValueKey<String>(
                         'canvas-size-anchor-${anchor.name}',
                       ),
-                      onTap: silentPress(() => onSelected(anchor)),
+                      onTap: silentPress(
+                        pick == null ? null : () => pick(anchor),
+                      ),
                       child: SizedBox(
                         width: 26,
                         height: 26,
@@ -246,12 +292,10 @@ class _AnchorGrid extends StatelessWidget {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: anchor == selected
-                                  ? colorScheme.primary
+                                  ? on
                                   : Colors.transparent,
                               border: Border.all(
-                                color: anchor == selected
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurfaceVariant,
+                                color: anchor == selected ? on : off,
                               ),
                             ),
                           ),

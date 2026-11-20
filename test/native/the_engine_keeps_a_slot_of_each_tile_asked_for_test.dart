@@ -480,6 +480,73 @@ void main() {
     });
   });
 
+  // Every plan asks every row's tiles whole, and a row that did not
+  // change hands over the same map (card every-plan-asks-every-rows-tile-
+  // slots-again).
+  test('a map of tiles asked again is answered as it was — its slots not '
+      'asked again — till a slot is let go', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final last = tileOf(51);
+    final tiles = {
+      TileCoord(x: 0, y: 0): tileOf(50),
+      TileCoord(x: 1, y: 0): last,
+    };
+    final grid = ledger.held((hold) => hold.gridOf(a, tiles));
+    final asked = ledger.debugSlotsAsked;
+
+    final again = ledger.held((hold) => hold.gridOf(a, tiles));
+
+    expect(ledger.debugSlotsAsked, asked);
+    expect(again.tiles, grid.tiles);
+
+    // Its last: every slot is asked whether it is out, not the first.
+    ledger.retire(last);
+    final anew = ledger.held((hold) => hold.gridOf(a, tiles));
+
+    expect(ledger.debugSlotsAsked, greaterThan(asked));
+    expect(anew.tiles.last, ledger.slotOf(last), reason: 'its slot now');
+    expect(anew.tiles.last, isNotNull);
+  });
+
+  // A stroke's tiles are collected as it goes, each letting its slot go
+  // (card every-plan-asks-every-rows-tile-slots-again, k1279).
+  test('a slot of no tile of the map let go leaves its grid answered as it '
+      'was', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final tiles = {TileCoord(x: 0, y: 0): tileOf(54)};
+    final other = tileOf(55);
+    ledger.held((hold) => hold.slotsOf(b, [other]));
+    final grid = ledger.held((hold) => hold.gridOf(a, tiles));
+    final asked = ledger.debugSlotsAsked;
+
+    ledger.retire(other);
+    final again = ledger.held((hold) => hold.gridOf(a, tiles));
+
+    expect(ledger.slotOf(other), isNull, reason: 'the premise: let go');
+    expect(ledger.debugSlotsAsked, asked);
+    expect(again.tiles, grid.tiles);
+  });
+
+  test('🚨a grid answered as it was kept holds its tiles — a full pool '
+      'lets none of them go', () {
+    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
+    final one = tileOf(52);
+    final tiles = {TileCoord(x: 0, y: 0): one};
+    ledger.held((hold) => hold.gridOf(a, tiles));
+    final page = ledger.pool.bytes;
+    final rest = tilesOfTheirOwn(page ~/ gpuTileBytes - 1);
+    ledger.held((hold) => hold.slotsOf(a, rest));
+    final asked = ledger.debugSlotsAsked;
+
+    ledger.held((hold) {
+      final [kept] = hold.gridOf(a, tiles).tiles;
+      expect(ledger.debugSlotsAsked, asked, reason: 'the premise: kept');
+      hold.slotsOf(b, [tileOf(53)]);
+
+      expect(ledger.slotOf(one), kept, reason: 'this hold has it');
+    });
+  });
+
   test('a tile of another grid is refused, not read as far as a place goes',
       () {
     final ledger = EngineTileLedger(appGpuEngine);

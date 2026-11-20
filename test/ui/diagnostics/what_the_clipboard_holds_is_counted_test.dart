@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/tiles_on_the_engine.dart';
 
 /// 🔎clipboard-held-pictures-uncounted (2026-09-26): a copy holds its cels'
 /// pictures by value, and a picture the clipboard alone holds — its source
@@ -35,6 +36,10 @@ void main() {
       selection.frameId,
     );
     picture = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(drawn)!;
+    // Its copy come, as once the hand rests: a tile the engine alone holds
+    // weighs nothing here (`BitmapTile.ownBytes`), and these weigh what a
+    // copy keeps.
+    theCopiesComeOf([picture]);
   });
 
   int drawingsRow(List<EditorSessionManager> sessions) => collectMemoryCensus(

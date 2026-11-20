@@ -251,7 +251,7 @@ class EdgeDragVerbs {
         _takeStripComma(
           ExposureEdgeDrag.beginStoryboardComma(
             roles: _roles,
-            trackSe: _beginRoles.trackSe,
+            beginRoles: _beginRoles,
             cut: cut,
             blockStartIndex: blockStartIndex,
           ),
@@ -275,7 +275,7 @@ class EdgeDragVerbs {
         _takeStripComma(
           ExposureEdgeDrag.beginOnRowOf(
             roles: _roles,
-            trackSe: _beginRoles.trackSe,
+            beginRoles: _beginRoles,
             cut: cut,
             grip: (
               layerId: layerId,
@@ -345,7 +345,7 @@ class EdgeDragVerbs {
         _takeStripComma(
           ExposureEdgeDrag.beginStoryboardLastComma(
             roles: _roles,
-            trackSe: _beginRoles.trackSe,
+            beginRoles: _beginRoles,
             cut: cut,
           ),
         )) {
@@ -355,6 +355,9 @@ class EdgeDragVerbs {
       roles: _roles,
       cutId: cutId,
       edge: edge,
+      // A cut's edge acts on no band, and its trim may still re-tile the
+      // conte panels one holds (F-619-Q1).
+      band: _beginRoles.rangeSelections.holdBand(actsOnIt: false),
       panelIndex: panelIndex,
     );
     if (trim == null) {

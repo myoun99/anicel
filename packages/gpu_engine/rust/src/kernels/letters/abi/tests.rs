@@ -2,11 +2,13 @@
 //! picture built call by call set the very picture the same faces and
 //! passes built in Rust do, and what is refused says why.
 
+use std::sync::Mutex;
+
 use super::*;
 use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::composite::tests::rig;
 use crate::kernels::letters::glyphs_tests::{faces, file, here, run};
-use crate::testing::{last_error, read_buffer};
+use crate::testing::{done_here, last_error, read_buffer};
 
 const WORDS: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 /// Turned a little, scaled and moved off the grid's pixels: a stand.
@@ -65,37 +67,71 @@ fn run_of(letters: *mut Lettering, text: &str, at: [f32; 6]) -> bool {
     }
 }
 
-/// The straight RGBA8 tiles `lettered` holds, and where: each of `rect`'s
-/// landed in a slot of a pool of its own through the ABI, and read there.
-fn read(engine: &Engine, lettered: *mut Lettered, rect: [i32; 4]) -> ([i32; 4], Vec<u8>) {
+/// What lands of letters through the C ABI told of their pictures: each
+/// one's number and whether it was put (`gpu_engine_letters_land`).
+static PUT: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());
+
+extern "C" fn put(number: u64, done: bool) {
+    PUT.lock().unwrap().push((number, done));
+}
+
+fn was_put(number: u64) -> Option<bool> {
+    PUT.lock().unwrap().iter().find(|&&(told, _)| told == number).map(|&(_, done)| done)
+}
+
+/// Lands every tile of `rect` of `letters`' covers in a fresh slot of
+/// `cel` of `pool` through the ABI, waiting for none of it, told as
+/// `number`: what it returned, and each tile's place and change.
+///
+/// # Safety
+/// Every pointer is live, the pool and the executor made on `engine`.
+unsafe fn land(
+    letters: *const Lettering,
+    (engine, composite): (*const Engine, *const Composite),
+    (pool, cel): (*mut Pool, u32),
+    rect: [i32; 4],
+    number: u64,
+) -> (isize, Vec<u32>, Vec<u8>) {
     let [x0, y0, columns, rows] = rect;
     let asks: Vec<i32> =
         (0..rows).flat_map(|down| (0..columns).flat_map(move |across| [x0 + across, y0 + down])).collect();
     let count = asks.len() / 2;
-    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
-    let cel = pool.cel();
     let (mut places, mut changes) = (vec![0; count], vec![0; count]);
-    // SAFETY: every pointer is live, `asks` holds `2 × count` and the rest
-    // `count`.
+    // SAFETY: see the function's contract; `asks` holds `2 × count` and
+    // the rest `count`.
     let landed = unsafe {
-        gpu_engine_lettered_land(
+        gpu_engine_letters_land(
+            letters,
             engine,
-            lettered,
-            &mut pool,
-            cel.0,
+            composite,
+            pool,
+            cel,
             asks.as_ptr(),
             count,
             places.as_mut_ptr(),
             changes.as_mut_ptr(),
+            put,
+            number,
         )
     };
+    (landed, places, changes)
+}
+
+/// The straight RGBA8 tiles of `letters`' covers, and where: each of
+/// `rect`'s landed in a slot of a pool of its own through the ABI, and
+/// read there once the engine's thread has put them.
+fn read(engine: &Engine, composite: &Composite, letters: *const Lettering, rect: [i32; 4]) -> ([i32; 4], Vec<u8>) {
+    let mut pool = Pool::new(engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    // SAFETY: every pointer is live, the pool made on `engine`.
+    let (landed, places, changes) = unsafe { land(letters, (engine, composite), (&mut pool, cel.0), rect, 0) };
+    let count = places.len();
     assert_eq!(landed, count as isize, "{}", last_error());
     assert!(changes.iter().all(|&change| change == 1), "each landed inked");
+    assert_eq!(done_here(engine), Ok(()), "the picture put");
     let places: Vec<TileAt> = places.into_iter().map(|word| TileAt::of_word(word).expect("a slot")).collect();
     let mut bytes = vec![0; count * TILE_BYTES as usize];
     pool.read(engine, &places, &mut bytes).expect("read");
-    // SAFETY: made by `gpu_engine_letters_set`.
-    unsafe { gpu_engine_lettered_free(lettered) };
     (rect, bytes)
 }
 
@@ -115,16 +151,12 @@ fn a_picture_built_call_by_call_is_the_one_built_in_rust() {
     }
     let mut rect = [0; 4];
     // SAFETY: every pointer is live.
-    let lettered = unsafe {
-        gpu_engine_letters_set(letters, rig.engine, &rig.composite, handed_faces, STAND.as_ptr(), rect.as_mut_ptr())
-    };
-    assert!(!lettered.is_null(), "{}", last_error());
-    let handed = read(rig.engine, lettered, rect);
+    let covered = unsafe { gpu_engine_letters_cover(letters, handed_faces, STAND.as_ptr(), rect.as_mut_ptr()) };
+    assert!(covered, "{}", last_error());
+    let handed = read(rig.engine, &rig.composite, letters, rect);
 
     let [a, b, c, d, e, f] = STAND;
-    let built = set(
-        rig.engine,
-        &rig.composite,
+    let covered = set(
         faces(),
         Affine { a, b, c, d, e, f },
         &[
@@ -145,10 +177,10 @@ fn a_picture_built_call_by_call_is_the_one_built_in_rust() {
             },
         ],
     )
-    .flatten()
-    .expect("set");
-    let at = built.rect;
-    let built = ([at.x0, at.y0, at.columns as i32, at.rows as i32], read_buffer(rig.engine, &built.tiles));
+    .expect("covered");
+    let built = lettered(rig.engine, &rig.composite, &covered).expect("laid");
+    let at = covered.rect;
+    let built = ([at.x0, at.y0, at.columns as i32, at.rows as i32], read_buffer(rig.engine, &built));
     assert_eq!(handed.0, built.0, "the rectangle");
     assert!(handed.1 == built.1, "the pixels");
     assert!(handed.1.chunks_exact(4).any(|pixel| pixel[3] != 0), "LIVENESS: letters were laid");
@@ -172,17 +204,17 @@ fn each_tile_lands_in_its_place_across_and_down() {
     }
     let mut rect = [0; 4];
     // SAFETY: every pointer is live.
-    let lettered = unsafe {
-        gpu_engine_letters_set(letters, rig.engine, &rig.composite, handed_faces, WORDS.as_ptr(), rect.as_mut_ptr())
-    };
-    assert!(!lettered.is_null(), "{}", last_error());
+    let covered = unsafe { gpu_engine_letters_cover(letters, handed_faces, WORDS.as_ptr(), rect.as_mut_ptr()) };
+    assert!(covered, "{}", last_error());
     assert_eq!(rect[2..], [3, 2], "⛔premise: three columns of tiles and two rows");
-    // SAFETY: made by `gpu_engine_letters_set`, freed by `read`.
-    let set = read_buffer(rig.engine, unsafe { &(*lettered).tiles });
+    // SAFETY: `letters` is live, and covered.
+    let covered = unsafe { (*letters).covered.clone() }.expect("covered");
+    let laid = lettered(rig.engine, &rig.composite, &covered).expect("laid");
+    let picture = read_buffer(rig.engine, &laid);
 
-    let (_, landed) = read(rig.engine, lettered, rect);
+    let (_, landed) = read(rig.engine, &rig.composite, letters, rect);
 
-    assert!(landed == set, "a tile landed in another's place");
+    assert!(landed == picture, "a tile landed in another's place");
     // SAFETY: each came from its `_new`.
     unsafe {
         gpu_engine_letters_free(letters);
@@ -283,18 +315,129 @@ fn letters_that_cover_nothing_are_no_picture_and_no_failure() {
         assert!(gpu_engine_letters_pass(letters, 0xFF00_0000, false, 0));
         assert!(run_of(letters, " ", WORDS));
     }
-    let set_in = |to_grid: *const f32| {
+    let cover = |to_grid: *const f32| {
         let mut rect = [-1; 4];
         // SAFETY: every pointer is live or null where the ABI says so.
-        let lettered =
-            unsafe { gpu_engine_letters_set(letters, rig.engine, &rig.composite, faces, to_grid, rect.as_mut_ptr()) };
-        (lettered.is_null(), rect)
+        let covered = unsafe { gpu_engine_letters_cover(letters, faces, to_grid, rect.as_mut_ptr()) };
+        (covered, rect)
     };
-    assert_eq!(set_in(WORDS.as_ptr()), (true, [0; 4]), "a space: no picture, its rectangle none");
-    assert_eq!(set_in(std::ptr::null()), (true, [-1; 4]), "a failure: its rectangle as it was");
+    assert_eq!(cover(WORDS.as_ptr()), (true, [0; 4]), "a space: no picture, its rectangle none");
+    let mut pool = Pool::new(rig.engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    // SAFETY: every pointer is live, the pool made on the rig's engine.
+    let (landed, _, _) = unsafe { land(letters, (rig.engine, &rig.composite), (&mut pool, cel.0), [0, 0, 1, 1], 301) };
+    assert_eq!(landed, -1, "no picture to land");
+    assert!(last_error().contains("cover no pixel"), "{}", last_error());
+    assert_eq!(cover(std::ptr::null()), (false, [-1; 4]), "a failure: its rectangle as it was");
     assert!(last_error().contains("no placement was given"), "{}", last_error());
+    assert_eq!(was_put(301), None, "nothing handed over");
     // SAFETY: each came from its `_new`.
     unsafe {
+        gpu_engine_letters_free(letters);
+        gpu_engine_faces_free(faces);
+    }
+}
+
+/// A picture of one box — over three columns of tiles and two rows of
+/// them —, covered.
+fn a_box_covered(faces: *const Faces) -> (*mut Lettering, [i32; 4]) {
+    let letters = gpu_engine_letters_new();
+    let mut rect = [0; 4];
+    // SAFETY: `letters` and `faces` are live; the boxes hold four words,
+    // the placement six floats.
+    unsafe {
+        assert!(gpu_engine_letters_pass(letters, 0xFF20_2020, false, 0));
+        assert!(gpu_engine_letters_rect(letters, WORDS.as_ptr(), [10 * 64, 20 * 64, 300 * 64, 200 * 64].as_ptr()));
+        assert!(gpu_engine_letters_cover(letters, faces, WORDS.as_ptr(), rect.as_mut_ptr()), "{}", last_error());
+    }
+    (letters, rect)
+}
+
+// A plate's picture is the engine's thread's to lay and put, its caller
+// waiting for none of it (the-ui-thread-never-enters-the-driver,
+// 2026-11-18): its slots are told while that thread stands still, and the
+// picture is told put — and its pixels are there — once the thread goes on.
+#[test]
+fn a_plate_tells_its_slots_while_the_engines_thread_stands_still() {
+    use crate::device::{gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
+    use crate::kernels::composite::abi::{gpu_engine_composite_free, gpu_engine_composite_new};
+    use crate::kernels::pool::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_read};
+    use crate::testing::a_device_of_its_own;
+    let _turn = a_device_of_its_own();
+    let faces = handed();
+    let (letters, rect) = a_box_covered(faces);
+    let tile = TILE_BYTES as usize;
+    let (mut first, mut second) = (vec![0; 6 * tile], vec![0; 6 * tile]);
+    // SAFETY: the engine is this test's own, live till its close; every
+    // other pointer is live, and `first` and `second` hold six tiles each.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let composite = gpu_engine_composite_new(engine);
+        assert!(!composite.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        // ⛔premise: a page with room — a page is made on the engine's
+        // thread, which stands still below.
+        let (landed, places, _) = land(letters, (engine, composite), (pool, cel), rect, 401);
+        assert_eq!(landed, 6, "{}", last_error());
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(was_put(401), Some(true), "⛔premise: a picture is told");
+        assert!(gpu_engine_pool_read(pool, engine, places.as_ptr(), 6, first.as_mut_ptr()), "{}", last_error());
+        gpu_engine_stand_still(engine, 2_000);
+        let (landed, places, _) = land(letters, (engine, composite), (pool, cel), rect, 402);
+        assert_eq!(landed, 6, "its slots told");
+        assert_eq!(was_put(402), None, "told its slots before its picture was laid");
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(was_put(402), Some(true));
+        assert!(gpu_engine_pool_read(pool, engine, places.as_ptr(), 6, second.as_mut_ptr()), "{}", last_error());
+        assert!(second == first, "its slots hold its picture");
+        assert!(first.chunks_exact(4).any(|pixel| pixel[3] != 0), "LIVENESS: the box was laid");
+        gpu_engine_pool_free(pool);
+        gpu_engine_composite_free(composite);
+        gpu_engine_close(engine);
+        gpu_engine_letters_free(letters);
+        gpu_engine_faces_free(faces);
+    }
+}
+
+// A plate the device refuses to lay or put says so: its slots were told,
+// as the books are the caller's, the picture is told not put and the
+// caller's next done fails — and no place is said unwritten: the plate's
+// tiles have no bytes to be stored again from (`gpu_engine_letters_land`).
+#[test]
+fn a_plate_the_device_refuses_is_told_not_put() {
+    use crate::device::{gpu_engine_close, gpu_engine_lose, gpu_engine_open_first};
+    use crate::kernels::composite::abi::{gpu_engine_composite_free, gpu_engine_composite_new};
+    use crate::kernels::pool::{gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_unwritten};
+    use crate::testing::a_device_of_its_own;
+    let _turn = a_device_of_its_own();
+    let faces = handed();
+    let (letters, rect) = a_box_covered(faces);
+    let (mut pages, mut slots) = ([u16::MAX; 6], [u16::MAX; 6]);
+    // SAFETY: the engine is this test's own, live till its close; every
+    // other pointer is live, `pages` and `slots` six each.
+    unsafe {
+        let engine = gpu_engine_open_first();
+        assert!(!engine.is_null(), "{}", last_error());
+        let composite = gpu_engine_composite_new(engine);
+        assert!(!composite.is_null(), "{}", last_error());
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        assert_eq!(land(letters, (engine, composite), (pool, cel), rect, 501).0, 6, "{}", last_error());
+        assert_eq!(done_here(&*engine), Ok(()));
+        assert_eq!(was_put(501), Some(true), "⛔premise");
+        // Said gone at once, as wgpu says it of a device it gave up for want
+        // of memory (`gpu_engine_lose`): a loss told at the next wait would
+        // come after the land.
+        gpu_engine_lose(engine, true);
+        assert_eq!(land(letters, (engine, composite), (pool, cel), rect, 502).0, 6, "its slots told");
+        assert!(done_here(&*engine).is_err(), "the next done is told");
+        assert_eq!(was_put(502), Some(false));
+        assert_eq!(gpu_engine_pool_unwritten(pool, pages.as_mut_ptr(), slots.as_mut_ptr(), 6), 0, "none said unwritten");
+        gpu_engine_pool_free(pool);
+        gpu_engine_composite_free(composite);
+        gpu_engine_close(engine);
         gpu_engine_letters_free(letters);
         gpu_engine_faces_free(faces);
     }

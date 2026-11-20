@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 
 import '../../helpers/collect_garbage.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/semantics_as_the_app_runs.dart';
 
 /// F-226 measurement (not a pin): the real app takes big zigzag strokes
 /// across the whole canvas, and the census is read after each — whether
@@ -21,6 +22,16 @@ import '../../helpers/panel_finders.dart';
 /// 15th stroke to the 19th; the drawings, the playback frames and the
 /// layer images were flat from the first. A stroke is ~30 s on the test VM,
 /// hence the long timeout.
+///
+/// ⚠️EACH SAMPLE AT ITS OWN TIME. The line follows the pen by the pen's
+/// clock (`StrokeStabilizer`, 2026-10-20): samples all at one time — what a
+/// test's gesture sends where none is given — move it nowhere, and the
+/// stroke is one straight line from where the pen came down to where it
+/// lifted. ↩️So this drew from that day till 2026-11-19, green all the
+/// while: 🔬a zigzag of 4,917 px laid 118 dabs, the 117 px between its ends.
+/// A frame between two of the pen's samples.
+const _betweenSamples = Duration(milliseconds: 16);
+
 void main() {
   testWidgets('census rows per stroke across the whole canvas', (
     tester,
@@ -64,20 +75,27 @@ void main() {
         kind: PointerDeviceKind.stylus,
       );
       const passes = 8;
+      var at = Duration.zero;
       for (var pass = 0; pass < passes; pass += 1) {
         final y = rect.top + rect.height * pass / (passes - 1);
         final from = pass.isEven ? rect.left : rect.right;
         final to = pass.isEven ? rect.right : rect.left;
         for (var step = 0; step <= 12; step += 1) {
-          await gesture.moveTo(Offset(from + (to - from) * step / 12, y));
-          await tester.pump();
+          at += _betweenSamples;
+          await gesture.moveTo(
+            Offset(from + (to - from) * step / 12, y),
+            timeStamp: at,
+          );
+          await tester.pump(_betweenSamples);
         }
       }
-      await gesture.up();
+      await gesture.up(timeStamp: at + _betweenSamples);
       await tester.pumpAndSettle();
       await tester.runAsync(collectGarbage);
       await tester.pump();
       report('after ${stroke + 1}');
     }
-  }, timeout: const Timeout(Duration(minutes: 20)));
+  },
+      semanticsEnabled: semanticsAsTheAppRuns,
+      timeout: const Timeout(Duration(minutes: 20)));
 }

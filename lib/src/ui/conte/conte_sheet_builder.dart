@@ -27,7 +27,8 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
 import '../../models/track_id.dart';
-import '../../models/track_transitions.dart' show transitionSpanOfEvent;
+import '../../models/track_transitions.dart'
+    show drawnFrameCountsOf, transitionSpanOfEvent;
 import '../../models/transition_geometry.dart'
     show TransitionSides, oneSidedSpanAppliesToCut, transitionSidesOf;
 import '../../models/transition_names.dart'
@@ -43,6 +44,11 @@ import '../text/dialogue_fit_layout.dart'
     show dialogueGlyphSlots, dialogueGlyphsShownIn;
 import '../../models/storyboard_timeline_layout.dart';
 
+/// The words a paper form writes its fixed lines in, the conte's and the
+/// timesheet's alike: what an O.L prints as (F-229) and what follows a
+/// camera move that runs the whole cut ([sheetCameraLine], F-542 · F-622).
+typedef PaperWords = ({String ol, String wholeCut});
+
 /// Reads a project as a conte sheet.
 ///
 /// Everything here is a READING, never a second copy of the data: the cells
@@ -51,9 +57,11 @@ import '../../models/storyboard_timeline_layout.dart';
 /// are the storyboard layout's global frames. Nothing on the sheet is
 /// authored anywhere but where it already lived.
 ///
-/// [olWord] is the word an O.L prints as — the sheet's, in the notation
-/// language (`sheetOlWord`, F-229); the program's where none is given.
-ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
+/// [words] are the words it writes its fixed lines in — the sheet's, in
+/// the notation language (`paperWords`, F-229); the program's where none
+/// are given.
+ConteSheetSource buildConteSheetSource(Project project, {PaperWords? words}) {
+  final written = words ?? _programsWords();
   final layout = buildStoryboardTimelineLayout(project);
   final cellsOf = [
     for (final entry in layout)
@@ -64,10 +72,8 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
   ];
   final panels = _panelsOnTheirTracks(layout, cellsOf);
   final groups = LinkedCutGroups(project);
-  final transitions = _transitionsOf(
-    project,
-    olWord: olWord ?? AppText.strings.tlTransitionCutOl,
-  );
+  final transitions = _transitionsOf(project, olWord: written.ol);
+  final drawnFrames = drawnFrameCountsOf(project);
   final cuts = <ConteCutSource>[];
   for (final (index, entry) in layout.indexed) {
     final track = project.tracks.firstWhere(
@@ -90,6 +96,10 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
         ),
         linkedCuts: _othersOfItsGroup(entry.cut, groups),
         project: project,
+        page: (
+          drawnFrames: drawnFrames[entry.cut.id]!,
+          wholeCut: written.wholeCut,
+        ),
       ),
     );
   }
@@ -111,6 +121,12 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
   );
 }
 
+/// The program's words, where no paper's are given.
+PaperWords _programsWords() => (
+  ol: AppText.strings.tlTransitionCutOl,
+  wholeCut: AppText.strings.cnWholeCut,
+);
+
 /// What each of [cut]'s timesheet [pages] writes in its memo band: a conte
 /// cell's lines, the page for the cell (🗣️F-542, 유저 2026-11-02: 「똑같이 법
 /// 재사용/통일하면서」), each as a page writes it ([sheetCameraLine] ·
@@ -128,7 +144,7 @@ List<SheetFixedLines> sheetPageFixedLines(
   Project project,
   Cut cut, {
   required SheetPages pages,
-  required ({String ol, String wholeCut}) words,
+  required PaperWords words,
 }) {
   final writes =
       cut.metadata.sheetFixedText ?? project.timesheetInfo.sheetFixedText;
@@ -155,7 +171,8 @@ List<SheetFixedLines> sheetPageFixedLines(
           move,
           defById: defById,
           keyNames: keyNames,
-          wholeCut: move.from == 0 && move.to == pages.drawnFrames - 1
+          wholeCut:
+              cameraMoveRunsTheCut(move, drawnFrames: pages.drawnFrames)
               ? words.wholeCut
               : null,
         ),
@@ -241,6 +258,7 @@ ConteCutSource _cutSource(
   required _CutTransitions transitions,
   required List<String> linkedCuts,
   required Project project,
+  required _CutOnItsPaper page,
 }) {
   final cameras = _cellCameras.resolve(
     entry.cut,
@@ -248,8 +266,9 @@ ConteCutSource _cutSource(
       frameSize: project.cameraSize,
       glossary: project.cameraInstructions,
       framesPerSecond: project.frameRate.countingBase,
+      page: page,
     ),
-    () => _cellCamerasOf(entry.cut, cells, project),
+    () => _cellCamerasOf(entry.cut, cells, project, page: page),
   );
   final writes =
       entry.cut.metadata.conteFixedText ?? project.timesheetInfo.conteFixedText;
@@ -304,7 +323,13 @@ typedef _CameraReading = ({
   CanvasSize frameSize,
   CameraInstructionSet glossary,
   int framesPerSecond,
+  _CutOnItsPaper page,
 });
+
+/// What a cut's paper reads of it that the cut does not carry: how many
+/// frames it is drawn for — the のりしろ its neighbours' O.L ask among them
+/// ([drawnFrameCountsOf]) — and the word a move that runs them all wears.
+typedef _CutOnItsPaper = ({int drawnFrames, String wholeCut});
 
 /// Each cut's cameras, kept on the cut: any edit lays the whole book again,
 /// and a camera that moves is the book's dearest reading (a 400-cut work
@@ -323,29 +348,56 @@ typedef _CutCamera = ({
 });
 
 /// [cells]' cameras, a [_CellCamera] to each, off [cut]'s [_CutCamera].
+///
+/// A cut of one cell writes a move that runs the whole cut as its sheet
+/// does — the same line, (全尺) and all ([sheetCameraLine]) — where a cut
+/// of more writes the part of it each cell holds, with its length.
+///
+/// 🗣️F-622 (유저 2026-11-19): 「컷 양 끝에 걸쳐 키가 하나씩 있으면
+/// 타임시트용지패널이랑 똑같이 대상-대상 T.B (全尺) 이런식으로 … 지금은
+/// 양끝키여도 3+0이런식으로 표시되니」 · 「혹시나 패널마다 전체라고
+/// 쓰면안됨. 패널마다가 아니라 컷 전체를 기준으로 전체라고 쓰는것이니」.
 List<_CellCamera> _cellCamerasOf(
   Cut cut,
   List<StoryboardCoverageCell> cells,
-  Project project,
-) {
+  Project project, {
+  required _CutOnItsPaper page,
+}) {
   final camera = (
     conteStart: storyboardConteStart(storyboardLayerForCut(cut)?.timeline),
     path: CameraPath.of(cut, project.cameraSize),
     names: transformKeyAgreedNames(cut.camera.track),
     moves: _movesWrittenOn(cut),
   );
+  final runsTheCut = cells.length == 1
+      ? camera.moves
+            .where(
+              (move) =>
+                  cameraMoveRunsTheCut(move, drawnFrames: page.drawnFrames),
+            )
+            .firstOrNull
+      : null;
   return [
     for (final cell in cells)
       (
         work: _cameraWorkIn(cut, cell, project.cameraSize, camera),
-        // Over the cut's frames the cell shows — the span its camera work
-        // is read over.
-        lines: _cameraLinesIn(
-          camera,
-          project,
-          from: camera.conteStart + cell.startIndex,
-          to: camera.conteStart + cell.endIndexExclusive,
-        ),
+        lines: runsTheCut == null
+            // Over the cut's frames the cell shows — the span its camera
+            // work is read over.
+            ? _cameraLinesIn(
+                camera,
+                project,
+                from: camera.conteStart + cell.startIndex,
+                to: camera.conteStart + cell.endIndexExclusive,
+              )
+            : [
+                sheetCameraLine(
+                  runsTheCut,
+                  defById: project.cameraInstructions.defById,
+                  keyNames: camera.names,
+                  wholeCut: page.wholeCut,
+                ),
+              ],
       ),
   ];
 }

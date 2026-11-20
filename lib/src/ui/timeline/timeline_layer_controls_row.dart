@@ -10,6 +10,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_kind_choices.dart' show turnsBetweenKinds;
 import '../../models/layer_id.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
@@ -32,7 +33,8 @@ import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
-import '../../models/attached_layer_resolve.dart' show groupFoldOpen;
+import '../../models/attached_layer_resolve.dart'
+    show AttachGroups, attachGroupSidesIn, groupFoldOpenOn;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
@@ -171,6 +173,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerOpacityChangeEnd,
     this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
+    this.kindMenu,
     this.onToggleLayerClip,
     this.onToggleLayerMute,
     this.onLayerTotalVolumeChangeEnd,
@@ -252,6 +255,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// that slot either way.
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
+
+  /// What the type button turns a row it [turnsBetweenKinds] with (F-613);
+  /// null leaves every row's press a pick of the row.
+  final LayerKindMenu? kindMenu;
 
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;
@@ -668,18 +675,32 @@ class TimelineLayerControlsRow extends StatelessWidget {
   );
 
   /// The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN fixed slot, a
-  /// control separate from the name (function TBD again — R26 #30-1 moved
-  /// the blend flyout to the toolbar's PS-style dropdown, user rule 07-22;
-  /// tap selects for now). One slot for every row kind, ALWAYS the kind
-  /// (R10 R3): the arrow that used to take this slot on attach rows now
-  /// rides the sheet column.
-  Widget _typeButton(BuildContext context) => LayerTypeButton(
-    keyPrefix: keyPrefix,
-    idValue: '${layer.id}',
-    kind: layer.kind,
-    folderCollapsed: layer.collapsed,
-    onTap: () => onSelectLayer(layerIdNow(context, layer.id)),
-  );
+  /// control separate from the name. One slot for every row kind, ALWAYS
+  /// the kind (R10 R3): the arrow that used to take this slot on attach
+  /// rows now rides the sheet column.
+  ///
+  /// 🗣️F-613 (유저 2026-11-19): 「레이어의 아이콘 누르면 변경가능한 대상
+  /// 뜨고 변경가능하게」 — a row that [turnsBetweenKinds] opens the kinds it
+  /// can turn into; any other still picks the row, as every row's did while
+  /// the button had no verb of its own (R26 #30-1 moved the blend list
+  /// away; 「tap selects for now」).
+  Widget _typeButton(BuildContext context) {
+    final menu = kindMenu;
+    return LayerTypeButton(
+      keyPrefix: keyPrefix,
+      idValue: '${layer.id}',
+      kind: layer.kind,
+      folderCollapsed: layer.collapsed,
+      onTap: () => onSelectLayer(layerIdNow(context, layer.id)),
+      kindChoices: menu == null || !turnsBetweenKinds(layer)
+          ? null
+          : () => layerKindChoiceEntries(
+              BerthRow.at(context) ?? layer,
+              keyPrefix: keyPrefix,
+              menu: menu,
+            ),
+    );
+  }
 
   // ── nesting and the name ──────────────────────────────────────────────
 
@@ -1323,7 +1344,7 @@ extension GroupFoldShown on GroupFoldFace {
 /// rule. `one_fold_twirl_test` keeps it the only one.
 ///
 /// [openOn] is the one predicate's answer for a press on a side — null for
-/// a folder's twirl ([groupFoldOpen]) — which the face reads and a sweep
+/// a folder's twirl ([groupFoldOpenOn]) — which the face reads and a sweep
 /// paints by; [onToggle] the host's one verb, told the side.
 typedef TimelineGroupFold = ({
   GroupFoldFace face,
@@ -1331,13 +1352,19 @@ typedef TimelineGroupFold = ({
   void Function(LayerId layerId, AttachedPlacement? side)? onToggle,
 });
 
+/// [row]'s fold over [attachGroups], worked out where the model order is
+/// in hand. ↩️It took the rail's own list, which the horizontal rail shows
+/// turned over, so an attach folder above its base read as one below it
+/// and a half appeared on a side with no row (reported by the 캔버스
+/// 베이스 패널 session, 2026-11-19).
 TimelineGroupFold timelineGroupFoldFor({
   required TimelineDisplayRow row,
-  required List<Layer> layers,
+  required AttachGroups attachGroups,
   required void Function(LayerId layerId, AttachedPlacement? side)? onToggle,
 }) {
+  final sides = attachGroupSidesIn(attachGroups, row.layer.id);
   bool? openOn(AttachedPlacement? side) =>
-      groupFoldOpen(row.layer, layers, side: side);
+      groupFoldOpenOn(row.layer, sides, side: side);
   return (
     face: row.isFolder
         ? (folder: openOn(null), above: null, below: null)

@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/a_move_lands.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 
 /// 🚨★★★A TEXT BEGUN ON A FRAME WITH NO CEL MAKES ITS CEL (R9-rest) — the
@@ -81,9 +82,15 @@ void main() {
     final session = sessionOf(tester);
     await clickAt(tester, c.dx, c.dy);
     await typeText(tester, 'hi');
+    // Each move lands with its picture (the-standing-canvas-composes-a-
+    // frame-twice-before-its-picture-Q1 = B): till then the session, and
+    // the tool with it, stands on the frame shown — the empty frame 2,
+    // whose picture is there, waits for frame 1's.
     session.selectFrameIndex(2);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     session.selectFrameIndex(1);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     expect(textsUnderTool(tester).single.content.text, 'hi', reason: '⛔');
 

@@ -14,7 +14,7 @@ class EditorPanelFrame extends StatelessWidget {
     required this.title,
     required this.child,
     this.trailing,
-    this.bodyPadding = const EdgeInsets.all(10),
+    this.bodyPadding = defaultBodyPadding,
     this.bodyScrolls = true,
     this.bodyLane = false,
   });
@@ -23,6 +23,9 @@ class EditorPanelFrame extends StatelessWidget {
   final Widget child;
   final Widget? trailing;
   final EdgeInsetsGeometry bodyPadding;
+
+  /// The inset a body is read at where its panel names none.
+  static const EdgeInsets defaultBodyPadding = EdgeInsets.all(10);
 
   /// See [EditorPanelBody.scrollable]: false for a panel that owns its own
   /// scrolling, so the two never stack.

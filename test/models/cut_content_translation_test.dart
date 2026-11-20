@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -6,6 +8,7 @@ import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_content_translation.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -29,9 +32,9 @@ void main() {
       },
     );
 
-    final moved = translateCutCamera(
+    final moved = carryCutCamera(
       camera,
-      (dx: -40, dy: 25, centreDx: -40, centreDy: 25),
+      resizeWalk(dx: -40, dy: 25, centreDx: -40, centreDy: 25),
       from: _canvas,
     );
 
@@ -48,9 +51,9 @@ void main() {
     final camera = CutCamera.empty();
     expect(
       identical(
-        translateCutCamera(
+        carryCutCamera(
           camera,
-          (dx: 10, dy: 10, centreDx: 10, centreDy: 10),
+          resizeWalk(dx: 10, dy: 10, centreDx: 10, centreDy: 10),
           from: _canvas,
         ),
         camera,
@@ -63,9 +66,9 @@ void main() {
   // than the content, and an unkeyed camera re-read it — it left its picture.
   test('an unkeyed camera off the centre anchor is keyed where it stood and '
       'moves with the content', () {
-    final moved = translateCutCamera(
+    final moved = carryCutCamera(
       CutCamera.empty(),
-      (dx: 0, dy: 0, centreDx: 100, centreDy: 50),
+      resizeWalk(dx: 0, dy: 0, centreDx: 100, centreDy: 50),
       from: _canvas,
     );
 
@@ -85,9 +88,9 @@ void main() {
       ),
     );
 
-    final moved = translateCutCamera(
+    final moved = carryCutCamera(
       camera,
-      (dx: -200, dy: -100, centreDx: -100, centreDy: -50),
+      resizeWalk(dx: -200, dy: -100, centreDx: -100, centreDy: -50),
       from: _canvas,
     );
 
@@ -97,9 +100,9 @@ void main() {
 
   test('a centre resize by an odd size keys the camera on the content '
       'rounded half a pixel off the centre', () {
-    final moved = translateCutCamera(
+    final moved = carryCutCamera(
       CutCamera.empty(),
-      (dx: 1, dy: 0, centreDx: 0.5, centreDy: 0),
+      resizeWalk(dx: 1, dy: 0, centreDx: 0.5, centreDy: 0),
       from: _canvas,
     );
 
@@ -141,7 +144,10 @@ void main() {
       ],
     );
 
-    final moved = translateCutGuides(guides, 7, -3);
+    final moved = carryCutGuides(
+      guides,
+      resizeWalk(dx: 7, dy: -3, centreDx: 0, centreDy: 0),
+    );
 
     final sym = moved.guides.first.shape as SymmetryShape;
     expect(sym.axis.origin.x, 17);
@@ -184,13 +190,15 @@ void main() {
       ),
     );
 
-    final moved = translateLayerForResize(
+    final moved = carryLayerForResize(
       keyed,
       from: _canvas,
-      dx: 5,
-      dy: 6,
-      centreDx: 99,
-      centreDy: 99,
+      walk: resizeWalk(
+        dx: 5,
+        dy: 6,
+        centreDx: 99,
+        centreDy: 99,
+      ),
     );
     expect(moved.transformTrack.position.keyAt(0)?.value.x, 45);
     expect(moved.transformTrack.position.keyAt(0)?.value.y, 56);
@@ -211,13 +219,15 @@ void main() {
         ),
       ),
     );
-    final followed = translateLayerForResize(
+    final followed = carryLayerForResize(
       nullAnchored,
       from: _canvas,
-      dx: 0,
-      dy: 0,
-      centreDx: 200,
-      centreDy: 0,
+      walk: resizeWalk(
+        dx: 0,
+        dy: 0,
+        centreDx: 200,
+        centreDy: 0,
+      ),
     );
     expect(followed.transformTrack.position.keyAt(0)?.value.x, 240);
     expect(followed.transformTrack.position.keyAt(0)?.value.y, 50);
@@ -231,13 +241,15 @@ void main() {
     );
     expect(
       identical(
-        translateLayerForResize(
+        carryLayerForResize(
           unkeyed,
           from: _canvas,
-          dx: 5,
-          dy: 6,
-          centreDx: 3,
-          centreDy: 3,
+          walk: resizeWalk(
+            dx: 5,
+            dy: 6,
+            centreDx: 3,
+            centreDy: 3,
+          ),
         ),
         unkeyed,
       ),
@@ -262,13 +274,15 @@ void main() {
       ),
     );
 
-    final moved = translateLayerForResize(
+    final moved = carryLayerForResize(
       anchored,
       from: _canvas,
-      dx: 5,
-      dy: 6,
-      centreDx: 99,
-      centreDy: 99,
+      walk: resizeWalk(
+        dx: 5,
+        dy: 6,
+        centreDx: 99,
+        centreDy: 99,
+      ),
     );
 
     expect(
@@ -306,13 +320,15 @@ void main() {
       ),
     );
 
-    final moved = translateLayerForResize(
+    final moved = carryLayerForResize(
       reference,
       from: _canvas,
-      dx: 600,
-      dy: -40,
-      centreDx: 300,
-      centreDy: -20,
+      walk: resizeWalk(
+        dx: 600,
+        dy: -40,
+        centreDx: 300,
+        centreDy: -20,
+      ),
     );
 
     expect(
@@ -353,13 +369,15 @@ void main() {
       ),
     );
 
-    final moved = translateLayerForResize(
+    final moved = carryLayerForResize(
       reference,
       from: _canvas,
-      dx: 600,
-      dy: -40,
-      centreDx: 300,
-      centreDy: -20,
+      walk: resizeWalk(
+        dx: 600,
+        dy: -40,
+        centreDx: 300,
+        centreDy: -20,
+      ),
     ).mediaReference!;
 
     expect(
@@ -388,9 +406,9 @@ void main() {
       ),
     );
 
-    final moved = translateCutCamera(
+    final moved = carryCutCamera(
       camera,
-      (dx: 10, dy: -5, centreDx: 10, centreDy: -5),
+      resizeWalk(dx: 10, dy: -5, centreDx: 10, centreDy: -5),
       from: _canvas,
     );
     final position = moved.track.position;
@@ -415,15 +433,419 @@ void main() {
     expect(moved.track.scale.keys.length, 1);
   });
 
+  // Card a-canvas-resize-leaves-effect-points-behind: an effect's points and
+  // where a cel number stands are the row's paper's, as its cels' pixels
+  // are — read where the picture reads them, before and after.
+  group('an effect keeps its place on the picture through a resize', () {
+    const grown = CanvasSize(width: 2320, height: 1080);
+    // The picture stays put (dx 0) as the paper grows right; its middle
+    // walks 200 right.
+    final leftEdge = resizeWalk(dx: 0, dy: 0, centreDx: 200, centreDy: 0);
+
+    Layer rowWith(List<LayerEffect> effects) => Layer(
+      id: const LayerId('fx-row'),
+      name: 'F',
+      frames: const [],
+      timeline: const {},
+      effects: effects,
+    );
+
+    Layer resized(Layer row, ResizeWalk walk) =>
+        carryLayerForResize(row, from: _canvas, walk: walk);
+
+    CanvasPoint centreOf(Layer row, CanvasSize paper) => effectPointOnPaper(
+      effectPointAt(row.effects.single.points['center']!, 0),
+      paper,
+    );
+
+    TransformTrack keyedAt(CanvasPoint point) => TransformTrack.empty()
+        .copyWith(position: PropertyTrack(keys: {0: PropertyKey(point)}));
+
+    final radialBlur = LayerEffect.defaults(
+      id: const EffectId('radial'),
+      kind: EffectKind.radialBlur,
+    );
+
+    test('a keyed point moves by the content offset', () {
+      final row = rowWith([
+        radialBlur.copyWith(
+          points: {'center': keyedAt(CanvasPoint(x: 100, y: 200))},
+        ),
+      ]);
+      final moved = resized(
+        row,
+        resizeWalk(dx: 5, dy: 6, centreDx: 99, centreDy: 99),
+      );
+      expect(centreOf(moved, _canvas), CanvasPoint(x: 105, y: 206));
+    });
+
+    test('an unkeyed point stays where the picture is, not the paper '
+        'middle', () {
+      final row = rowWith([radialBlur]);
+      final before = centreOf(row, _canvas);
+      final moved = resized(row, leftEdge);
+      expect(centreOf(moved, grown), before);
+    });
+
+    test('a cel number stands where it stood, at its size', () {
+      final number = LayerEffect.defaults(
+        id: const EffectId('number'),
+        kind: EffectKind.celNumber,
+      ).copyWith(
+        stand: keyedAt(CanvasPoint(x: 300, y: 400)).copyWith(
+          scale: PropertyTrack(keys: {0: PropertyKey(uniformScale(1.5))}),
+        ),
+      );
+      final unkeyed = LayerEffect.defaults(
+        id: const EffectId('number-at-rest'),
+        kind: EffectKind.celNumber,
+      );
+      final moved = resized(rowWith([number, unkeyed]), resizeWalk(
+        dx: 5,
+        dy: 6,
+        centreDx: 205,
+        centreDy: 6,
+      ));
+      final stood = effectStandPose(
+        effectStandAt(moved.effects[0].stand, 0),
+        grown,
+      );
+      expect(stood.center, CanvasPoint(x: 305, y: 406));
+      expect(stood.scale, uniformScale(1.5));
+      expect(
+        effectStandPose(effectStandAt(moved.effects[1].stand, 0), grown)
+            .center,
+        CanvasPoint(x: 965, y: 546),
+        reason: 'at rest it stood on the old paper\'s middle, (960, 540)',
+      );
+    });
+
+    test('an effect with no place on the paper leaves the row as it was', () {
+      final row = rowWith([
+        LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
+      ]);
+      expect(identical(resized(row, leftEdge), row), isTrue);
+    });
+  });
+
+  // 🗣️I-180: a resize that fits the picture to the new canvas carries every
+  // place by its scale, and a number that sizes something by one factor —
+  // the two scales' geometric mean (Q2 a · Q4 a).
+  group('a fit carries what stands on the canvas by its scale', () {
+    // 1920×1080 → 3840×2160 kept in proportion (비율 유지): twice, its
+    // centre to the new centre.
+    final twice = resizeWalk(
+      sx: 2,
+      sy: 2,
+      dx: 0,
+      dy: 0,
+      centreDx: 0,
+      centreDy: 0,
+    );
+    // 1920×1080 → 3840×1080 stretched (비율 무시): twice across, once down.
+    final across = resizeWalk(
+      sx: 2,
+      sy: 1,
+      dx: 0,
+      dy: 0,
+      centreDx: 0,
+      centreDy: 0,
+    );
+    final sizeAcross = math.sqrt(2);
+
+    test('the camera keeps the film: its place carried, its zoom divided', () {
+      final keyed = CutCamera(
+        keyframes: {
+          0: CameraPose(center: CanvasPoint(x: 100, y: 50), zoom: 1.5),
+        },
+      );
+      final moved = carryCutCamera(keyed, twice, from: _canvas);
+      expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 200, y: 100));
+      expect(moved.track.scale.keyAt(0)!.value, uniformScale(0.75));
+
+      final unkeyed = carryCutCamera(CutCamera(), across, from: _canvas);
+      expect(
+        unkeyed.track.scale.keyAt(0)!.value.x,
+        closeTo(1 / sizeAcross, 1e-12),
+        reason: 'an unkeyed zoom stood at 1 — keyed there, then divided by '
+            'the one size factor (I-180-Q4 a)',
+      );
+      expect(unkeyed.track.position.isEmpty, isTrue);
+    });
+
+    test('a row\'s places and path handles are carried; its scale stays', () {
+      final row = Layer(
+        id: const LayerId('fit'),
+        name: 'F',
+        frames: const [],
+        timeline: const {},
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack(
+            keys: {
+              0: PropertyKey(
+                CanvasPoint(x: 40, y: 50),
+                path: SplitPath(
+                  ahead: CanvasPoint(x: 10, y: 4),
+                  behind: CanvasPoint(x: -6, y: 0),
+                ),
+              ),
+            },
+          ),
+          anchorPoint: PropertyTrack(
+            keys: {0: PropertyKey(CanvasPoint(x: 12, y: 13))},
+          ),
+          scale: PropertyTrack(keys: {0: PropertyKey(uniformScale(1.5))}),
+        ),
+      );
+      final moved = carryLayerForResize(row, from: _canvas, walk: across);
+      final position = moved.transformTrack.position.keyAt(0)!;
+      expect(position.value, CanvasPoint(x: 80, y: 50));
+      expect(
+        position.path,
+        SplitPath(
+          ahead: CanvasPoint(x: 20, y: 4),
+          behind: CanvasPoint(x: -12, y: 0),
+        ),
+      );
+      expect(
+        moved.transformTrack.anchorPoint.keyAt(0)!.value,
+        CanvasPoint(x: 24, y: 13),
+      );
+      expect(
+        moved.transformTrack.scale.keyAt(0)!.value,
+        uniformScale(1.5),
+        reason: 'its cels are laid anew at the scale; a row\'s is of them',
+      );
+    });
+
+    test('a way across the canvas turns where the scale differs across and '
+        'down, and a quarter turn stays one', () {
+      final guides = CutGuides(
+        guides: [
+          DrawingGuide(
+            id: const GuideId('sym'),
+            name: 'Axis',
+            shape: SymmetryShape(
+              axis: GuideAxis(
+                origin: CanvasPoint(x: 10, y: 20),
+                angleDegrees: 45,
+              ),
+            ),
+          ),
+          DrawingGuide(
+            id: const GuideId('per'),
+            name: 'Perspective',
+            shape: PerspectiveShape(
+              vanishingPoints: [
+                VanishingPointTowards(dx: 1, dy: 1),
+                VanishingPointTowards(dx: 0, dy: 1),
+              ],
+              eyeLevel: GuideAxis(
+                origin: CanvasPoint(x: 100, y: 200),
+                angleDegrees: 90,
+              ),
+            ),
+          ),
+        ],
+      );
+      final moved = carryCutGuides(guides, across);
+      final sym = moved.guides.first.shape as SymmetryShape;
+      expect(sym.axis.origin, CanvasPoint(x: 20, y: 20));
+      expect(
+        sym.axis.angleDegrees,
+        closeTo(math.atan(0.5) * 180 / math.pi, 1e-9),
+      );
+      final per = moved.guides.last.shape as PerspectiveShape;
+      expect(per.eyeLevel.angleDegrees, 90);
+      final diagonal = per.vanishingPoints[0] as VanishingPointTowards;
+      expect(diagonal.dx, closeTo(2 / math.sqrt(5), 1e-12));
+      expect(diagonal.dy, closeTo(1 / math.sqrt(5), 1e-12));
+      final down = per.vanishingPoints[1] as VanishingPointTowards;
+      expect((down.dx, down.dy), (0.0, 1.0));
+    });
+
+    test('a joined path turns its way and reaches as far as the scale '
+        'carries it', () {
+      final row = Layer(
+        id: const LayerId('joined'),
+        name: 'J',
+        frames: const [],
+        timeline: const {},
+        transformTrack: TransformTrack.empty().copyWith(
+          anchorPoint: PropertyTrack(
+            keys: {0: PropertyKey(CanvasPoint(x: 0, y: 0))},
+          ),
+          position: PropertyTrack(
+            keys: {
+              0: PropertyKey(
+                CanvasPoint(x: 0, y: 0),
+                path: const JoinedPath(degrees: 45, ahead: 10, behind: 4),
+              ),
+            },
+          ),
+        ),
+      );
+      final path = carryLayerForResize(row, from: _canvas, walk: across)
+          .transformTrack
+          .position
+          .keyAt(0)!
+          .path as JoinedPath;
+      // (cos 45°, sin 45°) at 2 × 1 is (√2, √½): √2.5 long.
+      expect(path.degrees, closeTo(math.atan(0.5) * 180 / math.pi, 1e-9));
+      expect(path.ahead, closeTo(10 * math.sqrt(2.5), 1e-9));
+      expect(path.behind, closeTo(4 * math.sqrt(2.5), 1e-9));
+    });
+
+    test('a reference\'s file is sized as the picture is, across and down',
+        () {
+      final pose = TransformPose(
+        center: CanvasPoint(x: 100, y: 60),
+        scaleX: 0.5,
+        scaleY: 0.25,
+      );
+      final row = Layer(
+        id: const LayerId('ref'),
+        name: 'R',
+        frames: const [],
+        timeline: const {},
+        mediaReference: MediaReference(
+          assetPath: 'a.png',
+          pose: pose,
+          pictureSize: const CanvasSize(width: 400, height: 300),
+          fx: TransformTrack.empty().copyWith(
+            scale: PropertyTrack(
+              keys: {4: PropertyKey(CanvasPoint(x: 0.5, y: 0.5))},
+            ),
+          ),
+        ),
+      );
+      final moved = carryLayerForResize(
+        row,
+        from: _canvas,
+        walk: across,
+      ).mediaReference!;
+      expect(moved.pose.center, CanvasPoint(x: 200, y: 60));
+      expect((moved.pose.scaleX, moved.pose.scaleY), (1.0, 0.25));
+      expect(moved.laid.center, CanvasPoint(x: 200, y: 60));
+      expect(
+        (moved.laid.scaleX, moved.laid.scaleY),
+        (0.5, 0.25),
+        reason: 'the file stays laid 1:1 — the scale is its pose\'s (F-374)',
+      );
+      expect(moved.fx.scale.keyAt(4)!.value, CanvasPoint(x: 1, y: 0.5));
+    });
+
+    test('a reference\'s file moves on its cels by whole pixels, where its '
+        'pose goes exactly', () {
+      final pose = TransformPose(center: CanvasPoint(x: 100, y: 60));
+      final row = Layer(
+        id: const LayerId('ref'),
+        name: 'R',
+        frames: const [],
+        timeline: const {},
+        mediaReference: MediaReference(
+          assetPath: 'a.png',
+          pose: pose,
+          pictureSize: const CanvasSize(width: 400, height: 300),
+        ),
+      );
+      final walk = resizeWalk(
+        sx: 2,
+        sy: 2,
+        dx: 10.4,
+        dy: -3.6,
+        centreDx: 10.4,
+        centreDy: -3.6,
+      );
+      final moved = carryLayerForResize(
+        row,
+        from: _canvas,
+        walk: walk,
+      ).mediaReference!;
+      expect(moved.pose.center, CanvasPoint(x: 210.4, y: 116.4));
+      expect((moved.pose.scaleX, moved.pose.scaleY), (2.0, 2.0));
+      expect(moved.laid.center, CanvasPoint(x: 210, y: 116));
+      expect((moved.laid.scaleX, moved.laid.scaleY), (1.0, 1.0));
+      expect(laidShiftOf(pose, walk), (dx: 110, dy: 56));
+    });
+
+    test('an effect\'s point is carried, and its pixel values and the size '
+        'its letters stand at go by the one size factor', () {
+      final radial = LayerEffect.defaults(
+        id: const EffectId('radial'),
+        kind: EffectKind.radialBlur,
+      ).copyWith(
+        points: {
+          'center': TransformTrack.empty().copyWith(
+            position: PropertyTrack(
+              keys: {0: PropertyKey(CanvasPoint(x: 100, y: 200))},
+            ),
+          ),
+        },
+      );
+      final blur = LayerEffect.defaults(
+        id: const EffectId('blur'),
+        kind: EffectKind.blur,
+      ).withParameter(
+        'blurriness',
+        EffectParameter(
+          value: 10,
+          track: PropertyTrack(
+            keys: {0: const PropertyKey(10.0), 8: const PropertyKey(30.0)},
+          ),
+        ),
+      );
+      final number = LayerEffect.defaults(
+        id: const EffectId('number'),
+        kind: EffectKind.celNumber,
+      );
+      final moved = carryLayerForResize(
+        Layer(
+          id: const LayerId('fx'),
+          name: 'X',
+          frames: const [],
+          timeline: const {},
+          effects: [radial, blur, number],
+        ),
+        from: _canvas,
+        walk: across,
+      ).effects;
+      expect(
+        moved[0].points['center']!.position.keyAt(0)!.value,
+        CanvasPoint(x: 200, y: 200),
+      );
+      final blurriness = moved[1].parameterOf('blurriness');
+      expect(blurriness.value, closeTo(10 * sizeAcross, 1e-9));
+      expect(blurriness.track.keyAt(8)!.value, closeTo(30 * sizeAcross, 1e-9));
+      expect(
+        moved[1].parameterOf('blurDimensions'),
+        blur.parameterOf('blurDimensions'),
+        reason: 'a choice is no size',
+      );
+      final stood = effectStandPose(
+        effectStandAt(moved[2].stand, 0),
+        const CanvasSize(width: 3840, height: 1080),
+      );
+      expect(
+        stood.center,
+        CanvasPoint(x: 1920, y: 540),
+        reason: 'at rest it stood on the old middle, which the fit carries '
+            'to the new',
+      );
+      expect(stood.scaleX, closeTo(sizeAcross, 1e-12));
+      expect(stood.scaleY, closeTo(sizeAcross, 1e-12));
+    });
+  });
+
   test('a zero offset is identity for the whole cut model', () {
     final camera = CutCamera(
       keyframes: {0: CameraPose(center: CanvasPoint(x: 1, y: 2))},
     );
     expect(
       identical(
-        translateCutCamera(
+        carryCutCamera(
           camera,
-          (dx: 0, dy: 0, centreDx: 0, centreDy: 0),
+          resizeWalk(dx: 0, dy: 0, centreDx: 0, centreDy: 0),
           from: _canvas,
         ),
         camera,

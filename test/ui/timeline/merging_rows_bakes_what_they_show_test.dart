@@ -397,7 +397,15 @@ void main() {
     expect([at(cel, 288, 40), at(cel, 40, 160)], [green, blue]);
     expect(at(cel, 160, 40)?[3] ?? 0, 0, reason: 'b is not in it');
     expect(cut.layers.byId(const LayerId('b')), before.first);
-    expect(s.frameRangeSelection.value, isNull);
+    // F-619: the band stays over the block its blocks made.
+    expect(
+      s.frameRangeSelection.value,
+      const TimelineFrameRangeSelection(
+        layerId: LayerId('a'),
+        startIndex: 0,
+        endIndexExclusive: 2,
+      ),
+    );
 
     s.undo();
     expect(s.requireActiveCut.layers, before);

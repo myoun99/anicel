@@ -73,8 +73,9 @@ void main() {
     final expected = marks.whereType<SheetStroke>().toList();
     expect(
       expected,
-      hasLength(10),
-      reason: 'fixture: four trails, two frames and their crosses',
+      hasLength(6),
+      reason: 'fixture: four trails and two frames — no cross on the '
+          'conte\'s paper (F-622)',
     );
     for (final mark in expected) {
       final printed = strokes.where(
@@ -103,7 +104,8 @@ void main() {
       conteCameraPan(across: 0.3, down: 0.5),
     );
     final strokes = pdfStrokes(pdf);
-    // A key's cross arm is 5 long on the paper; the trails are longer.
+    // The conte's paper crosses no key (F-622) — an arm would be 5 long on
+    // it; the trails are longer.
     final trails = strokes
         .where(
           (stroke) =>

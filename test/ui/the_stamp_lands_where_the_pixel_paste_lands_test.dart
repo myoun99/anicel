@@ -38,9 +38,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/a_move_lands.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
-import '../helpers/wait_window.dart' show windowBehind;
+import '../helpers/wait_window.dart'
+    show expectOneBar, watchTheBar, windowBehind;
 import '../helpers/surface_rgba_in_place.dart';
 
 /// 🚨★★★**THE CUT TOOL'S STAMP LANDS WHERE 픽셀 붙여넣기 LANDS** (F-293).
@@ -126,6 +128,7 @@ void main() {
     session.selectLayer(row(session).id);
     session.selectFrameIndex(0);
     await tester.pump();
+    await theMoveLands(tester, session);
     return session;
   }
 
@@ -250,6 +253,8 @@ void main() {
       await pressToolSettingsButton(tester);
       await pumpFrames(tester, 30);
     }
+    // The button is far down the settings.
+    await scrollRailToItsEnd(tester, right: false);
     await tester.ensureVisible(button);
     await tester.pump();
     // Behind the wait window (F-551), which goes before anything is read.
@@ -316,6 +321,25 @@ void main() {
     expectSamePicture(landed, celOf(session, 'c2'), 'redo, c2');
   });
 
+  testWidgets('🗣️F-615: 원래 위치에 붙여넣기 across blocks works its cels out '
+      'behind the window, telling how many are done — 「대상 프레임 수에 '
+      '맞춰서 몇퍼센트인지 표시」', (tester) async {
+    final session = await pump(tester);
+    await holdStamp(tester, squareOf(red));
+    selectAcross(session, 0, 3);
+    await tester.pump();
+
+    final told = watchTheBar(tester);
+    await pasteInPlace(tester);
+
+    expectOneBar(told, [1 / 3, 2 / 3, 1]);
+    expect(
+      bitmapSurfaceContentBounds(celOf(session, 'c2')),
+      isNotNull,
+      reason: 'and it landed',
+    );
+  });
+
   testWidgets('with no range drawn the press lands on the cel you stand on, '
       'and nowhere else', (tester) async {
     final session = await pump(tester);
@@ -377,7 +401,7 @@ void main() {
       box: (left: 10, top: 10, right: 25, bottom: 40),
       rgba: blue,
     );
-    session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    session.pixelVerbs.pixelClipboardVerbStep(PixelClipboardVerb.copy).step();
     // ONE picture in both holders.
     final board = session.appClipboard.pixels.piece!;
     // The range does not hold the cel you stand on, a cel is held twice in
@@ -397,7 +421,7 @@ void main() {
       (PixelClipboardVerb.pasteBelow, BrushBlendMode.behind),
     ]) {
       final before = {for (final cel in cels) cel: celOf(session, cel)};
-      session.pixelVerbs.runPixelClipboardVerb(verb);
+      session.pixelVerbs.pixelClipboardVerbStep(verb).step();
       await tester.pump();
       final pasted = {for (final cel in cels) cel: celOf(session, cel)};
       expect(
@@ -444,6 +468,7 @@ void main() {
     // 3–4 is ONE cel held twice; 5 is empty.
     selectAcross(session, 3, 6);
     session.selectFrameIndex(3);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
 
     await press(tester);
@@ -543,6 +568,7 @@ void main() {
     await holdStamp(tester, squareOf(red), opacity: 0.5);
     session.frameRangeSelection.value = null;
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     await pasteInPlace(tester);
     expect(
@@ -563,6 +589,7 @@ void main() {
       rgba: blue,
     );
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await holdStamp(tester, squareOf(red), blend: BrushBlendMode.erase);
     final brush = workspaceOf(tester).brushTool!;
     brush.value = brush.value.copyWith(
@@ -599,6 +626,7 @@ void main() {
 
     session.frameRangeSelection.value = null;
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     final again = workspaceOf(tester).lastStroke!;
     expect(again.canReinput, isTrue);
@@ -646,6 +674,7 @@ void main() {
     marquee(session, null);
     session.frameRangeSelection.value = null;
     session.selectFrameIndex(6);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     workspaceOf(tester).lastStroke!.reinput();
     await pumpFrames(tester);
@@ -668,12 +697,14 @@ void main() {
     }
     await holdStamp(tester, squareOf(red), blend: BrushBlendMode.behind);
     session.selectFrameIndex(1);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     await pasteInPlace(tester);
     expect(pixel(session, 'c1', 15, 15), blueRgba, reason: '⛔premise: under');
     expect(pixel(session, 'c1', 25, 15), redRgba, reason: '⛔premise: landed');
 
     session.selectFrameIndex(2);
+    await theMoveLands(tester, session);
     await pumpFrames(tester);
     workspaceOf(tester).lastStroke!.reinput();
     await pumpFrames(tester);
@@ -756,6 +787,7 @@ void main() {
       final session = workspaceOf(tester).session;
       session.selectLayer(standOn);
       session.selectFrameIndex(0);
+      await theMoveLands(tester, session);
       await pumpFrames(tester);
       await holdStamp(tester, squareOf(red));
       session.frameRangeSelection.value = TimelineFrameRangeSelection(

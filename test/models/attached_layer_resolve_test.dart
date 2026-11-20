@@ -295,6 +295,14 @@ void main() {
     );
     expect(attachedGroupStartIndex(const LayerId('base'), layers), 0);
     expect(attachedGroupEndIndex(const LayerId('base'), layers), 6);
+    // The fold's halves (I-175) hold each organizer on its side by the
+    // stack, beside the rows it organizes.
+    expect(attachGroupRowsBySide(layers), {
+      const LayerId('base'): {
+        AttachedPlacement.below: [organizedBelow, belowOrganizer],
+        AttachedPlacement.above: [attached, organized, organizer],
+      },
+    });
 
     // An EMPTY folder row cannot be attributed to a base — the span ends.
     final emptyFolder = createFolderLayer(

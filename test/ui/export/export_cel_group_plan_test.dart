@@ -27,6 +27,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerStepAbbrev;
@@ -400,6 +401,31 @@ void main() {
       (sheet) => sheet.look.fileName == 'A1.png',
     );
     expect((off.planned, off.skipped, off.written), (true, true, false));
+  });
+
+  test('🗣️I-178: a conte row\'s unnamed drawings are filed from 1, from the '
+      'front of the row, past every number its drawings wear', () {
+    final drawings = [
+      frame('u1', unnamed: true),
+      frame('n2', name: '2'),
+      frame('u2', unnamed: true),
+      frame('u3', unnamed: true),
+    ];
+    final built = plan([
+      Layer(
+        id: const LayerId('sb'),
+        name: 'SB',
+        kind: LayerKind.storyboard,
+        frames: drawings,
+        timeline: exposed(drawings),
+      ),
+    ], spec: const CelsExportSpec(kinds: {ExportCelKind.conte}));
+    expect(
+      [for (final task in built.cels) (task.baseFrame.id.value, task.celName)],
+      [('u1', '1'), ('n2', '2'), ('u2', '3'), ('u3', '4')],
+    );
+    // The number is the file's alone: the drawing keeps no name.
+    expect(drawings.first.celNumber, isNull);
   });
 
   test('the cel number IS the frame name; an unnamed frame is the '
@@ -2076,6 +2102,53 @@ void main() {
       // No two blocks of the list answer to one id.
       final ids = [for (final sheet in paged(3).documents) sheet.idValue];
       expect(ids.toSet(), hasLength(ids.length));
+    });
+
+    test('🗣️F-618 ③: the digital sheet writes the halves picked, each its '
+        'own block — the other is no file; neither picked writes no sheet',
+        () {
+      List<String> sheets(Set<XdtsSheetHalf> halves) => [
+        for (final sheet in paged(
+          3,
+          spec: documents.copyWith(
+            sheetFormat: ExportTimesheetFormat.xdts,
+            xdtsHalves: halves,
+          ),
+        ).documents)
+          if (sheet.kind == ExportCelKind.timesheet) sheet.fileName,
+      ];
+      expect(sheets({XdtsSheetHalf.douga}), ['_TSCUT1_douga_ts.xdts']);
+      expect(sheets({XdtsSheetHalf.genga}), ['_TSCUT1_genga_ts.xdts']);
+      expect(sheets({}), isEmpty);
+      // A picture of the sheet is one whatever the halves say.
+      expect(
+        documentFiles(
+          paged(2, spec: documents.copyWith(xdtsHalves: const {})),
+        ),
+        ['_TSCUT1_1.png', '_TSCUT1_2.png', '_CUTCUT1_envelope.png'],
+      );
+    });
+
+    test('🗣️F-618 ④: a digital sheet\'s block shows the sheet\'s first page '
+        'whichever half it is — a picture\'s block its own page', () {
+      final digital = paged(
+        3,
+        spec: documents.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
+      );
+      expect(
+        [
+          for (final sheet in digital.documents)
+            if (sheet.kind == ExportCelKind.timesheet) sheet.sheetPage,
+        ],
+        [0, 0],
+      );
+      expect(
+        [
+          for (final sheet in paged(3).documents)
+            if (sheet.kind == ExportCelKind.timesheet) sheet.sheetPage,
+        ],
+        [0, 1, 2],
+      );
     });
 
     test('each document is written in its OWN format, behind its own prefix '

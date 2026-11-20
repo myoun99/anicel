@@ -7,6 +7,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../../models/se_take_placement.dart' show placedSoundBlockOf;
@@ -27,7 +28,8 @@ import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart' show AppColors;
-import '../widgets/app_window.dart' show AppWindowActionEmphasis;
+import '../widgets/app_window.dart'
+    show AppWindowAction, AppWindowActionEmphasis;
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
@@ -78,6 +80,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.onOpenAssetInSubViewer,
     this.onPlaceAsset,
     this.onEditPreset,
+    this.onSync,
     this.mediaFilePicker,
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
@@ -88,7 +91,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.onViewChanged,
     this.factsOf = _nothingRead,
     this.soundOf = _nothingHeard,
-    this.frameRate = ProjectFrameRate.fps24,
+    this.clock = (rate: ProjectFrameRate.fps24, speed: noPull),
     this.pictures,
   });
 
@@ -148,6 +151,10 @@ class MediaPoolPanel extends StatelessWidget {
   /// Opens the file's 배치 프리셋 window. Null leaves it off the menu.
   final void Function(MediaAsset asset)? onEditPreset;
 
+  /// Opens the file's sync window — the 「동기화」 of the window the in-use
+  /// mark opens ([_showUses]). Null leaves it off that window.
+  final void Function(MediaAsset asset)? onSync;
+
   /// Injectable file dialog for a relink; defaults to the platform picker
   /// over every kind the pool registers.
   final Future<String?> Function()? mediaFilePicker;
@@ -199,8 +206,10 @@ class MediaPoolPanel extends StatelessWidget {
   /// how long it lasts in the list, its picture in the icon view.
   final AudioPeaks? Function(String path) soundOf;
 
-  /// The project's rate, which a length is told in.
-  final ProjectFrameRate frameRate;
+  /// The project's clock — its rate, which a length is told in, and the
+  /// speed its sounds play at, which a movie's frames are counted on
+  /// (`placedPicturesOf`).
+  final ProjectClock clock;
 
   /// Where the icon view's pictures come from. Null draws each box by its
   /// file's kind alone.
@@ -339,7 +348,15 @@ class MediaPoolPanel extends StatelessWidget {
     onRemoveAsset(asset.path);
   }
 
-  /// The in-use mark's window: where [asset] is used, the list open.
+  /// The in-use mark's window: where [asset] is used, the list open, and
+  /// the sync of those places to the file's preset ([onSync]).
+  ///
+  /// 🗣️ONE WAY INTO THE SYNC (card 「파일마다 배치 기본값」-Q11, 유저
+  /// 2026-11-18: 「쓰는곳이 동기화버튼으로 바뀌던건 없애고 이 방식으로
+  /// 통일」): its 「동기화」, for a file of every kind. ↩️A line whose place
+  /// parted from its preset at its start or its length wore the sync on the
+  /// in-use mark itself (시안 ③) — a still's, parting at a fit or a kind,
+  /// never did.
   void _showUses(BuildContext context, MediaAsset asset) => unawaited(
     showAppNotice(
       context,
@@ -353,6 +370,15 @@ class MediaPoolPanel extends StatelessWidget {
         ),
       ],
       windowKey: const ValueKey<String>('media-asset-uses-notice'),
+      also: [
+        if (onSync case final sync?)
+          AppWindowAction(
+            label: AppText.strings.mediaSync,
+            actionKey: const ValueKey<String>('media-asset-uses-sync'),
+            emphasis: AppWindowActionEmphasis.second,
+            onPressed: () => sync(asset),
+          ),
+      ],
     ),
   );
 
@@ -555,7 +581,7 @@ class MediaPoolPanel extends StatelessWidget {
             ),
             tileOf: _lineOf,
             soundOf: soundOf,
-            frameRate: frameRate,
+            frameRate: clock.rate,
           )
         : MediaPoolList(
             assets: assets,
@@ -570,12 +596,12 @@ class MediaPoolPanel extends StatelessWidget {
 
   /// What the lines say column by column, from what the session holds.
   MediaPoolWords get _words => MediaPoolWords(
-    framesPerSecond: frameRate.countingBase,
+    clock: clock,
     storedBytes: storedBytes,
     conformBytes: conformBytes,
     modifiedTimes: modifiedTimes,
     factsOf: factsOf,
-    soundFramesOf: (path) => soundOf(path)?.durationFrames(frameRate),
+    soundFramesOf: (path) => soundOf(path)?.durationFrames(clock.rate),
   );
 
   /// The pinned part of [asset]'s line: what it is, its name — or what its
@@ -613,17 +639,24 @@ class MediaPoolPanel extends StatelessWidget {
         // it stays in its place, dimmed with nothing to open (「없다가
         // 생기는 UI 금지」), so the name does not move when the last use
         // goes — and its tooltip names what it opens, which is true of both.
-        AppIconButton(
-          keyValue: 'media-asset-in-use-${asset.path}',
-          tooltip: AppText.strings.mediaUsesHeading,
-          icon: const Icon(Icons.link),
-          size: AppIconButtonSize.micro,
-          onPressed: uses.isEmpty ? null : () => _showUses(context, asset),
-        ),
+        _inUseMark(context, asset, used: uses.isNotEmpty),
         _menuOf(context, asset),
       ],
     );
   }
+
+  /// The line's in-use mark: where the file is used ([_showUses]).
+  Widget _inUseMark(
+    BuildContext context,
+    MediaAsset asset, {
+    required bool used,
+  }) => AppIconButton(
+    keyValue: 'media-asset-in-use-${asset.path}',
+    tooltip: AppText.strings.mediaUsesHeading,
+    icon: const Icon(Icons.link),
+    size: AppIconButtonSize.micro,
+    onPressed: used ? () => _showUses(context, asset) : null,
+  );
 
   /// The line's first mark: what the file is — by its type in the file
   /// face, by the layer its preset makes in the preset face — or that it is

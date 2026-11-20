@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 import 'brush_tool_state.dart';
 
 /// Switches the tool while an input is HELD, and back when it lets go.
@@ -18,7 +16,7 @@ final class TemporaryTool {
   const TemporaryTool({
     required this.memory,
     required this.current,
-    required this.change,
+    required this.bring,
   });
 
   final ToolHoldMemory memory;
@@ -26,13 +24,19 @@ final class TemporaryTool {
   /// The tool state in hand now.
   final BrushToolState Function() current;
 
-  /// Where a changed tool state goes; null = nowhere to switch it (a host
-  /// without the tool channel).
-  final ValueChanged<BrushToolState>? change;
+  /// Brings a tool to hand as a press brings one
+  /// (`PaintToolStateNotifier.bringTool`); null = nowhere to switch it (a
+  /// host without the tool channel).
+  ///
+  /// 🗣️F-615-Q2: a hold is a press, so it lands what the box holds first,
+  /// and its tool comes once that is done. ⛔The TOOL, not a state worked
+  /// out at the press: a pick's colour written while the hold waits would
+  /// be undone by it (↩️`change`, a whole state, was what this took).
+  final void Function(CanvasTool tool)? bring;
 
   void hold(CanvasTool tool) {
     memory.sprangFrom ??= current().tool;
-    change?.call(current().copyWith(tool: tool));
+    bring?.call(tool);
   }
 
   /// [keep] leaves the held tool in hand — a mapping's 「keep」 release.
@@ -40,7 +44,7 @@ final class TemporaryTool {
     final original = memory.sprangFrom;
     memory.sprangFrom = null;
     if (!keep && original != null) {
-      change?.call(current().copyWith(tool: original));
+      bring?.call(original);
     }
   }
 }

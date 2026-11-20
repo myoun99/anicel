@@ -424,6 +424,7 @@ fn the_export_lays_a_picture_by_the_composite_s_law() {
         chains: &[],
         steps: &steps,
         mask: None,
+        stamps: None,
     };
     let tiles = [(0, 0), (1, 0), (0, 1), (1, 1)];
     let done = stacked

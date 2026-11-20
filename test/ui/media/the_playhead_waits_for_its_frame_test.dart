@@ -31,6 +31,10 @@ import '../../helpers/fake_pdf_document.dart';
 /// screen honest again: the picture stays because the playhead is genuinely
 /// on that frame.
 ///
+/// 🗣️F-617 (유저 2026-11-19): a hand's step parks too — 「준비안되면 이전
+/// 재생헤드에 서고 이전 그림 보여주게」: the playhead stays on the frame it
+/// shows until the one it goes to has landed (`MediaRun.moves`).
+///
 /// ⚠️The CANVAS is the opposite and is also right. It judges timing against
 /// sound, so it holds real time and drops frames — `AudioPlaybackSync` said
 /// so in one line: 「frames drop, time never stretches」. A player looking at
@@ -115,8 +119,13 @@ void main() {
     return pages.single.image;
   }
 
-  testWidgets('🚨a page whose raster has not landed draws NOTHING — never '
-      'the page before it', (tester) async {
+  // 🗣️F-617 (유저 2026-11-19): 「법을 그냥 타임라인 플립이랑 똑같이
+  // 준비안되면 이전 재생헤드에 서고 이전 그림 보여주게 통일」. ↩️The playhead
+  // went at once and drew NOTHING until its page landed — a black frame
+  // under the hand (the old law: never page 0 on a playhead that says 1).
+  testWidgets('🚨a step to a page whose raster has not landed stands on the '
+      'page shown — the playhead with its picture — and goes once it lands',
+      (tester) async {
     // A document that shows ONE page at a time — a movie's frame. A book's
     // pages each draw at their own place (F-201), so no page there can
     // stand in for another.
@@ -130,16 +139,16 @@ void main() {
     );
     await tester.pump();
 
+    expect(slot.position.value, 0, reason: 'the playhead went before page 1');
     expect(
       drawnImage(tester),
-      isNull,
-      reason:
-          '🚨the old law drew page 0 here, and page 0 on a playhead that '
-          'says 1 is a picture claiming to be a frame it is not',
+      same(first),
+      reason: 'page 0 is drawn on the playhead that says 0',
     );
 
     fake.releaseRender(1);
     await tester.pumpAndSettle();
+    expect(slot.position.value, 1);
     final second = drawnImage(tester);
     expect(second, isNotNull);
     expect(second, isNot(same(first)), reason: 'and page 1 lands as itself');

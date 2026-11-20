@@ -1,12 +1,18 @@
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/canvas_resize_anchor.dart';
+import '../../models/canvas_picture_place.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cut_content_translation.dart'
+    show ResizeWalk, laidShiftOf, resizeWalk;
 import '../../models/cut_id.dart';
+import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/project.dart';
+import '../bitmap_surface_geometry.dart' show CelFit, CelTextSetter;
 import '../brush_frame_store.dart';
 import '../cels_ahead.dart';
 import '../command.dart';
+import '../guide_geometry.dart' show GuideTransform;
+import '../import/raster_cel_import.dart' show celFitted, fitPose;
 import '../project_lookup.dart';
 import '../project_repository.dart';
 import '../undo_surface_snapshot.dart';
@@ -31,30 +37,40 @@ class ResizeCutCanvasCommand
     required this.repository,
     required this.cutId,
     required this.canvasSize,
-    this.contentOffset = (dx: 0.0, dy: 0.0),
+    this.place = PictureMovedBy.none,
     this.brushFrameStore,
+    this.setText,
   });
 
   final ProjectRepository repository;
   final CutId cutId;
   final CanvasSize canvasSize;
 
-  /// How far the picture moves on the canvas: where the old canvas's top
-  /// left lands on the new one. Zero keeps the picture where it was, at
-  /// the top left.
+  /// Where the picture goes on the new canvas. Kept to an anchor or moved
+  /// by an offset, it is born as it was, nothing in it changed — as every
+  /// resize did (🗣️I-180-Q4 메모: 「내용물 변경안하는걸 옵션으로 두고 싶음.
+  /// 지금이랑 같은 법인거지」). Fitted (I-180), it stands as an import's
+  /// picture would ([fitPose]), and everything that stands on it goes with
+  /// it by the same scale.
   ///
-  /// ↩️It was one of the nine anchors ([CanvasResizeAnchor]), which say
-  /// it for a size typed into the window. A canvas whose edges are dragged
-  /// on the canvas (I-79) moves the picture by what no anchor names — a
-  /// left edge pulled out and a right one pushed in shift it with the size
-  /// unchanged — so the anchors became one way of saying this
-  /// ([CanvasResizeAnchor.contentOffset]).
-  final ({double dx, double dy}) contentOffset;
+  /// ↩️It was an offset beside a fit, the offset read only when the fit
+  /// was born — one place now, so a fit cannot carry an offset.
+  final CanvasPicturePlace place;
 
-  /// When set, the cut's brush strokes are shifted by [contentOffset] (the
+  /// How far the picture moves on [project]'s cut: where the old canvas's
+  /// top left lands on the new one ([CanvasPicturePlace.offsetFrom]).
+  ({double dx, double dy}) contentOffsetOn(Project project) =>
+      place.offsetFrom(requireCut(project, cutId).canvasSize, canvasSize);
+
+  /// When set, the cut's brush strokes are shifted by the offset (the
   /// project model only stores the cut size; stroke data lives in the
   /// app-level brush store).
   final BrushFrameStore? brushFrameStore;
+
+  /// How a fit sets each cel's texts again from their grown numbers
+  /// (`celTextsFitted`) — handed in from where letters are laid out. A fit
+  /// of a cel with texts and none to set them throws, and is not taken.
+  final CelTextSetter? setText;
 
   Project? _previousProject;
   double _contentDx = 0;
@@ -70,26 +86,102 @@ class ResizeCutCanvasCommand
     ...linkedCutSiblings(project, cutId: cutId),
   ];
 
+  /// What a fitted [place] carries the cut by on [project] — the walk its
+  /// model goes by, and how each cel is laid ([CelFit]) — or null for a
+  /// born one, which moves it by its offset as every resize did.
+  ///
+  /// The picture stands as an import's would on the new canvas ([fitPose]):
+  /// the old canvas's centre on the new one's, scaled on each axis by the
+  /// fit. A drawing's cels are laid anew by that scale; a reference's file
+  /// stays laid 1:1 and moves by whole pixels ([laidShiftOf]), its scale
+  /// going into its pose and fx (F-374-Q1).
+  ({ResizeWalk walk, CelFit Function(BrushFrameKey key) fitOf})? _fitOn(
+    Project project,
+  ) {
+    final fit = place.fit;
+    if (fit == MediaFitMode.born) {
+      return null;
+    }
+    final from = requireCut(project, cutId).canvasSize;
+    final pose = fitPose(picture: from, canvas: canvasSize, fit: fit);
+    final sx = pose.scaleX;
+    final sy = pose.scaleY;
+    final dx = pose.center.x - sx * from.width / 2;
+    final dy = pose.center.y - sy * from.height / 2;
+    // Centred, so the old centre lands on the new one, and that is where
+    // the content map takes it too.
+    final walk = resizeWalk(
+      sx: sx,
+      sy: sy,
+      dx: dx,
+      dy: dy,
+      centreDx: dx,
+      centreDy: dy,
+    );
+    final drawn = (
+      canvasSize: canvasSize,
+      move: GuideTransform(sx, 0, 0, sy, dx, dy),
+    );
+    return (
+      walk: walk,
+      fitOf: (key) {
+        final reference = layerAnywhereOrNull(
+          project,
+          key.layerId,
+        )?.mediaReference;
+        if (reference == null) {
+          return drawn;
+        }
+        final shift = laidShiftOf(reference.laid, walk);
+        return (
+          canvasSize: canvasSize,
+          move: GuideTransform(
+            1,
+            0,
+            0,
+            1,
+            shift.dx.toDouble(),
+            shift.dy.toDouble(),
+          ),
+        );
+      },
+    );
+  }
+
   /// Every cel of the cut moved as [execute] moves it — the whole pixels it
-  /// rounds [contentOffset] to — on the machine's workers
-  /// ([BrushFrameStore.moveCutCelsAhead]): the first run's work, and the
-  /// redo's, which runs the resize again ([parkPayload]). The undo puts the
-  /// pictures back by reference and has none.
+  /// rounds its offset to — on the machine's workers
+  /// ([BrushFrameStore.moveCutCelsAhead]), or laid as a fit lays it
+  /// ([BrushFrameStore.fitCutCelsAhead], which [execute] cannot do without):
+  /// the first run's work, and the redo's, which runs the resize again
+  /// ([parkPayload]). The undo puts the pictures back by reference and has
+  /// none.
   @override
   WorkAhead? workAhead({required bool undo}) {
     final store = brushFrameStore;
     if (undo || store == null) {
       return null;
     }
-    return (report) => store.moveCutCelsAhead(
-      targetsOf(repository.requireProject(), cutId),
-      (
-        canvasSize: canvasSize,
-        dx: contentOffset.dx.round(),
-        dy: contentOffset.dy.round(),
-      ),
-      report: report,
-    );
+    return (report) {
+      final project = repository.requireProject();
+      if (_fitOn(project) case final fitted?) {
+        return store.fitCutCelsAhead(
+          targetsOf(project, cutId),
+          fitted.fitOf,
+          lay: (cel, fit) => celFitted(cel, fit, setText: setText),
+          report: report,
+        );
+      }
+      final offset = contentOffsetOn(project);
+      return store.moveCutCelsAhead(
+        targetsOf(project, cutId),
+        (
+          canvasSize: canvasSize,
+          dx: offset.dx.round(),
+          dy: offset.dy.round(),
+        ),
+        report: report,
+      );
+    };
   }
 
   /// Every cut this resize touched — the target and its 겸용 siblings.
@@ -180,10 +272,22 @@ class ResizeCutCanvasCommand
     // centre anchor would sit half a pixel off the picture forever
     // (adversarial review). The centre's own movement stays exact — it
     // is a model-only quantity (the null-anchor law below).
-    _contentDx = contentOffset.dx.roundToDouble();
-    _contentDy = contentOffset.dy.roundToDouble();
+    final offset = contentOffsetOn(project);
+    _contentDx = offset.dx.roundToDouble();
+    _contentDy = offset.dy.roundToDouble();
     _centreDx = (canvasSize.width - fromSize.width) / 2;
     _centreDy = (canvasSize.height - fromSize.height) / 2;
+    // Before the model moves: a reference's file is moved from where it
+    // is laid now ([laidShiftOf]).
+    final fitted = _fitOn(project);
+    final walk =
+        fitted?.walk ??
+        resizeWalk(
+          dx: _contentDx,
+          dy: _contentDy,
+          centreDx: _centreDx,
+          centreDy: _centreDy,
+        );
 
     _targets = targetsOf(project, cutId);
 
@@ -191,6 +295,10 @@ class ResizeCutCanvasCommand
     // the exact undo restores the pre-resize baked surfaces by reference
     // (immutable — the snapshot is free).
     final store = brushFrameStore;
+    // A fit's pixels were laid ahead, or the step writes nothing.
+    if (fitted != null) {
+      store?.requireFittedAhead(_targets, fitted.fitOf);
+    }
     final previousSurfaces = <CutId, Map<BrushFrameKey, BitmapSurface>>{
       if (store != null)
         for (final target in _targets) target: store.bakedSurfacesForCut(target),
@@ -205,10 +313,7 @@ class ResizeCutCanvasCommand
       repository.resizeCutCanvasContent(
         cutId: target,
         canvasSize: canvasSize,
-        dx: _contentDx,
-        dy: _contentDy,
-        centreDx: _centreDx,
-        centreDy: _centreDy,
+        walk: walk,
       );
       // One-pass raster adoption (D5): crop/extend AND anchor offset in
       // a single blit against the NEW canvas, completed HERE for the
@@ -216,12 +321,16 @@ class ResizeCutCanvasCommand
       // degenerates to pure adoption — no state it depends on (active
       // cut, live selection, a mounted host) can leave a cel behind at
       // the old size any more.
-      store?.adoptCutCanvasSize(
-        cutId: target,
-        canvasSize: canvasSize,
-        dx: _contentDx,
-        dy: _contentDy,
-      );
+      if (fitted != null) {
+        store?.adoptCutCanvasFit(cutId: target, fitOf: fitted.fitOf);
+      } else {
+        store?.adoptCutCanvasSize(
+          cutId: target,
+          canvasSize: canvasSize,
+          dx: _contentDx,
+          dy: _contentDy,
+        );
+      }
     }
 
     // 🚨PAIRED WITH THE LIVE SURFACE ONLY NOW, after the blit — the

@@ -209,61 +209,25 @@ class _CutCommands {
     }
   }
 
-  /// [cutId]'s canvas at [canvasSize], the picture kept to [anchor] — one
-  /// way of saying [placeCutCanvas]'s offset.
-  void resizeCutCanvas({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-  }) {
-    _requirePositive(canvasSize);
-    placeCutCanvas(
-      cutId: cutId,
-      canvasSize: canvasSize,
-      contentOffset: _anchored(cutId, canvasSize, anchor),
-    );
-  }
-
-  /// What [resizeCutCanvas] will make of the pictures kept in files, worked
-  /// out ahead ([placeCutCanvasAhead]).
-  Future<void> resizeCutCanvasAhead({
-    required CutId cutId,
-    required CanvasSize canvasSize,
-    CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
-    void Function(double done)? report,
-  }) => placeCutCanvasAhead(
-    cutId: cutId,
-    canvasSize: canvasSize,
-    contentOffset: _anchored(cutId, canvasSize, anchor),
-    report: report,
-  );
-
-  ({double dx, double dy}) _anchored(
-    CutId cutId,
-    CanvasSize canvasSize,
-    CanvasResizeAnchor anchor,
-  ) => anchor.contentOffset(
-    from: _coordinator._requireCut(cutId).canvasSize,
-    to: canvasSize,
-  );
-
-  /// [cutId]'s canvas at [canvasSize], the picture moved by [contentOffset]
-  /// ([ResizeCutCanvasCommand.contentOffset]) — no step when neither
-  /// changes anything.
+  /// [cutId]'s canvas at [canvasSize], its picture where [place] puts it
+  /// ([ResizeCutCanvasCommand.place]) — no step when that changes nothing.
   ///
   /// ⚠️The offset is part of the question: a canvas whose edges were
-  /// dragged can keep its size and still move the picture.
+  /// dragged can keep its size and still move the picture. A fit to the
+  /// canvas the cut is on changes nothing, as a resize to it by an anchor
+  /// does not.
   void placeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
+    required CanvasPicturePlace place,
   }) {
     _requirePositive(canvasSize);
+    final step = _resize(cutId, canvasSize, place);
     _coordinator._executeIfChanged(
       subject: _coordinator._requireCut(cutId),
-      value: _placing(canvasSize, contentOffset),
+      value: _placing(step),
       read: _placed,
-      command: (_) => _resize(cutId, canvasSize, contentOffset),
+      command: (_) => step,
     );
   }
 
@@ -275,42 +239,42 @@ class _CutCommands {
   Future<void> placeCutCanvasAhead({
     required CutId cutId,
     required CanvasSize canvasSize,
-    required ({double dx, double dy}) contentOffset,
+    required CanvasPicturePlace place,
     void Function(double done)? report,
   }) async {
-    final placing = _placing(canvasSize, contentOffset);
-    if (_placed(_coordinator._requireCut(cutId)) == placing) {
+    final step = _resize(cutId, canvasSize, place);
+    if (_placed(_coordinator._requireCut(cutId)) == _placing(step)) {
       return;
     }
-    final ahead = _resize(cutId, canvasSize, contentOffset).workAhead(
-      undo: false,
-    );
-    await ahead?.call(report ?? (_) {});
+    await step.workAhead(undo: false)?.call(report ?? (_) {});
   }
 
   /// The step [placeCutCanvas] takes — and asks what it works out ahead.
   ResizeCutCanvasCommand _resize(
     CutId cutId,
     CanvasSize canvasSize,
-    ({double dx, double dy}) contentOffset,
+    CanvasPicturePlace place,
   ) => ResizeCutCanvasCommand(
     repository: _coordinator.repository,
     cutId: cutId,
     canvasSize: canvasSize,
-    contentOffset: contentOffset,
+    place: place,
     brushFrameStore: _coordinator.brushFrameStore,
+    setText: _coordinator.setCelText,
   );
 
-  /// What [placeCutCanvas] asks of a cut, in whole pixels — and [_placed],
-  /// what a cut already answers: the step is taken where the two differ.
-  static _CanvasPlace _placing(
-    CanvasSize canvasSize,
-    ({double dx, double dy}) contentOffset,
-  ) => (
-    size: canvasSize,
-    dx: contentOffset.dx.roundToDouble(),
-    dy: contentOffset.dy.roundToDouble(),
-  );
+  /// What [placeCutCanvas]'s [step] asks of a cut, in whole pixels — and
+  /// [_placed], what a cut already answers: the step is taken where the two
+  /// differ.
+  _CanvasPlace _placing(ResizeCutCanvasCommand step) {
+    final project = _coordinator.repository.requireProject();
+    final offset = step.contentOffsetOn(project);
+    return (
+      size: step.canvasSize,
+      dx: offset.dx.roundToDouble(),
+      dy: offset.dy.roundToDouble(),
+    );
+  }
 
   static _CanvasPlace _placed(Cut cut) =>
       (size: cut.canvasSize, dx: 0.0, dy: 0.0);
@@ -506,39 +470,33 @@ class _CutCommands {
   /// clear the track, and the replacement was indistinguishable from a
   /// real cut in the undo stack.
   void deleteCut({required CutId cutId}) {
-    final parting = _partingLinksOf({cutId});
-    final delete = DeleteCutCommand(
-      repository: _coordinator.repository,
-      editingSession: _coordinator.editingSession,
-      cutId: cutId,
-      brushFrameStore: _coordinator.brushFrameStore,
-      sheetInkStores: _coordinator.sheetInkStores,
+    final steps = deletionOf([cutId]);
+    _coordinator.historyManager.executeAsOneStep(
+      steps.first.description,
+      steps,
     );
-    if (parting == null) {
-      _coordinator.historyManager.execute(delete);
-    } else {
-      _coordinator.historyManager.executeAsOneStep(delete.description, [
-        delete,
-        parting,
-      ]);
-    }
   }
 
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
   /// allowed (R28 #14).
-  void deleteCuts({required List<CutId> cutIds}) {
-    _coordinator.historyManager.executeAsOneStep('Delete cuts', [
-      for (final cutId in cutIds)
-        DeleteCutCommand(
-          repository: _coordinator.repository,
-          editingSession: _coordinator.editingSession,
-          cutId: cutId,
-          brushFrameStore: _coordinator.brushFrameStore,
-          sheetInkStores: _coordinator.sheetInkStores,
-        ),
-      ?_partingLinksOf(cutIds.toSet()),
-    ]);
-  }
+  void deleteCuts({required List<CutId> cutIds}) => _coordinator
+      .historyManager
+      .executeAsOneStep('Delete cuts', deletionOf(cutIds));
+
+  /// What deleting [cutIds] runs — [deleteCut]'s and [deleteCuts]' step,
+  /// and a lead edge's when it is pulled back past whole cuts (I-179),
+  /// which deletes them inside its own.
+  List<Command> deletionOf(List<CutId> cutIds) => [
+    for (final cutId in cutIds)
+      DeleteCutCommand(
+        repository: _coordinator.repository,
+        editingSession: _coordinator.editingSession,
+        cutId: cutId,
+        brushFrameStore: _coordinator.brushFrameStore,
+        sheetInkStores: _coordinator.sheetInkStores,
+      ),
+    ?_partingLinksOf(cutIds.toSet()),
+  ];
 
   /// A 동기컷 deleted leaves its sync, so a 겸용 it had where it stood parts
   /// from the sync's other cuts ([PartLinksAcrossTimelinesCommand]).

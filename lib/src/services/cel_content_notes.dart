@@ -52,7 +52,16 @@ final class CelContentNotes {
   );
 
   /// Whether [key] is noted at the content it holds now.
-  bool has(BrushFrameKey key) => _notedAt[key] == _contentOf(key);
+  ///
+  /// A cel not noted is not asked its content: a frame's key asks this of
+  /// each cel it stacks, twice ([CelContentNotes] are two), and 🔬each
+  /// asking read the store for the cel — after a layer's eye toggled, 94 of
+  /// the ruler's 966 sampled ms (card an-eye-toggle-holds-the-ui-thread,
+  /// 11-18, S5_BA cut 352 · 68 rows, 40 toggles), with no cel noted at all.
+  bool has(BrushFrameKey key) {
+    final noted = _notedAt[key];
+    return noted != null && noted == _contentOf(key);
+  }
 
   /// Whether no cel is noted at all — what a reader asking of every cell
   /// asks first: a note the content moved past still counts as one.

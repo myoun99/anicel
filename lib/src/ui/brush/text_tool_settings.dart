@@ -57,6 +57,28 @@ class TextToolSettings extends StatelessWidget {
   /// app's faces, and nothing is brought from it.
   final ImportedFonts? fonts;
 
+  /// The least width the section lays its choices readable at — every one
+  /// it can show, lines and columns alike, so writing the other way does
+  /// not move the rail (see `ToolSettingsPanel.minPanelWidthIn`).
+  static double minWidthIn(BuildContext context) {
+    final strings = AppText.strings;
+    return ToolSettingColumns.panelFor(
+      chrome: ToolSettingsSection.chromeIn(context),
+      controls: [
+        for (final answers in [
+          _BoxRows._writingAnswers(strings),
+          _BoxRows._widthAnswers(strings),
+        ])
+          ToolSettingChoiceRow.widthIn(context, answers),
+        for (final columns in [false, true])
+          ToolSettingChoiceRow.widthIn(
+            context,
+            _BoxRows._alignAnswers(strings, columns: columns),
+          ),
+      ],
+    );
+  }
+
   /// The next text's values. Null in a host that does not own them: the
   /// section shows the defaults and changes nothing.
   final ValueNotifier<TextToolOptions>? options;
@@ -985,20 +1007,20 @@ class _BoxRows extends StatelessWidget {
         name: 'writing',
         label: strings.textToolWriting,
         current: shown.vertical,
-        answers: [
-          (value: false, key: 'lines', label: strings.textToolWritingLines),
-          (
-            value: true,
-            key: 'columns',
-            label: strings.textToolWritingColumns,
-          ),
-        ],
+        answers: _writingAnswers(strings),
         onPick: (vertical) => shown.writable
             ? () => reading.now.setVertical(vertical)
             : null,
       ),
     );
   }
+
+  static List<({bool value, String key, String label})> _writingAnswers(
+    AppStrings strings,
+  ) => [
+    (value: false, key: 'lines', label: strings.textToolWritingLines),
+    (value: true, key: 'columns', label: strings.textToolWritingColumns),
+  ];
 
   /// Where the letters stand along their way: the three answers keep their
   /// values and are NAMED by what they are on screen — the left, the middle
@@ -1017,24 +1039,7 @@ class _BoxRows extends StatelessWidget {
         name: 'align',
         label: strings.textToolAlign,
         current: shown.align.mixed ? null : shown.align.value,
-        answers: [
-          for (final (align, label) in [
-            (
-              TextCelAlign.left,
-              shown.columns
-                  ? strings.textToolAlignTop
-                  : strings.textToolAlignLeft,
-            ),
-            (TextCelAlign.center, strings.textToolAlignCenter),
-            (
-              TextCelAlign.right,
-              shown.columns
-                  ? strings.textToolAlignBottom
-                  : strings.textToolAlignRight,
-            ),
-          ])
-            (value: align, key: align.name, label: label),
-        ],
+        answers: _alignAnswers(strings, columns: shown.columns),
         onPick: (align) => shown.writable
             ? () => reading.now.setParagraphs(
                 (paragraph) => paragraph.copyWith(align: align),
@@ -1043,6 +1048,24 @@ class _BoxRows extends StatelessWidget {
       ),
     );
   }
+
+  static List<({TextCelAlign value, String key, String label})> _alignAnswers(
+    AppStrings strings, {
+    required bool columns,
+  }) => [
+    for (final (align, label) in [
+      (
+        TextCelAlign.left,
+        columns ? strings.textToolAlignTop : strings.textToolAlignLeft,
+      ),
+      (TextCelAlign.center, strings.textToolAlignCenter),
+      (
+        TextCelAlign.right,
+        columns ? strings.textToolAlignBottom : strings.textToolAlignRight,
+      ),
+    ])
+      (value: align, key: align.name, label: label),
+  ];
 
   /// 「고정할지 비고정할지는 도구설정에서 스왑가능」(유저 2026-10-06) — of the
   /// text in hand: with none, neither is lit and neither is taken.
@@ -1059,16 +1082,20 @@ class _BoxRows extends StatelessWidget {
         name: 'box-width',
         label: strings.textToolBoxWidth,
         current: shown.wraps,
-        answers: [
-          (value: false, key: 'auto', label: strings.textToolWidthAuto),
-          (value: true, key: 'fixed', label: strings.textToolWidthFixed),
-        ],
+        answers: _widthAnswers(strings),
         onPick: (boxed) => (boxed ? shown.toBox : shown.toGrow)
             ? () => reading.now.setWraps(boxed)
             : null,
       ),
     );
   }
+
+  static List<({bool value, String key, String label})> _widthAnswers(
+    AppStrings strings,
+  ) => [
+    (value: false, key: 'auto', label: strings.textToolWidthAuto),
+    (value: true, key: 'fixed', label: strings.textToolWidthFixed),
+  ];
 
   /// A line's pitch, read as a share of its letters' size — a setting of
   /// PARAGRAPHS.

@@ -6,6 +6,7 @@ import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/attached_layer_resolve.dart' show AttachGroups;
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
@@ -15,7 +16,8 @@ import '../dialogs/link_window.dart' show LinkKind;
 import '../input/two_axis_drag.dart'
     show SheetZoom, TwoAxisScrollController, sheetZoom;
 import 'layer_label_controls.dart' show LayerMarkEdit;
-import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
+import 'layer_rail_columns.dart'
+    show LayerKindMenu, LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
@@ -33,6 +35,7 @@ import 'property_lane_model.dart';
 import 'ruler_marker_layer.dart' show RulerMarkerHooks;
 import 'timeline_row_filter.dart';
 import 'frame_ruler_view.dart';
+import 'timeline_frame_scrub.dart' show FrameScrubSinks;
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import '../../models/project_frame_rate.dart';
@@ -112,6 +115,7 @@ class TimelineGridHooks {
     this.onOpenCameraPath,
     this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
+    this.attachGroups = const {},
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
@@ -124,6 +128,7 @@ class TimelineGridHooks {
     this.onToggleLayerOnionSkin,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
+    this.layerKindMenu,
     this.onToggleLayerClip,
     this.commaDrag,
     this.rangeHooks,
@@ -271,6 +276,10 @@ class TimelineGridHooks {
 
   final VoidCallback? onScrubEnd;
 
+  /// Where a scrub of this grid's frames goes (`TimelineFrameScrub`).
+  FrameScrubSinks get scrubSinks =>
+      (selected: onSelectFrame, scrubbed: onScrubFrame, ended: onScrubEnd);
+
   /// Double-tap cell editor hook (SE label dialog; see
   /// [layerKindOpensCellEditorOnDoubleTap]).
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -403,6 +412,11 @@ class TimelineGridHooks {
   /// alone.
   final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
 
+  /// Each attach group's rows by side, worked out where the model order is
+  /// in hand, for [attachArrowPlacementOf]'s reason: what a base's fold
+  /// halves show and fold, and whose eyes their colour asks (I-175).
+  final AttachGroups attachGroups;
+
   final ValueChanged<LayerId> onToggleLayerVisibility;
 
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -453,6 +467,10 @@ class TimelineGridHooks {
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
+
+  /// What a row's type button turns it with (F-613); null leaves every
+  /// row's press a pick of the row.
+  final LayerKindMenu? layerKindMenu;
 
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;

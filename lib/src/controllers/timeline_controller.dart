@@ -15,6 +15,7 @@ import '../models/media_reference.dart';
 import '../models/movie_cel.dart';
 import '../models/se_line_type.dart';
 import '../models/timeline_coverage.dart';
+import '../services/editing/cut_deletion_helpers.dart' show CutsLeaving;
 import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
@@ -23,6 +24,7 @@ import '../models/timeline_splice.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
+import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart' show celBankLanesOf, cutWritingRow;
 import '../services/project_repository.dart';
@@ -352,22 +354,9 @@ class TimelineController {
   void deleteBlocksForLayers(Map<LayerId, List<int>> blockStartsByLayer) =>
       _delete.deleteBlocksForLayers(blockStartsByLayer);
 
-  /// The layer's audio clips minus links to frames that are not in
-  /// [nextFrames] (REC1-A). A frame that leaves the layer takes its
-  /// linked sounds with it — the AudioClip contract: the sound belongs
-  /// to the instance. A kept dangling link plays nothing yet makes the
-  /// media pool's remove-guard refuse the asset forever.
-  List<AudioClip> _audioClipsForFrames(Layer before, List<Frame> nextFrames) {
-    if (before.audioClips.isEmpty || identical(nextFrames, before.frames)) {
-      return before.audioClips;
-    }
-    final liveIds = {for (final frame in nextFrames) frame.id};
-    final kept = [
-      for (final clip in before.audioClips)
-        if (liveIds.contains(clip.frameId)) clip,
-    ];
-    return kept.length == before.audioClips.length ? before.audioClips : kept;
-  }
+  /// [layerLeavingWhatItOrphaned] in this row's bank.
+  Layer _leavingWhatItOrphaned(Layer before, Layer after) =>
+      layerLeavingWhatItOrphaned(before, after, bank: bankLanesOf(before.id));
 
   // --- Bulk retime (UI-R17 #3/#7) --------------------------------------------
 
@@ -399,6 +388,18 @@ class TimelineController {
     delta: delta,
     reach: reach,
   );
+
+  /// A band's lead edge pulled back at layer level: its blocks on [layer]
+  /// thinned out (I-179-Q1).
+  Layer? thinnedLayerForBlocks({
+    required Layer layer,
+    required Iterable<int> blockStarts,
+    required int pull,
+  }) => _edge.thinnedLayerForBlocks(
+    layer: layer,
+    blockStarts: blockStarts,
+    pull: pull,
+  );
   void retimeBlocksForLayer({
     required LayerId layerId,
     required Map<int, int> newLengthByStart,
@@ -427,6 +428,7 @@ class TimelineController {
     required Map<CutId, int> afterDurations,
     Map<CutId, int> beforeGaps = const {},
     Map<CutId, int> afterGaps = const {},
+    CutsLeaving? leaving,
     required String description,
   }) => _retime.commitLayerTimelineDragsWithCutDurations(
     edits: edits,
@@ -434,6 +436,7 @@ class TimelineController {
     afterDurations: afterDurations,
     beforeGaps: beforeGaps,
     afterGaps: afterGaps,
+    leaving: leaving,
     description: description,
   );
 

@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
-import 'package:flutter/foundation.dart' show ValueListenable, VoidCallback;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, VoidCallback, visibleForTesting;
 
 import '../../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../../models/bitmap_surface.dart';
@@ -26,7 +27,8 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
-import '../../services/command.dart' show WorkAhead;
+import '../../services/command.dart'
+    show PressedStep, WorkAhead, WorksAheadCommand, oneStepOf;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart'
@@ -74,6 +76,21 @@ typedef _ShownCut = ({
   CanvasSelectionRegion region,
   CutPiece? piece,
 });
+
+/// A row a pixel verb may reach ([PixelVerbs._reachableRow]): its id, and
+/// the row as its cut shows it — what its frames are found through.
+typedef _ReachedRow = ({LayerId id, Layer shown});
+
+/// How many times a row was asked whether a pixel verb reaches it — a
+/// test's count of what a range walk asks ONCE a row.
+@visibleForTesting
+int debugRowsReached = 0;
+
+/// How many cels were asked whether they hold a drawing
+/// ([PixelVerbs._holdsADrawing]) — a test's count of what a transform asks
+/// of the cels the canvas shows alone.
+@visibleForTesting
+int debugDrawingsAsked = 0;
 
 /// The PIXEL VERBS — what the 색 편집 list does to the pixels of the cels
 /// (색 변환, 픽셀 비우기, 픽셀 잘라내기 · 복사, 위 · 아래 붙여넣기) and 전체
@@ -164,9 +181,19 @@ class PixelVerbs {
   /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 · I-37-Q1
   /// (10-09): 「변형만」 — the transform reaches into a folder; every other
   /// pixel verb still refuses one.
-  List<BrushFrameKey> transformCellKeys() => [
+  List<BrushFrameKey> transformCellKeys() => _transformCels();
+
+  /// [transformCellKeys] — of [among]'s alone where it is given: a cel
+  /// [among] leaves out is never asked whether it holds a drawing.
+  ///
+  /// 🗣️관제 2026-11-20 (card opening-a-transform-box-holds-the-ui-over-
+  /// half-a-second, ⓐ): ↩️what a transform lifts where you stand asked
+  /// every cel a range names — 2,232 over 62 rows × 36 frames — and kept
+  /// the 62 the canvas shows: 10 of Ctrl+T's 75 ms on the UI thread (공통
+  /// 2026-11-20, 메인 PC 테스트 VM, S5_BA cut 352).
+  List<BrushFrameKey> _transformCels({Set<BrushFrameKey>? among}) => [
     for (final key in _cellsTheLadderNames(intoFolders: true))
-      if (_holdsADrawing(key)) key,
+      if ((among?.contains(key) ?? true) && _holdsADrawing(key)) key,
   ];
 
   /// What a transform lifts where you stand: of the cels its confirm lands
@@ -194,8 +221,7 @@ class PixelVerbs {
     final standing = _standingCel(cut);
     final lifted = {
       ?standing,
-      for (final key in transformCellKeys())
-        if (shown.contains(key)) key,
+      ..._transformCels(among: shown),
     };
     if (lifted.isEmpty || (lifted.length == 1 && lifted.single == standing)) {
       return null;
@@ -228,8 +254,10 @@ class PixelVerbs {
   /// ⛔A PASTE does not ask it (I-55): a blank cel is exactly where a paste
   /// goes — which is why this is the verb's filter over the ladder and not
   /// a rung of the ladder itself.
-  bool _holdsADrawing(BrushFrameKey key) =>
-      _renderCaches.brushFrameStore.celHasRenderableContent(key);
+  bool _holdsADrawing(BrushFrameKey key) {
+    debugDrawingsAsked += 1;
+    return _renderCaches.brushFrameStore.celHasRenderableContent(key);
+  }
 
   /// Whether [key] shows a drawing as its block does: the store's, or a live
   /// stroke's from pen-down ([_liveStrokeDraws]) — what the list's head asks
@@ -272,10 +300,33 @@ class PixelVerbs {
     return [
       for (final layerId in rows)
         if (byId[layerId] case final layer?)
-          for (var i = range.startIndex; i < range.endIndexExclusive; i++)
-            ..._rowCels(seen, layer, i, intoFolders: intoFolders),
+          ..._rowCelsAcross(
+            seen,
+            _rowsReached(seen, layer, intoFolders: intoFolders),
+            range.startIndex,
+            range.endIndexExclusive,
+          ),
     ];
   }
+
+  /// The cels of the rows [reached] at every frame from [start] to [end],
+  /// frame by frame — [_rowCels] with the rows asked ONCE, not once a
+  /// frame.
+  ///
+  /// 🔬2026-11-20 (opening-a-transform-box…): a range of 62 rows × 36
+  /// frames asked each row whether it is reached 2,232 times — a search
+  /// of the stack, its folders' eyes and a synced row's display copy at
+  /// every frame — and a box at rest asks for its cels several times a
+  /// build.
+  List<BrushFrameKey> _rowCelsAcross(
+    Cut cut,
+    List<_ReachedRow> reached,
+    int start,
+    int end,
+  ) => [
+    for (var i = start; i < end; i++)
+      for (final row in reached) ?_celAt(cut, row, i),
+  ];
 
   /// The row you are standing on: the ACTIVE layer.
   ///
@@ -315,23 +366,52 @@ class PixelVerbs {
     Layer layer,
     int? frameIndex, {
     required bool intoFolders,
-  }) {
-    if (intoFolders && layer.kind.groupsLayers) {
-      return [
-        for (final member in cut.layers.subtreeMembersOf(layer.id))
-          ?_celOf(cut, member, frameIndex),
-      ];
-    }
-    return [?_celOf(cut, layer, frameIndex)];
-  }
+  }) => [
+    for (final row in _rowsReached(cut, layer, intoFolders: intoFolders))
+      ?_celAt(cut, row, frameIndex),
+  ];
+
+  /// The rows [layer] reaches in [cut] — itself, or a FOLDER reached
+  /// [intoFolders], each row inside it — that a pixel verb may reach.
+  List<_ReachedRow> _rowsReached(
+    Cut cut,
+    Layer layer, {
+    required bool intoFolders,
+  }) => [
+    for (final member
+        in intoFolders && layer.kind.groupsLayers
+            ? cut.layers.subtreeMembersOf(layer.id)
+            : [layer])
+      ?_reachableRow(cut, member),
+  ];
 
   /// [layer]'s cel at [frameIndex] (the playhead when null), if a pixel verb
   /// may reach it.
+  BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) =>
+      switch (_reachableRow(cut, layer)) {
+        null => null,
+        final row => _celAt(cut, row, frameIndex),
+      };
+
+  /// [row]'s cel at [frameIndex] (the playhead when null).
+  BrushFrameKey? _celAt(Cut cut, _ReachedRow row, int? frameIndex) {
+    final frame = _controllers.timelineController.resolveFrameForLayer(
+      layer: row.shown,
+      frameIndex: frameIndex,
+    );
+    return frame == null
+        ? null
+        : _project.brushFrameKeyForCut(cut, row.id, frame.id);
+  }
+
+  /// [layer], if a pixel verb may reach it in [cut], as [cut] shows it —
+  /// the half of [_celOf] that is the row's, whatever the frame.
   ///
   /// [cut]'s eyes say what is switched on: an edit's ([_asAnEditSees]),
   /// or the solo's for what the canvas shows. [layer] is asked by its id
   /// there — a row handed in from the session wears the solo's.
-  BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) {
+  _ReachedRow? _reachableRow(Cut cut, Layer layer) {
+    debugRowsReached += 1;
     // 🚨HIDDEN ROWS ARE NOT TOUCHED. 유저 2026-08-27: 「해당 두 버튼은
     // 비지블이 on인 레이어만 활성화되야함. **기본적으로 그림 조작하는건
     // 그런느낌인거지**」 — the reason is general, so it is stated as the
@@ -355,14 +435,7 @@ class PixelVerbs {
     // as stored — the canvas's own, to say what it shows, and a folder's
     // members — named no cel of a synced row: the box lifted none while it
     // was open, and a folder's left out at the confirm too.
-    final frame = _controllers.timelineController.resolveFrameForLayer(
-      layer: attachedRowAsShown(layer, cut.layers),
-      frameIndex: frameIndex,
-    );
-    if (frame == null) {
-      return null;
-    }
-    return _project.brushFrameKeyForCut(cut, layer.id, frame.id);
+    return (id: layer.id, shown: attachedRowAsShown(layer, cut.layers));
   }
 
   /// Whether a pixel verb has anything to do — the buttons' gate, and the
@@ -409,17 +482,22 @@ class PixelVerbs {
   /// TVPaint for years.
   ///
   /// One undo step across every cel, however many the ladder named.
-  void runPixelVerb(CelPixelVerb verb) {
-    if (!canRunPixelVerb) {
-      return;
+  ///
+  /// The press: its command built once, as it is pressed, the [step] that
+  /// takes it and the work it has [ahead] of it — each cel's pass, for the
+  /// door that stands it behind the app's wait window
+  /// ([CelPixelOverwriteCommand.workAhead], 🗣️F-615). A press the row
+  /// could not run is a step that does nothing.
+  PressedStep pixelVerbStep(CelPixelVerb verb) {
+    final keys = canRunPixelVerb ? pixelVerbCellKeys() : const <Never>[];
+    final command = keys.isEmpty ? null : _commandFor(verb, keys);
+    if (command == null) {
+      return (ahead: null, step: () {});
     }
-    final keys = pixelVerbCellKeys();
-    if (keys.isEmpty) {
-      return;
-    }
-    if (_commandFor(verb, keys) case final command?) {
-      _project.historyManager.execute(command);
-    }
+    return (
+      ahead: command.workAhead(undo: false),
+      step: () => _project.historyManager.execute(command),
+    );
   }
 
   /// What [verb]'s row would do to the cels of [pixelVerbCellKeys] the
@@ -619,7 +697,7 @@ class PixelVerbs {
         key: cut.key,
         read: cut.read,
         // Without the hub the canvas keeps the old composite until you
-        // leave the frame (see [runPixelVerb]).
+        // leave the frame (see [pixelVerbStep]).
         cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
       ),
     );
@@ -650,7 +728,7 @@ class PixelVerbs {
   /// the whole of what the canvas SHOWS ([cutShown]), and the cut has its
   /// picture to work out [ahead] of the step that takes it; the cel's own
   /// pixels need none.
-  ({WorkAhead? ahead, VoidCallback step}) cutWhole({
+  PressedStep cutWhole({
     required CanvasReadSource source,
     required bool takeWhatItCuts,
   }) {
@@ -700,18 +778,40 @@ class PixelVerbs {
   /// 삭제불가능한건 삭제안한다거나 그런식」 — a row no verb touches keeps
   /// what it showed.
   ///
-  /// The picture is rendered and cut [ahead], off the press; the [step]
-  /// puts the piece in the hand and takes it off the cels — the shape of
-  /// every step with work ahead of it, for the door that stands them
-  /// behind the app's wait window.
+  /// The picture is rendered and cut [ahead], off the press, and the clear
+  /// of each cel worked out after it ([CelPixelOverwriteCommand.workAhead],
+  /// 🗣️F-615); the [step] puts the piece in the hand and takes it off the
+  /// cels — the shape of every step with work ahead of it, for the door
+  /// that stands them behind the app's wait window.
   ({WorkAhead ahead, VoidCallback step}) cutShown(
     CanvasSelectionRegion? outline, {
     required bool takeWhatItCuts,
   }) {
     _ShownCut? read;
+    CelPixelOverwriteCommand? clear;
     return (
-      ahead: (_) async => read = await _readShown(outline),
-      step: () => _takeShown(read, takeWhatItCuts: takeWhatItCuts),
+      ahead: (report) async {
+        final shown = read = await _readShown(outline);
+        clear = takeWhatItCuts ? _clearOf(shown) : null;
+        await clear?.workAhead(undo: false)?.call(report);
+      },
+      step: () => _takeShown(read, clear),
+    );
+  }
+
+  /// 픽셀 비우기 of [read]'s area off the cels it named — null where it cut
+  /// no piece, or with no coordinator.
+  CelPixelOverwriteCommand? _clearOf(_ShownCut? read) {
+    final coordinator = _pixelEditing.coordinator;
+    if (read == null || read.piece == null || coordinator == null) {
+      return null;
+    }
+    return CelPixelOverwriteCommand.clearPixels(
+      coordinator: coordinator,
+      targets: _targetsFor(read.shown, read.region),
+      // Without the hub the canvas keeps the old composite until you
+      // leave the frame (see [pixelVerbStep]).
+      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
     );
   }
 
@@ -753,30 +853,17 @@ class PixelVerbs {
     );
   }
 
-  /// [read]'s piece into the cut tool's hand and, with [takeWhatItCuts],
-  /// its area off the cels it named.
-  void _takeShown(_ShownCut? read, {required bool takeWhatItCuts}) {
+  /// [read]'s piece into the cut tool's hand and, with a [clear] (「원본
+  /// 삭제」), its area off the cels it named.
+  void _takeShown(_ShownCut? read, CelPixelOverwriteCommand? clear) {
     final hand = cutToolHand;
     if (hand == null) {
       return;
     }
     cutIntoTheHand(read?.piece, hand);
-    final coordinator = _pixelEditing.coordinator;
-    if (read == null ||
-        read.piece == null ||
-        !takeWhatItCuts ||
-        coordinator == null) {
-      return;
+    if (clear != null) {
+      _project.historyManager.execute(clear);
     }
-    _project.historyManager.execute(
-      CelPixelOverwriteCommand.clearPixels(
-        coordinator: coordinator,
-        targets: _targetsFor(read.shown, read.region),
-        // Without the hub the canvas keeps the old composite until you
-        // leave the frame (see [runPixelVerb]).
-        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
-      ),
-    );
   }
 
   /// The cels the canvas shows at the playhead that a pixel verb may touch,
@@ -853,21 +940,24 @@ class PixelVerbs {
       _pixelEditing.coordinator != null &&
       _cellsTheLadderNames().isNotEmpty;
 
-  /// The 색 편집 list's clipboard row [verb], pressed.
-  void runPixelClipboardVerb(PixelClipboardVerb verb) {
+  /// The 색 편집 list's clipboard row [verb], pressed — the step it takes
+  /// and what it works out ahead of it, as [pixelVerbStep]'s rows hand
+  /// theirs to the door that stands them behind the wait window: a paste
+  /// its cels' landings ([_land]), a copy nothing. A press the row could
+  /// not run is a step that does nothing.
+  PressedStep pixelClipboardVerbStep(PixelClipboardVerb verb) {
     if (!canRunPixelClipboardVerb(verb)) {
-      return;
+      return (ahead: null, step: () {});
     }
-    switch (verb) {
-      case PixelClipboardVerb.cut:
-        _copyPixels(takeWhatItCopies: true);
-      case PixelClipboardVerb.copy:
-        _copyPixels();
-      case PixelClipboardVerb.pasteAbove:
-        _pastePixels(BrushBlendMode.color);
-      case PixelClipboardVerb.pasteBelow:
-        _pastePixels(BrushBlendMode.behind);
-    }
+    return switch (verb) {
+      PixelClipboardVerb.cut => (
+        ahead: null,
+        step: () => _copyPixels(takeWhatItCopies: true),
+      ),
+      PixelClipboardVerb.copy => (ahead: null, step: _copyPixels),
+      PixelClipboardVerb.pasteAbove => _pastePixels(BrushBlendMode.color),
+      PixelClipboardVerb.pasteBelow => _pastePixels(BrushBlendMode.behind),
+    };
   }
 
   /// 픽셀 복사: the standing cel onto the pixel board — through the marquee
@@ -909,15 +999,15 @@ class PixelVerbs {
   /// ★The landing is the piece door ([pieceLandings]) — the one the cut
   /// tool's stamp lands through too (F-293): one cel or a whole range, the
   /// same code answers (절대명령 2) — one undo.
-  void _pastePixels(BrushBlendMode blend) {
+  PressedStep _pastePixels(BrushBlendMode blend) {
     final piece = _pixelBoard.piece;
     if (piece == null) {
-      return;
+      return (ahead: null, step: () {});
     }
     // ONE dab for every row: the board goes back where it was read from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece);
-    _land(
+    return _land(
       PieceStamp(
         onTheRow: (_) => dab,
         blend: blend,
@@ -936,9 +1026,15 @@ class PixelVerbs {
   /// holds CEL coordinates, the picture is the canvas's, so a posed row
   /// takes it through its placement ([stampInArtwork]) — the crossing a
   /// transform's landing makes.
-  void landCanvasPicture(CutPiece picture, {required String description}) {
+  ///
+  /// The press, as [pixelVerbStep]'s: the step that lays it, and each cel's
+  /// landing to work out ahead of it.
+  PressedStep canvasPictureStep(
+    CutPiece picture, {
+    required String description,
+  }) {
     final dab = buildCutPasteDab(picture);
-    _land(
+    return _land(
       PieceStamp(
         onTheRow: (placement) => stampInArtwork(dab, placement),
         blend: BrushBlendMode.color,
@@ -948,23 +1044,34 @@ class PixelVerbs {
   }
 
   /// [stamp] through the piece door onto the ground a press reads
-  /// ([pieceGround]), as one undo.
-  void _land(PieceStamp stamp) {
+  /// ([pieceGround]), as one undo — the press: its landings named as it is
+  /// pressed, the step that lands them, and each cel's landing worked out
+  /// ahead of it (`BrushLiftMoveHistoryCommand.workAhead`, 🗣️F-615).
+  PressedStep _land(PieceStamp stamp) {
     final coordinator = _pixelEditing.coordinator;
-    if (coordinator == null) {
-      return;
+    final landing = coordinator == null
+        ? null
+        : oneStepOf(stamp.description, [
+            for (final cel in pieceLandings(
+              coordinator: coordinator,
+              ground: pieceGround(),
+              stamp: stamp,
+              // Without the hub the canvas keeps the old composite until you
+              // leave the frame (see [pixelVerbStep]).
+              cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+            ).values)
+              cel.landing,
+          ]);
+    if (landing == null) {
+      return (ahead: null, step: () {});
     }
-    final landed = pieceLandings(
-      coordinator: coordinator,
-      ground: pieceGround(),
-      stamp: stamp,
-      // Without the hub the canvas keeps the old composite until you leave
-      // the frame (see [runPixelVerb]).
-      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+    return (
+      ahead: switch (landing) {
+        final WorksAheadCommand works => works.workAhead(undo: false),
+        _ => null,
+      },
+      step: () => _project.historyManager.execute(landing),
     );
-    _project.historyManager.executeAsOneStep(stamp.description, [
-      for (final cel in landed.values) cel.landing,
-    ]);
   }
 
   /// WHERE a held picture lands, read at the press — 픽셀 붙여넣기's ground

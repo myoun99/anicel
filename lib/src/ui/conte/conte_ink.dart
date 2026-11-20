@@ -158,6 +158,7 @@ class ConteInkLayer extends StatelessWidget {
     required this.historyManager,
     required this.viewport,
     required this.strokeActive,
+    required this.strokes,
     this.cacheInvalidationSink,
     this.pictures,
     this.pictureWindows = const [],
@@ -186,6 +187,9 @@ class ConteInkLayer extends StatelessWidget {
 
   /// Forwarded to [SheetInkLayer.strokeActive].
   final ValueNotifier<bool> strokeActive;
+
+  /// Forwarded to [SheetInkLayer.strokes].
+  final SheetInkStrokes strokes;
 
   final CacheInvalidationSink? cacheInvalidationSink;
 
@@ -233,6 +237,7 @@ class ConteInkLayer extends StatelessWidget {
       viewport: viewport,
       brushToolState: brushToolState,
       strokeActive: strokeActive,
+      strokes: strokes,
       history: historyManager.gestures,
       inkChanges: Listenable.merge([controller, pictures]),
       // The plane axis stays HERE, with the controller that has one: a

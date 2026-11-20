@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/cut_deletion_helpers.dart'
-    show projectContentEndFrame;
+    show projectContentEndFrame, trailingFramesHoldingTheEnd;
 import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -548,6 +548,31 @@ void main() {
 
       expect(command.undo, throwsStateError);
     });
+  });
+
+  // ⑱: the hold tops the trailing gap up and never takes from it — a film
+  // whose content reaches further than before keeps its own trailing gap,
+  // which a negative top-up would have shrunk.
+  test('a film that reaches further than before keeps its own trailing '
+      'gap', () {
+    Project film(int duration) => _project(
+      tracks: [
+        _track(
+          id: 'track-1',
+          cuts: [_cut(id: 'cut-a', name: 'Cut A', duration: duration)],
+        ),
+      ],
+    ).copyWith(trailingFrames: 2);
+
+    expect(
+      trailingFramesHoldingTheEnd(before: film(6), after: film(10)),
+      2,
+    );
+    expect(
+      trailingFramesHoldingTheEnd(before: film(10), after: film(6)),
+      6,
+      reason: 'LIVENESS: a film that falls short is topped up',
+    );
   });
 }
 

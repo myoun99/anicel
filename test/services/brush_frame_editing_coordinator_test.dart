@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cache_invalidation_executor.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// R19 P3b coordinator contract: sessions hold the CURRENT surface only,
 /// commits return their surface transition, and [restoreSurfaceSnapshot]
@@ -59,6 +60,9 @@ void main() {
     // that REPLACED something.
     c.commitSourceStroke(sourceDabs: [_dab(0)]);
     final before = c.currentSurfaceOf(c.activeFrameKey);
+    // Its copy come: a tile the engine alone holds weighs nothing here
+    // (`BitmapTile.ownBytes`).
+    theCopiesComeOf([before]);
 
     // A DIFFERENT colour on the same spot: repeating the identical dab
     // changes no pixel, and a stroke that changed nothing commits null.

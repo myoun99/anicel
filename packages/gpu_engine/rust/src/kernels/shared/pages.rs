@@ -149,6 +149,14 @@ impl Pages {
         source + "\n" + &put.replace("//__PUTS__", &puts)
     }
 
+    /// [`Pages::source`] and, after it, the read of a tile stored on these
+    /// pages — `stored_word(k, slot, texel)` (stored.wgsl): the pages'
+    /// source of a kernel that reads stored tiles, after `TILE_WGSL`. For
+    /// pages bound unnamed, as every such kernel binds its.
+    pub(crate) fn stored(&self) -> String {
+        self.source() + "\n" + include_str!("stored.wgsl")
+    }
+
     /// The bindings of a pass's `bound` pages, in order, the blank one past
     /// them.
     pub(crate) fn entries<'a>(

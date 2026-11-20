@@ -304,8 +304,12 @@ void main() {
       tester
           .widget<Text>(find.byKey(const ValueKey<String>('import-status')))
           .data,
-      startsWith(AppText.strings.openWaitingCloudTemplate.split('{sec}').first),
-      reason: 'the status line says whose work the wait is',
+      startsWith(
+        AppText.strings.openWaitingReadingTemplate.split('{sec}').first,
+      ),
+      reason: 'the status line says the wait — and the copy is bytes coming '
+          'in, from the provider\'s network or its cache: the app cannot '
+          'tell, so it says it is reading (F-621-Q2)',
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));

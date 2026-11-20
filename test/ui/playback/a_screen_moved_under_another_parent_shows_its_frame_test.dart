@@ -156,7 +156,11 @@ void main() {
       isTrue,
       reason: 'LIVENESS: the cel is read',
     );
-    await lendBothClocks(tester, rounds: 2);
+    // A file just opened stands bare till its frame's picture comes, in
+    // real time: waited for, not given rounds — two were what the Surface
+    // needed and too few on lavapipe (the-bundle-pr-ci-is-red-on-two-frame-
+    // screen-tests-on-linux).
+    await theFrameIsShown(tester);
     expect(
       onThePage(await shotOf(tester, screen)),
       fill,

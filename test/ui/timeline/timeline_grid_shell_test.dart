@@ -39,6 +39,7 @@ void main() {
           ground: const Color(0xFF123456),
           framesPerSecond: 30,
           layers: [folder, member],
+          attachGroups: const {},
           controllers: [controller],
           child: Builder(
             builder: (context) {

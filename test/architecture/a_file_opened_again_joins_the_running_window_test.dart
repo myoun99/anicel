@@ -6,7 +6,9 @@ import 'package:anicel/src/native/handed_files.dart';
 import '../helpers/source_body.dart';
 
 /// 🗣️open-door-windows-open-with-Q1 (유저 2026-10-22: 「떠 있는 창의 새
-/// 탭으로」): a file opened with Anicel while one runs opens in that one.
+/// 탭으로」): a file opened with Anicel while one runs opens in that one —
+/// 🗣️a-launch-with-a-file-joins-whatever-anicel-runs-Q1 (유저 2026-11-18):
+/// 「같은 실행 파일끼리만 넘긴다」, one of the same executable, the same path.
 ///
 /// A CHANNEL HAS NO COMPILER (`one_channel_dialect_test`), so this is the
 /// handover's type check: the second Anicel finds the window that takes
@@ -54,13 +56,16 @@ void main() {
   test('a second Anicel hands its files to the running window before it '
       'makes one of its own, and runs when nothing takes them', () {
     final source = File('windows/runner/main.cpp').readAsStringSync();
-    expect(
-      sourceBodyOf(source, 'BOOL CALLBACK FindTheRunningWindow('),
-      contains('GetPropW(window, kRunningWindowProp)'),
-    );
+    final find = sourceBodyOf(source, 'BOOL CALLBACK FindTheRunningWindow(');
+    expect(find, contains('GetPropW(window, kRunningWindowProp)'));
+    expect(find, contains('RunsTheExecutable(window, search->executable)'));
+    final runs = sourceBodyOf(source, 'bool RunsTheExecutable(');
+    expect(runs, contains('ExecutableOf(process)'));
+    expect(runs, contains('CompareStringOrdinal('));
     final hand = sourceBodyOf(source, 'bool HandToTheRunningWindow(');
     for (final step in [
       'files.empty()',
+      'ExecutableOf(::GetCurrentProcess())',
       'EnumWindows(FindTheRunningWindow',
       'Absolute(file)',
       'kHandedFilesTag',

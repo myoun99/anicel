@@ -41,6 +41,7 @@ Future<void> _pump(
   Map<String, int> storedBytes = const {},
   Map<String, int> conformBytes = const {},
   Map<String, DateTime> modifiedTimes = const {},
+  void Function(MediaAsset asset)? onSync,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -67,6 +68,7 @@ Future<void> _pump(
             storedBytes: storedBytes,
             conformBytes: conformBytes,
             modifiedTimes: modifiedTimes,
+            onSync: onSync,
             // RELINK-2: the panel no longer probes the disk — the session
             // caches the answer and hands down the MISSING set. The suite
             // still declares which paths exist, so the inversion happens
@@ -500,6 +502,86 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('C1 · walk'), findsOneWidget);
+  });
+
+  testWidgets('🗣️Q11: a file of every kind syncs from its uses window\'s '
+      '「동기화」 — the in-use mark is the way to where the file is used, '
+      'never the sync itself', (tester) async {
+    // 유저 2026-11-18 (card 「파일마다 배치 기본값」-Q11): 「쓰는곳이
+    // 동기화버튼으로 바뀌던건 없애고 이 방식으로 통일」.
+    const still = 'C:/img/bg.png';
+    const movie = 'C:/mov/take.mp4';
+    final callbacks = _Callbacks()
+      ..uses = {
+        foot: ['C1 · walk'],
+        still: ['C2 · BG'],
+        movie: ['C3 · take'],
+      };
+    final synced = <String>[];
+    await _pump(
+      tester,
+      callbacks,
+      assets: [
+        MediaAsset(path: foot, name: 'foot.wav'),
+        MediaAsset(path: still, name: 'bg.png'),
+        MediaAsset(path: movie, name: 'take.mp4'),
+      ],
+      onSync: (asset) => synced.add(asset.path),
+    );
+    final uses = find.byKey(const ValueKey<String>('media-asset-uses-notice'));
+    final sync = find.byKey(const ValueKey<String>('media-asset-uses-sync'));
+    for (final path in [foot, still, movie]) {
+      final mark = tester.widget<AppIconButton>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is AppIconButton &&
+              widget.keyValue == 'media-asset-in-use-$path',
+        ),
+      );
+      expect((mark.icon as Icon).icon, Icons.link, reason: path);
+      expect(mark.isSelected, isFalse, reason: path);
+      final before = [...synced];
+
+      await tester.tap(
+        find.byKey(ValueKey<String>('media-asset-in-use-$path')),
+      );
+      await tester.pumpAndSettle();
+      expect(uses, findsOneWidget, reason: path);
+      expect(synced, before, reason: 'the mark opens where, not the sync');
+
+      await tester.tap(sync);
+      await tester.pumpAndSettle();
+      expect(synced, [...before, path]);
+      expect(uses, findsNothing, reason: 'the uses window goes first');
+    }
+  });
+
+  testWidgets('a pool with no sync leaves 「동기화」 off its uses window', (
+    tester,
+  ) async {
+    final callbacks = _Callbacks()
+      ..uses = {
+        foot: ['C1 · walk'],
+      };
+    await _pump(
+      tester,
+      callbacks,
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-in-use-$foot')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('media-asset-uses-notice')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('media-asset-uses-sync')),
+      findsNothing,
+    );
   });
 
   // The other half of importing by reference: the row where a user who

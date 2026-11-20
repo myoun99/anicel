@@ -936,9 +936,14 @@ bool _speakingOrganizerAbove(Layer layer, List<Layer> layers) {
 }
 
 /// The stack-order direction of an organizer FOLDER against its base, or
-/// null when [layer] is not one.
-AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
-  final baseId = attachOrganizerBaseOf(layer, layers);
+/// null when [layer] is not one. [folders] as [attachOrganizerBaseOf] takes
+/// it.
+AttachedPlacement? _organizerFolderPlacement(
+  Layer layer,
+  List<Layer> layers, {
+  LayerFolderIndex? folders,
+}) {
+  final baseId = attachOrganizerBaseOf(layer, layers, folders: folders);
   if (baseId == null) {
     return null;
   }
@@ -953,24 +958,35 @@ AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
 /// its own [Layer.attachedPlacement], as its seat counts (`_seatsOf`).
 ///
 /// [layers] MUST be the model stack, bottom → top ([attachArrowPlacement]
-/// says why).
-AttachedPlacement? attachGroupSideOf(Layer layer, List<Layer> layers) =>
-    _organizerFolderPlacement(layer, layers) ??
+/// says why). [folders] as [attachOrganizerBaseOf] takes it.
+AttachedPlacement? attachGroupSideOf(
+  Layer layer,
+  List<Layer> layers, {
+  LayerFolderIndex? folders,
+}) =>
+    _organizerFolderPlacement(layer, layers, folders: folders) ??
     (layer.attachedToLayerId == null ? null : layer.attachedPlacement);
+
+/// Each attach group's rows by side, by its base ([attachGroupRowsBySide]);
+/// a side with none has no entry.
+typedef AttachGroups = Map<LayerId, Map<AttachedPlacement, List<Layer>>>;
 
 /// Every attach group of [stack] — a cut's layers, bottom → top — by its
 /// base, each row on its side ([attachGroupSideOf]): what a half of the
 /// base's fold takes off the screen, and whose eyes the half's colour asks
 /// (I-175). ONE walk for one base ([attachGroupRowsOn]) and for all
 /// ([attachRowsFoldedAway], the rail's eyes).
-Map<LayerId, Map<AttachedPlacement, List<Layer>>> attachGroupRowsBySide(
-  List<Layer> stack,
-) {
+///
+/// [stack] MUST be the model order ([attachArrowPlacement] says why): a
+/// rail showing a display order is handed this, worked out where the model
+/// order is in hand, never the list.
+AttachGroups attachGroupRowsBySide(List<Layer> stack) {
+  final folders = LayerFolderIndex(stack);
   final groups = <LayerId, Map<AttachedPlacement, List<Layer>>>{};
   for (final layer in stack) {
-    if (attachGroupBaseOf(layer, stack) case final baseId?
+    if (attachGroupBaseOf(layer, stack, folders: folders) case final baseId?
         when baseId != layer.id) {
-      if (attachGroupSideOf(layer, stack) case final side?) {
+      if (attachGroupSideOf(layer, stack, folders: folders) case final side?) {
         ((groups[baseId] ??= {})[side] ??= []).add(layer);
       }
     }
@@ -988,12 +1004,19 @@ List<Layer> attachGroupRowsOn(
 
 /// The sides [baseId]'s attach group has rows on ([attachGroupRowsOn]) —
 /// the halves its fold button shows (I-175; a half with none is an empty
-/// place). [stack] is its cut's, bottom → top.
+/// place). [stack] is its cut's, bottom → top — walked once for both
+/// sides, not once a side (F-620: a rail asks it twice of every row).
 Set<AttachedPlacement> attachGroupSidesOf(LayerId baseId, List<Layer> stack) =>
-    {
-      for (final side in AttachedPlacement.values)
-        if (attachGroupRowsOn(baseId, stack, side).isNotEmpty) side,
-    };
+    attachGroupSidesIn(attachGroupRowsBySide(stack), baseId);
+
+/// [attachGroupSidesOf], read off [groups] already walked.
+Set<AttachedPlacement> attachGroupSidesIn(AttachGroups groups, LayerId baseId) {
+  final group = groups[baseId];
+  return {
+    for (final side in AttachedPlacement.values)
+      if (group?[side]?.isNotEmpty ?? false) side,
+  };
+}
 
 /// The sides of [baseId]'s attach group a press reaches: [side], or with
 /// none every side the group has rows on (🗣️I-175-Q5 (가) 「양쪽 다 —
@@ -1003,10 +1026,13 @@ Set<AttachedPlacement> attachSidesReached(
   LayerId baseId,
   List<Layer> stack, {
   AttachedPlacement? side,
-}) {
-  final sides = attachGroupSidesOf(baseId, stack);
-  return side == null ? sides : sides.intersection({side});
-}
+}) => sidesReachedAmong(attachGroupSidesOf(baseId, stack), side: side);
+
+/// [attachSidesReached] of a group that has rows on [sides].
+Set<AttachedPlacement> sidesReachedAmong(
+  Set<AttachedPlacement> sides, {
+  AttachedPlacement? side,
+}) => side == null ? sides : sides.intersection({side});
 
 /// Whether [layer]'s fold a press reaches is open: a folder's own
 /// ([Layer.collapsed]) whichever half was pressed (🗣️I-175-Q3 (가) 「폴더도
@@ -1017,11 +1043,19 @@ bool? groupFoldOpen(
   Layer layer,
   List<Layer> stack, {
   AttachedPlacement? side,
+}) => groupFoldOpenOn(layer, attachGroupSidesOf(layer.id, stack), side: side);
+
+/// [groupFoldOpen] of a row whose attach group has rows on [sides] — what
+/// a rail holding a display order asks ([AttachGroups]).
+bool? groupFoldOpenOn(
+  Layer layer,
+  Set<AttachedPlacement> sides, {
+  AttachedPlacement? side,
 }) {
   if (layer.kind.groupsLayers) {
     return !layer.collapsed;
   }
-  final reached = attachSidesReached(layer.id, stack, side: side);
+  final reached = sidesReachedAmong(sides, side: side);
   if (reached.isEmpty) {
     return null;
   }

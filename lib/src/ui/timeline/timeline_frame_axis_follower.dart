@@ -128,30 +128,44 @@ class TimelineFrameAxisFollower {
   /// (F-119), and a grid that reached the axis on every build held the view
   /// where the film no longer was.
   ///
-  /// ⚠️Grown only where the frames built fall short of that view — not
-  /// where the fill papers it already, as it papers a view standing at the
-  /// start. A host reads the room for its own geometry (the storyboard's
-  /// frame end), and a room grown there for nothing painted that host again
-  /// on the frame after its first. 🧪The camera row of a storyboard built
-  /// again for nothing.
-  ///
   /// ⚠️By the view the scrollable has once it has one — the room [_cutAt]
   /// grows is measured by it, and a run's next page is built as that cut
   /// builds it ([nextPage]). Before its first layout, a view the fill rounds
   /// up to.
   int _reachingTheAxis() {
     final position = controller.hasClients ? controller.position : null;
-    final reached = endlessTrailingFrames(
-      baseFrameCount: baseFrameCount(),
-      currentTrailingFrames: _trailing,
-      scrollOffset: frameAxisOffset.value,
-      viewportExtent: position != null && position.hasViewportDimension
-          ? position.viewportDimension
-          : viewportFillFrames() * cellExtent(),
-      frameCellExtent: cellExtent(),
+    return _grownFor(
+      _trailing,
+      endlessTrailingFrames(
+        baseFrameCount: baseFrameCount(),
+        currentTrailingFrames: _trailing,
+        scrollOffset: frameAxisOffset.value,
+        viewportExtent: position != null && position.hasViewportDimension
+            ? position.viewportDimension
+            : viewportFillFrames() * cellExtent(),
+        frameCellExtent: cellExtent(),
+      ),
     );
-    return _builtWith(reached) > _builtWith(_trailing) ? reached : _trailing;
   }
+
+  /// [next] as the room the axis takes over [current]: ⚠️GROWN ONLY WHERE
+  /// THE FRAMES BUILT FALL SHORT of the view — not where the fill papers it
+  /// already, as it papers a view standing at the start. A host reads the
+  /// room for its own geometry (the storyboard's frame end), and a room
+  /// grown there for nothing painted that host again on the frame after its
+  /// first. 🧪The camera row of a storyboard built again for nothing.
+  ///
+  /// 🚨One law for every way the room changes — the axis born
+  /// ([_reachingTheAxis]), moved ([_cutAt]) and come to rest ([_settle]).
+  /// ↩️Only the first kept it: the first scroll to come to rest at the
+  /// start grew the room the fill papered already, and the host built its
+  /// whole grid for it — the first ruler pick after opening laid the
+  /// timeline out again and dropped the bottom dock's image (card
+  /// a-plain-frame-pick-stamps-the-whole-bottom-dock-again-once, 11-20).
+  int _grownFor(int current, int next) =>
+      next > current && _builtWith(next) == _builtWith(current)
+      ? current
+      : next;
 
   /// 🚨WHERE A PLAYING RUN'S NEXT PAGE TURN STANDS THIS AXIS: the bucket
   /// its windows are cut by there, and the frames it is built for there —
@@ -346,20 +360,23 @@ class TimelineFrameAxisFollower {
         offset: offset,
         cellExtent: cellExtent(),
       ),
-      trailing: endlessTrailingFrames(
-        baseFrameCount: baseFrameCount(),
-        currentTrailingFrames: trailingFrames,
-        scrollOffset: offset,
-        viewportExtent: viewport,
-        frameCellExtent: cellExtent(),
-        runwayFrames: pushedPast
-            ? endlessViewportFillFrames(
-                viewportExtent: viewport,
-                frameCellExtent: cellExtent(),
-              )
-            : 0,
-        allowShrink:
-            !position.isScrollingNotifier.value && offset <= _stoodAt,
+      trailing: _grownFor(
+        trailingFrames,
+        endlessTrailingFrames(
+          baseFrameCount: baseFrameCount(),
+          currentTrailingFrames: trailingFrames,
+          scrollOffset: offset,
+          viewportExtent: viewport,
+          frameCellExtent: cellExtent(),
+          runwayFrames: pushedPast
+              ? endlessViewportFillFrames(
+                  viewportExtent: viewport,
+                  frameCellExtent: cellExtent(),
+                )
+              : 0,
+          allowShrink:
+              !position.isScrollingNotifier.value && offset <= _stoodAt,
+        ),
       ),
     );
   }
@@ -416,13 +433,16 @@ class TimelineFrameAxisFollower {
             SchedulerPhase.persistentCallbacks) {
       return;
     }
-    final next = endlessTrailingFrames(
-      baseFrameCount: baseFrameCount(),
-      currentTrailingFrames: trailingFrames,
-      scrollOffset: position.pixels,
-      viewportExtent: position.viewportDimension,
-      frameCellExtent: cellExtent(),
-      allowShrink: true,
+    final next = _grownFor(
+      trailingFrames,
+      endlessTrailingFrames(
+        baseFrameCount: baseFrameCount(),
+        currentTrailingFrames: trailingFrames,
+        scrollOffset: position.pixels,
+        viewportExtent: position.viewportDimension,
+        frameCellExtent: cellExtent(),
+        allowShrink: true,
+      ),
     );
     if (next != trailingFrames && isMounted()) {
       rebuild(() => _trailing = next);

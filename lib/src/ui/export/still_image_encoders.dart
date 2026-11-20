@@ -1,6 +1,5 @@
 import 'dart:isolate';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
@@ -105,8 +104,17 @@ sealed class ExportLayerNode {
 }
 
 /// A row of a layered still file and its picture — drawn when the file
-/// comes to it, whole and in no blend on nothing, and let go once it is
-/// packed: one row's pixels at a time ([PsdBuilder]).
+/// comes to it, whole and in no blend on nothing, and handed over as its
+/// pixels, straight, as a layer keeps its colour: one row's pixels at a
+/// time, let go once they are packed ([PsdBuilder]).
+///
+/// 🚨PIXELS, NOT A PICTURE TO READ BACK. A row of a frame is made on the
+/// engine and read off it as every still is ([straightOf]); a picture the
+/// app's one door made of it (`pictureOf`) is one Impeller holds no texture
+/// of till its raster thread has turned, and read back at once it was
+/// none: every PSD of the image tab and the Cels tab failed 「Image was
+/// null.」 (F-547 ⑦, the Surface's release, 2026-11-19). ↩️The rows were
+/// pictures, read back here.
 final class ExportLayerRow extends ExportLayerNode {
   const ExportLayerRow({
     required super.name,
@@ -117,7 +125,7 @@ final class ExportLayerRow extends ExportLayerNode {
     required this.draw,
   });
 
-  final Future<ui.Image> Function() draw;
+  final Future<StillPixels> Function() draw;
 }
 
 /// A folder of a layered still file — a conte page's strata, a cut's folder
@@ -156,15 +164,18 @@ Future<List<int>?> encodePsd(
     width: composite.width,
     height: composite.height,
   );
-  return await document.add(nodes)
-      ? document.encode(composite, format)
-      : null;
+  await document.add(nodes);
+  return document.encode(composite, format);
 }
 
 /// A Photoshop document laid up row by row, bottom-up (I-117) — for a
 /// caller that lays it in steps of its own, as the conte's pages are. Each
-/// row is drawn, read back straight — as a layer keeps its colour — and
-/// packed in an isolate before the next is drawn ([packPsdLayer]).
+/// row's pixels are packed in an isolate before the next row is drawn
+/// ([packPsdLayer]).
+///
+/// ↩️A row whose picture gave no bytes made the document none, and its
+/// caller skipped the file — a road no read took: a read back that fails
+/// throws, as F-547 ⑦'s 「Image was null.」 came, the export's failure.
 final class LayeredPsd {
   LayeredPsd({required int width, required int height})
     : _builder = PsdBuilder(width: width, height: height);
@@ -172,53 +183,28 @@ final class LayeredPsd {
   final PsdBuilder _builder;
 
   /// [nodes] over every row laid before them, each folder's inside it.
-  /// False where a picture could not be read: the document is then no
-  /// document.
-  Future<bool> add(List<ExportLayerNode> nodes) async {
+  Future<void> add(List<ExportLayerNode> nodes) async {
     for (final node in nodes) {
-      final laid = await switch (node) {
+      await switch (node) {
         final ExportLayerRow row => _addRow(row),
         final ExportLayerFolder folder => _addFolder(folder),
       };
-      if (!laid) {
-        return false;
-      }
     }
-    return true;
   }
 
-  Future<bool> _addRow(ExportLayerRow row) async {
+  Future<void> _addRow(ExportLayerRow row) async {
     final picture = await row.draw();
-    final width = picture.width;
-    final height = picture.height;
-    final ByteData? data;
-    try {
-      data = await picture.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-    } finally {
-      picture.dispose();
-    }
-    if (data == null) {
-      return false;
-    }
-    final rgba = Uint8List.sublistView(data);
     _builder.addLayer(
       name: row.name,
-      pixels: await Isolate.run(
-        () => packPsdLayer(
-          (pixels: rgba, width: width, height: height, channels: 4),
-        ),
-      ),
+      pixels: await Isolate.run(() => packPsdLayer(picture)),
       opacity: row.opacity,
       visible: row.visible,
       blendMode: row.blendMode,
       clipped: row.clipped,
     );
-    return true;
   }
 
-  Future<bool> _addFolder(ExportLayerFolder folder) async {
+  Future<void> _addFolder(ExportLayerFolder folder) async {
     _builder.openGroup(
       name: folder.name,
       opacity: folder.opacity,
@@ -226,11 +212,8 @@ final class LayeredPsd {
       blendMode: folder.blendMode,
       clipped: folder.clipped,
     );
-    if (!await add(folder.children)) {
-      return false;
-    }
+    await add(folder.children);
     _builder.closeGroup();
-    return true;
   }
 
   /// The document over [composite], which is written as every other still

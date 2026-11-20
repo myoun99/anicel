@@ -182,6 +182,7 @@ Widget layerControlsRowFrom(
     onionSkinEnabled: facts.onionSkinEnabled,
     onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
     onLayerMarkSelected: hooks.onLayerMarkSelected,
+    kindMenu: hooks.layerKindMenu,
     onToggleLayerClip: hooks.onToggleLayerClip,
     onToggleLayerMute: hooks.onToggleLayerMute,
     onLayerTotalVolumeChangeEnd: hooks.onLayerTotalVolumeChangeEnd,
@@ -260,20 +261,23 @@ final class KeptLayerControlsRows {
   final KeptByBerth<LayerControlsRowFacts> _rows = KeptByBerth();
   final KeptByBerth<Object?> _lanes = KeptByBerth();
   final KeptByBerth<_LayerControlsRowWrap> _wrapped = KeptByBerth();
+  final KeptBerthRows _berthed = KeptBerthRows();
 
   /// [row]'s controls row in its berth of [berths] (F-244): the row
   /// [build] makes, kept while its facts hold, in the drag wrapper put on
-  /// it, kept while the row and its address do — so a commit rebuilds no
-  /// row it did not change, and a cut switch none whose face it left
-  /// alone.
+  /// it, kept while the row and its address do, in the berth that says
+  /// which layer it stands for, kept while that layer and the wrapper do
+  /// ([KeptBerthRows]) — so a commit rebuilds no row it did not change,
+  /// and a cut switch none whose face it left alone.
   Widget keep(
     RowBerthMap berths,
     TimelineDisplayRow row,
     LayerControlsRowInputs inputs,
     Widget Function() build,
-  ) => BerthRow(
-    layer: row.layer,
-    child: _wrap(
+  ) => _berthed.keep(
+    berths,
+    row,
+    _wrap(
       berths,
       row,
       _rows.keep(berths, row, inputs.facts, build),

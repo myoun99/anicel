@@ -151,14 +151,19 @@ class EffectsAndFx {
 
   /// 🗣️F-476-Q1 (유저 2026-10-27, 「b + 복제도」): a paste of effects is an
   /// ADD of them — each [holder]'s chain takes, a copy under an id of its
-  /// own, at the end of its chain, shown as an add shows it. One undo.
-  void addEffectCopies(EffectChainHolder holder, List<LayerEffect> effects) {
+  /// own, at the end of its chain, shown as an add shows it. One undo, by
+  /// [description] — a paste's, or a sound preset's, which adds its bundle
+  /// as a paste does (board audio-fx-second-effect-and-presets ②).
+  void addEffectCopies(
+    EffectChainHolder holder,
+    List<LayerEffect> effects, {
+    String description = 'Paste effects',
+  }) {
     final made = [
       for (final effect in effects)
         if (canAddEffect(holder, effect.kind))
           (EffectId id) => effect.copyWith(id: id),
     ];
-    const description = 'Paste effects';
     switch (holder) {
       case ActiveRowChain():
         _appendToActiveLayer(made, description: description);

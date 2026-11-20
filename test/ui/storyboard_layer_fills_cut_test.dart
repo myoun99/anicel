@@ -140,8 +140,8 @@ void main() {
       );
     });
 
-    test('a LEAD drag is floored by the panel it GRABBED, not by the last '
-        'one — the grabbed panel keeps one frame', () {
+    test('a LEAD drag gives up the panel it GRABBED, not the last one — down '
+        'to one frame, and past it the panel goes (I-179)', () {
       final session = sessionFor();
       session.layerStack.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
@@ -161,19 +161,25 @@ void main() {
         6,
       );
 
-      session.edgeDrag.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
-      session.edgeDrag.updateCutEdgeDrag(100);
-      session.edgeDrag.endCutEdgeDrag();
+      void pull(int frames) {
+        session.edgeDrag.beginCutEdgeDrag(
+          cutId: cutId,
+          edge: TimelineBlockEdge.start,
+        );
+        session.edgeDrag.updateCutEdgeDrag(frames);
+        session.edgeDrag.endCutEdgeDrag();
+      }
 
+      pull(4);
       expect(session.requireActiveCut.duration, duration - 4);
       expect(
         session.requireActiveCut.leadingGapFrames,
         4,
         reason: 'the head takes exactly what the cut gave up',
       );
-      // The panel the grip sat on is the one that gave the frames up, and
-      // it stopped at one. Every other panel kept its commas.
-      final row = storyboardLayerForCut(session.requireActiveCut)!;
+      // The panel the grip sat on is the one that gave the frames up, down
+      // to one. Every other panel kept its commas.
+      var row = storyboardLayerForCut(session.requireActiveCut)!;
       expect(row.timeline.keys, [0, 1]);
       expect(row.timeline[0]!.length, 1);
       expect(row.timeline[1]!.length, 19);
@@ -181,6 +187,19 @@ void main() {
       expect(
         lastKey + row.timeline[lastKey]!.length!,
         session.requireActiveCut.duration,
+      );
+
+      session.historyManager.undo();
+      pull(5);
+      expect(session.requireActiveCut.duration, 19);
+      expect(session.requireActiveCut.leadingGapFrames, 5);
+      row = storyboardLayerForCut(session.requireActiveCut)!;
+      expect(row.timeline.keys, [0], reason: 'the grabbed panel is gone');
+      expect(row.timeline[0]!.length, 19, reason: 'the last one is whole');
+      expect(
+        row.frames.map((frame) => frame.id),
+        [row.timeline[0]!.frameId],
+        reason: 'its cel went with it (F-136)',
       );
     });
 

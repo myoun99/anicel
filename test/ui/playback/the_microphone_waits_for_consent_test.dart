@@ -170,6 +170,31 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('🗣️F-615-Q2: a take starts once the canvas has landed what '
+        'its box holds — the microphone opens after it, never before', (
+      tester,
+    ) async {
+      final session = await pumpTransport(tester);
+      session.appSettings.setAudioSyncSettings(allowed);
+      AppStorage.debugMicrophoneAccess = () async => true;
+      final microphone = _Microphone();
+      session.voiceRecording.debugVoiceRecorderFactory = microphone.lend;
+      VoidCallback? waiting;
+      session.playbackRig.playback.landsBeforeARun = (start) =>
+          waiting = start;
+
+      await press(tester);
+      expect(microphone.opened, 0, reason: 'the take waits for the landing');
+      expect(waiting, isNotNull);
+
+      waiting!();
+      await tester.pump();
+      expect(microphone.opened, 1);
+      expect(session.voiceRecording.isVoiceRecording.value, isTrue);
+      await session.voiceRecording.stopVoiceRecordingAndPlace();
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('consent taken back while the OS is asked still says where '
         'to allow it', (tester) async {
       final session = await pumpTransport(tester);

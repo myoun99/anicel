@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter/widgets.dart';
-import '../../models/attached_layer_resolve.dart' show attachGroupRowsBySide;
+import '../../models/attached_layer_resolve.dart' show AttachGroups;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show LayerFolderIndex;
@@ -60,10 +60,11 @@ class RailEyes extends InheritedModel<LayerId> {
   RailEyes.forLayers(
     Iterable<Layer> layers, {
     required List<Layer> stack,
+    required AttachGroups groups,
     super.key,
     required super.child,
   }) : eyes = railEyesOf(layers, stack: stack),
-       sidesShown = railSidesShownOf(layers, stack: stack);
+       sidesShown = railSidesShownOf(layers, stack: stack, groups: groups);
 
   final Map<LayerId, RailEye> eyes;
 
@@ -123,9 +124,10 @@ Map<LayerId, RailEye> railEyesOf(
   return {for (final layer in layers) layer.id: _eyeOf(layer, folders)};
 }
 
-/// The sides of each base among [layers] whose attach rows over [stack]
-/// show anything — a row of the side SHOWN ([RailEyeShown]), the answer the
-/// eye and the label dim by.
+/// The sides of each base among [layers] whose attach rows — [groups], the
+/// stack's, worked out in the model order — show anything over [stack]: a
+/// row of the side SHOWN ([RailEyeShown]), the answer the eye and the label
+/// dim by.
 ///
 /// 🗣️I-175 (유저 2026-11-15): 「내부의 위쪽 어태치레이어가 비지블on인상태면
 /// 위쪽 어태치 접기/펼치기버튼이 활성화색. 위쪽 내부 레이어든 뭐든 다
@@ -135,8 +137,8 @@ Map<LayerId, RailEye> railEyesOf(
 Map<LayerId, Set<AttachedPlacement>> railSidesShownOf(
   Iterable<Layer> layers, {
   required List<Layer> stack,
+  required AttachGroups groups,
 }) {
-  final groups = attachGroupRowsBySide(stack);
   final folders = LayerFolderIndex(stack);
   return {
     for (final layer in layers)

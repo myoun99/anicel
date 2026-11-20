@@ -93,6 +93,9 @@ void main() {
     // The tool settings group ships closed on the left rail (slot 2).
     await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
+    // The slider is far down the settings.
+    await scrollRailToItsEnd(tester, right: false);
+    await tester.pumpAndSettle();
     final slider = find.byKey(const ValueKey<String>('guide-line-count'));
     expect(slider, findsOneWidget, reason: '⛔전제: 그 가이드의 설정이 떴다');
     await tester.ensureVisible(slider);

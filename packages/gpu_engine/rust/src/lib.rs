@@ -7,6 +7,7 @@
 //! - `platform` — the texture Flutter shows, one file per platform.
 //! - `kernels/<area>` — an area's shaders, its C ABI and its GPU tests.
 //! - `fingerprint` — the CRC-32 pinned bytes are compared by.
+//! - `submits` — what the GPU was handed and has not said it finished.
 //! - `testing` — what the GPU tests share.
 
 // The checkout this crate is built from, different in each: a build that
@@ -18,6 +19,7 @@ mod device;
 mod fingerprint;
 mod kernels;
 mod platform;
+mod submits;
 #[cfg(test)]
 mod testing;
 
@@ -33,15 +35,14 @@ mod testing;
 // with `@Native` (qa_audio_decoder.dart), for the reason the device's note
 // below gives.
 pub use audio;
-// The voice take's denoiser and the conform's resampler (H, 관제 2026-11-08
-// 05:58): `qa_audio_denoise_f32` and `qa_audio_resample*` ·
-// `qa_audio_resampler_*` are answered here, and the C's are gone.
-pub use audio_denoise;
 // The device and the mixer it plays (H, 관제 2026-11-08 07:26): the
 // `qa_audio_device_*` · `qa_audio_capture_*` · `qa_audio_buffer_*` doors and
-// `qa_audio_mix` · `qa_audio_bus_to_*` · `qa_audio_*_sizeof` — and a sound
-// row's `qa_audio_filter*` (its equalizer and compressor, 11-17 · 11-18) — are answered
-// here, and the C's are gone in the same landing. 🚨The app binds them with
+// `qa_audio_mix` · `qa_audio_bus_to_*` · `qa_audio_*_sizeof` — with the
+// conform's resampler, `qa_audio_resample*` · `qa_audio_resampler_*` (H,
+// 05:58), and a sound row's `qa_audio_filter*` (its equalizer, compressor
+// and noise removal, 11-17 · 11-18 — a voice take's noise removal too,
+// board voice-take-denoise-lands-late) — are answered here, and the C's
+// are gone in the same landing. 🚨The app binds them with
 // `@Native` (qa_audio_device.dart, qa_audio_native.dart) — never through
 // `DynamicLibrary.process()`, which on Apple's searches the C linked into
 // the executable first: while both carried a name, its answer was the

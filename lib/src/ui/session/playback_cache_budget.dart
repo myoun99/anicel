@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_cache_budget.dart';
@@ -28,6 +29,14 @@ abstract interface class PlaybackRun {
   /// The pictures every screen shows a frame from — the budget keeps them by
   /// [demand].
   FramePictures get pictures;
+
+  /// Whether a hand is on ([PlaybackPrerenderScheduler.handOn]) — what the
+  /// bars that count the frames ready wait behind (F-620-Q3).
+  ValueListenable<bool> get handOn;
+
+  /// Whether what a hand shows in flight, not written, moves what frames
+  /// are made of — anywhere in the cut, the frame stood on or not.
+  bool framesInFlight();
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -226,12 +235,39 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   ///
   /// [paintPaper]: whether the screen its run plays on paints the cut's
   /// paper ([DemandedPicture.paintPaper]) — which of its pictures it shows.
+  ///
+  /// 🗣️AND WHILE A HAND MOVES WHAT THE FRAMES ARE MADE OF, THE CUT IT IS IN
+  /// STANDS NOT READY, COUNTED ONCE IT LETS GO (F-620-Q3 = 2, 유저
+  /// 2026-11-19 「끄는 동안은 세지 않는다 — 띠는 그 컷 전체를 「준비 안
+  /// 됨」으로」): a value dragged changes the tree at every step, and every
+  /// step counted the bar anew — 🔬~7 ms of the UI thread a value (Surface,
+  /// S5_BA cut 352). Under a hand whose tree still stands — a scrub, a
+  /// stroke — the bar counts as ever ([_handMovedTheFrames]).
+  ///
+  /// 🗣️AND ONLY WHERE THE FRAMES MOVED (F-620-Q4 = 1, 유저 2026-11-19
+  /// 「카메라는 초록 그대로」): a hand that moves the tree and none of the
+  /// frames' pictures — the open cut's camera, which a frame is not made
+  /// of — counts as ever, and its bar stays as the frames stand. ↩️It asked
+  /// the tree alone: a camera dragged stood the cut not ready wherever the
+  /// bar happened to be asked under it, and green wherever nothing asked —
+  /// two answers to one drag (검증/서피스 19:30, F-620).
+  ///
+  /// 🗣️A FRAME A NAME TAG STANDS ON IS MADE OF THE CAMERA (F-620-Q8 =
+  /// 「비운다(지금 그대로)」, 유저 2026-11-20): the tag is posed in the shot
+  /// (I-67-Q1), so a camera dragged moves it on the canvas and moves that
+  /// frame's key — the cut stands not ready as under any hand that moves
+  /// frames (Q3). The bar says only whether the frames' pictures are ready.
   List<ReadyRun> playbackReadyRunsForCut(
     Cut cut,
     int start,
     int end, {
     required bool paintPaper,
   }) {
+    _hearTheHand();
+    if (cut.id == _project.activeCutOrNull?.id && _handMovedTheFrames()) {
+      _countOwed = true;
+      return const [];
+    }
     final pictures = _run.pictures;
     final runs = <ReadyRun>[];
     for (final span in compositeStructureSpansIn(
@@ -260,4 +296,130 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
     return runs;
   }
 
+  /// What a bar that counts the frames ready hears: whatever moves where a
+  /// frame stands ([FramePictures.standingMoved]), and a hand letting go of
+  /// a count put off under it ([playbackReadyRunsForCut]).
+  Listenable get readinessMoved {
+    _hearTheHand();
+    return _readinessMoved;
+  }
+
+  late final Listenable _readinessMoved = Listenable.merge([
+    _run.pictures.standingMoved,
+    _countDue,
+  ]);
+
+  /// The tree the frames were made of as the hand came down
+  /// ([FramePictures.treeStamp]) — null while no hand is on.
+  Object? _treeUnderTheHand;
+
+  /// The frame the warmer stood on as the hand came down — the open cut's
+  /// first where it stood on none — and its key then, as the bar asks for
+  /// it ([_asTheBarAsks]): what says whether the frames moved under the
+  /// hand, the tree having moved. A value is dragged at the frame stood on,
+  /// and a frame the camera places nothing on keeps its key.
+  ///
+  /// ★Signed off the stored cut ([FramePictures.keyOf]): what is shown in
+  /// flight and not written answers for itself ([PlaybackRun.framesInFlight]).
+  /// ↩️It was signed as the canvas showed it (a `stackShown` seam — 🔬검증/
+  /// 서피스 21:36, F-620: the cel number's box, shown and not written, left
+  /// the bar full, 673/673). That answer tells those drags now, and a mutant
+  /// signing it off the stored cut passed every door.
+  ({int frameIndex, FramePictureKey key})? _frameUnderTheHand;
+
+  /// Whether a bar was answered not ready under the hand, to be counted
+  /// once it lets go ([_countDue]).
+  bool _countOwed = false;
+
+  final ValueNotifier<int> _countDue = ValueNotifier<int>(0);
+
+  bool _hearing = false;
+
+  /// The hand, heard from the first asking on: the run's scheduler is made
+  /// after this budget ([PlaybackRun.handOn]), so the constructor cannot.
+  void _hearTheHand() {
+    if (_hearing) {
+      return;
+    }
+    _hearing = true;
+    _run.handOn.addListener(_handMoved);
+    _handMoved();
+  }
+
+  void _handMoved() {
+    if (_run.handOn.value) {
+      _treeUnderTheHand = _run.pictures.treeStamp?.call();
+      _frameUnderTheHand = _frameStoodOn();
+      return;
+    }
+    _treeUnderTheHand = null;
+    _frameUnderTheHand = null;
+    if (_countOwed) {
+      _countOwed = false;
+      _countDue.value += 1;
+    }
+  }
+
+  /// [_frameUnderTheHand] as it stands now — null without an open cut.
+  ({int frameIndex, FramePictureKey key})? _frameStoodOn() {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
+    final frameIndex = frameStoodOn(_run.demand, cut.id);
+    return (
+      frameIndex: frameIndex,
+      key: _run.pictures.keyOf(_asTheBarAsks(cut, frameIndex)),
+    );
+  }
+
+  /// Whether a hand is on and the frames have moved since it came down:
+  /// what it shows in flight ([PlaybackRun.framesInFlight]), or the tree
+  /// and the key of the frame stood on ([_frameUnderTheHand]).
+  ///
+  /// 🔬관제 11-19 22:4x (「어느 값이든 그림이 바뀌면 비고」 — every door, every
+  /// family): ↩️the frame stood on alone was asked, as if every value were
+  /// dragged there — a key's handle, the frames between two keys moved and
+  /// the key's own frame not, left the bar full, and a row's opacity slider
+  /// moved no stamp at all. What is shown in flight says so of itself; the
+  /// key of the frame stood on answers for what is written under the hand.
+  bool _handMovedTheFrames() {
+    final under = _treeUnderTheHand;
+    if (under == null) {
+      return false;
+    }
+    if (_run.framesInFlight()) {
+      return true;
+    }
+    if (_run.pictures.treeStamp?.call() == under) {
+      return false;
+    }
+    final stood = _frameUnderTheHand;
+    final cut = _project.activeCutOrNull;
+    return stood != null &&
+        cut != null &&
+        _run.pictures.keyOf(_asTheBarAsks(cut, stood.frameIndex)) !=
+            stood.key;
+  }
+
+  /// The frame of [cutId] the warmer stands on — what [demand] shows first
+  /// ([FrameDemand.picturesAt] 0, the playhead's) — or its first where it
+  /// shows none of it.
+  @visibleForTesting
+  static int frameStoodOn(FrameDemand? demand, CutId cutId) =>
+      demand
+          ?.picturesAt(0)
+          ?.where((shown) => shown.cut.id == cutId)
+          .firstOrNull
+          ?.frameIndex ??
+      0;
+
+  /// [cut]'s frame [frameIndex] as the timeline's bar asks for it: on its
+  /// paper, no ghosts ([playbackReadyRuns]).
+  static DemandedPicture _asTheBarAsks(Cut cut, int frameIndex) => (
+    cut: cut,
+    frameIndex: frameIndex,
+    paintPaper: true,
+    ghosts: FrameGhosts.none,
+  );
 }

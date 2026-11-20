@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show Listenable, ValueNotifier, visibleForTesting;
 
 import '../../core/lru.dart';
+import '../../core/once_a_microtask.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -12,7 +14,9 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/engine_chain_holds.dart';
+import '../../native/engine_frame_tools.dart' show appEngineFrameToolsOpen;
 import '../../services/cel_content_notes.dart';
 import '../../services/cel_looks.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
@@ -37,12 +41,18 @@ typedef FrameDrawingNow = ({
 /// which revision.
 typedef CelAsOf = ({BrushFrameKey cel, bool drawn, int revision});
 
+/// How a frame's key reads a cel where it is not read now: the cel as it
+/// was, or null for as it is now ([FramePictures.keyOfStack]).
+typedef _CelReading = CelAsOf? Function(BrushFrameKey cel);
+
 /// A frame's key as [FramePictures._standing] read it: of [cut] as it was,
-/// on [page], with each cel its tree stacks as it stood then and each
-/// plug-in's run it signs ([pluginRunsOf]).
+/// on [page], from the tree [nodes] stacked then, with each cel that tree
+/// stacks as it stood then and each plug-in's run it signs
+/// ([pluginRunsOf]).
 typedef _Stood = ({
   Cut cut,
   FramePage page,
+  List<CompositeNode<CanvasStackRow>> nodes,
   FramePictureKey key,
   List<({BrushFrameKey cel, int revision, bool drawn})> cels,
   List<FxPluginRun> runs,
@@ -257,6 +267,10 @@ class FramePictures implements PlaybackPictures {
     aheadNodes.clear();
   }
 
+  /// [canvas] stands on no frame any more — a view that drew live, gone
+  /// ([EngineChainHolds.standDown]).
+  void standDown(Object canvas) => heldNodes.standDown(canvas);
+
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
   /// 않고 새 장치를 열어 사본으로 되살린다」 — what the frames stand on went
   /// with the engine that made it: the chains held, every frame's picture
@@ -270,7 +284,10 @@ class FramePictures implements PlaybackPictures {
   /// the rest.
   void letGoWithTheirEngine() {
     letGoOfNodes();
-    _gaveNothing.clear();
+    if (_gaveNothing.isNotEmpty) {
+      _gaveNothing.clear();
+      _gaveUpTold.ask();
+    }
     store.letGoWithItsTools();
   }
 
@@ -319,13 +336,13 @@ class FramePictures implements PlaybackPictures {
       !_drawnNothing.has(cel);
 
   /// [nodes] as the picture draws them: the rows of cels it is [_drawn] of
-  /// — [asOf]'s cel as it was then.
+  /// — each [readAs] answers for as it answers.
   List<CompositeNode<CanvasStackRow>> _drawnOf(
     List<CompositeNode<CanvasStackRow>> nodes, {
-    CelAsOf? asOf,
+    _CelReading? readAs,
   }) => stackOfDrawnCels(
     nodes,
-    drawn: (cel) => cel == asOf?.cel ? asOf!.drawn : _drawn(cel),
+    drawn: (cel) => readAs?.call(cel)?.drawn ?? _drawn(cel),
   );
 
   /// The key of the picture a screen shows where it stacks [nodes] for
@@ -341,17 +358,51 @@ class FramePictures implements PlaybackPictures {
   /// [page] is the page the picture is drawn on where it is not the one
   /// [picture] is ([pageOf]) — a file's rows on the ground it is made on
   /// (`frameOnTheEngine`).
+  ///
+  /// [nodes] the frame's key was read from and stand as read ([_standing])
+  /// are signed by that key, not again.
   FramePictureKey keyOfStack(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     CelAsOf? asOf,
     FramePage? page,
-  }) => framePictureKeyOf(
-    _drawnOf(nodes, asOf: asOf),
-    cutId: picture.cut.id,
-    page: page ?? pageOf(picture),
-    revisionOf: (cel) => cel == asOf?.cel ? asOf!.revision : _revisionOf(cel),
-  );
+  }) {
+    final stamp = asOf == null && page == null ? treeStamp?.call() : null;
+    final kept = stamp == null
+        ? null
+        : _keptStanding(picture, stamp, from: nodes);
+    return kept?.key ??
+        _keyOfStackRead(
+          nodes,
+          picture,
+          page: page,
+          readAs: asOf == null ? null : (cel) => cel == asOf.cel ? asOf : null,
+        );
+  }
+
+  /// [keyOfStack] with each cel [readAs] answers for read as it answers —
+  /// as it was then, or as it was read already — and every other as it is
+  /// now.
+  FramePictureKey _keyOfStackRead(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    FramePage? page,
+    _CelReading? readAs,
+  }) {
+    _keysSigned += 1;
+    return framePictureKeyOf(
+      _drawnOf(nodes, readAs: readAs),
+      cutId: picture.cut.id,
+      page: page ?? pageOf(picture),
+      revisionOf: (cel) => readAs?.call(cel)?.revision ?? _revisionOf(cel),
+    );
+  }
+
+  /// How many frames' keys were signed from their trees ([keyOfStack]) — a
+  /// test's word that a key read already was handed over, not signed again.
+  @visibleForTesting
+  int get keysSigned => _keysSigned;
+  int _keysSigned = 0;
 
   /// The key of the frame [nodes] stack for [picture] AS IT STANDS — signed
   /// by every row of it, a cel drawn or not ([framePictureKeyOf]): a tree
@@ -364,12 +415,21 @@ class FramePictures implements PlaybackPictures {
   FramePictureKey keyAsItStands(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture,
-  ) => framePictureKeyOf(
-    nodes,
-    cutId: picture.cut.id,
-    page: pageOf(picture),
-    revisionOf: _revisionOf,
-  );
+  ) {
+    _standsSigned += 1;
+    return framePictureKeyOf(
+      nodes,
+      cutId: picture.cut.id,
+      page: pageOf(picture),
+      revisionOf: _revisionOf,
+    );
+  }
+
+  /// How many trees were signed as they stand ([keyAsItStands]) — a test's
+  /// word that a frame handed anew is signed once.
+  @visibleForTesting
+  int get standsSigned => _standsSigned;
+  int _standsSigned = 0;
 
   /// The key [picture]'s picture is kept under.
   FramePictureKey keyOf(DemandedPicture picture) => _standing(picture).key;
@@ -406,44 +466,75 @@ class FramePictures implements PlaybackPictures {
   /// (11-14, S5_BA cut 352 · 68 rows, its frames refilled after a stroke,
   /// windowless): the tree stacked and signed anew at every asking was 42%
   /// of the UI thread's samples, the engine's verbs 6%.
+  ///
+  /// 🚨THE FRAME THE WALK MAKES IS THE TREE ITS KEY WAS READ FROM ([nodes]
+  /// of it): weighed ([bytesToMake]), read in ([readIn]), drawn and keyed
+  /// ([make]) from that one stacking. ↩️Each stacked the frame again, and
+  /// the making signed it again once drawn — five stackings and two
+  /// signings a frame. 🔬Main PC, S5_BA cut 352 copy · 37 rows, a band
+  /// filled (profile, 11-19, baking-ahead-allocates-the-ui-isolate-into-gc):
+  /// the trees stacked 34–36 ms and the keys signed and compared 40–55 ms
+  /// of the UI thread's 505–567, and the GC they fed 221–227 ms of it.
   _Stood _standing(DemandedPicture picture) {
     final stamp = treeStamp?.call();
     if (stamp == null) {
       return _stoodNow(picture);
     }
+    // A run that cannot say whether it stands ([FxPluginRun.standsAsBound])
+    // is kept too, and stacked anew at the next asking all the same.
+    return _keptStanding(picture, stamp) ??
+        (_stood[_askOf(picture)] = _stoodNow(picture));
+  }
+
+  /// What [picture] is kept under in [_stood].
+  static ({CutId cut, int frame, bool paper, FrameGhosts ghosts}) _askOf(
+    DemandedPicture picture,
+  ) => (
+    cut: picture.cut.id,
+    frame: picture.frameIndex,
+    paper: picture.paintPaper,
+    ghosts: picture.ghosts,
+  );
+
+  /// [picture]'s reading kept under [stamp] where it stands ([_standing]) —
+  /// null where none is kept, or what it read moved. [from] asks for the
+  /// reading of that tree alone: null where the one kept was stacked
+  /// otherwise.
+  _Stood? _keptStanding(
+    DemandedPicture picture,
+    Object stamp, {
+    List<CompositeNode<CanvasStackRow>>? from,
+  }) {
     if (_stoodUnder != stamp) {
       _stood.clear();
       _stoodUnder = stamp;
     }
-    final ask = (
-      cut: picture.cut.id,
-      frame: picture.frameIndex,
-      paper: picture.paintPaper,
-      ghosts: picture.ghosts,
-    );
+    final ask = _askOf(picture);
     final kept = _stood[ask];
-    final cels = _celsNow();
-    if (kept != null &&
-        identical(kept.cut, picture.cut) &&
-        kept.page == pageOf(picture) &&
-        kept.runs.every((run) => run.standsAsBound) &&
-        (kept.celsRead == cels || _celsStand(kept))) {
-      assert(!debugCheckFrameStanding || _standsAsRead(kept, picture));
-      if (kept.celsRead != cels) {
-        _stood[ask] = (
-          cut: kept.cut,
-          page: kept.page,
-          key: kept.key,
-          cels: kept.cels,
-          runs: kept.runs,
-          celsRead: cels,
-        );
-      }
-      return kept;
+    if (kept == null ||
+        (from != null && !identical(kept.nodes, from)) ||
+        !identical(kept.cut, picture.cut) ||
+        kept.page != pageOf(picture) ||
+        !kept.runs.every((run) => run.standsAsBound)) {
+      return null;
     }
-    // A run that cannot say whether it stands ([FxPluginRun.standsAsBound])
-    // is kept too, and stacked anew at the next asking all the same.
-    return _stood[ask] = _stoodNow(picture);
+    final cels = _celsNow();
+    if (kept.celsRead != cels && !_celsStand(kept)) {
+      return null;
+    }
+    assert(!debugCheckFrameStanding || _standsAsRead(kept, picture));
+    if (kept.celsRead != cels) {
+      _stood[ask] = (
+        cut: kept.cut,
+        page: kept.page,
+        nodes: kept.nodes,
+        key: kept.key,
+        cels: kept.cels,
+        runs: kept.runs,
+        celsRead: cels,
+      );
+    }
+    return kept;
   }
 
   /// Whether each cel [kept]'s tree stacks stands at the revision and the
@@ -476,19 +567,35 @@ class FramePictures implements PlaybackPictures {
     );
   }
 
-  /// [picture]'s key as its tree stacks now ([_standing]).
+  /// [picture]'s key as its tree stacks now ([_standing]): each cel it
+  /// stacks read once, for the key and for what is kept of it.
+  ///
+  /// 🔬Read twice, each cel's drawn-ness and revision were asked of the
+  /// store again for every frame a ruler's bar keys after an edit — the
+  /// two askings 168 and 55 of the bar's 966 sampled ms (card
+  /// an-eye-toggle-holds-the-ui-thread, 11-18, S5_BA cut 352 · 68 rows, 40
+  /// eye toggles).
   _Stood _stoodNow(DemandedPicture picture) {
     final celsRead = _celsNow();
     final nodes = stackOf(picture);
     final page = pageOf(picture);
+    final cels = [for (final cel in stackedCelsOf(nodes)) celNow(cel)];
+    // By the cel's own object: the key reads the same rows' cels.
+    final read = Map<BrushFrameKey, CelAsOf>.identity();
+    for (final at in cels) {
+      read[at.cel] = at;
+    }
     return (
       cut: picture.cut,
       page: page,
-      key: keyOfStack(nodes, picture, page: page),
-      cels: [
-        for (final cel in stackedCelsOf(nodes))
-          (cel: cel, revision: _revisionOf(cel), drawn: _drawn(cel)),
-      ],
+      nodes: nodes,
+      key: _keyOfStackRead(
+        nodes,
+        picture,
+        page: page,
+        readAs: (cel) => read[cel],
+      ),
+      cels: cels,
       runs: pluginRunsOf(nodes),
       celsRead: celsRead,
     );
@@ -530,6 +637,24 @@ class FramePictures implements PlaybackPictures {
   /// Whether the making of [key]'s frame threw, and nothing more of it is
   /// to come.
   bool gaveUpAt(FramePictureKey key) => _stateAt(key) == PictureState.gaveUp;
+
+  /// Whether [key]'s frame's picture is still to come — not there, nor
+  /// given up on: what a move waits for (`StandsWithItsPicture`), and a
+  /// canvas stands bare for in another cut (`FramePictureView`).
+  bool toComeAt(FramePictureKey key) => _stateAt(key) == PictureState.toCome;
+
+  /// Whether a view of these pictures has put a frame on its screen yet.
+  /// Till one has, nothing of the project was there to stand on — a file
+  /// just opened (🗣️the-standing-canvas-composes-a-frame-twice-before-its-
+  /// picture-Q7 = blank, 유저 2026-11-18 「빈 종이로 기다린다」) — and a view
+  /// stands bare till its first frame's picture comes (`FramePictureView`).
+  /// ⛔Not each view's own: a view made again over a screen that showed —
+  /// another engine's, a switch of what it draws — stands as it stood.
+  bool get anyOnScreen => _anyOnScreen;
+  bool _anyOnScreen = false;
+
+  /// A view put a frame on its screen ([anyOnScreen]).
+  void putOnScreen() => _anyOnScreen = true;
 
   PictureState _stateAt(FramePictureKey key) => _isThere(key)
       ? PictureState.there
@@ -579,24 +704,71 @@ class FramePictures implements PlaybackPictures {
   void noteFailureAt(FramePictureKey key) {
     if (!_isThere(key)) {
       _gaveNothing.keep(key, true);
+      _gaveUpTold.ask();
     }
   }
 
-  /// What the picture will weigh: the tiles the engine keeps of its
-  /// world ([EngineStackScreen.bytesOver]), where every cel it draws is in
-  /// hand ([readIn]) — and else of the page's. ⛔Reads nothing: a walk
-  /// weighs the frames it asks for ahead before it reads them.
+  /// Tells that what [standingOf] answers of a frame may have moved: a
+  /// picture laid or let go of ([EngineFramePictureStore.laidOrLetGo]), a
+  /// making given up on ([noteFailureAt]) or let be again
+  /// ([letGoWithTheirEngine]), a cel found unreadable, a cel's pixels
+  /// edited — what a bar that counts the frames ready hears (the green
+  /// band).
+  ///
+  /// 🗣️the-screen-shows-a-frame-the-green-band-leaves-empty (유저
+  /// 2026-11-15): a frame a canvas made was on the screen, and the band
+  /// filled there only once the walk moved on. ↩️The band heard the walk's
+  /// progress — the pictures the walk laid and no other: a canvas's and a
+  /// move's ([makeShown]) went into the store unheard.
+  late final Listenable standingMoved = Listenable.merge([
+    store.laidOrLetGo,
+    _gaveUp,
+    layerImages.unreadable.revision,
+    layerImages.frameStore.celPixelRevision,
+  ]);
+
+  /// Bumped once a making given up on is noted, or they are all let be
+  /// again with their engine ([standingMoved]).
+  final ValueNotifier<int> _gaveUp = ValueNotifier<int>(0);
+  late final _gaveUpTold = OnceAMicrotask(() => _gaveUp.value += 1);
+
+  /// What the picture will weigh: the tiles the engine makes of it laid
+  /// afresh ([EngineStackScreen.bytesToMake]) — none for a tile its
+  /// pictures keep one of the same input for —, where every cel it draws
+  /// is in hand ([readIn]) — and else of the page's ([EngineStackScreen.
+  /// bytesOver]). ⛔Reads nothing: a walk weighs the frames it asks for
+  /// ahead before it reads them.
+  ///
+  /// ⚠️Where the engine cannot plan it yet — its tools still opening, its
+  /// chains' kernels still to compile ([FrameKernelsToCome]) — every tile
+  /// its world meets: more than it will weigh, never less. ⏳And a tile an
+  /// effect chain's picture is laid on is weighed as made, whoever keeps
+  /// one: weighed ahead, a frame's chains are held under no number
+  /// ([EngineChainHolds]) — holding one is running it.
   @override
-  int bytesToMake(DemandedPicture picture) {
-    final nodes = stackOf(picture);
+  Future<int> bytesToMake(DemandedPicture picture) async {
+    final nodes = _standing(picture).nodes;
     final canvasSize = pageOf(picture).canvasSize;
-    return EngineStackScreen.bytesOver(
-      stackedCelsOf(_drawnOf(nodes)).every(
-            (cel) => _aheadLooks.holds(cel, canvasSize: canvasSize),
-          )
-          ? drawingNow(nodes, picture, looks: _aheadLooks).frame.extent
-          : canvasSize.canvasRect,
-    );
+    final inHand = stackedCelsOf(
+      _drawnOf(nodes),
+    ).every((cel) => _aheadLooks.holds(cel, canvasSize: canvasSize));
+    if (!inHand) {
+      return EngineStackScreen.bytesOver(canvasSize.canvasRect);
+    }
+    final frame = drawingNow(nodes, picture, looks: _aheadLooks).frame;
+    final tools = appEngineFrameToolsOpen;
+    if (tools != null) {
+      try {
+        return await EngineStackScreen.bytesToMake(
+          frame,
+          tools.composite,
+          tools.letters,
+        );
+      } on FrameKernelsToCome {
+        // Weighed as the world it holds, below.
+      }
+    }
+    return EngineStackScreen.bytesOver(frame.extent);
   }
 
   /// Whether every cel [nodes] draw for [picture] is in hand — its stored
@@ -624,7 +796,7 @@ class FramePictures implements PlaybackPictures {
     _inTheMaking.add(ahead);
     try {
       await readInStack(
-        stackOf(picture),
+        _standing(picture).nodes,
         picture,
         looks: _aheadLooks,
         into: ahead,
@@ -711,22 +883,22 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
     bool Function() due = notDue,
   }) => _make(
-    () => stackOf(picture),
+    () => _standing(picture).nodes,
     picture,
     shouldAbort: shouldAbort,
     due: due,
     shownNow: false,
-    keepsNodes: false,
     looks: _aheadLooks,
   ).whenComplete(_aheadLooks.nextFrame);
 
   /// Makes the frame a screen stands on — stacked as that screen stacks it
   /// ([nodes]: a drag in flight, the row a pen is on) — at once, at the
   /// front of the store's line: the frame on screen before any made ahead
-  /// of it ([make] has the rest). Where it [keepsNodes] — a canvas that
-  /// stands on it to draw — the pictures its nodes are drawn into are what
-  /// is held ([heldNodes]), and a frame of its page alone is laid too
-  /// ([drawsOnlyItsPage]): the pen's steps patch into it.
+  /// of it ([make] has the rest). For the [canvas] that stands on it to
+  /// draw, if one does, the pictures its nodes are drawn into are what is
+  /// held ([heldNodes]) — what that canvas stood on before let go of
+  /// ([EngineChainHolds.settleOnce]) — and a frame of its page alone is
+  /// laid too ([drawsOnlyItsPage]): the pen's steps patch into it.
   ///
   /// ⛔Not every screen's: a screen that draws nothing live patches no step
   /// in, and a frame it laid let go of the nodes of the frame a pen is on
@@ -735,14 +907,14 @@ class FramePictures implements PlaybackPictures {
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     required bool Function() shouldAbort,
-    required bool keepsNodes,
+    Object? canvas,
   }) => _make(
     () => nodes,
     picture,
     shouldAbort: shouldAbort,
     due: () => true,
     shownNow: true,
-    keepsNodes: keepsNodes,
+    canvas: canvas,
   );
 
   /// 🚨THE PICTURE A PANEL IS CUT FROM (F-533-Q8, 유저 2026-11-05: 「프레임
@@ -785,7 +957,6 @@ class FramePictures implements PlaybackPictures {
             shouldAbort: shouldAbort,
             due: notDue,
             shownNow: false,
-            keepsNodes: false,
             page: page,
             looks: looks,
           )) {
@@ -837,7 +1008,7 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
     required bool Function() due,
     required bool shownNow,
-    required bool keepsNodes,
+    Object? canvas,
     FramePage? page,
     CelLooks? looks,
   }) async {
@@ -863,7 +1034,7 @@ class FramePictures implements PlaybackPictures {
         shouldAbort: shouldAbort,
         due: due,
         shownNow: shownNow,
-        keepsNodes: keepsNodes,
+        canvas: canvas,
         page: page,
         looks: looks,
         ahead: ahead,
@@ -881,10 +1052,10 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
     required bool Function() due,
     required bool shownNow,
-    required bool keepsNodes,
     required FramePage? page,
     required CelLooks? looks,
     required LooksAhead? ahead,
+    Object? canvas,
   }) async {
     if (shouldAbort()) {
       return false;
@@ -905,14 +1076,15 @@ class FramePictures implements PlaybackPictures {
     final ghosts = film != null && store.holds(film)
         ? made.frame.whereTheGhostsShow
         : null;
-    if ((keepsNodes || !drawsOnlyItsPage(key)) &&
+    if ((canvas != null || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
           made.frame,
           shouldAbort,
           due,
           over: ghosts == null ? null : (film: film!, fresh: ghosts),
-          holds: shownNow && keepsNodes ? heldNodes : aheadNodes,
+          holds: canvas == null ? aheadNodes : heldNodes,
+          standing: canvas,
           shownNow: shownNow,
         )) {
       return false;
@@ -926,8 +1098,9 @@ class FramePictures implements PlaybackPictures {
   }
 
   /// Lays [key]'s picture of [frame] in its turn ([make]), over the film
-  /// [over] says, its chains held in [holds]; false where the turn did not
-  /// come, or [shouldAbort] left the store's line before its lay was made.
+  /// [over] says, its chains held in [holds] for the canvas [standing]
+  /// stands for, if any; false where the turn did not come, or
+  /// [shouldAbort] left the store's line before its lay was made.
   Future<bool> _lay(
     FramePictureKey key,
     StackedFrame frame,
@@ -935,6 +1108,7 @@ class FramePictures implements PlaybackPictures {
     bool Function() due, {
     required ({FramePictureKey film, ui.Rect fresh})? over,
     required EngineChainHolds holds,
+    required Object? standing,
     required bool shownNow,
   }) async {
     final turn = await quietTurns.inAQuiet(
@@ -960,6 +1134,7 @@ class FramePictures implements PlaybackPictures {
         gone: shouldAbort,
         over: over,
         holds: holds,
+        standing: standing,
       );
     } on Object {
       unawaited(turn.gaveUp());

@@ -118,8 +118,18 @@ void main() {
                     : (
                         liftToken: 7,
                         floats: [
-                          (stampDab: a, showsOn: slotA, landsOn: null),
-                          (stampDab: b, showsOn: slotB, landsOn: null),
+                          (
+                            stampDab: a,
+                            showsOn: slotA,
+                            landsOn: null,
+                            surface: null,
+                          ),
+                          (
+                            stampDab: b,
+                            showsOn: slotB,
+                            landsOn: null,
+                            surface: null,
+                          ),
                         ],
                       ),
                 onLiftConfirmed: (token, stamps, carry) {

@@ -104,7 +104,18 @@ void main() {
   StackRun runOf(LayerFrameImageCache images) {
     final store = aStoreOfPictures();
     addTearDown(store.dispose);
-    return runOver(images, store, canvasSize: canvasSize, stackOf: (_) => []);
+    final run = runOver(
+      images,
+      store,
+      canvasSize: canvasSize,
+      stackOf: (_) => [],
+    );
+    // The canvas the ghosts lie over put the file's frames on screen: not
+    // a file just opened, which stands bare till its first frame's picture
+    // comes (the-standing-canvas-composes-a-frame-twice-before-its-picture-
+    // Q7).
+    run.pictures.putOnScreen();
+    return run;
   }
 
   /// The ghosts' view at [frame]: [ghosts], over a canvas that draws

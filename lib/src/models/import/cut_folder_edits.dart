@@ -80,9 +80,15 @@ class CutFolderEdits {
   }
 
   /// Whether a row of [cels] cels can come in as [kind]: an image layer
-  /// holds ONE cel a cut by definition ([LayerKind.holdsSingleCel]).
+  /// holds ONE cel a cut by definition ([LayerKind.holdsSingleCel]) — or
+  /// none yet, as an image row may (F-98: 「이미지 레이어도 프레임이 없는
+  /// 상태는 존재함」).
+  ///
+  /// 🗣️F-613-Q1 (유저 2026-11-19): 「허용 — 빈 이미지 행이 된다」, of an
+  /// empty row turned from its type button. ↩️Exactly one: the import that
+  /// wrote this never met a row of none.
   static bool holds(LayerKind kind, int cels) =>
-      !kind.holdsSingleCel || cels == 1;
+      !kind.holdsSingleCel || cels <= 1;
 
   /// [picked], for a layer of [cels] cels where it [holds] that many — an
   /// animation where it does not.

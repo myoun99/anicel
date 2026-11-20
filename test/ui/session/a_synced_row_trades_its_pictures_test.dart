@@ -28,8 +28,6 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const tileSize = 256;
-
   /// A session whose base has cels on frames 0 and 2, under [mirrors]
   /// synced rows above it — each cel painted its own red, the coordinator
   /// the canvas would hand the pixel verbs set up.
@@ -55,10 +53,7 @@ void main() {
         s.layerById(base)!.frames.first.id,
       ),
       frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: cut.canvasSize,
-        tileSize: tileSize,
-      ),
+      sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
       historyPolicy: const BrushHistoryPolicy(),
     );
     var red = 10;
@@ -272,20 +267,25 @@ void main() {
   });
 }
 
-/// Paints [red] over the first tile of [row]'s cel [cel].
+/// Paints [red] over the first tile of [row]'s cel [cel] — a tile of the
+/// side the app cuts its cels in ([defaultCelTileSize]): the engine stores
+/// no other, and refuses a cel of another the moment a frame on it is
+/// weighed ahead. 256 here went red on CI's Linux, where the engine opened
+/// within this file (11-21).
 void paint(EditorSessionManager s, LayerId row, FrameId cel, int red) {
+  const side = defaultCelTileSize;
   final cut = s.requireActiveCut;
-  final bytes = Uint8List(256 * 256 * 4);
-  for (var pixel = 0; pixel < 256 * 256; pixel += 1) {
+  final bytes = Uint8List(side * side * 4);
+  for (var pixel = 0; pixel < side * side; pixel += 1) {
     bytes.setRange(pixel * 4, pixel * 4 + 4, [red, 0, 0, 255]);
   }
   s.pixelEditing.coordinator!.restoreSurfaceSnapshot(
     s.brushFrameKeyForCut(cut, row, cel),
     BitmapSurface(
       canvasSize: cut.canvasSize,
-      tileSize: 256,
+      tileSize: side,
       tiles: {
-        TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: bytes),
+        TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: bytes),
       },
     ),
   );

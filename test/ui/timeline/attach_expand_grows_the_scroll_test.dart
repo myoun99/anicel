@@ -72,6 +72,7 @@ onToggleLayerTimesheet: (_) {},
 onLayerMarkSelected: (_, _) {},
 attachFoldedRowIds: collapsed,
 onToggleGroupFold: (_, _) {},
+attachGroups: attachGroupRowsBySide(layers),
 attachArrowPlacementOf: (layerId) => attachArrowPlacement(
             layers.firstWhere((l) => l.id == layerId),
             layers,
@@ -226,6 +227,7 @@ attachFoldedRowIds: collapsed,
 onToggleGroupFold: (_, _) => setState(
                   () => collapsed = collapsed.isEmpty ? bRiders : {},
                 ),
+attachGroups: attachGroupRowsBySide(layers),
 attachArrowPlacementOf: (layerId) => attachArrowPlacement(
                   layers.firstWhere((l) => l.id == layerId),
                   layers,

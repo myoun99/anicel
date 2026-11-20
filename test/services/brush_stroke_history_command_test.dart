@@ -20,6 +20,7 @@ import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/selection_clip.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/tiles_on_the_engine.dart';
 
 /// R19 P3b: the stroke command owns its pre/post SURFACE references —
 /// undo/redo are byte-exact snapshot restores through the app stack.
@@ -105,6 +106,10 @@ void main() {
     expect(seeding.estimatedRetainedBytes(undone: false), 0);
 
     final before = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    // The tile the seeding stroke landed is the engine's alone till its
+    // copy comes, and weighs nothing here till then
+    // (`BitmapTile.ownBytes`).
+    theCopiesComeOf([before]);
     final command = BrushStrokeHistoryCommand(
       coordinator: coordinator,
       strokeData: BrushStrokeCommitData(sourceDabs: [_dab(1)]),
@@ -160,6 +165,11 @@ void main() {
           strokeData: BrushStrokeCommitData(sourceDabs: [_dab(i)]),
         ),
       );
+      // What it landed weighs once its copy is here
+      // (`BitmapTile.ownBytes`): the next stroke's entry holds it.
+      theCopiesComeOf([
+        coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+      ]);
     }
     expect(history.undoCount, 3);
     expect(history.retainedBytes, greaterThan(0));

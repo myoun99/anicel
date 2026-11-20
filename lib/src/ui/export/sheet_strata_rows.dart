@@ -1,6 +1,8 @@
 import 'dart:ui' as ui;
 
 import '../../models/sheet_paint_layer.dart';
+import '../../services/media/still_file_writing.dart' show StillPixels;
+import '../../services/straight_rgba_image.dart' show straightRgbaOf;
 import '../text/app_strings.dart';
 import 'still_image_encoders.dart' show ExportLayerRow;
 
@@ -24,8 +26,27 @@ List<ExportLayerRow> sheetStrataRows(
   Future<ui.Image> Function(Set<SheetPaintLayer> layers) draw,
 ) => [
   for (final stratum in strata)
-    ExportLayerRow(name: _nameOf(stratum), draw: () => draw({stratum})),
+    ExportLayerRow(
+      name: _nameOf(stratum),
+      draw: () async => _pixelsOf(await draw({stratum})),
+    ),
 ];
+
+/// [picture] — one Flutter drew of a sheet, which the raster thread made —
+/// as a row's pixels ([ExportLayerRow]), and let go.
+Future<StillPixels> _pixelsOf(ui.Image picture) async {
+  final (width, height) = (picture.width, picture.height);
+  try {
+    return (
+      pixels: await straightRgbaOf(picture),
+      width: width,
+      height: height,
+      channels: 4,
+    );
+  } finally {
+    picture.dispose();
+  }
+}
 
 String _nameOf(SheetPaintLayer stratum) => switch (stratum) {
   SheetPaintLayer.paper => AppText.notation.exStratumPaper,

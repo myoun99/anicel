@@ -160,6 +160,48 @@ ExportCelsSelection resolveExportCelsSelection({
   );
 }
 
+/// The rows [cut]'s film is drawn of ([ExportCelKind.video]): of the rows
+/// it offers ([exportFilmOffers]), the ones the label picks — or the hand
+/// put in ([ExportCelsCutDelta.filmLayers]).
+///
+/// 🗣️F-618 ① (유저 2026-11-19): 「캔버스 보이는대로가아니라 … 색라벨 고른
+/// 초기상태처럼 LO인레이어들 다 on」 — the rules are the tab's own filters
+/// as they pick the rows that wear a label ([ExportCelKind.wearsTheLabel]),
+/// with the label's paper, whatever kinds of file are written. The hand's
+/// answers to the cels ([ExportCelsCutDelta.layerOverrides],
+/// [ExportCelsCutDelta.skippedCels]) do not reach it. ↩️The film drew the
+/// rows the canvas showed.
+Set<LayerId> exportFilmLayersOf({
+  required Cut cut,
+  required CelsExportSpec spec,
+  ExportCelsCutDelta? delta,
+}) {
+  final rules = resolveExportCelsSelection(
+    cut: cut,
+    spec: spec.copyWith(
+      kinds: {
+        for (final kind in ExportCelKind.values)
+          if (kind.wearsTheLabel) kind,
+      },
+    ),
+  );
+  final byRule = {
+    for (final layer in [...rules.celLayers, ...rules.paperLayers]) layer.id,
+  };
+  final hand = delta?.filmLayers ?? const {};
+  return {
+    for (final layer in cut.layers)
+      if (exportFilmOffers(layer) &&
+          (hand[layer.id] ?? byRule.contains(layer.id)))
+        layer.id,
+  };
+}
+
+/// Whether the film's 출력할 레이어 offers [layer]: a row whose pictures
+/// export ([LayerKind.exportsCels]) — 🗣️F-618 ①: 「동영상의 출력할 레이어는
+/// 모든 레이어가 보여지게될듯」.
+bool exportFilmOffers(Layer layer) => layer.kind.exportsCels;
+
 /// The 용지 rows [spec] applies to [cut]'s cels: while 용지 적용 is on, the
 /// paper rows that are the paper of what the filter is about
 /// ([paperOfLabel]); none while it is off. Asked of the cut a cel is
@@ -213,11 +255,22 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
   if (!(isAttachedLayer(layer) ? spec.attach : spec.base)) {
     return false;
   }
-  if (kind.wearsTheLabel && !markWearsLabel(layer.mark, spec.label)) {
+  if (!exportCelsLabelAdmits(layer, kind, spec)) {
     return false;
   }
   return spec.take == null || layer.mark.take == spec.take;
 }
+
+/// The colour label filter of [layer], a row of [kind]: a row of a kind
+/// that wears the label ([ExportCelKind.wearsTheLabel]) passes when its OWN
+/// mark wears [CelsExportSpec.label]; the others pass as their kind is on.
+/// The rules ask it ([_exportsByRule]), and the Cels list asks it of a row
+/// with no file ([ExportCelsListing.layerRows]).
+bool exportCelsLabelAdmits(
+  Layer layer,
+  ExportCelKind kind,
+  CelsExportSpec spec,
+) => !kind.wearsTheLabel || markWearsLabel(layer.mark, spec.label);
 
 /// The 시트 filter: off, everything passes; on, a row passes when it — or,
 /// for an attach row, its base — is on the timesheet.

@@ -1,3 +1,5 @@
+import 'dart:async' show Completer;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -36,7 +38,13 @@ Future<void> toggleVoiceRecordingWithFeedback(
     // dialog, so a take never rolls before the answer is in (F-178).
     message = strings.recordMicPermissionDenied;
   } else {
-    message = switch (session.voiceRecording.startVoiceRecording()) {
+    // A take rolls a run (its count-in ahead of it): what the canvas holds
+    // open lands before the take starts, never at its roll.
+    final started = Completer<VoiceRecordStartResult>();
+    session.playbackRig.playback.startOnceTheCanvasLands(
+      () => started.complete(session.voiceRecording.startVoiceRecording()),
+    );
+    message = switch (await started.future) {
       VoiceRecordStartResult.started ||
       VoiceRecordStartResult.alreadyRecording => null,
       VoiceRecordStartResult.notAllowed => strings.recordMicNotAllowed,
@@ -87,7 +95,9 @@ void playOrStop(
     controller.stop();
     return;
   }
-  controller.play(scope: scope, startGlobalFrame: startFrame?.call());
+  controller.startOnceTheCanvasLands(
+    () => controller.play(scope: scope, startGlobalFrame: startFrame?.call()),
+  );
 }
 
 /// 「처음으로」's press — and its key's (F-261): the transport running THIS

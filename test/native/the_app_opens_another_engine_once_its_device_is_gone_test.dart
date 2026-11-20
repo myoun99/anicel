@@ -175,9 +175,9 @@ void main() {
   test('the next engine has a ledger of its own, which stores a tile of '
       'the last one as what that tile reads as', () async {
     final ledger = EngineTileLedger.instance;
-    final copied = landedOn(ledger, cel, [tileOf(7)], 9).single;
+    final copied = landedOn(ledger, [tileOf(7)], 9).single;
     await ledger.copyHereABatch();
-    final lost = landedOn(ledger, cel, [tileOf(3)], 4).single;
+    final lost = landedOn(ledger, [tileOf(3)], 4).single;
     expect(copied.isOnlyOnEngine, isFalse, reason: '⛔premise: copied');
     expect(lost.isOnlyOnEngine, isTrue, reason: '⛔premise: no copy yet');
 
@@ -209,7 +209,7 @@ void main() {
       'that asked for it: its tile reads as the picture it landed on, and '
       'the next ledger stores that', () async {
     final ledger = EngineTileLedger.instance;
-    final tile = landedOn(ledger, cel, [tileOf(7)], 9).single;
+    final tile = landedOn(ledger, [tileOf(7)], 9).single;
     // Gone and let go between the copy's submit and the wait for it.
     GpuReadout.debugBeforeMapping = lostAndLetGo;
     addTearDown(() => GpuReadout.debugBeforeMapping = null);

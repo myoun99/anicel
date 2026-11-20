@@ -208,16 +208,24 @@ class _CanvasPanelViewport {
 
   Size? _editorViewportSize;
 
-  void bindViewCommands() {
-    _state.widget.viewCommands?.bind(
-      _state,
-      rotateStep: _rotateStep,
-      toggleFlipHorizontal: _toggleFlipHorizontal,
-      toggleFlipVertical: _toggleFlipVertical,
-      resetRotation: _resetRotation,
-      zoomStep: _zoomStep,
-      fit: _fitToView,
-      resetView: _resetView,
+  /// What this panel's bar offers of the view verbs, as the view keys press
+  /// them ([CanvasViewCommands]) and the bar's buttons are made of
+  /// (`_bottomBar`): the turns where this host turns the view at all
+  /// ([BrushCanvasPanel.allowViewRotation] — a sheet and the viewer never
+  /// do), the zoom verbs where there is a view to operate
+  /// ([BrushCanvasPanel.hasContentToView], F-77). 🗣️F-623: the keys reach a
+  /// sheet or the viewer laid on the floor, and press what its bar has.
+  CanvasViewPresses viewPresses() {
+    final view = _state.widget.hasContentToView;
+    final turns = _state.widget.allowViewRotation;
+    return (
+      zoomStep: view ? _zoomStep : null,
+      fit: view ? _fitToView : null,
+      resetView: view ? _resetView : null,
+      rotateStep: turns ? _rotateStep : null,
+      resetRotation: turns ? _resetRotation : null,
+      flipHorizontal: turns ? _toggleFlipHorizontal : null,
+      flipVertical: turns ? _toggleFlipVertical : null,
     );
   }
 
@@ -298,7 +306,19 @@ class _CanvasPanelViewport {
   ///    shrinks — and sliding the picture out from under a panel the user
   ///    just opened, or shifting it on every frame of a splitter drag, is a
   ///    motion nobody asked for.
+  ///
+  /// 🗣️유저 2026-11-20 (card
+  /// a-canvas-panel-rebuilds-its-chrome-on-every-height-change, Q1): 「08-06
+  /// 대로 — 메인 캔버스(바닥)만 가운데를 따라가고, 붙은 패널은 그림이 왼쪽
+  /// 위에 가만히 있다」. ↩️The floor was told apart by `floorCover == null`
+  /// until 3ce44558f (08-07) made the cover a plain inset; every panel then
+  /// followed the centre, with no word of why, and a docked panel paid a pan
+  /// on every frame its height changed — a rail scrolled over it, a
+  /// splitter dragged.
   void _reanchorAfterBoxChange(Rect before, Rect after) {
+    if (!_state._onFloor) {
+      return;
+    }
     final dx = after.center.dx - before.center.dx;
     final dy = after.center.dy - before.center.dy;
     if (dx == 0 && dy == 0) {
@@ -491,16 +511,7 @@ class _CanvasPanelViewport {
     _rotateAroundCenter(deltaDegrees);
   }
 
-  /// Continues a stamp drag up to [point].
-  ///
-  /// Stamps go down one whole piece apart, so they touch without
-  /// overlapping — which is why there is no spacing knob to get wrong, and
-  /// why a soft edge cannot accumulate where two stamps stack.
-  ///
-  /// The remainder of the travel is deliberately NOT carried: the next
-  /// move continues from the last stamp that actually landed, so a slow
-  /// drag and a fast one lay the same number of stamps over the same
-  /// distance.
+  /// The point on the canvas under [event].
   CanvasPoint canvasPointOf(PointerEvent event) =>
       _viewport.viewportOffsetToCanvas(event.localPosition);
 }

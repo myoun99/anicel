@@ -152,9 +152,13 @@ void main() {
           'frames this one gave up',
     );
 
-    // Rightward movement clamps at length 1.
-    edgeDragOf(s).updateCutEdgeDrag(secondDuration + 40);
+    // Rightward, the cut keeps one frame until the edge has passed it —
+    // then it is gone under the hand (I-179).
+    edgeDragOf(s).updateCutEdgeDrag(secondDuration - 1);
     expect(previewedDuration(s, second), 1);
+    edgeDragOf(s).updateCutEdgeDrag(secondDuration + 40);
+    expect(previewOrderOf(s), [first]);
+    expect(previewedDuration(s, first), firstDuration + secondDuration);
 
     // ↩️Leftward is no longer a wall: the cut in front has frames to give
     // (I-21). It gives them down to one and the travel stops there —

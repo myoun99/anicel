@@ -280,6 +280,16 @@ class BitmapSurface {
     return bytes;
   }
 
+  /// Whether any tile this picture keeps may yet weigh more than it does
+  /// ([BitmapTile.mayWeighMore]) — the drawing's, or a text's plate's:
+  /// [keptTileBytes] is then this picture's weight only till bytes next
+  /// come here ([BitmapTile.timesBytesCameHere]).
+  bool get keptTilesMayWeighMore =>
+      _tiles.values.any((tile) => tile.mayWeighMore) ||
+      texts.any(
+        (text) => text.plate.values.any((tile) => tile.mayWeighMore),
+      );
+
   /// The tiles, read-only.
   ///
   /// 🚨★★★**THIS COPIED THE WHOLE MAP ON EVERY READ, AND IT IS READ ON

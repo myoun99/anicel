@@ -103,8 +103,6 @@ void main() {
     addTearDown(view.dispose);
     box = ValueNotifier<Size>(const Size(360, 320));
     addTearDown(box.dispose);
-    final stroking = ValueNotifier<bool>(false);
-    addTearDown(stroking.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Align(
@@ -119,7 +117,6 @@ void main() {
                 words: timesheetWordsIn(AppLanguage.en),
                 dragPreview: drag,
                 cutId: cutId,
-                stroking: stroking,
               ),
             ),
           ),

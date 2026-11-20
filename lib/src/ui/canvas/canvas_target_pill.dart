@@ -45,6 +45,14 @@ Offset targetPillOffset({required Rect target, required Size pill}) =>
 ///
 /// Fills its parent and lays the pill out against it, so it MEASURES the
 /// pill rather than trusting a number for it.
+///
+/// 🗣️THE PANEL'S SCROLL BARS STAND OVER IT (the-scrollbar-thumb-draws-
+/// over-the-canvas-resize-pill-Q1, 유저 2026-11-20: 「지금 그대로(막대가
+/// 위)」). On the canvas the pill is the canvas's — the canvas resized, the
+/// transform box and the camera frame wear it — and lies in the canvas's
+/// layer, under the panel's shell where the bars are: at the view's edge a
+/// bar covers it, as the edge itself does (F-332 above). ⛔Not lifted over
+/// the shell.
 class CanvasTargetPill extends StatelessWidget {
   const CanvasTargetPill({
     super.key,

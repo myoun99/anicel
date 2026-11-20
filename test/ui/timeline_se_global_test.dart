@@ -22,6 +22,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 
+import '../helpers/a_move_lands.dart';
+
 /// SE globalization: the cut-internal timeline's track-SE rows are
 /// open-ended on the right — the runway past the cut end shows the
 /// NEIGHBOURS' sounds, editable like any other block. The `~` mark keeps
@@ -171,8 +173,9 @@ void main() {
     tester,
   ) async {
     final session = await _openTimeline(tester);
-    session.selectCut(const CutId('cut-2'));
-    session.selectFrameIndex(4); // global 12 — cut-2 starts at 8
+    // Global 12 — cut-2 starts at 8: one move, its cut and its frame.
+    session.goToCut(const CutId('cut-2'), 4);
+    await theMoveLands(tester, session);
     await tester.pumpAndSettle();
 
     // The sound at global 16: pulling from the playhead may close the 4

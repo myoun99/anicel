@@ -137,20 +137,37 @@ Set<String> importsOf(String from, String source) {
     out.add(match.group(1)!);
   }
   for (final match in _directive.allMatches(source)) {
-    final target = match.group(1)!;
-    if (target.startsWith('dart:')) continue;
-    if (target.startsWith('package:anicel/')) {
-      out.add('lib/${target.substring('package:anicel/'.length)}');
-    } else if (_inPathPackage(target) case final file?) {
+    if (_fileOf(from, match.group(1)!) case final file?) {
       out.add(file);
-    } else if (target.startsWith('package:')) {
-      continue; // third-party: not ours to track
-    } else {
-      out.add(normalisePath('${dirOf(from)}/$target'));
     }
   }
   return out;
 }
+
+/// The repo-relative file a directive of [from] names as [target]; null for
+/// what is not ours to track — `dart:` and a third party's `package:`.
+String? _fileOf(String from, String target) {
+  if (target.startsWith('dart:')) return null;
+  if (target.startsWith('package:anicel/')) {
+    return 'lib/${target.substring('package:anicel/'.length)}';
+  }
+  if (_inPathPackage(target) case final file?) return file;
+  if (target.startsWith('package:')) return null; // third-party
+  return normalisePath('${dirOf(from)}/$target');
+}
+
+/// A `part` directive alone — not `part of`, which names the library a file
+/// belongs to rather than a file it holds.
+final _partDirective = RegExp(
+  '''^\\s*part\\s+['"]([^'"]+)['"]''',
+  multiLine: true,
+);
+
+/// The files [source] (living at [from]) holds as its parts.
+Set<String> partsOf(String from, String source) => {
+  for (final match in _partDirective.allMatches(source))
+    ?_fileOf(from, match.group(1)!),
+};
 
 /// Where `package:<one of kPathPackages>/x` lives: `packages/<it>/lib/x`.
 String? _inPathPackage(String target) {
@@ -164,18 +181,34 @@ String? _inPathPackage(String target) {
 }
 
 /// file -> the repo-relative Dart files it imports directly, for every
-/// `.dart` file under [roots].
+/// `.dart` file under [roots] — and the parts of each library it imports.
+///
+/// 🚨A PART IS ITS LIBRARY (2026-11-19, master red after F-615 Q1): what
+/// imports a library reads its parts as near as it reads the library. ↩️A
+/// part counted one import past it, so a lane that changed only a part —
+/// `canvas_panel_mapped_buttons.dart`, of `brush_canvas_panel.dart` — chose
+/// none of the 95 tests that import its library as its near ones
+/// (`kNearImports` 1), and the one it broke went red on master.
 Map<String, Set<String>> buildImportGraph({
   List<String> roots = const ['lib', 'test'],
 }) {
   final graph = <String, Set<String>>{};
+  final parts = <String, Set<String>>{};
   for (final dir in roots) {
     final directory = Directory(dir);
     if (!directory.existsSync()) continue;
     for (final entity in directory.listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       final path = entity.path.replaceAll('\\', '/');
-      graph[path] = importsOf(path, entity.readAsStringSync());
+      final source = entity.readAsStringSync();
+      graph[path] = importsOf(path, source);
+      final held = partsOf(path, source);
+      if (held.isNotEmpty) parts[path] = held;
+    }
+  }
+  for (final targets in graph.values) {
+    for (final library in targets.toList()) {
+      targets.addAll(parts[library] ?? const <String>{});
     }
   }
   return graph;

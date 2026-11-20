@@ -8,6 +8,7 @@ import 'export_size_mode.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
 import 'timesheet_sheet_kind.dart';
+import 'xdts_sheet_half.dart';
 import 'xdts_viewer_sheet.dart';
 
 export 'export_cel_kind.dart';
@@ -364,10 +365,12 @@ class CelsExportSpec extends ExportTabSpec {
     this.sheetImage = paperDocumentFormat,
     this.sheetInk = false,
     this.viewerSheet,
+    this.xdtsHalves = allXdtsHalves,
     this.envelopePaper = CutEnvelopePaperMode.cut,
     this.envelopeImage = paperDocumentFormat,
     this.videoFormat = const ExportFormatSelection(),
     this.videoAudio = true,
+    this.videoSizeMode = ExportSizeMode.camera,
   });
 
   /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」 — 미술 is the
@@ -491,6 +494,19 @@ class CelsExportSpec extends ExportTabSpec {
   XdtsViewerSheet viewerSheetFor(TimesheetSheetKind kind) =>
       viewerSheet ?? kind.viewerSheet;
 
+  /// 원화 출력 · 동화 출력: which of the digital sheet's two files are
+  /// written ([XdtsSheetHalf]) — both, as before, or either alone. 🗣️F-618
+  /// ③ (유저 2026-11-19 01:2x): 「xdts일땐 타임시트 형식 항목에 원화출력/
+  /// 동화출력 이런식으로 정할수있게. 물론 지금처럼 둘다가능」. Neither is a
+  /// timesheet written as nothing, as a kind that is off is ([kinds]).
+  final Set<XdtsSheetHalf> xdtsHalves;
+
+  /// Both halves — the digital sheet as it was always written.
+  static const Set<XdtsSheetHalf> allXdtsHalves = {
+    XdtsSheetHalf.genga,
+    XdtsSheetHalf.douga,
+  };
+
   /// 컷봉투 형식: the paper a cut envelope is written on (유저 2026-10-05:
   /// 「기존의 컷봉투탭에 있던 용지는 컷크기/실측용지 이거는 컷봉투 형식안에
   /// 넣고」). The CUT's own pixel size from the start, because the point of
@@ -520,6 +536,15 @@ class CelsExportSpec extends ExportTabSpec {
   /// it — the Sequence tab's switch ([SequenceExportSpec.includeAudio]).
   final bool videoAudio;
 
+  /// The frame a cut's film is written at — 동영상 형식's own 크기: the
+  /// camera's, or the cut's canvas.
+  ///
+  /// 🗣️F-616 (유저 2026-11-19): 「동영상 형식항목에 크기(카메라or캔버스)도
+  /// 넣기. 기존 크기 항목은 셀 크기 라는식으로 이름변경. 셀 크기는 기본값
+  /// 캔버스, 동영상 항목의 크기는 기본값 카메라」. ↩️The film was written at
+  /// the cels' [sizeMode] (I-151 — my call, not the user's).
+  final ExportSizeMode videoSizeMode;
+
   @override
   ExportTab get tab => ExportTab.cels;
 
@@ -542,10 +567,12 @@ class CelsExportSpec extends ExportTabSpec {
     ExportFormatSelection? sheetImage,
     bool? sheetInk,
     XdtsViewerSheet? viewerSheet,
+    Set<XdtsSheetHalf>? xdtsHalves,
     CutEnvelopePaperMode? envelopePaper,
     ExportFormatSelection? envelopeImage,
     ExportFormatSelection? videoFormat,
     bool? videoAudio,
+    ExportSizeMode? videoSizeMode,
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
@@ -563,10 +590,12 @@ class CelsExportSpec extends ExportTabSpec {
     sheetImage: sheetImage ?? this.sheetImage,
     sheetInk: sheetInk ?? this.sheetInk,
     viewerSheet: viewerSheet ?? this.viewerSheet,
+    xdtsHalves: xdtsHalves ?? this.xdtsHalves,
     envelopePaper: envelopePaper ?? this.envelopePaper,
     envelopeImage: envelopeImage ?? this.envelopeImage,
     videoFormat: videoFormat ?? this.videoFormat,
     videoAudio: videoAudio ?? this.videoAudio,
+    videoSizeMode: videoSizeMode ?? this.videoSizeMode,
   );
 
   /// This spec with [kind] written or not.
@@ -600,6 +629,11 @@ class CelsExportSpec extends ExportTabSpec {
     if (sheetImage != paperDocumentFormat) 'sheetImage': sheetImage.toJson(),
     if (sheetInk) 'sheetInk': true,
     if (viewerSheet case final sheet?) 'viewerSheet': sheet.jsonValue,
+    if (!setEquals(xdtsHalves, allXdtsHalves))
+      'xdtsHalves': [
+        for (final half in XdtsSheetHalf.values)
+          if (xdtsHalves.contains(half)) half.jsonValue,
+      ],
     if (envelopePaper != CutEnvelopePaperMode.cut)
       'envelopePaper': envelopePaper.toJson(),
     if (envelopeImage != paperDocumentFormat)
@@ -607,6 +641,8 @@ class CelsExportSpec extends ExportTabSpec {
     if (videoFormat != const ExportFormatSelection())
       'videoFormat': videoFormat.toJson(),
     if (!videoAudio) 'videoAudio': false,
+    if (videoSizeMode != ExportSizeMode.camera)
+      'videoSizeMode': videoSizeMode.jsonValue,
   };
 
   static CelsExportSpec fromJson(Map<String, dynamic> json) => CelsExportSpec(
@@ -643,6 +679,12 @@ class CelsExportSpec extends ExportTabSpec {
     sheetImage: paperDocumentFormatFromJson(json['sheetImage']),
     sheetInk: json['sheetInk'] as bool? ?? false,
     viewerSheet: XdtsViewerSheet.fromJson(json['viewerSheet']),
+    xdtsHalves: switch (json['xdtsHalves']) {
+      final List<dynamic> named => {
+        for (final name in named) ?XdtsSheetHalf.fromJson(name),
+      },
+      _ => allXdtsHalves,
+    },
     // Absent means the DEFAULT (cut-fitted), not the enum's own fallback.
     envelopePaper: json['envelopePaper'] == null
         ? CutEnvelopePaperMode.cut
@@ -656,6 +698,7 @@ class CelsExportSpec extends ExportTabSpec {
       _ => const ExportFormatSelection(),
     },
     videoAudio: json['videoAudio'] as bool? ?? true,
+    videoSizeMode: ExportSizeMode.fromJson(json['videoSizeMode']),
   );
 
   static bool _presetJsonWas(Map<String, dynamic> json, Set<String> names) =>
@@ -681,13 +724,15 @@ class CelsExportSpec extends ExportTabSpec {
           other.sheetImage == sheetImage &&
           other.sheetInk == sheetInk &&
           other.viewerSheet == viewerSheet &&
+          setEquals(other.xdtsHalves, xdtsHalves) &&
           other.envelopePaper == envelopePaper &&
           other.envelopeImage == envelopeImage &&
           other.videoFormat == videoFormat &&
-          other.videoAudio == videoAudio;
+          other.videoAudio == videoAudio &&
+          other.videoSizeMode == videoSizeMode;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     format,
     sizeMode,
     layerFx,
@@ -704,11 +749,13 @@ class CelsExportSpec extends ExportTabSpec {
     sheetImage,
     sheetInk,
     viewerSheet,
+    Object.hashAllUnordered(xdtsHalves),
     envelopePaper,
     envelopeImage,
     videoFormat,
     videoAudio,
-  );
+    videoSizeMode,
+  ]);
 }
 
 /// The picture a PAPER DOCUMENT is written as — a timesheet page, a conte

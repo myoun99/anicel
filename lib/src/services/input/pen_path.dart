@@ -37,14 +37,16 @@ abstract final class PenPath {
     'the points the OS saw',
   );
 
-  /// The tablet driver's pressure at a point, by the event made at it
-  /// ([drivenPressureOf]).
-  static final Expando<double> _driven = Expando<double>(
-    "the driver's pressure at a point",
+  /// What the tablet driver's packet said at a point, by the event made
+  /// at it ([drivenOf]).
+  static final Expando<DriverReading> _driven = Expando<DriverReading>(
+    "the driver's reading at a point",
   );
 
   /// Pairs [event], made of [datum] at [ratio] physical pixels a logical
-  /// one, with the points the platform's reader wrote for its message.
+  /// one, with the points the platform's reader wrote for its message — a
+  /// contact of the datum's own kind's (H61: on Windows the cursor that
+  /// follows a pen writes its own on the pen's pixels).
   /// Every datum a message makes, as it comes in — ahead of every gate,
   /// so a datum kept out still takes its message's points out of the book.
   static void arrived(PointerEvent event, ui.PointerData datum, double ratio) {
@@ -52,7 +54,11 @@ abstract final class PenPath {
       return;
     }
     QaPenPoints.start();
-    final points = QaPenPoints.take(datum.physicalX, datum.physicalY);
+    final points = QaPenPoints.take(
+      datum.kind,
+      datum.physicalX,
+      datum.physicalY,
+    );
     if (points == null || points.isEmpty) {
       return;
     }
@@ -100,17 +106,20 @@ abstract final class PenPath {
     return made;
   }
 
-  /// The tablet driver's pressure, 0..1, at the point [event] was made at —
-  /// or null. A pen's point and a mouse's carry one where the platform's
-  /// reader paired it with the driver: on Windows, the Wintab packet nearest
-  /// the point's own moment (native/pen points_win.rs), one law for a pen
-  /// the OS reads and one it hands over as a mouse.
+  /// What the tablet driver's packet said of the pen at the point [event]
+  /// was made at — its pressure, and its lean and twist where the device
+  /// declares them — or null. A pen's point and a mouse's carry one where
+  /// the platform's reader paired it with the driver: on Windows, the
+  /// Wintab packet that put the cursor there (native/pen wintab.rs), one
+  /// law for a pen the OS reads and one it hands over as a mouse.
   ///
   /// ↩️A mouse's alone (e3816f34f – H61, 2026-11-18): a pen the OS reads
   /// (Windows Ink on) took the driver's NEWEST packet at every point the
   /// app read of it, and every point of a message the busy thread merged
   /// had the same — the stroke's pressure went in steps.
-  static double? drivenPressureOf(PointerEvent event) =>
+  /// ↩️The pressure alone (pen-points-are-taken-off-the-ui-thread,
+  /// 2026-11-18): the lean and the twist were still the newest packet's.
+  static DriverReading? drivenOf(PointerEvent event) =>
       _driven[event.original ?? event];
 
   /// [original] made over at [point], moved from [before].

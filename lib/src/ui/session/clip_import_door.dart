@@ -47,9 +47,7 @@ import '../../services/persistence/folder_grant.dart'
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
-import '../text/cel_text_bake.dart' show bakeCelTextPlate;
-import '../text/cel_text_layout.dart'
-    show celTextFacesArriving, layoutCelText;
+import '../text/cel_text_bake.dart' show setCelTextPlate;
 import 'media_pool.dart';
 import 'project_file.dart';
 import 'project_file_door.dart' show ProjectFileDoor;
@@ -116,11 +114,7 @@ Future<ClipProjectRead?> readClipProject({
     ..createSync(recursive: true);
   final document = await _readStructure(source.path, scratch.path, onRead);
   if (document == null) {
-    if (source.staged) {
-      unawaited(
-        File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-      );
-    }
+    unawaited(FolderPicker.letGoOfStagedCopy(source));
     return null;
   }
   final name = ProviderDocuments.nameOf(
@@ -449,11 +443,7 @@ final class ClipImportDoor {
       MaterializeCancelled.throwIf(isCancelled);
     } finally {
       await reader.close();
-      if (source.staged) {
-        unawaited(
-          File(source.path).delete().then<void>((_) {}, onError: (_) {}),
-        );
-      }
+      unawaited(FolderPicker.letGoOfStagedCopy(source));
     }
   }
 
@@ -758,7 +748,7 @@ final class ClipImportDoor {
       if (plate == null) {
         setHere = true;
         try {
-          plate = await _plateSetHere(text.content, item.wall);
+          plate = await setCelTextPlate(text.content, item.wall);
         } on Object catch (error) {
           warnings.add(_unreadable(item.bake, '$error'));
           continue;
@@ -788,29 +778,6 @@ final class ClipImportDoor {
         texts: texts,
       ),
     );
-  }
-
-  /// [content]'s plate as this app sets it, behind [wall] — once the faces
-  /// it is set in that are on their way have arrived, as the text tool
-  /// waits for them.
-  Future<Map<TileCoord, BitmapTile>> _plateSetHere(
-    CelTextContent content,
-    PasteboardWall wall,
-  ) async {
-    final arriving = celTextFacesArriving(content);
-    if (arriving != null) {
-      await arriving;
-    }
-    final layout = layoutCelText(content);
-    try {
-      return await bakeCelTextPlate(
-        layout,
-        pasteboard: wall,
-        tileSize: defaultCelTileSize,
-      );
-    } finally {
-      layout.dispose();
-    }
   }
 
   BrushFrameKey _keyOf(_ClipWork item) => _project.brushFrameKeyForCut(

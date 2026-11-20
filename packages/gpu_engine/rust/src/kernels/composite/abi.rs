@@ -16,10 +16,10 @@
 #[cfg(test)]
 mod tests;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::device::{Engine, Sent, let_go, let_go_unwaited, on_thread_of};
+use crate::device::{Engine, Sent, let_go, let_go_unwaited, posted_of};
 use crate::fail;
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
@@ -29,15 +29,15 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::kernels::pool::Pool;
+use crate::kernels::pool::{Lying, Pool, Stamps, Taken};
 use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
-use super::halvings::Camera;
 use super::held::{HeldChains, held_bytes};
-use super::screen::Screen;
+use super::kept::Kept;
+use super::screen::{Camera, Screen};
 use super::{
-    BufferChain, Composite, Composited, KeyChain, Nesting, Over, Plan, Step, TILE_BYTES,
+    BufferChain, Composite, Composited, KeyChain, Named, Nesting, Over, Plan, Step, TILE_BYTES,
     TileSet,
 };
 
@@ -46,13 +46,31 @@ use super::{
 /// the pool lets those slots go (캔버스 베이스 패널, 11-07 22:30).
 #[derive(Default)]
 pub(crate) struct Planned {
-    sets: Vec<TileSet>,
+    sets: Vec<Named>,
+    /// Its sets as last laid — each tile where it lay by the pool's books
+    /// of the number kept with them ([`Lying::as_of`]) —, till the books
+    /// say another or a set is added: a plan is laid at each run, show
+    /// and compose of a frame, and a tile moves once it is at rest.
+    sets_laid: Mutex<Option<(u64, Arc<Vec<TileSet>>)>>,
     keys: Vec<KeyChain>,
     matrices: Vec<[u32; MATRIX_WORDS]>,
     chains: Vec<PlannedChain>,
     maps: Vec<PlannedMap>,
     steps: Vec<Step>,
     mask: Option<MaskPlane>,
+    weighed: Weighed,
+}
+
+/// The tiles a picture of a plan was weighed as ([`gpu_engine_plan_weigh`]):
+/// written on the engine's thread, read on its caller's once that body has
+/// told it ([`gpu_engine_plan_weighed`]) — -1 before any, and where it
+/// could not be weighed.
+struct Weighed(AtomicI64);
+
+impl Default for Weighed {
+    fn default() -> Self {
+        Self(AtomicI64::new(-1))
+    }
 }
 
 /// A mask the app keeps on the GPU: a plane of bytes (mask.wgsl's layout)
@@ -108,33 +126,51 @@ impl Planned {
     /// the run, the show and the screen's two composes each spelled it,
     /// and the fill's picture came as a fifth (11-12).
     pub(crate) fn laid<T>(&self, pool: &Pool, run: impl FnOnce(&Plan) -> T) -> T {
-        self.laid_on(pool.pages(), run)
+        self.laid_on((pool.pages(), &pool.lying(), None), run)
     }
 
-    /// [`Self::laid`] on `pages`, a pool's as they were taken: what a body
-    /// handed over unwaited lays it on, the pool's books its caller's to
-    /// keep meanwhile ([`gpu_engine_screen_compose`]).
-    fn laid_on<T>(&self, pages: &[wgpu::Buffer], run: impl FnOnce(&Plan) -> T) -> T {
-        let (chains, mask) = (self.chained(), self.masked());
-        run(&self.plan(pages, &chains, mask.as_ref()))
+    /// [`Self::laid`] on a pool as it was taken ([`Pool::taken`]) — its
+    /// stamps with it, by which a picture kept of the plan is told by what
+    /// it is made of ([`Plan::stamps`]): what a body handed over unwaited
+    /// lays it on, the pool's books its caller's to keep meanwhile
+    /// ([`gpu_engine_screen_compose`]).
+    fn laid_as_taken<T>(&self, pool: &Taken, run: impl FnOnce(&Plan) -> T) -> T {
+        self.laid_on((&pool.pages, &pool.lying, Some(&pool.stamps)), run)
     }
 
-    /// The plan of `pages`, `chains` — [`Self::chained`]'s — and `mask` —
-    /// [`Self::masked`]'s.
-    fn plan<'a>(
-        &'a self,
-        pages: &'a [wgpu::Buffer],
-        chains: &'a [Chained<'a>],
-        mask: Option<&'a Mask<'a>>,
-    ) -> Plan<'a> {
-        Plan {
+    /// It laid on `pages`, each tile its sets name where it lies by
+    /// `lying` ([`Named::lying`]).
+    fn laid_on<T>(
+        &self,
+        (pages, lying, stamps): (&[wgpu::Buffer], &Lying, Option<&Stamps>),
+        run: impl FnOnce(&Plan) -> T,
+    ) -> T {
+        let (chains, mask, sets) = (self.chained(), self.masked(), self.sets_lying(lying));
+        let plan = Plan {
             pages,
-            sets: &self.sets,
+            sets: &sets,
             keys: &self.keys,
             matrices: &self.matrices,
-            chains,
+            chains: &chains,
             steps: &self.steps,
-            mask,
+            mask: mask.as_ref(),
+            stamps,
+        };
+        run(&plan)
+    }
+
+    /// Its tile sets, each tile where it lies by `lying` — those last laid,
+    /// where the books say the number they were laid by.
+    fn sets_lying(&self, lying: &Lying) -> Arc<Vec<TileSet>> {
+        let mut laid = self.sets_laid.lock().unwrap_or_else(PoisonError::into_inner);
+        match &*laid {
+            Some((as_of, sets)) if *as_of == lying.as_of() => sets.clone(),
+            _ => {
+                let sets: Vec<TileSet> = self.sets.iter().map(|set| set.lying(lying)).collect();
+                let sets = Arc::new(sets);
+                *laid = Some((lying.as_of(), sets.clone()));
+                sets
+            }
         }
     }
 
@@ -297,7 +333,9 @@ pub unsafe extern "C" fn gpu_engine_plan_set(
     // SAFETY: see the function's contract.
     let (plan, words) =
         unsafe { (&mut *plan, std::slice::from_raw_parts(tiles, columns as usize * rows as usize)) };
-    plan.sets.push(TileSet::from_words(x0, y0, columns, rows, words));
+    plan.sets.push(Named::from_words(x0, y0, columns, rows, words));
+    // What was laid of its sets was laid of one fewer.
+    *plan.sets_laid.get_mut().unwrap_or_else(PoisonError::into_inner) = None;
     plan.sets.len() as u32 - 1
 }
 
@@ -638,6 +676,72 @@ pub unsafe extern "C" fn gpu_engine_plan_keys(plan: *mut Planned) -> u32 {
     plan.keys.len() as u32 - 1
 }
 
+/// Weighs the picture a screen makes of `plan` laid afresh over the pixels
+/// `extent` — [left, top, right, bottom) —: of the tiles it lays anything
+/// on, each the engine's pictures keep none for yet
+/// ([`Kept::tiles_made`]). On the engine's thread, its caller waiting for
+/// none of it ([`Engine::posted`]); `told` is called there with `number`
+/// once it is weighed — false where `extent` lies past the grid — and
+/// what it weighs is read from then on ([`gpu_engine_plan_weighed`]). The
+/// pool's pages and its stamps are taken as it is called, as the compose
+/// that makes the picture takes them ([`gpu_engine_screen_compose`]);
+/// `plan` is read as it runs.
+///
+/// ⛔Not a failure of its caller's next done, as a body's is: that done
+/// is a screen's, asked for the frame it puts up, and the weigh has its
+/// own word.
+///
+/// 🚨ON THE ENGINE'S THREAD, IN ITS TURN (F-610, 2026-11-19) — not on its
+/// caller's, where a plan was weighed till then, by the tiles it lays on
+/// alone: the pictures' books are held while a page of their pool is made
+/// (`Pictures::fresh`), and the UI's thread asking them stood behind
+/// that; and behind the composes handed over before it, a picture is
+/// weighed against those as kept — a cut's second against its first, which
+/// is still on its way when the second is asked for.
+///
+/// # Safety
+/// Every pointer is live, the pool made on `engine`; `extent` holds four
+/// words. Nothing adds to `plan` from here on, and it is let go of on the
+/// engine's thread ([`let_go`]), behind this in turn. `told` is one any
+/// thread may call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_weigh(
+    plan: *const Planned,
+    engine: *const Engine,
+    pool: *const Pool,
+    extent: *const i32,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
+    // SAFETY: see the function's contract.
+    let (extent, pool) = unsafe { (*extent.cast::<[i32; 4]>(), (*pool).taken()) };
+    let handed = Sent((plan, engine));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (plan, engine) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (plan, engine) = unsafe { (&*plan, &*engine) };
+        let tiles = plan.laid_as_taken(&pool, |laid| Kept::tiles_made(laid, extent, &engine.pictures));
+        let weighed = tiles.map_or(-1, |tiles| i64::try_from(tiles).unwrap_or(i64::MAX));
+        plan.weighed.0.store(weighed, Ordering::Relaxed);
+        told(number, tiles.is_some());
+        Some(())
+    });
+}
+
+/// The tiles `plan`'s picture was weighed as, by the last weigh of it that
+/// has told ([`gpu_engine_plan_weigh`]) — -1 before any, and where that
+/// one could not weigh it.
+///
+/// # Safety
+/// `plan` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_weighed(plan: *const Planned) -> i64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*plan }.weighed.0.load(Ordering::Relaxed)
+}
+
 /// Adds to key chain `keys` a run of `count` colour keys, as the app's
 /// tables give one: for each channel's byte — `red`, `green`, `blue`, 256
 /// words each — which keys are within their tolerance of it, bit k for key
@@ -860,14 +964,19 @@ pub unsafe extern "C" fn gpu_engine_held_free(held: *mut HeldChains) {
 }
 
 /// Lets go of what `held` keeps under `id`, if anything — buffers, so on
-/// its engine's thread ([`on_thread_of`]).
+/// its engine's thread: in turn behind the bodies handed there before
+/// it, its caller waiting for none of it ([`posted_of`] has why, and
+/// when the bytes read gone). What is handed over is the same hold
+/// ([`HeldChains`] — a clone is), so it outlives a free asked behind it.
 ///
 /// # Safety
 /// `held` is live.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_held_let_go(held: *const HeldChains, id: u32) {
     // SAFETY: see the function's contract.
-    unsafe { on_thread_of(held, || (*held).let_go(id)) };
+    let chains = unsafe { &*held }.clone();
+    // SAFETY: see the function's contract.
+    unsafe { posted_of(held, move || chains.let_go(id)) };
 }
 
 /// The bytes `held` keeps under `id` — none where it keeps nothing.
@@ -1308,8 +1417,8 @@ pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut ScreenAndBytes) {
     unsafe { let_go_unwaited(screen) };
 }
 
-/// The bytes `screen` keeps — its canvas's tiles and its halvings': what
-/// the budgets and the memory census weigh it by, as its last body handed
+/// The bytes `screen` keeps — its canvas's tiles: what the budgets and
+/// the memory census weigh it by, as its last body handed
 /// over left them ([`ScreenAndBytes`]).
 ///
 /// # Safety
@@ -1380,11 +1489,11 @@ impl ScreenAndBytes {
     }
 }
 
-/// The bytes every screen keeps — its canvas's and its halvings'
-/// ([`Screen::bytes`]) —, each as its last body told them, till its free:
+/// The bytes every screen keeps — its canvas's ([`Screen::bytes`]) —,
+/// each as its last body told them, till its free:
 /// what [`gpu_engine_kept_bytes`] reads, for the leak pins.
 ///
-/// ↩️Counted where a picture's tiles were made and dropped (halvings.rs's
+/// ↩️Counted where a picture's tiles were made and dropped (kept.rs's
 /// `Kept`) till 2026-11-16, when a screen's free came to wait for none of
 /// the bodies ahead of it ([`gpu_engine_screen_free`]): counted off where
 /// it is dropped, it would read late; counted off ahead, by what its last
@@ -1394,8 +1503,8 @@ impl ScreenAndBytes {
 /// it whole.
 static KEPT_BYTES: AtomicU64 = AtomicU64::new(0);
 
-/// The bytes of every picture the engine keeps — every screen's canvas and
-/// halvings ([`KEPT_BYTES`]).
+/// The bytes of every picture the engine keeps — every screen's canvas
+/// ([`KEPT_BYTES`]).
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
     KEPT_BYTES.load(Ordering::Relaxed)
@@ -1403,9 +1512,11 @@ pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
 
 /// The bytes `engine` keeps for pictures that are no picture's: the slots
 /// nobody holds on the pages of their pool (kernels/pool's `Pictures`) —
-/// they stay made for the next picture — and the composite's work buffer
-/// ([`super::Work`]). For the memory census, which weighs each picture by
-/// its own tiles (`gpu_engine_screen_bytes`).
+/// they stay made for the next picture — the composite's work buffer
+/// ([`super::Work`]) and the buffers its composes run in, kept from one
+/// to the next while a hand is at work and none at rest
+/// ([`super::Spares`]). For the memory census, which weighs each picture
+/// by its own tiles (`gpu_engine_screen_bytes`).
 ///
 /// # Safety
 /// `engine` is live.
@@ -1413,14 +1524,30 @@ pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
 pub unsafe extern "C" fn gpu_engine_pictures_idle_bytes(engine: *const Engine) -> u64 {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.pictures.idle_bytes() + engine.work.bytes()
+    engine.pictures.idle_bytes() + engine.work.bytes() + engine.spares.bytes()
+}
+
+/// The bytes of the tiles `engine`'s pictures hold that none of them
+/// weighs: made by a picture let go since, and held by others made of the
+/// same (kernels/pool's `Told`; F-610 — a tile is weighed once, by the
+/// picture that made it, `gpu_engine_screen_bytes`). What the playback's
+/// budget and the memory census weigh beside the pictures' own, as the
+/// last picture let go left them.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_unowned_bytes(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.pictures.unowned_bytes()
 }
 
 /// Gives back what `engine` keeps for pictures nobody holds
 /// (`gpu_engine_pictures_idle_bytes`) till it is `most_idle` bytes: the
 /// pages of their pool with every slot free, the last first
-/// (`Pictures::give_back`), and then the composite's work buffer
-/// ([`super::Work`]) where what is left is still past it. All of it at a
+/// (`Pictures::give_back`), then the buffers the last walk made for
+/// itself ([`super::Spares`]) and then the composite's work buffer
+/// ([`super::Work`]), each where what is left is still past it. All of it at a
 /// memory warning; where a budget moved, what lies past the room the
 /// budget has left — as the cels' pool keeps within its own
 /// (`gpu_engine_pool_give_back`).
@@ -1433,18 +1560,57 @@ pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, mo
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
         engine.pictures.give_back(engine, most_idle);
-        if engine.pictures.idle_bytes() + engine.work.bytes() > most_idle {
+        let kept = || engine.pictures.idle_bytes() + engine.work.bytes() + engine.spares.bytes();
+        if kept() > most_idle {
+            engine.spares.let_go();
+        }
+        if kept() > most_idle {
             engine.work.let_go();
         }
     })
+}
+
+/// The hand rests: lets go of every buffer `engine`'s composes ran in and
+/// kept for the next ([`super::Spares`]), and keeps none that comes home
+/// from then till a compose takes one again (`Spares::rest`) — on the
+/// engine's thread, in turn behind what was handed to it before
+/// ([`Engine::posted`]), its caller waiting for none of it. ⛔Not ahead of
+/// that turn: a compose handed over and not yet run takes a spare as it
+/// runs, a hand at work by the engine's books, and what it brought home
+/// would lie there through the rest. The driver's letting go is the
+/// thread for pages' (`Spares::dropping_on`).
+///
+/// 🗣️유저 2026-11-20 23:20 (a-transform-drag-over-folder-rows-draws-a-
+/// frame-in-a-third-of-a-second-Q1 = b): 「손을 떼면 바로 놓는다」 — the
+/// law and its words are at the head of spares.rs. When a hand rests is
+/// its caller's to say (`GpuEngine.restsAfter`).
+///
+/// # Safety
+/// `engine` is live, and till what is handed here has run — as what a
+/// compose is handed is ([`gpu_engine_screen_compose`]).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_rest(engine: *const Engine) {
+    let handed = Sent(engine);
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        // SAFETY: live till this has run (the function's contract).
+        unsafe { &*handed.taken() }.spares.rest();
+        Some(())
+    });
 }
 
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the
 /// pixels `changed` — [left, top, right, bottom); the whole canvas the
 /// first time — and submits the work: on the engine's thread, its caller
 /// waiting for none of it ([`Engine::posted`]). Its failure is the calling
-/// thread's next done's (`gpu_engine_done_then`). `changed` and the pool's
-/// pages are taken as it is called; `plan` is read as it runs.
+/// thread's next done's (`gpu_engine_done_then`). `changed`, the pool's
+/// pages and its stamps are taken as it is called; `plan` is read as it
+/// runs.
+///
+/// 🚨THE STAMPS WITH THE PAGES, HERE (F-610): the pool's books are its
+/// caller's, and a slot the plan names may be let go and handed out again
+/// before this runs — its stamp then another tile's, and a picture told by
+/// it taken for one made of that tile.
 ///
 /// # Safety
 /// Every pointer is live, the pool and the executor were made on `engine`;
@@ -1461,7 +1627,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
     changed: *const i32,
 ) {
     // SAFETY: see the function's contract.
-    let (changed, pages) = unsafe { (*changed.cast::<[i32; 4]>(), (*pool).pages().to_vec()) };
+    let (changed, pool) = unsafe { (*changed.cast::<[i32; 4]>(), (*pool).taken()) };
     let handed = Sent((screen, composite, engine, plan));
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
@@ -1469,7 +1635,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
         // SAFETY: live till let go of, behind this (the function's
         // contract).
         let (screen, composite, engine, plan) = unsafe { (&*screen, &*composite, &*engine, &*plan) };
-        plan.laid_on(&pages, |plan| {
+        plan.laid_as_taken(&pool, |plan| {
             screen.with(|screen| screen.compose(engine, composite, plan, changed, composite.widest()))
         })
     });
@@ -1494,7 +1660,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
     fresh: *const i32,
 ) {
     // SAFETY: see the function's contract.
-    let (fresh, pages) = unsafe { (*fresh.cast::<[i32; 4]>(), (*pool).pages().to_vec()) };
+    let (fresh, pool) = unsafe { (*fresh.cast::<[i32; 4]>(), (*pool).taken()) };
     let handed = Sent((screen, film, composite, engine, plan));
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
@@ -1504,7 +1670,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
         let (screen, film, composite, engine, plan) =
             unsafe { (&*screen, &*film, &*composite, &*engine, &*plan) };
         let film = film.kept();
-        plan.laid_on(&pages, |plan| {
+        plan.laid_as_taken(&pool, |plan| {
             screen.with(|screen| screen.compose_over(engine, composite, plan, &film, fresh, composite.widest()))
         })
     });
@@ -1514,10 +1680,12 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
 /// `target` — [left, top, right, bottom) — leaving the rest of it as it
 /// was, and submits the work, as [`gpu_engine_screen_compose`] does. The
 /// camera is `inverse` — a screen pixel to the canvas's, the affine
-/// `[a, b, c, d, e, f]` — at display `scale`, device pixels a canvas
-/// pixel, sampled by `sampling` (0 blend, 1 pick, 3 nearest). `target` is
-/// a surface's texture or a window's next image, as
+/// `[a, b, c, d, e, f]` — sampled by `sampling` (0 blend, 1 pick, 3
+/// nearest). `target` is a surface's texture or a window's next image, as
 /// `gpu_engine_composite_show`'s is.
+///
+/// ↩️It took the display's scale too till 2026-11-19: which halving stage
+/// the screen read under 1/16 ([`Screen::show`]).
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `inverse` holds six doubles
@@ -1530,7 +1698,6 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
     composite: *const Composite,
     engine: *const Engine,
     inverse: *const f64,
-    scale: f64,
     sampling_id: u32,
     target: *const wgpu::Texture,
     rect: *const u32,
@@ -1544,7 +1711,7 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
         // SAFETY: live till let go of, behind this (the function's
         // contract).
         let (screen, composite, engine, target) = unsafe { (&*screen, &*composite, &*engine, &*target) };
-        let camera = Camera { inverse, scale, mode: sampling(sampling_id)? };
+        let camera = Camera { inverse, mode: sampling(sampling_id)? };
         let shown = screen.with(|screen| screen.show(engine, composite, camera, target, rect, composite.widest()));
         shown.map(drop)
     });

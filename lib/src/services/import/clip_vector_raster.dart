@@ -303,8 +303,9 @@ Future<Map<TileCoord, BitmapTile>> _throughTheLayer(
     final landed = ledger.held((hold) {
       final picture = hold.gridOf(BrushFrameKey.noCel, drawn);
       return ledger.land(
-        EngineTileLedger.landedCel,
         [for (final at in coords) (column: at.x, row: at.y, under: null)],
+        // An import's raster: no hand's.
+        ofTheHand: false,
         by: (pool, cel, asked) => composite.land(
           pool,
           cel,

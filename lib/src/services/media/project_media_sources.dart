@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import '../../models/media_asset.dart' show MediaCarry, mediaCarryName;
 import '../../models/project.dart';
@@ -178,12 +178,20 @@ AnicelZipLayout? readableAnicelLayout(String? projectFilePath) {
   if (projectFilePath == null || !File(projectFilePath).existsSync()) {
     return null;
   }
+  debugLayoutReadsOnThisIsolate += 1;
   try {
     return readAnicelZipLayoutFile(projectFilePath);
   } on Object {
     return null;
   }
 }
+
+/// How many directories [readableAnicelLayout] has read on THIS isolate —
+/// an instrument because a static does not cross an isolate, as
+/// `debugIdentityReadsOnThisIsolate` is: what a batch of questions costs in
+/// reads of the file (`ProjectFile.withOneReadOfTheFile`).
+@visibleForTesting
+int debugLayoutReadsOnThisIsolate = 0;
 
 /// Where each piece of media the project should CARRY can be read from
 /// right now.

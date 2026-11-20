@@ -35,4 +35,16 @@ void main() {
       'q': '1',
     });
   });
+
+  test('🗣️I-178: a number something already wears is skipped — 「중간에 '
+      '2라고 있으면 2 건너뛰고」', () {
+    expect(
+      namesByFirstAppearance(const ['a', 'b', 'a', 'c'], from: 1, taken: {'2'}),
+      {'a': '1', 'b': '3', 'c': '4'},
+    );
+    expect(
+      namesByFirstAppearance(const ['x'], from: 1, taken: {'1', '2', 'B'}),
+      {'x': '3'},
+    );
+  });
 }

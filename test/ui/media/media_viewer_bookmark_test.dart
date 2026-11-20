@@ -54,8 +54,12 @@ String _pageTextIn(WidgetTester tester, Finder viewer) => tester
     .map((text) => text.data ?? '')
     .firstWhere((text) => text.contains('/'), orElse: () => '');
 
-Future<void> _pumpEditor(WidgetTester tester, Project project) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
+Future<void> _pumpEditor(
+  WidgetTester tester,
+  Project project, {
+  Size surface = const Size(1600, 1000),
+}) async {
+  await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();
@@ -161,6 +165,10 @@ void main() {
           ),
         },
       ).copyWith(mediaAssets: [_conte, layout]),
+      // Every group the right rail opens here all in its window: a viewer
+      // the rail shows a part of is laid to that part, and read at another
+      // size as the rail moves.
+      surface: const Size(1600, 2100),
     );
     final view = tester
         .widget<MediaViewerTabHost>(
@@ -204,6 +212,11 @@ void main() {
     await openInTheSubViewer(_conte);
 
     expect(_pageTextIn(tester, _subViewer()), '3 / 5');
+    expect(
+      railPosition(tester, right: true).maxScrollExtent,
+      0,
+      reason: '⛔fixture: the rail fits its groups',
+    );
     final back = renderOf(tester, view.value!);
     expect(back.zoom, closeTo(kept.zoom, 1e-6), reason: 'not fitted');
     expect(back.panX, closeTo(kept.panX, 1e-6));

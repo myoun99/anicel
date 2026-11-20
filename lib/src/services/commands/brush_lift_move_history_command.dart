@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+import '../../core/screens_turn.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
@@ -38,12 +41,20 @@ import 'cel_snapshot_step.dart';
 /// 처럼 여러 프레임 선택해서 동시 붙여넣기」). [blendMode] is the one thing a
 /// paste adds: 위 = `color`, 아래 = `behind` (위/아래 was always composite
 /// order, 유저 08-10). ⛔Not a second command for the same landing.
-class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
+///
+/// 🗣️F-615 (유저 2026-11-19: 「ui안멈추게 뒤에서 돌게?하고 대상 프레임 수에
+/// 맞춰서 몇퍼센트인지 표시. 말한것들은 다른 진행창뜨는거에 다 통일적용」):
+/// the first landing is worked out ahead of its step ([workAhead]) — the
+/// colour verbs' cel by cel, one cel each here; a range's step tells its
+/// cels as its shares (`CompositeCommand.workAhead`).
+class BrushLiftMoveHistoryCommand
+    with CelSnapshotStep
+    implements Command, WorksAheadCommand {
   BrushLiftMoveHistoryCommand({
     required this.coordinator,
     required this.frameKey,
-    required BitmapSurface preLiftSurface,
     required List<BrushDab> landingDabs,
+    BitmapSurface? preLiftSurface,
     this.cacheInvalidationSink,
     this.regionBefore,
     this.restoreRegion,
@@ -117,6 +128,11 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
   /// ⚠️It is the neighbour of [_landingDabs], which is nulled two lines down
   /// with「the stamp's RGBA payload is megabytes」as the reason. This is
   /// the larger of the two.
+  ///
+  /// Null from the start for a landing that names no session's picture (a
+  /// piece, `pieceLandings`): the live surface is read as it lands. Read at
+  /// the press, every frozen cel of a range thawed on the UI isolate before
+  /// the wait window could draw (🔬F-615: 127 cels of S5_BA, about 0.2 s).
   BitmapSurface? _preLiftSurface;
 
   /// Dropped after the landing — the stamp's RGBA payload is megabytes,
@@ -166,10 +182,11 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
     // 🧪Measured, not reasoned: the first multi-cel pin came back with the
     // standing cel ERASED and nothing stamped — the range's second command
     // had landed its own (empty) lift on top of it.
+    final before = _preLiftSurface ?? coordinator.currentSurfaceOf(frameKey);
     _landOnFrameKey();
     _surfaces = UndoSurfacePair(
       key: frameKey,
-      before: _preLiftSurface!,
+      before: before,
       after: coordinator.currentSurfaceOf(frameKey),
     );
     // The pair owns the picture now, and it is the only thing that may:
@@ -204,12 +221,13 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
   /// The only real difference is that the pair invalidates the FRAME where
   /// a commit can name its dirty tiles, the same coarser bill undo pays.
   void _landOnFrameKey() {
-    final derived = coordinator.deriveSurfaceWith(
-      _landingDabs!,
-      blendMode: blendMode,
-      key: frameKey,
-      selection: landingSelection,
-    );
+    final ahead = _ahead;
+    _ahead = null;
+    final derived =
+        ahead != null &&
+            identical(ahead.from, coordinator.currentSurfaceOf(frameKey))
+        ? ahead.made
+        : _derive();
     if (derived == null) {
       // The dabs changed nothing, which is the answer a no-op stroke gets
       // everywhere else too.
@@ -220,6 +238,69 @@ class BrushLiftMoveHistoryCommand with CelSnapshotStep implements Command {
       derived,
       cacheInvalidationSink: cacheInvalidationSink,
     );
+  }
+
+  /// [_landingDabs] on [frameKey]'s picture as it is now, written nowhere —
+  /// null when they change nothing.
+  BitmapSurface? _derive() {
+    derivesHere += 1;
+    return coordinator.deriveSurfaceWith(
+      _landingDabs!,
+      blendMode: blendMode,
+      key: frameKey,
+      selection: landingSelection,
+    );
+  }
+
+  /// How many landings this command has derived — ahead or in its step.
+  @visibleForTesting
+  int derivesHere = 0;
+
+  /// The landing worked out ahead ([workAhead]) and the picture it was
+  /// worked out over: the step takes it only over that very picture, and
+  /// derives again over one drawn on since.
+  ({BitmapSurface from, BitmapSurface? made})? _ahead;
+
+  /// This landing already SHOWN on [frameKey], over [before]: the cel's
+  /// picture now is what it lands as, so the step records [before] and that
+  /// picture as its pair and works nothing out — a stamp drag's trail,
+  /// written on the cel you stand on as it was laid (`_StampTrail`).
+  ///
+  /// ⛔Not put back and laid again: the cel would show three pictures for
+  /// one lift, and whatever reads the cel would lay its answer once each.
+  void shownOver(BitmapSurface before) {
+    final now = coordinator.currentSurfaceOf(frameKey);
+    _preLiftSurface = before;
+    _ahead = (from: now, made: identical(now, before) ? null : now);
+  }
+
+  /// The first landing, worked out ahead of the step behind the wait window:
+  /// the cel thawed on a worker, the derive — the engine's, so the UI
+  /// isolate's — and its ink, then the screen's turn. Landed, it has
+  /// nothing to work out: an undo or a redo, which come only after the
+  /// landing, puts back a picture it holds. Nor has a landing already
+  /// worked out — one already shown ([shownOver]): worked out again over
+  /// the picture that shows it, the trail would land twice.
+  @override
+  WorkAhead? workAhead({required bool undo}) {
+    if (_landed || _ahead != null) {
+      return null;
+    }
+    return (report) async {
+      await coordinator.frameStore.thawAhead(
+        frameKey,
+        canvasSize: coordinator.sessionStore.canvasSize,
+      );
+      final from = coordinator.currentSurfaceOf(frameKey);
+      final made = _derive();
+      // The landing asks whether the cel still shows anything, and a tile
+      // the engine made reads itself back to answer: asked here, the answer
+      // is the tile's own from now on (`CelPixelOverwriteCommand`'s reason).
+      made?.showsSomething;
+      _ahead = (from: from, made: made);
+      report(1);
+      await theScreensTurn();
+    };
   }
 
   /// ⛔A payload that will not come back leaves the PIXELS alone — but the

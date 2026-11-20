@@ -4,6 +4,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -396,7 +397,7 @@ void main() {
           height: cut.canvasSize.height - 128,
         ),
         // The centre kept: half the 128 each side.
-        contentOffset: (dx: -64, dy: -64),
+        place: const PictureMovedBy((dx: -64, dy: -64)),
         brushFrameStore: store,
       );
       history.execute(resize);

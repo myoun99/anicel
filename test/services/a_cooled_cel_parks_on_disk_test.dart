@@ -222,7 +222,9 @@ void main() {
     final store = BrushFrameStore()..hotCelByteBudget = 0;
     final k1 = key('f1');
     store.storeBakedSurface(k1, surfaceOnEngine(inked(11)));
-    store.storeBakedSurface(key('f2'), surfaceOnEngine(inked(13)));
+    // Its bytes here, and what the tier is past its budget by: a cel the
+    // engine alone holds weighs nothing here (`BitmapTile.ownBytes`).
+    store.storeBakedSurface(key('f2'), inked(13));
 
     await store.drainCooling();
 

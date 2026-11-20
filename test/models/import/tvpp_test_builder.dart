@@ -103,6 +103,7 @@ class TvppBuilder {
     bool visible = true,
     bool folded = true,
     bool locked = false,
+    int blendingModeId = 0,
     List<int>? ansiNameBytes,
   }) {
     final utf = [...utf8.encode(name), 0];
@@ -124,6 +125,7 @@ class TvppBuilder {
     v.setUint32(7 * 4, (visible ? 0 : 1) | (locked ? 0x10 : 0));
     v.setUint32(17 * 4, parentId);
     v.setUint32(18 * 4, layerId);
+    v.setUint32(15 * 4, blendingModeId);
     chunk(headerChunk, header);
   }
 
@@ -338,6 +340,11 @@ Uint8List srawRecord(
   /// two hold, in the X > 0 layout: how a copy between tiles of two sizes
   /// is driven, which no picture deduped by equality makes.
   Map<int, int> copies = const {},
+
+  /// Tiles written as the picture before's — `{tile: source}`, the 12-byte
+  /// `(0, 1, source)` of the X > 0 layout (card F-621 ②) — whatever
+  /// [pixels] holds there.
+  Map<int, int> fromTheLast = const {},
 }) {
   const tile = 64;
   final cols = (width + tile - 1) ~/ tile;
@@ -385,6 +392,10 @@ Uint8List srawRecord(
     for (var t = 1; t < total; t++) {
       if (copies[t] case final source?) {
         body.addAll([...u32(0), ...u32(0), ...u32(source)]);
+        continue;
+      }
+      if (fromTheLast[t] case final source?) {
+        body.addAll([...u32(0), ...u32(1), ...u32(source)]);
         continue;
       }
       // TVPaint dedupes identical tiles into copy markers — solid fills

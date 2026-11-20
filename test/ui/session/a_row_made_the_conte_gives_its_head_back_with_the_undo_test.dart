@@ -122,7 +122,10 @@ void main() {
         'gives it its own back, a redo the head again', () {
       final session = sessionOf(drawn: drawn);
 
-      session.layerSwitches.toggleTargetLayerKind();
+      session.layerSwitches.changeLayerKind(
+        row(session).id,
+        LayerKind.storyboard,
+      );
       expect(worn(session), (LayerKind.storyboard, sb, 'Conte', 1.0));
 
       session.undo();
@@ -137,7 +140,10 @@ void main() {
       'panel is all it takes', () {
     final session = sessionOf(drawn: false, headed: false);
 
-    session.layerSwitches.toggleTargetLayerKind();
+    session.layerSwitches.changeLayerKind(
+      row(session).id,
+      LayerKind.storyboard,
+    );
 
     expect(worn(session), (LayerKind.storyboard, lo, 'A', 0.5));
     expect(row(session).frames, hasLength(1));
@@ -168,7 +174,10 @@ void main() {
 
     session.historyManager.runAsOneStep('Mark and make the conte', () {
       session.layerMarks.setLayerMark(const LayerId('a-cel'), key);
-      session.layerSwitches.toggleTargetLayerKind();
+      session.layerSwitches.changeLayerKind(
+        row(session).id,
+        LayerKind.storyboard,
+      );
     });
     expect(worn(session), (LayerKind.storyboard, sb, 'Conte', 1.0));
 

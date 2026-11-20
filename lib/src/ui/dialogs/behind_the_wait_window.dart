@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 
-import '../../services/command.dart' show WorkAhead;
+import '../../services/command.dart' show PressedStep, WorkAhead;
 import '../../services/wait_window.dart' show StepBehind, reachesManyBlocks;
 import '../text/app_strings.dart';
 import 'app_progress_dialog.dart';
@@ -20,17 +21,28 @@ import 'app_progress_dialog.dart';
 /// and redone at once too: no window was up to stamp it with
 /// (`StepWindows`). ↩️F-551-Q1 (「전부 늘 띄운다」) stood every press
 /// behind it.
+///
+/// What the [press] works out ahead of its step runs first behind the
+/// window, its progress the window's — the step's cels one at a time, the
+/// screen its turn between two (🗣️F-615, 유저 2026-11-19: 「ui안멈추게
+/// 뒤에서 돌게?하고 대상 프레임 수에 맞춰서 몇퍼센트인지 표시」). A step taken
+/// at once works out nothing ahead: it works it out as it is taken.
+///
+/// A step taken at once is DONE when this returns ([SynchronousFuture]):
+/// what a press does after its step (`.then`) follows it at once, as it did
+/// before the step had a window to stand behind (F-615 — every path that
+/// lands a session comes through here and finishes what it was for).
 Future<void> takeBehindTheWaitWindow(
   BuildContext context,
-  VoidCallback step, {
+  PressedStep press, {
   required AppWaitWindow window,
   required Iterable<Object> blocks,
 }) {
   if (!reachesManyBlocks(blocks)) {
-    step();
-    return Future<void>.value();
+    press.step();
+    return SynchronousFuture<void>(null);
   }
-  return _standBehind(context, step, window: window);
+  return _standBehind(context, press.step, window: window, ahead: press.ahead);
 }
 
 /// A step that first works [ahead] off the UI thread, behind the app's wait

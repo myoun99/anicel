@@ -66,7 +66,7 @@ class SwapLayerReferenceCommand
   final BrushFrameStore store;
 
   /// Without it the canvas keeps drawing the old picture until the playhead
-  /// leaves the frame (`PixelVerbs.runPixelVerb` says so for its verbs).
+  /// leaves the frame (`PixelVerbs.pixelVerbStep` says so for its verbs).
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// The pictures the first execute puts in — let go of once [_surfaces]

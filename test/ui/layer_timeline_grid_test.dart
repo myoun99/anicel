@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show endAcross, offsetAlong, partAlong;
@@ -34,6 +37,13 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler.dart'
+    show TimelineFrameRuler;
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
+import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart'
+    show TimelineCutEndDragCallbacks;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -649,6 +659,10 @@ void main() {
           .position;
 
       final baseWidth = railContentWidth();
+      int rulerFrames() => tester
+          .widget<TimelineFrameRuler>(find.byType(TimelineFrameRuler))
+          .frameEndIndexExclusive;
+      final baseFrames = rulerFrames();
       // IN-RANGE scrolling (what the scrollbar and wheel can reach) never
       // grows the axis: the built cells are the wall.
       for (var hop = 0; hop < 4; hop += 1) {
@@ -669,6 +683,12 @@ void main() {
       }
       final grownWidth = railContentWidth();
       expect(grownWidth, greaterThan(baseWidth));
+      final grownFrames = rulerFrames();
+      expect(
+        grownFrames,
+        greaterThan(baseFrames),
+        reason: 'the ruler is built for the room grown',
+      );
 
       // Scrolling home releases the materialized tail (discrete jump =
       // immediate shrink; the hysteresis only holds sub-viewport
@@ -676,6 +696,11 @@ void main() {
       framePosition().jumpTo(0);
       await tester.pump();
       expect(railContentWidth(), lessThan(grownWidth));
+      expect(
+        rulerFrames(),
+        lessThan(grownFrames),
+        reason: 'and the ruler is built for the room let go',
+      );
     },
   );
 
@@ -1430,6 +1455,115 @@ void main() {
       25,
       reason: 'the scroll walls at the built extent',
     );
+  });
+
+  // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3c): the ruler keeps
+  // itself while what it draws stands. Where no のりしろ is asked the cut's
+  // length is the one fact a trim moves — the cursor here is one, as the
+  // app's is.
+  testWidgets('a new cut length reaches the ruler\'s end line with no '
+      'のりしろ asked', (tester) async {
+    final cursor = ValueNotifier<int>(0);
+    addTearDown(cursor.dispose);
+    TimelineFrameRuler ruler() =>
+        tester.widget(find.byType(TimelineFrameRuler));
+    await tester.pumpWidget(_grid(playbackFrameCount: 12, frameCursor: cursor));
+    final frames = ruler().frameEndIndexExclusive;
+
+    await tester.pumpWidget(_grid(playbackFrameCount: 16, frameCursor: cursor));
+
+    expect(
+      ruler().frameEndIndexExclusive,
+      frames,
+      reason: '⛔premise: the room the ruler is built for stands',
+    );
+    expect(ruler().playbackFrameCount, 16);
+  });
+
+  // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3c): ...and each
+  // thing the ruler draws, moved alone on a living grid, builds it again.
+  // ⚠️A fact the ruler drops is a row here that goes red. Its height is its
+  // rows' (`layerRowHeight`), which moves the metrics with it.
+  group('the ruler hears each thing it draws, alone:', () {
+    final trim = TimelineCutEndDragCallbacks(
+      cutId: const CutId('cut-1'),
+      onBegin: () => true,
+      onUpdate: (_) {},
+      onEnd: () {},
+      onCancel: () {},
+    );
+    final moves =
+        <
+          String,
+          Widget Function(
+            ValueNotifier<int> cursor,
+            ValueNotifier<TimelineDragPreview?> channel,
+          )
+        >{
+          'its cell (a zoom)': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            metrics: _testMetrics.copyWith(frameCellWidth: 40),
+          ),
+          'the rate it counts': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            projectFrameRate: const ProjectFrameRate.integer(30),
+          ),
+          'its ready signal': (cursor, channel) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            frameReadySignal: channel,
+          ),
+          'how it counts': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            rulerView: FrameRulerView.secondsPlusFrames,
+          ),
+          'its pages': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            sheetPages: const TimelineRulerPages.every(144),
+          ),
+          'a drag\'s channel': (cursor, channel) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            dragPreview: channel,
+          ),
+          'a trim\'s hooks': (cursor, _) => _grid(
+            playbackFrameCount: 400,
+            frameCursor: cursor,
+            cutEndDrag: trim,
+          ),
+        };
+    for (final MapEntry(key: name, value: moved) in moves.entries) {
+      testWidgets(name, (tester) async {
+        final cursor = ValueNotifier<int>(0);
+        addTearDown(cursor.dispose);
+        final channel = ValueNotifier<TimelineDragPreview?>(null);
+        addTearDown(channel.dispose);
+        TimelineFrameRuler ruler() =>
+            tester.widget(find.byType(TimelineFrameRuler));
+        Widget still() => _grid(playbackFrameCount: 400, frameCursor: cursor);
+        await tester.pumpWidget(still());
+        final kept = ruler();
+        await tester.pumpWidget(still());
+        expect(
+          identical(ruler(), kept),
+          isTrue,
+          reason: '⛔premise: the same facts keep it',
+        );
+
+        await tester.pumpWidget(moved(cursor, channel));
+
+        expect(
+          ruler().frameEndIndexExclusive,
+          kept.frameEndIndexExclusive,
+          reason: '⛔premise: the room it is built for stands',
+        );
+        expect(identical(ruler(), kept), isFalse);
+      });
+    }
   });
 
   testWidgets('renders cut end boundary after playback frames', (tester) async {
@@ -2459,6 +2593,13 @@ BoxDecoration _cellDecoration(WidgetTester tester, String key) {
 
 Widget _grid({
   int currentFrameIndex = 0,
+  ValueNotifier<int>? frameCursor,
+  Listenable? frameReadySignal,
+  ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
+  FrameRulerView rulerView = FrameRulerView.frames,
+  TimelineRulerPages? sheetPages,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
+  TimelineCutEndDragCallbacks? cutEndDrag,
   int playbackFrameCount = 12,
   double width = 900,
   TimelineGridMetrics metrics = _testMetrics,
@@ -2487,7 +2628,13 @@ Widget _grid({
         child: LayerTimelineGrid(
           hooks: TimelineGridHooks(
             activeLayer: ValueNotifier(const LayerId('layer-1')),
-            frameCursor: ValueNotifier<int>(currentFrameIndex),
+            frameCursor: frameCursor ?? ValueNotifier<int>(currentFrameIndex),
+            frameReadySignal: frameReadySignal,
+            projectFrameRate: projectFrameRate,
+            rulerView: rulerView,
+            sheetPages: sheetPages,
+            dragPreview: dragPreview,
+            cutEndDrag: cutEndDrag,
             playbackFrameCount: playbackFrameCount,
             exposureStateForLayer:
                 exposureStateForLayer ??

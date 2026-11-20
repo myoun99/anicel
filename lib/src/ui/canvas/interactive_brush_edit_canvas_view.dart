@@ -13,6 +13,7 @@ import '../../native/app_gpu_engine.dart' show StandsOnTheAppsEngine;
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_path.dart';
+import '../../services/input/pen_path_tally.dart';
 import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';

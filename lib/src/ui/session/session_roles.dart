@@ -93,7 +93,20 @@ abstract interface class SelectionAccess {
   ValueNotifier<TimelineLaneSelection?> get laneRangeSelection;
   ValueNotifier<List<TimelineRowAddress>> get rowSelection;
   void selectFrameIndex(int frameIndex);
-  void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis});
+
+  /// [frame] of [cutId], open or not: the cut, its row and the frame land
+  /// together, once a canvas that stands has the frame's picture
+  /// (`StandsWithItsPicture`); [stand] stands on it once the cut is open —
+  /// [selectFrameIndex]'s landing where none is given.
+  void goToCut(CutId cutId, int frame, {VoidCallback? stand});
+
+  /// [then] once it lands — the cut it may go into open, its frame stood
+  /// on (`StandsWithItsPicture`).
+  void selectGlobalFrame(
+    int globalFrame, {
+    TrackFrameAxis? onAxis,
+    VoidCallback? then,
+  });
   Frame? get selectedFrame;
   TimelineRowAddress get storyboardStandingRow;
   TimelineRowAddress get timelineStandingRow;

@@ -16,6 +16,9 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show debugCompositeTreesLaid;
+import 'package:anicel/src/services/playback/cut_composite_structure.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
@@ -67,7 +70,10 @@ void main() {
 
   late BrushFrameStore cels;
   late LayerFrameImageCache images;
+  /// Each tree the pictures' [FramePictures.stackOf] answered, in turn.
+  final trees = <List<CompositeNode<CanvasStackRow>>>[];
   setUp(() {
+    trees.clear();
     // The suite stacks every tree handed back anew to check it
     // (flutter_test_config.dart): these count the stackings themselves.
     final checked = debugCheckFrameStanding;
@@ -80,13 +86,15 @@ void main() {
     addTearDown(images.dispose);
   });
 
-  /// Pictures whose frames stack cel a — under a plugin's step run as
-  /// [run] answers, where it answers one — counting each stacking in
-  /// [stacked], under the stamp [stamp] answers; [paper] is the page's.
+  /// Pictures whose frames stack cel a — or each of [rows] — under a
+  /// plugin's step run as [run] answers, where it answers one — counting
+  /// each stacking in [stacked], under the stamp [stamp] answers; [paper]
+  /// is the page's.
   ({FramePictures pictures, List<int> stacked}) picturesOf({
     required Object? Function() stamp,
     FxPluginRun? Function()? run,
     ProjectBackground Function()? paper,
+    List<String> rows = const ['a'],
   }) {
     final stacked = [0];
     final store = aStoreOfPictures();
@@ -96,23 +104,26 @@ void main() {
       layerImages: images,
       stackOf: (picture) {
         stacked[0] += 1;
-        return [
-          CompositeLeaf(
-            CanvasLayerImageRequest(
-              frameKey: keyOf('a'),
-              opacity: 1,
-              effects: [
-                if (run?.call() case final run?)
-                  ResolvedLayerEffect(
-                    kind: EffectKind.plugin,
-                    plugin: shiftingFxPluginDescription,
-                    values: const [],
-                    run: run,
-                  ),
-              ],
+        final tree = <CompositeNode<CanvasStackRow>>[
+          for (final row in rows)
+            CompositeLeaf(
+              CanvasLayerImageRequest(
+                frameKey: keyOf(row),
+                opacity: 1,
+                effects: [
+                  if (run?.call() case final run?)
+                    ResolvedLayerEffect(
+                      kind: EffectKind.plugin,
+                      plugin: shiftingFxPluginDescription,
+                      values: const [],
+                      run: run,
+                    ),
+                ],
+              ),
             ),
-          ),
         ];
+        trees.add(tree);
+        return tree;
       },
       pageOf: (picture) => (
         canvasSize: picture.cut.canvasSize,
@@ -163,6 +174,32 @@ void main() {
 
     expect(stacked.single, 1);
     expect(pictures.celsReadAgain, 0);
+  });
+
+  // 🔬Card an-eye-toggle-holds-the-ui-thread (11-18): every frame a ruler's
+  // bar keyed after an edit asked each cel's drawn-ness and revision of the
+  // store twice — once for the key, once for what is kept of it.
+  test('a frame read anew asks each cel it stacks once whether it is drawn '
+      'and at what revision', () {
+    final asked = _CelsAsked();
+    ink(asked, 'a', CanvasPoint(x: 1, y: 1));
+    images = LayerFrameImageCache(frameStore: asked);
+    addTearDown(images.dispose);
+    final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+    asked
+      ..drawn = 0
+      ..revisions = 0;
+
+    final key = pictures.keyOf(at(aCut(), 0));
+
+    expect(stacked.single, 1);
+    expect(asked.drawn, 1);
+    expect(asked.revisions, 1);
+    expect(
+      key.signature.nodes,
+      hasLength(1),
+      reason: '⛔CONTROL: the drawn cel signs the key',
+    );
   });
 
   test('a cel another frame stacks moving reads this frame\'s cels once '
@@ -294,6 +331,129 @@ void main() {
       final after = pictures.keyOf(at(cut, 0));
 
       expect(after, isNot(before), reason: 'a is no part of it');
+    });
+  });
+
+  // 🔬Card baking-ahead-allocates-the-ui-isolate-into-gc (11-19, S5_BA cut
+  // 352 copy · 37 rows): the walk weighed, read in and made each frame from
+  // a tree it stacked again, and the making signed it again once drawn.
+  testWidgets('the walk weighs, reads in and makes a frame from the one '
+      'tree its key was read from — and lays it under that key', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final cut = aCut();
+      final (:pictures, :stacked) = picturesOf(stamp: () => 'still');
+      pictures.keyOf(at(cut, 0));
+      final signed = pictures.keysSigned;
+
+      await pictures.bytesToMake(at(cut, 0));
+      await pictures.readIn(at(cut, 0));
+      final made = await pictures.make(at(cut, 0), shouldAbort: () => false);
+
+      expect(made, isTrue, reason: '⛔premise');
+      expect(stacked.single, 1);
+      expect(pictures.keysSigned, signed);
+      expect(
+        pictures.has(at(cut, 0)),
+        isTrue,
+        reason: '⛔CONTROL: laid under the key it is asked by',
+      );
+    });
+  });
+
+  // The drawing notes a cel recorded at another canvas size as drawing
+  // nothing, and moves no revision: only that note says the frame is laid
+  // without it.
+  testWidgets('🚨a frame whose making finds a cel drawing nothing is laid '
+      'under the key read once it is drawn — not the one read before', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      inkCelIn(
+        cels,
+        keyOf('b'),
+        canvasSize: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
+        at: CanvasPoint(x: 1, y: 1),
+        size: 2,
+        tipShape: BrushTipShape.square,
+        tileSize: tileSize,
+      );
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(
+        stamp: () => 'still',
+        rows: const ['a', 'b'],
+      );
+      final before = pictures.keyOf(at(cut, 0));
+      expect(before.signature.nodes, hasLength(2), reason: '⛔premise');
+
+      final made = await pictures.make(at(cut, 0), shouldAbort: () => false);
+
+      expect(made, isTrue, reason: '⛔premise');
+      expect(pictures.keyOf(at(cut, 0)).signature.nodes, hasLength(1));
+      expect(pictures.has(at(cut, 0)), isTrue);
+    });
+  });
+
+  group('a key asked of a tree is the one kept only for the tree it was read '
+      'from, on its own page, each cel as it is now', () {
+    test('⛔CONTROL — the tree it was read from, as it stands, is handed '
+        'the key kept', () {
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final kept = pictures.keyOf(at(cut, 0));
+      final signed = pictures.keysSigned;
+
+      final asked = pictures.keyOfStack(trees.last, at(cut, 0));
+
+      expect(identical(asked, kept), isTrue);
+      expect(pictures.keysSigned, signed);
+    });
+
+    test('another tree — a stack a screen holds — is signed as stacked', () {
+      ink(cels, 'b', CanvasPoint(x: 5, y: 5));
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final kept = pictures.keyOf(at(cut, 0));
+
+      final screens = pictures.keyOfStack([
+        ...trees.last,
+        CompositeLeaf(
+          CanvasLayerImageRequest(frameKey: keyOf('b'), opacity: 1),
+        ),
+      ], at(cut, 0));
+
+      expect(screens.signature.nodes, hasLength(2));
+      expect(screens, isNot(kept));
+    });
+
+    test('another page is signed on it', () {
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final kept = pictures.keyOf(at(cut, 0));
+      final page = (
+        canvasSize: cut.canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: true,
+        paperBackground: const ProjectBackground.color(0xFF102030),
+      );
+
+      final asked = pictures.keyOfStack(trees.last, at(cut, 0), page: page);
+
+      expect(asked, isNot(kept));
+    });
+
+    test('a cel asked as it was is signed as it was', () {
+      final cut = aCut();
+      final (:pictures, stacked: _) = picturesOf(stamp: () => 'still');
+      final then = pictures.celNow(keyOf('a'));
+      final before = pictures.keyOf(at(cut, 0));
+      ink(cels, 'a', CanvasPoint(x: 3, y: 3));
+      expect(pictures.keyOf(at(cut, 0)), isNot(before), reason: '⛔premise');
+
+      final asked = pictures.keyOfStack(trees.last, at(cut, 0), asOf: then);
+
+      expect(asked, before);
     });
   });
 
@@ -472,6 +632,39 @@ void main() {
     expect(() => pictures.keyOf(at(cut, 0)), throwsStateError);
   });
 
+  // 🔬Card an-eye-toggle-holds-the-ui-thread (11-18): after every edit a
+  // ruler's bar laid each frame's tree where the cut's spans were found,
+  // and again where the span's picture was keyed.
+  testWidgets('a frame whose span the bar found is keyed from the tree that '
+      'found it', (tester) async {
+    const row = LayerId('a');
+    final session = sessionOfRows(
+      [drawingRow('a')],
+      canvasSize: canvasSize,
+      cels: const {},
+      standOn: row,
+    );
+    final cut = session.requireActiveCut;
+    inkCel(
+      session,
+      session.brushFrameKeyForCut(cut, row, theCel),
+      canvasSize: canvasSize,
+      at: CanvasPoint(x: 1, y: 1),
+      size: 2,
+    );
+    final [span, ...] = compositeStructureSpansIn(cut, start: 0, end: 1);
+    final before = debugCompositeTreesLaid;
+
+    final key = session.playbackRig.framePictures.keyOf(at(cut, span.start));
+
+    expect(debugCompositeTreesLaid - before, 0);
+    expect(
+      key.signature.nodes,
+      isNotEmpty,
+      reason: '⛔CONTROL: the frame stacks its row',
+    );
+  });
+
   testWidgets('a plugin installed under a frame that names it reads the '
       'frame anew — a word to every screen, which no write to the project '
       'carries', (tester) async {
@@ -513,4 +706,23 @@ void main() {
       reason: 'the device\'s build of it signs the key',
     );
   });
+}
+
+/// A store that counts how often a cel's drawn-ness
+/// ([celHasRenderableContent]) and revision ([sourceRevisionOf]) are asked.
+final class _CelsAsked extends BrushFrameStore {
+  int drawn = 0;
+  int revisions = 0;
+
+  @override
+  bool celHasRenderableContent(BrushFrameKey key) {
+    drawn += 1;
+    return super.celHasRenderableContent(key);
+  }
+
+  @override
+  int sourceRevisionOf(BrushFrameKey key) {
+    revisions += 1;
+    return super.sourceRevisionOf(key);
+  }
 }

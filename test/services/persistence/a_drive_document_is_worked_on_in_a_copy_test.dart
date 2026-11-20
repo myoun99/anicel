@@ -133,15 +133,15 @@ void main() {
         'come, and a Cancel stops the copy and registers nothing', () async {
       final uri = await projectDocument('Slow.anicel');
       provider.holdCopy = Completer<void>();
-      final told = <({Duration waited, Duration quiet})>[];
+      final told = <({Duration waited, Duration quiet, bool cloud})>[];
       var cancelled = false;
 
       final opening = FolderPicker.materializeOpenedFile(
         uri,
         within: null,
         step: const Duration(milliseconds: 5),
-        onWaiting: (waited, quiet) {
-          told.add((waited: waited, quiet: quiet));
+        onWaiting: (waited, quiet, {required fromTheCloud}) {
+          told.add((waited: waited, quiet: quiet, cloud: fromTheCloud));
           if (told.length == 3) {
             cancelled = true;
           }
@@ -155,6 +155,13 @@ void main() {
         contains(true),
         reason: 'the bytes the copy moved were counted as arriving, so the '
             'quiet runs from them and not from the start (F-608 ①)',
+      );
+      expect(
+        [for (final beat in told) beat.cloud],
+        everyElement(isFalse),
+        reason: 'a document poured in is bytes coming in, from its '
+            'provider\'s network or its cache — the app cannot tell, so the '
+            'line says it is reading (F-621-Q2)',
       );
       expect(provider.calls, contains('cancelDocumentCopy'));
       provider.holdCopy!.complete();

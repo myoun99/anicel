@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
@@ -11,10 +12,16 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
+import '../../models/cut_id.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardReach;
+import '../../models/project_background.dart' show ProjectBackground;
 import '../../native/app_gpu_engine.dart' show FrameKernelsToCome;
 import '../../native/app_kernels_ahead.dart' show appEngineGetsReady;
+import '../../native/engine_frame_tools.dart';
 import '../../native/screen_texture.dart' show ScreenTexture;
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/playback/frame_demand.dart';
+import '../canvas/bitmap_surface_painter.dart' show BitmapSurfacePainter;
 import '../canvas/canvas_layer_stack_view.dart'
     show
         CanvasActiveLayerRow,
@@ -26,6 +33,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         StackedFrame,
         waitsForItsPlugins;
 import '../canvas/picture_up_view.dart';
+import '../canvas/shown_cels.dart' show ShownCels;
 import '../canvas/viewport_canvas_transform.dart' show renderSnappedViewport;
 import '../effective_device_pixel_ratio.dart';
 import '../engine_screen_texture.dart';
@@ -35,6 +43,8 @@ import 'frame_pictures.dart';
 import 'frame_wait_mark.dart';
 import '../widgets/still_raster.dart';
 import 'stacked_frame_picture.dart';
+
+part 'live_cel_screen.dart';
 
 /// What a screen showing frames takes from their maker: the signal that a
 /// frame's picture landed, and the pictures the frames are kept in.
@@ -95,6 +105,7 @@ class FramePictureView extends StatefulWidget {
     required this.nodes,
     required this.viewport,
     this.live,
+    this.standsAs,
     this.laysWhatItMisses = false,
     this.wholeFrames = true,
     this.alreadyShown = false,
@@ -120,6 +131,13 @@ class FramePictureView extends StatefulWidget {
   /// draws nothing live: a run, the track stack.
   final LiveRows? live;
 
+  /// The canvas this view is, drawing [live], to what is held of the
+  /// chains of the frame it stands on ([EngineChainHolds.settleOnce]):
+  /// the session's, whose moves make its frames for it as well
+  /// (`StandsWithItsPicture`); where none, the view itself — the conte's
+  /// pictures, each on a frame of its own.
+  final Object? standsAs;
+
   /// Whether a frame not there yet is made by this view — at once, at the
   /// front of the store's line ([FramePictures.makeShown]) — rather than
   /// left to the run's maker walking ahead of the playhead.
@@ -128,7 +146,12 @@ class FramePictureView extends StatefulWidget {
   /// Whether a frame not there yet leaves the last one shown standing until
   /// it is, or is drawn as it stands meanwhile from the cels in hand
   /// ([FramePictures.frameAsItStands]) — a canvas that stands, where a row
-  /// being drawn on may not wait for its neighbours.
+  /// being drawn on may not wait for its neighbours: a frame of the cut it
+  /// showed last. 🗣️A frame of a cut nothing of which was there — another
+  /// than the one it showed, or any of a file just opened — stands bare
+  /// till its picture comes (the-standing-canvas-composes-a-frame-twice-
+  /// before-its-picture-Q5 · Q7 = blank, 유저 2026-11-18 「빈 종이로
+  /// 기다린다」): a cut a command opened, or a file.
   ///
   /// ⛔Not one flag with [laysWhatItMisses]: who makes a frame and whether
   /// a frame waits to be whole are two questions, and a track stack's
@@ -211,7 +234,60 @@ final class _DrawnAsItStands {
   bool whole = false;
 }
 
-class _FramePictureViewState extends State<FramePictureView> {
+/// How a frame screen's box lays its frame on its texture: the view through
+/// `viewport` at `devicePixelRatio`, its corner on the texel `corner`.
+typedef _OnTheTexture = ({
+  CanvasViewport viewport,
+  double devicePixelRatio,
+  (int, int) corner,
+});
+
+/// What a frame screen's box ([_RenderFrameScreen]) asks, in its paint, of
+/// what hands it its frames — a frame's picture view ([FramePictureView]),
+/// or a cel's live screen ([LiveCelScreen]). The box is one: how a frame
+/// goes up through its texture, stands where it was drawn for through a
+/// pan, and waits for the engine is the same whoever feeds it.
+abstract interface class _FrameFeed {
+  /// Writes what moved since the paint before into what is shown, before
+  /// it is shown: what this frame's paint moves is what this frame shows.
+  void _catchUp();
+
+  /// Whether there is a frame to show — a picture, or [asItStands] — and
+  /// the engine's tools open to show it with.
+  bool _hasAFrame(StackedFrame? asItStands);
+
+  /// The frame as it is drawn now — [frame] where no picture is shown —
+  /// onto [target] of [size] texels, laid [on] it.
+  void _show(
+    StackedFrame? frame,
+    GpuTarget target,
+    (int, int) size,
+    _OnTheTexture on,
+  );
+
+  /// Tells the place the frame is shown in whether the engine keeps it
+  /// from the screen at this paint — [refused] where the paint's lay met
+  /// kernels still to be compiled ([FrameKernelsToCome]).
+  void _waitsAtPaint({required bool refused});
+}
+
+/// Reports [thrown], the first throw a cel's reading gave while [doing]
+/// — the cel noted and drawn without.
+void _report((Object, StackTrace)? thrown, String doing) {
+  if (thrown case (final error, final stack)) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'frame picture view',
+        context: ErrorDescription(doing),
+      ),
+    );
+  }
+}
+
+class _FramePictureViewState extends State<FramePictureView>
+    implements _FrameFeed {
   /// The key of the frame shown — its picture, held for this view by the
   /// store; or the frame as it stands.
   FramePictureKey? _showing;
@@ -222,6 +298,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// A frame of no row, or one the maker gave up on, drawn as its cels
   /// stand — by a view that draws nothing live ([_live] where it does).
   StackedFrame? _asItStands;
+
+  /// The cut of the frame this view put on its screen last — its picture,
+  /// or the frame as it stands ([_show]); null till it puts one there. A
+  /// frame of another cut stands bare against it ([_standsBare]).
+  CutId? _cutOnScreen;
 
   /// The frame as it stands with its live rows ([LiveRows]) — drawn
   /// wherever its picture is not shown or [_standing], and the body every
@@ -272,10 +353,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// picture of the frame as it is stacked now taken, and no change of its
   /// live rows still going through its plugins ([_writeThrough]) — what a
   /// frame that waits for them ([_waits]) shows late. One that does not
-  /// wait shows all of it at the paint.
+  /// wait shows all of it at the paint — once its picture comes, where it
+  /// stands bare till it does ([_standsBare]).
   @visibleForTesting
   bool get nothingOnItsWay =>
-      !_waits ||
+      (!_waits && !_standsBare) ||
       (_shown != null &&
           _showing == _pictures.keyOfStack(widget.nodes, widget.picture) &&
           !(_standing.whole && _movedSinceThrough) &&
@@ -320,6 +402,15 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// ... and whether its live rows moved since.
   bool _standingMoved = false;
 
+  /// The compositions laid on [_standingOn], counted: the one that ends
+  /// says by it whether it was the last — what the screen holds then
+  /// ([_keepWhatStood]).
+  int _stood = 0;
+
+  /// The frame [_look] stands on, kept as its key's picture once the paint
+  /// has laid it ([_keepWhatStood]) — the store not asked to lay it again.
+  ({FramePictureKey key, StackedFrame frame})? _keeping;
+
   /// Whether the live rows moved since all of the frame last went through
   /// its plugins ([_throughWhole]).
   bool _movedSinceThrough = true;
@@ -335,7 +426,6 @@ class _FramePictureViewState extends State<FramePictureView> {
     _standLive(onScreen: widget.alreadyShown ? (_) => true : null);
     _look();
     _hearItsStore();
-    appEngineGetsReady.addListener(_paintAgain);
   }
 
   /// Paints again at the store's news of what keeps a frame from the
@@ -403,58 +493,32 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// from the screen at this paint, ONE answer for every way it does: its
   /// tools still to be opened; [refused], the paint's own lay met kernels
   /// still to be compiled ([FrameKernelsToCome]); the frame's picture,
-  /// nothing of the frame drawn meanwhile, in a line that stands behind
-  /// such kernels ([EngineFramePictureStore.waitsForKernels]).
+  /// nothing of the frame drawn meanwhile — a view of whole frames, or one
+  /// that stands bare ([_standsBare]: a file just opened, a cut a command
+  /// opened) — in a line that stands behind such kernels
+  /// ([EngineFramePictureStore.waitsForKernels]).
   ///
   /// ⛔Not a frame drawn as it stands while its picture is on its way: it
   /// is on the screen. Nor one that waits for its plugins alone (🗣️관제
   /// 2026-11-10 23:05: the answer is of the engine's getting ready).
+  @override
   void _waitsAtPaint({required bool refused}) => _place?.says(
     this,
     waits:
         _store.toolsAreToCome ||
         refused ||
-        (_making != null && !_standsMeanwhile && _store.waitsForKernels),
+        (_making != null &&
+            (!_standsMeanwhile || _standsBare) &&
+            _store.waitsForKernels),
   );
 
-  /// 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
-  /// 띄운다 — 그때까지 고리」 — whether this view's frame is kept from the
-  /// screen till the app has what a hand needs of its engine
-  /// ([appEngineGetsReady]): the frame coming to the screen is the word
-  /// that it can be worked on. Its picture is made meanwhile all the same,
-  /// and shown by the paint that follows the app's being let go.
-  ///
-  /// ⛔Not a wait its place marks ([_waitsAtPaint]): the app stands behind
-  /// its one wait window for it
-  /// (`HomePage._waitForTheEngineBehindTheWindow`).
-  bool get _heldForTheEngine => appEngineGetsReady.value;
+  @override
+  bool _hasAFrame(StackedFrame? asItStands) =>
+      (_drawnPicture ?? asItStands) != null && _store.toolsOpen != null;
 
   /// Whether a frame whose picture is not there yet is drawn as it stands
   /// until it is ([FramePictureView.wholeFrames], [_waits]).
   bool get _standsMeanwhile => !widget.wholeFrames && !_waits;
-
-  /// The compile this view paints again after ([_paintOnceCompiled]).
-  Future<void>? _compiling;
-
-  /// Paints again once [compiled] is done: a frame the paint could not lay
-  /// yet ([FrameKernelsToCome]) is laid by that one. Once a compile, however
-  /// many paints meet it.
-  void _paintOnceCompiled(Future<void> compiled) {
-    if (identical(_compiling, compiled)) {
-      return;
-    }
-    _compiling = compiled;
-    unawaited(
-      compiled.then(
-        (_) => _paintAgain(),
-        onError: (Object error, StackTrace stack) {
-          _report((error, stack), 'compiling the kernels a frame is laid on');
-          // Laid by the paint all the same: its run says why it cannot be.
-          _paintAgain();
-        },
-      ),
-    );
-  }
 
   @override
   void didUpdateWidget(FramePictureView oldWidget) {
@@ -475,24 +539,26 @@ class _FramePictureViewState extends State<FramePictureView> {
     // timeline builds it at every step with every row as it was — and the
     // frame stood again at each repainted the whole canvas. ↩️Told by the
     // list's identity, which no build kept.
+    final asItStands = _pictures.keyAsItStands(widget.nodes, widget.picture);
     final handedAnew =
-        _stoodBy != _pictures.keyAsItStands(widget.nodes, widget.picture) ||
+        _stoodBy != asItStands ||
         !identical(oldWidget.run.pictures, widget.run.pictures) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
     if (handedAnew) {
-      _standAnew(oldWidget.drawnLive);
+      _standAnew(oldWidget.drawnLive, asItStands);
     } else {
       _look();
     }
   }
 
-  /// The frame stands as it was handed last, [drawnLive] as they were last
-  /// drawn.
-  void _standAnew(Set<BrushFrameKey> drawnLive) {
+  /// The frame stands as it was handed last — [asItStands] its key — and
+  /// [drawnLive] as they were last drawn.
+  void _standAnew(Set<BrushFrameKey> drawnLive, FramePictureKey asItStands) {
     final shown = _onScreen;
     _standLive(
       onScreen: (cel) => shown.contains(cel) || drawnLive.contains(cel),
+      asItStands: asItStands,
     );
     // 🚨THE FRAME FIRST, THEN WHAT ITS LIVE ROWS MOVED: rows handed with
     // another frame are that frame's. Measured against the picture of the
@@ -510,14 +576,20 @@ class _FramePictureViewState extends State<FramePictureView> {
   void dispose() {
     widget.run.landings.removeListener(_landed);
     _hearNoMore(_store);
-    appEngineGetsReady.removeListener(_paintAgain);
     _place?.says(this, waits: false);
     _liveChanges?.removeListener(_liveMoved);
     _letGo(_store);
     _standingOn?.free();
+    if (widget.standsAs == null) {
+      _pictures.standDown(this);
+    }
     _repaint.dispose();
     super.dispose();
   }
+
+  /// The canvas this view is to what is held of its frame's chains
+  /// ([FramePictureView.standsAs]), where it draws live.
+  Object? get _canvas => widget.live == null ? null : widget.standsAs ?? this;
 
   void _landed() => setState(_look);
 
@@ -532,8 +604,17 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// are on screen already and read on this thread first
   /// ([FramePictureView.alreadyShown], [FramePictureView.drawnLive],
   /// [_onScreen]).
-  void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
-    _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
+  ///
+  /// 🚨[asItStands] IS THE KEY THE HANDING WAS TOLD BY ([didUpdateWidget]),
+  /// not signed again: ↩️each value of a box that draws on the frame (a cel
+  /// number's) signed the 68 rows twice (🔬Surface Pro 11, S5_BA cut 352,
+  /// F-620, 2026-11-19).
+  void _standLive({
+    bool Function(BrushFrameKey cel)? onScreen,
+    FramePictureKey? asItStands,
+  }) {
+    _stoodBy =
+        asItStands ?? _pictures.keyAsItStands(widget.nodes, widget.picture);
     _waits = waitsForItsPlugins(widget.nodes);
     _liveChanges?.removeListener(_liveMoved);
     _liveChanges = null;
@@ -640,7 +721,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       return;
     }
     if (widget.laysWhatItMisses) {
-      _make(key);
+      _makeOrKeep(key);
     }
     if (_standsMeanwhile) {
       // Drawn as it stands until its picture is there.
@@ -714,19 +795,95 @@ class _FramePictureViewState extends State<FramePictureView> {
     _report(now.thrown, 'drawing a frame as its cels stand');
   }
 
-  /// Reports [thrown], the first throw a cel's reading gave while [doing]
-  /// — the cel noted and drawn without.
-  static void _report((Object, StackTrace)? thrown, String doing) {
-    if (thrown case (final error, final stack)) {
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'frame picture view',
-          context: ErrorDescription(doing),
-        ),
-      );
+  /// [_make]s [key]'s frame — or, where the frame drawn as it stands is the
+  /// picture the store would lay of it ([_standsAsItsPicture]), keeps what
+  /// the paint lays ([_keepWhatStood]): made once the frame is painted
+  /// where no paint laid it.
+  ///
+  /// 🔬F-620 (S5_BA cut 352, 2026-11-19): ↩️a value dragged on the canvas
+  /// — a cel number's box, a lane's colour wheel — was composed twice a
+  /// value, the frame as it stands and again as its key's picture.
+  void _makeOrKeep(FramePictureKey key) {
+    final live = _live;
+    if (live == null || !_standsAsItsPicture) {
+      _keeping = null;
+      _make(key);
+      return;
     }
+    // The making of the key before, if any, is no one's now.
+    _making = null;
+    _keeping = (key: key, frame: live);
+    SchedulerBinding.instance.addPostFrameCallback(
+      (_) => _madeUnlessLaid(key, live),
+    );
+  }
+
+  /// Whether the frame drawn as it stands is the picture the store would
+  /// lay of it ([FramePictures.makeShown]) — what its live rows show past
+  /// the cels aside, which a composition says as it is laid
+  /// ([_screenStoodOn]): every cel it draws in hand
+  /// ([FramePictures.frameAsItStands] leaves one out till it is read), its
+  /// nodes held where a canvas's picture holds them, and nothing it waits
+  /// for ([_standsMeanwhile]).
+  ///
+  /// 🗣️관제 11-19 22:4x (유저: 「셀번호fx는 사실상 fx의 문제 … 다른 fx 포함해서
+  /// 법 통일」): this is every value's law, not a cel number's — any lane's,
+  /// any box's — and these are made by the store as ever, each for why it
+  /// is not the frame as it stands:
+  /// ⛔a frame that waits for its plugins ([_waits]) stands no frame at all
+  ///   while its picture comes (🗣️F-215, 「직전 완성 그림에 머문다」): the
+  ///   store's is its one composition a value — nothing twice to spare;
+  /// ⛔a frame whose live rows show what no cel stores — a step on its way,
+  ///   a float, a lifted row ([_showsUnstored]) — stands a picture its
+  ///   key's is not.
+  /// ★Ghosts in place are no exception: the store lays them over the film
+  /// only to spare the tiles they do not reach (`FramePictures._drawAndLay`
+  /// `over`) — the same nodes, the same picture.
+  bool get _standsAsItsPicture =>
+      widget.live != null &&
+      _standsMeanwhile &&
+      _pictures.allInHand(widget.nodes, widget.picture);
+
+  /// [key]'s frame made, where the paint laid nothing of [live] to keep —
+  /// a view standing bare ([_standsBare]), or one not painted.
+  void _madeUnlessLaid(FramePictureKey key, StackedFrame live) {
+    final keeping = _keeping;
+    if (!mounted ||
+        keeping == null ||
+        !identical(keeping.frame, live) ||
+        identical(_composedOn, live)) {
+      return;
+    }
+    _keeping = null;
+    _make(key);
+  }
+
+  /// [frame], laid on [screen] by the composition counted [laidBy], kept as
+  /// the picture of the key [_look] stands on it for ([_keeping]) — or made
+  /// by the store, where that was not the last laid there, or laid what no
+  /// cel stores or threw (null), or the store has the key laid or on its
+  /// way.
+  void _keepWhatStood(
+    EngineStackScreen screen,
+    StackedFrame frame, {
+    required int? laidBy,
+  }) {
+    final keeping = _keeping;
+    if (!mounted || keeping == null || !identical(keeping.frame, frame)) {
+      return;
+    }
+    _keeping = null;
+    final kept = identical(_standingOn, screen) && laidBy == _stood
+        ? _store.keepLaid(keeping.key, screen)
+        : null;
+    if (kept == null) {
+      _make(keeping.key);
+      return;
+    }
+    // The store's now: freed once it lets it go and no one shows it.
+    _standingOn = null;
+    _composedOn = null;
+    setState(_look);
   }
 
   /// Makes [key]'s frame now, as this view stacks it.
@@ -741,7 +898,7 @@ class _FramePictureViewState extends State<FramePictureView> {
             widget.nodes,
             widget.picture,
             shouldAbort: () => !mounted || _making != key,
-            keepsNodes: widget.live != null,
+            canvas: _canvas,
           )
           .then<void>(
             (_) {},
@@ -960,6 +1117,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 2026-11-03: the main PC gained 28 → 22 ms; on the Surface Pro 11 frames
   /// past 16.7 ms went 89 → 144 at 100%, the step's work landing in the next
   /// frame's way). 🚨The main PC does not speak for the Surface here.
+  @override
   void _catchUp() {
     final live = _live;
     final key = _showing;
@@ -1061,16 +1219,17 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// What [_RenderFrameScreen] asks of this view in its paint.
   ///
   /// The frame as it is drawn now — what [frame] stands for where no
-  /// picture is shown — through [viewport] at [devicePixelRatio] onto
-  /// [target] of [size] texels, the view's corner on its texel [corner].
+  /// picture is shown — onto [target] of [size] texels, laid [on] it.
+  @override
   void _show(
     StackedFrame? frame,
     GpuTarget target,
-    (int, int) size, {
-    required CanvasViewport viewport,
-    required double devicePixelRatio,
-    required (int, int) corner,
-  }) {
+    (int, int) size,
+    _OnTheTexture on,
+  ) {
+    _cutOnScreen = _showing?.cutId ?? _cutOnScreen;
+    _pictures.putOnScreen();
+    final (:viewport, :devicePixelRatio, :corner) = on;
     final shown = _drawnPicture;
     if (shown != null) {
       shown.show(
@@ -1172,21 +1331,53 @@ class _FramePictureViewState extends State<FramePictureView> {
   EngineFramePicture? get _drawnPicture =>
       _standing.whole && !_waits ? null : _shown;
 
+  /// Whether this view stands bare till the picture of its frame comes,
+  /// where it would draw it as it stands: its picture still to come, of a
+  /// cut nothing of which was there — another than the one it put on
+  /// screen last (Q5 = blank), or, before it put one there, any of a
+  /// project none of whose frames a view showed yet: a file just opened
+  /// (🗣️Q7 = blank, 유저 2026-11-18 「빈 종이로 기다린다」,
+  /// [FramePictures.anyOnScreen]). ⛔Not a page alone, nor a frame given up
+  /// on: there is nothing of them to come, and a move lands on them at once
+  /// ([FramePictures.toComeAt]).
+  bool get _standsBare {
+    final showing = _showing;
+    if (!_standsMeanwhile || showing == null) {
+      return false;
+    }
+    final onScreen = _cutOnScreen;
+    final nothingThere = onScreen == null
+        ? !_pictures.anyOnScreen
+        : showing.cutId != onScreen;
+    return nothingThere && _pictures.toComeAt(showing);
+  }
+
   /// [frame] composed on this view's own screen, where it or its live rows
   /// moved since it last was.
   EngineStackScreen _screenStoodOn(StackedFrame frame) {
     final (:composite, :letters) = _store.toolsOpen!;
     final screen = _standingOn ??= EngineStackScreen(composite, letters);
     if (!identical(_composedOn, frame) || _standingMoved) {
+      // Laid whole for the canvas this view is: what it stood on before is
+      // let go of (🔬a blur value dragged on S5_BA cut 352 held 3.6 GB of
+      // values passed over, 2026-11-20).
       final composed = screen.compose(
         frame,
         holds: widget.live == null ? null : _pictures.heldNodes,
+        standing: _canvas,
       );
       _composedOn = frame;
       _standingMoved = false;
+      final stood = ++_stood;
+      // What no cel stores is no part of the frame's picture ([_keptUnder]).
+      final keepable = !_showsUnstored(frame.tokens);
       unawaited(
         composed.then<void>(
-          (_) {},
+          (_) => _keepWhatStood(
+            screen,
+            frame,
+            laidBy: keepable ? stood : null,
+          ),
           onError: (Object error, StackTrace stack) {
             // Composed again at the next paint, as one refused where it was
             // asked was: the screen keeps no canvas it failed on.
@@ -1194,6 +1385,7 @@ class _FramePictureViewState extends State<FramePictureView> {
               _composedOn = null;
             }
             _report((error, stack), 'drawing a frame as it stands');
+            _keepWhatStood(screen, frame, laidBy: null);
           },
         ),
       );
@@ -1215,12 +1407,14 @@ class _FramePictureViewState extends State<FramePictureView> {
     shown: _shown,
     // ⛔Not the stored cels where the view draws rows live: a frame of no
     // row is a page the pen may be drawing on — nor the live rows of a
-    // frame that waits for its plugins.
-    asItStands: _waits ? _asItStands : _live ?? _asItStands,
+    // frame that waits for its plugins, nor of one it stands bare for
+    // ([_standsBare]).
+    asItStands: _waits || _standsBare ? _asItStands : _live ?? _asItStands,
     ground: widget.ground,
     cutAtCanvas: widget.cutAtCanvas,
     viewport: widget.viewport,
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+    panel: null,
     repaint: Listenable.merge([_repaint, _liveChanges]),
     overlays: widget.carriesTheOverlays
         ? PictureUpViewScope.maybeOf(context)
@@ -1253,6 +1447,63 @@ const int _screenMargin = 128;
 /// ([EngineScreenTexture]), and what that spares is room too.
 const int _screenRoom = 3 * _screenMargin;
 
+/// The step a cel's window's screen is rounded up to, in device pixels
+/// ([_holdsOver]): a box a few pixels across is not held in a texture a
+/// canvas's step on a side. One a zoom grows past its texture stands on
+/// what it outgrew till the next shows ([EngineScreenTexture.replaced]).
+const int _windowSideStep = 64;
+
+/// What of a box its screen holds, in the box's device pixels: the [rect]
+/// a frame is laid around ([EngineScreenTexture.windowOf]), the [margin]
+/// past it the frame drawn last spares to serve a view panned since
+/// ([_RenderFrameScreen._servedByTheFrameDrawnLast]), and the sides its
+/// texture is opened at ([wanted]).
+typedef _ScreenHolds = ({Rect rect, int margin, (int, int) wanted});
+
+/// A box of [sides] that is the panel's: held whole, a pan uncovering its
+/// edge.
+_ScreenHolds _holdsWhole((int, int) sides) {
+  final (width, height) = sides;
+  return (
+    rect: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    margin: _screenMargin,
+    wanted: (width + _screenRoom, height + _screenRoom),
+  );
+}
+
+/// A cel's window of [sides] with the [panel] lying over it where it does
+/// ([LiveCelScreen]): along an axis the panel and [_screenMargin] past its
+/// edges take in, the box held whole — a pan moves it with the paper and
+/// asks for nothing — and along a longer one, what lies within them, its
+/// texture no wider.
+///
+/// ↩️Held as the panel's box is, every window's screen was a texture the
+/// panel's size, a step and the room to pan round it — for a band of the
+/// conte's a few rows high, or a box of the envelope's among dozens
+/// (board the-screen-premultiplies-ram-tiles-to-show-them).
+_ScreenHolds _holdsOver((int, int) sides, Rect panel) {
+  final around = panel.inflate(_screenMargin.toDouble());
+  (double, double) along(int side, double from, double to) {
+    if (side <= to - from) {
+      return (0, side.toDouble());
+    }
+    final start = from.clamp(0, side).toDouble();
+    return (start, to.clamp(start, side).toDouble());
+  }
+
+  final (width, height) = sides;
+  final (left, right) = along(width, around.left, around.right);
+  final (top, bottom) = along(height, around.top, around.bottom);
+  return (
+    rect: Rect.fromLTRB(left, top, right, bottom),
+    margin: 0,
+    wanted: (
+      math.min(width, around.width.ceil()),
+      math.min(height, around.height.ceil()),
+    ),
+  );
+}
+
 /// What a frame of a view's screen was drawn for: the view it was drawn
 /// through, as every painter under it snaps it ([renderSnappedViewport]),
 /// and the texel of the screen the view's corner stood on.
@@ -1268,13 +1519,14 @@ class _FrameScreen extends LeafRenderObjectWidget {
     required this.cutAtCanvas,
     required this.viewport,
     required this.devicePixelRatio,
+    required this.panel,
     required this.repaint,
     required this.overlays,
     required this.together,
     required this.leftUp,
   });
 
-  final _FramePictureViewState view;
+  final _FrameFeed view;
   final EngineFramePicture? shown;
   final StackedFrame? asItStands;
   final Color? ground;
@@ -1282,6 +1534,11 @@ class _FrameScreen extends LeafRenderObjectWidget {
   final CanvasViewport viewport;
   final double devicePixelRatio;
   final Listenable repaint;
+
+  /// Where the panel lies over this box, in the box's own space, where the
+  /// box is a cel's window on the panel's paper ([LiveCelScreen]) — what of
+  /// it a frame holds ([_holdsOver]); null where the box is the panel's.
+  final Rect? panel;
 
   /// The clock of what is drawn over the canvas, where this box carries it
   /// ([FramePictureView.carriesTheOverlays]).
@@ -1297,7 +1554,7 @@ class _FrameScreen extends LeafRenderObjectWidget {
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderFrameScreen(view)..takeFrom(this);
+      _RenderFrameScreen(view, windowed: panel != null)..takeFrom(this);
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) =>
@@ -1335,9 +1592,13 @@ class _FrameScreen extends LeafRenderObjectWidget {
 /// follows the hand. A pan makes nothing again — the same picture, seen
 /// from another place (관제 2026-11-15).
 class _RenderFrameScreen extends RenderBox implements StandingPicture {
-  _RenderFrameScreen(this._view);
+  _RenderFrameScreen(this._view, {required bool windowed})
+    : _windowed = windowed;
 
-  final _FramePictureViewState _view;
+  final _FrameFeed _view;
+
+  /// Whether this box is a cel's window's ([_FrameScreen.panel]).
+  final bool _windowed;
 
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
     asks: () => attached,
@@ -1354,7 +1615,18 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       behind ? markNeedsPaint() : _showWhatIsUp();
       _tellTheOverlays();
     },
+    sideStep: _windowed ? _windowSideStep : null,
+    replaced: _standOn,
   );
+
+  /// [outgrown] — the texture this box's picture was seen through, which
+  /// it has grown past — stands in till the one opened in its place shows
+  /// a frame ([_standIn]): that one shows nothing till then.
+  void _standOn(ScreenTexture outgrown) {
+    final standIn = _standIn;
+    _standIn = outgrown;
+    unawaited(standIn?.free());
+  }
 
   /// The clock of what is drawn over the canvas, where this box carries it.
   PictureUpView? _overlays;
@@ -1369,8 +1641,9 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// picture is the canvas's own, on its paper ([PicturesLeftUp]).
   PicturesLeftUp? _leftUp;
 
-  /// The canvas's picture another screen left up, stood on till this box
-  /// has put one up ([PicturesLeftUp]).
+  /// What is stood on till this box has put a picture up: the canvas's
+  /// that another screen left up ([PicturesLeftUp]), or the texture this
+  /// box grew past ([_standOn]).
   ScreenTexture? _standIn;
 
   /// Whether this box's own texture shows a frame.
@@ -1491,6 +1764,47 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     return last != null && last.frame == shownFor ? last.pan : (0.0, 0.0);
   }
 
+  /// 🗣️gpu-canonical-store-Q15 (유저 2026-11-11): 「준비가 끝난 뒤에 그림을
+  /// 띄운다 — 그때까지 고리」 — whether this box's frame is kept from the
+  /// screen till the app has what a hand needs of its engine
+  /// ([appEngineGetsReady]): the frame coming to the screen is the word
+  /// that it can be worked on. Its picture is made meanwhile all the same,
+  /// and shown by the paint that follows the app's being let go.
+  ///
+  /// ⛔Not a wait its place marks ([_FrameFeed._waitsAtPaint]): the app
+  /// stands behind its one wait window for it
+  /// (`HomePage._waitForTheEngineBehindTheWindow`).
+  bool get _heldForTheEngine => appEngineGetsReady.value;
+
+  /// The compile this box paints again after ([_paintOnceCompiled]).
+  Future<void>? _compiling;
+
+  /// Paints again once [compiled] is done: a frame the paint could not lay
+  /// yet ([FrameKernelsToCome]) is laid by that one. Once a compile, however
+  /// many paints meet it.
+  void _paintOnceCompiled(Future<void> compiled) {
+    if (identical(_compiling, compiled)) {
+      return;
+    }
+    _compiling = compiled;
+    unawaited(
+      compiled.then(
+        (_) => _paintAgain(),
+        onError: (Object error, StackTrace stack) {
+          _report((error, stack), 'compiling the kernels a frame is laid on');
+          // Laid by the paint all the same: its run says why it cannot be.
+          _paintAgain();
+        },
+      ),
+    );
+  }
+
+  void _paintAgain() {
+    if (attached) {
+      markNeedsPaint();
+    }
+  }
+
   /// Whether this box was asked to paint for anything but a frame put up:
   /// a paint for that alone shows it and draws nothing — or every frame
   /// the GPU finished would draw the next, for ever.
@@ -1526,6 +1840,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
         screen.cutAtCanvas != _cutAtCanvas ||
         screen.devicePixelRatio != _devicePixelRatio;
     final moved = !identical(screen.viewport, _viewportOrNull);
+    final shifted = screen.panel != _panel;
     if (screen.devicePixelRatio != _devicePixelRatio) {
       markNeedsLayout();
     }
@@ -1536,6 +1851,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     _viewportOrNull = screen.viewport;
     _viewport = screen.viewport;
     _devicePixelRatio = screen.devicePixelRatio;
+    _panel = screen.panel;
     if (!identical(screen.overlays, _overlays)) {
       if (attached) {
         _overlays?.letGoOf(this);
@@ -1545,7 +1861,13 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     }
     _together = screen.together;
     _leftUp = screen.leftUp;
-    if (changed || (moved && !_servedByTheFrameDrawnLast)) {
+    // Where the panel lies over a window moves what it holds, not what is
+    // drawn on it: a texture to hold that, and a frame where the one drawn
+    // last does not.
+    if (shifted && hasSize) {
+      _wantAsHeld();
+    }
+    if (changed || ((moved || shifted) && !_servedByTheFrameDrawnLast)) {
       markNeedsPaint();
     } else if (moved) {
       // The view alone, and the frame drawn last serves it yet: painted to
@@ -1560,6 +1882,10 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   }
 
   CanvasViewport? _viewportOrNull;
+
+  /// Where the panel lies over this box, where it is a cel's window's
+  /// ([_FrameScreen.panel]).
+  Rect? _panel;
 
   @override
   bool get isRepaintBoundary => true;
@@ -1577,6 +1903,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _repaint?.addListener(markNeedsPaint);
+    appEngineGetsReady.addListener(markNeedsPaint);
     _overlays?.carriedBy(this);
     _shownThrough.start();
     // A box put back — moved under another parent, laid out with the
@@ -1590,6 +1917,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   @override
   void detach() {
     _repaint?.removeListener(markNeedsPaint);
+    appEngineGetsReady.removeListener(markNeedsPaint);
     _overlays?.letGoOf(this);
     _leaveWhatIsUp();
     super.detach();
@@ -1598,9 +1926,35 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   @override
   void performResize() {
     super.performResize();
-    final (width, height) = _sidesInDevicePixels;
-    _shownThrough.wanted = (width + _screenRoom, height + _screenRoom);
+    _wantAsHeld();
+  }
+
+  /// Asks for a texture as big as what the box holds wants
+  /// ([_ScreenHolds.wanted]).
+  void _wantAsHeld() {
+    _shownThrough.wanted = _holds.wanted;
     unawaited(_shownThrough.open());
+  }
+
+  /// What of this box its frames hold: the box whole where it is the
+  /// panel's ([_holdsWhole]), and where it is a cel's window, what the
+  /// panel over it takes in ([_holdsOver]).
+  _ScreenHolds get _holds {
+    final sides = _sidesInDevicePixels;
+    final panel = _panel;
+    if (panel == null) {
+      return _holdsWhole(sides);
+    }
+    final ratio = _devicePixelRatio;
+    return _holdsOver(
+      sides,
+      Rect.fromLTRB(
+        panel.left * ratio,
+        panel.top * ratio,
+        panel.right * ratio,
+        panel.bottom * ratio,
+      ),
+    );
   }
 
   /// This box's sides, in whole device pixels.
@@ -1610,14 +1964,10 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   );
 
   /// The texel of [texture] this box's corner stands on: what the texture
-  /// spares of the box, half to either side
+  /// spares of what the box holds ([_holds]), half to either side
   /// ([EngineScreenTexture.windowOf]).
   (int, int) _cornerOn(ScreenTexture texture) {
-    final (width, height) = _sidesInDevicePixels;
-    final window = EngineScreenTexture.windowOf(
-      texture,
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    );
+    final window = EngineScreenTexture.windowOf(texture, _holds.rect);
     return (-window.left.toInt(), -window.top.toInt());
   }
 
@@ -1628,8 +1978,8 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// 않고」). Whether the frame drawn last — up, or still on the GPU
   /// ([ScreenTexture.drawnLastFor]) — serves the view as it stands: drawn
   /// through this view a whole number of device pixels of pan away, and
-  /// the box still within what it holds, [_screenMargin] to spare on
-  /// every side.
+  /// what the box holds still within it ([_holds]), its margin to spare
+  /// on every side.
   /// ↩️Every step of a pan asked the engine for a frame, a body on its
   /// thread behind whatever else it had been handed.
   ///
@@ -1659,12 +2009,12 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     if ((pannedX - movedX).abs() > 1e-6 || (pannedY - movedY).abs() > 1e-6) {
       return false;
     }
-    final (width, height) = _sidesInDevicePixels;
+    final (:rect, :margin, wanted: _) = _holds;
     final (left, top) = (movedX - cornerX, movedY - cornerY);
-    return left <= -_screenMargin &&
-        top <= -_screenMargin &&
-        left + texture.width >= width + _screenMargin &&
-        top + texture.height >= height + _screenMargin;
+    return left <= rect.left - margin &&
+        top <= rect.top - margin &&
+        left + texture.width >= rect.right + margin &&
+        top + texture.height >= rect.bottom + margin;
   }
 
   /// What a frame drawn now, the view's corner on the texel [corner], is
@@ -1692,10 +2042,9 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   }
 
   bool get _drawsAnything =>
-      !_view._heldForTheEngine &&
-      (_view._drawnPicture ?? _asItStands) != null &&
-      _shownThrough.texture != null &&
-      _view._store.toolsOpen != null;
+      !_heldForTheEngine &&
+      _view._hasAFrame(_asItStands) &&
+      _shownThrough.texture != null;
 
   /// The layer of this paint's frame, presented — or, where the frame waits
   /// for kernels still to be compiled ([FrameKernelsToCome]), of the frame
@@ -1707,14 +2056,11 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     final corner = _cornerOn(_shownThrough.texture!);
     try {
       final layer = _shownThrough.presented(
-        (next, size) => _view._show(
-          _asItStands,
-          next,
-          size,
+        (next, size) => _view._show(_asItStands, next, size, (
           viewport: _viewport,
           devicePixelRatio: _devicePixelRatio,
           corner: corner,
-        ),
+        )),
         drawnFor: _drawnFor(corner),
         place: _placeAt(offset),
         upTogether: _together?.joined,
@@ -1723,7 +2069,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       _tellTheOverlays();
       return (layer: layer, refused: false);
     } on FrameKernelsToCome catch (wait) {
-      _view._paintOnceCompiled(wait.compiled);
+      _paintOnceCompiled(wait.compiled);
       return (layer: _shownThrough.standing(_placeAt(offset)), refused: true);
     }
   }

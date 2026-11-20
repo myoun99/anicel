@@ -9,21 +9,25 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, hands_bytes, let_go, let_go_bytes, taken_bytes};
+use std::sync::Arc;
+
+use crate::device::{Engine, hands_bytes, let_go_bytes, taken_bytes};
 use crate::fail;
 use crate::kernels::composite::Composite;
 use crate::kernels::dab::abi::reported;
-use crate::kernels::dab::landing::placed;
-use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::pool::{Cel, Pool, Writing};
 use crate::kernels::write::Change;
 
 use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
-use super::{Lettered, Pass, set, words};
+use super::{Covered, Pass, lettered, set, words};
 
-/// A picture of letters as the app builds it: its passes, bottom to top.
+/// A picture of letters as the app builds it: its passes, bottom to top,
+/// and their covers as they stood when last covered
+/// ([`gpu_engine_letters_cover`]) — none where they cover no pixel.
 #[derive(Default)]
 pub(crate) struct Lettering {
     passes: Vec<Pass>,
+    covered: Option<Arc<Covered>>,
 }
 
 impl Lettering {
@@ -448,88 +452,112 @@ pub unsafe extern "C" fn gpu_engine_letters_rect(letters: *mut Lettering, at: *c
 }
 
 /// Sets `letters` in `faces` and lays them on the grid by `to_grid` — the
-/// layout's space to the grid's, six floats —, and submits the work: the
-/// picture, its rectangle written to `rect` as its first tile's column and
-/// row and how many columns and rows of tiles it spans. Null for letters
-/// that cover no pixel, `rect` none — zero columns of zero rows —, and on
-/// failure, `rect` as it was; see the last error.
+/// layout's space to the grid's, six floats —: their covers, kept for
+/// [`gpu_engine_letters_land`], and their rectangle written to `rect`, its
+/// first tile's column and row and how many columns and rows of tiles it
+/// spans — none, zero columns of zero rows, for letters that cover no
+/// pixel. On the CPU, where it is called: no device is taken in hand.
+/// False on failure, `rect` as it was; see the last error.
+///
+/// 🚨WHY ON ITS CALLER'S THREAD (the-ui-thread-never-enters-the-driver,
+/// 2026-11-18): what the app waits for is the rectangle, which its plate's
+/// tiles are asked by; the picture is the engine's thread's to lay
+/// ([`gpu_engine_letters_land`]). ↩️The covers were set and laid in one
+/// body on the engine's thread, the caller waiting (`gpu_engine_letters_
+/// set`): 🔬the test VM, S5_BA cut 352 filling its band again after a
+/// stroke (k921), 17 sets, 58 to 97 ms of the UI thread each, nearly all
+/// of it the wait for what was handed to that thread before.
 ///
 /// # Safety
-/// Every pointer is live, the executor made on `engine`; `to_grid` holds
-/// six floats and `rect` four words.
+/// `letters` and `faces` are live; `to_grid` holds six floats and `rect`
+/// four words.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_letters_set(
-    letters: *const Lettering,
-    engine: *const Engine,
-    composite: *const Composite,
+pub unsafe extern "C" fn gpu_engine_letters_cover(
+    letters: *mut Lettering,
     faces: *const Faces,
     to_grid: *const f32,
     rect: *mut i32,
-) -> *mut Lettered {
+) -> bool {
     // SAFETY: see the function's contract.
-    let (letters, engine, composite, faces, to_grid) =
-        unsafe { (&*letters, &*engine, &*composite, &*faces, affine(to_grid)) };
-    engine.on_thread(|| {
-        let Some(to_grid) = to_grid else {
-            return std::ptr::null_mut();
-        };
-        let Some(lettered) = set(engine, composite, faces, to_grid, &letters.passes) else {
-            return std::ptr::null_mut();
-        };
-        let at = lettered.as_ref().map_or([0; 4], |lettered| {
-            let at = lettered.rect;
-            [at.x0, at.y0, at.columns as i32, at.rows as i32]
-        });
-        // SAFETY: `rect` holds four words.
-        unsafe { *rect.cast::<[i32; 4]>() = at };
-        lettered.map_or(std::ptr::null_mut(), |lettered| engine.hands(lettered))
-    })
+    let (letters, faces, to_grid) = unsafe { (&mut *letters, &*faces, affine(to_grid)) };
+    let Some(to_grid) = to_grid else {
+        return false;
+    };
+    let covered = set(faces, to_grid, &letters.passes);
+    let at = covered.as_ref().map_or([0; 4], |covered| {
+        let at = covered.rect;
+        [at.x0, at.y0, at.columns as i32, at.rows as i32]
+    });
+    // SAFETY: `rect` holds four words.
+    unsafe { *rect.cast::<[i32; 4]>() = at };
+    letters.covered = covered.map(Arc::new);
+    true
 }
 
-/// Puts each of `lettered`'s tiles that `asks` names — its column and row
-/// on the grid, `count` of them — in a fresh slot of `cel`, as a landing
-/// puts what it made ([`placed`]): the engine's alone, with no wait for the
-/// GPU. Returns as [`gpu_engine_stroke_land`] does, each landed inked.
+/// Gives each tile of `letters`' covers ([`gpu_engine_letters_cover`])
+/// that `asks` names — its column and row on the grid, `count` of them —
+/// a fresh slot of `cel`, writes each one's place to `places` and its
+/// change, inked, to `changes`, and hands the laying of their picture by
+/// `composite` ([`lettered`]) and its putting there to the engine's
+/// thread, waiting for none of it ([`Pool::lands_unwaited`], which says
+/// how `told` is called with `number`): the engine's alone, as a landing
+/// puts what it made. Returns as [`gpu_engine_stroke_land`] does — how
+/// many it gave a slot, the first of them: all, or fewer where the pool is
+/// full at the next; -1 on failure, see the last error.
+///
+/// 🚨A PICTURE NOT PUT IS TOLD, NOT SAID UNWRITTEN (the-ui-thread-never-
+/// enters-the-driver, 2026-11-18): a store's places that were not written
+/// are let go and their tiles stored again from the bytes they hold
+/// (`gpu_engine_pool_store`); the plate's tiles are the engine's alone,
+/// with no bytes to be stored from, so it is the plate the app lets go
+/// of — made again of its letters where it is next asked for.
 ///
 /// [`gpu_engine_stroke_land`]: crate::kernels::dab::abi::gpu_engine_stroke_land
 ///
 /// # Safety
-/// `engine`, `lettered` and `pool` are live, the pool made on `engine`;
-/// `asks` holds `2 × count`, and `places` and `changes` hold `count`.
+/// Every pointer is live, the pool and the executor made on `engine` and
+/// the pool its caller's alone (`gpu_engine_pool_new`); the executor is let
+/// go of on the engine's thread, behind this in turn. `asks` holds
+/// `2 × count`, `places` and `changes` hold `count`, and `told` is one any
+/// thread may call.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_lettered_land(
+pub unsafe extern "C" fn gpu_engine_letters_land(
+    letters: *const Lettering,
     engine: *const Engine,
-    lettered: *const Lettered,
+    composite: *const Composite,
     pool: *mut Pool,
     cel: u32,
     asks: *const i32,
     count: usize,
     places: *mut u32,
     changes: *mut u8,
+    told: extern "C" fn(u64, bool),
+    number: u64,
 ) -> isize {
     // SAFETY: see the function's contract.
-    let (engine, lettered, pool) = unsafe { (&*engine, &*lettered, &mut *pool) };
-    engine.on_thread(|| {
-        // SAFETY: see the function's contract.
-        let asks = unsafe { std::slice::from_raw_parts(asks, 2 * count) };
-        let landed = asks
-            .chunks_exact(2)
-            .map(|tile| lettered.rect.index_of(tile[0], tile[1]))
-            .collect::<Option<Vec<usize>>>()
-            .and_then(|indices| {
-                let inked = indices.into_iter().map(|index| (index, Change::Inked));
-                placed(engine, (pool, Cel(cel)), &lettered.tiles, inked)
-            });
-        // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
-    })
-}
-
-/// # Safety
-/// `lettered` came from `gpu_engine_letters_set`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_lettered_free(lettered: *mut Lettered) {
+    let (letters, engine, pool) = unsafe { (&*letters, &*engine, &mut *pool) };
+    let Some(covered) = letters.covered.clone() else {
+        fail::<()>("letters are landed that were not covered, or cover no pixel");
+        return -1;
+    };
     // SAFETY: see the function's contract.
-    unsafe { let_go(lettered) };
+    let asks = unsafe { std::slice::from_raw_parts(asks, 2 * count) };
+    let tiles = asks.chunks_exact(2).map(|tile| covered.rect.index_of(tile[0], tile[1]));
+    let Some(tiles) = tiles.collect::<Option<Vec<usize>>>() else {
+        return -1;
+    };
+    let put = move |engine: &Engine, writing: &Writing| {
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let composite = unsafe { &*composite };
+        lettered(engine, composite, &covered)
+            .and_then(|picture| writing.put_from(engine, &picture, tiles))
+    };
+    // SAFETY: what `put` holds is let go of on the engine's thread, behind
+    // it; `told` is one any thread may call (the function's contract).
+    let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    // SAFETY: see the function's contract.
+    unsafe { reported(Some(landed), places, changes) }
 }

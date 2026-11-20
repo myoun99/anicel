@@ -16,7 +16,14 @@ ProcessRow row(
   int gb = 0,
   int born = 1,
   String name = 'flutter_tester.exe',
-}) => (pid: pid, parent: parent, born: born, name: name, bytes: gb << 30);
+}) => (
+  pid: pid,
+  parent: parent,
+  born: born,
+  name: name,
+  bytes: gb << 30,
+  cpu: 0,
+);
 
 /// A watch that looks only when it is told to, cutting into [cuts].
 MemoryWatch watchOf(List<ProcessRow> Function() read, List<int> cuts) =>

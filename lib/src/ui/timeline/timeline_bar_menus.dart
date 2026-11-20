@@ -9,7 +9,9 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_settings.dart';
+import '../../models/sound_preset.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
+import '../../services/command.dart' show PressedStep;
 import '../cut_command_group.dart';
 import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import '../dialogs/behind_the_wait_window.dart';
@@ -18,6 +20,7 @@ import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart' show SoundPresetWords;
 import '../widgets/boolean_dot.dart' show BooleanDotButton;
 import '../widgets/field_slider.dart';
 import '../widgets/icon_button_box.dart' show AppIconButtonSize;
@@ -196,10 +199,11 @@ class TimelineBarMenus {
     // over its header and the one Delete.
     return [
       // 🗣️audio-fx-grows-like-the-pros Q2 (유저 2026-11-17): 「시안 3 · 시안
-      // 1 + 성격 프리셋」 — design 1's menu as drawn: the 音声 section
-      // first, a rule, then the 映像 one. A row takes one section's alone
-      // (Q3: 「s행은 그냥 영상fx안붙게? 오디오fx만 기본으로」); the other is
-      // dimmed by the gate, never hidden.
+      // 1 + 성격 프리셋」 — design 3's presets ([_soundPresetSection]), then
+      // design 1's menu: the 音声 section, a rule, the 映像 one. A row takes
+      // one section's alone (Q3: 「s행은 그냥 영상fx안붙게? 오디오fx만 기본으로」);
+      // the other is dimmed by the gate, never hidden.
+      ..._soundPresetSection(session, holder),
       PanelFlyoutHeader(AppText.strings.tlEffectsOfSound),
       for (final kind in effectKindsAddedAlone)
         if (kind.filtersSound) _addEffectItem(session, holder, kind),
@@ -272,7 +276,6 @@ class TimelineBarMenus {
   /// The layer pill's menu. [context] is where a row's window opens
   /// from — the pill's, or the shell's when a key presses the row.
   List<PanelFlyoutEntry> layer(BuildContext context) {
-    final active = session.activeLayer;
     // B8: every verb below acts on the CUT's active layer — the timeline
     // panel's noun — so the storyboard's menu greys them all out honestly
     // instead of editing a row that panel is not showing.
@@ -348,15 +351,10 @@ class TimelineBarMenus {
       // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
       // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
       // link window, and its button unlinks.
-      PanelFlyoutItem(
-        keyValue: 'toggle-storyboard-layer-button',
-        label: editorActionLabel(EditorActionIds.layerStoryboard),
-        shortcuts: const [EditorActionIds.layerStoryboard],
-        icon: Icons.auto_stories_outlined,
-        enabled: serves && session.layerSwitches.canToggleTargetLayerKind,
-        checked: active?.kind == LayerKind.storyboard,
-        onSelected: session.layerSwitches.toggleTargetLayerKind,
-      ),
+      // ↩️「콘티 레이어」 stood here, toggling the row stood on between
+      // animation and storyboard. 🗣️F-613 (유저 2026-11-19): 「레이어버튼의
+      // 콘티레이어로 변경은 입구 대체되니 삭제」 — the row's type button turns
+      // it between image, animation and conte.
       // R5 #5: the SE and CAMERA section switches left. The legend's own
       // sections cell has shown and hidden both since UI-R7, so this pair
       // was a second door to one setting — and the one further from where
@@ -478,13 +476,13 @@ class TimelineBarMenus {
         onSelected: () => _behindTheWaitWindow(
           context,
           pixelClipboardActionIdFor(verb),
-          () => session.pixelVerbs.runPixelClipboardVerb(verb),
+          session.pixelVerbs.pixelClipboardVerbStep(verb),
           blocks: session.pixelVerbs.pixelClipboardVerbCels(verb),
         ),
       ),
   ];
 
-  /// [run], a row of the colour edit list, behind the wait window under
+  /// [press], a row of the colour edit list, behind the wait window under
   /// [actionId]'s name when it lands on more than one of [blocks] (F-566).
   ///
   /// 🗣️I-164: the list's preview is over once a row is chosen — 「그 색 편집
@@ -493,16 +491,19 @@ class TimelineBarMenus {
   void _behindTheWaitWindow(
     BuildContext context,
     String actionId,
-    VoidCallback run, {
+    PressedStep press, {
     required Iterable<Object> blocks,
   }) {
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        () {
-          run();
-          session.pixelVerbPreview.verb = null;
-        },
+        (
+          ahead: press.ahead,
+          step: () {
+            press.step();
+            session.pixelVerbPreview.verb = null;
+          },
+        ),
         window: AppWaitWindow.working(editorActionLabel(actionId)),
         blocks: blocks,
       ),
@@ -539,7 +540,7 @@ class TimelineBarMenus {
     onSelected: () => _behindTheWaitWindow(
       context,
       pixelVerbActionIdFor(verb),
-      () => session.pixelVerbs.runPixelVerb(verb),
+      session.pixelVerbs.pixelVerbStep(verb),
       blocks: session.pixelVerbs.pixelVerbCellKeys(),
     ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
@@ -648,4 +649,44 @@ PanelFlyoutItem _addEffectItem(
   onSelected: holder == null
       ? null
       : () => session.effectsAndFx.addEffect(holder, kind),
+);
+
+/// Design 3's プリセット, over the 音声 and 映像 sections, as approved
+/// (board audio-fx-second-effect-and-presets ②): a sound's character,
+/// whose bundle of effects comes onto the row as a paste of them does — a
+/// heading, a row a preset, the rule under them.
+List<PanelFlyoutEntry> _soundPresetSection(
+  EditorSessionManager session,
+  EffectChainHolder? holder,
+) => [
+  PanelFlyoutHeader(AppText.strings.tlEffectPresets),
+  for (final preset in SoundPreset.values)
+    _addSoundPresetItem(session, holder, preset),
+  const PanelFlyoutDivider(),
+];
+
+/// The entry that adds [preset]'s effects to [holder]'s chain on [session],
+/// as a paste of them does — dimmed where the chain takes none of them
+/// (`EffectsAndFx.canAddEffectCopies`). Its row is the preset's name under
+/// the プリセット header; its action is named with the column
+/// ([soundPresetActionLabel]).
+PanelFlyoutItem _addSoundPresetItem(
+  EditorSessionManager session,
+  EffectChainHolder? holder,
+  SoundPreset preset,
+) => PanelFlyoutItem(
+  keyValue: 'add-sound-preset-${preset.jsonValue}',
+  label: preset.labelFor(AppText.language),
+  shortcuts: [soundPresetActionId(preset)],
+  icon: Icons.auto_fix_high_outlined,
+  enabled:
+      holder != null &&
+      session.effectsAndFx.canAddEffectCopies(holder, preset.effects),
+  onSelected: holder == null
+      ? null
+      : () => session.effectsAndFx.addEffectCopies(
+          holder,
+          preset.effects,
+          description: 'Add the ${preset.label} preset',
+        ),
 );

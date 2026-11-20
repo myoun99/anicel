@@ -1,8 +1,14 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart'
+    show TimelineCutEndDragCallbacks, TimelineNoriShiro;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
@@ -33,6 +39,96 @@ void main() {
       );
 
       expect(positioned.left, 240);
+    });
+
+    // 🔬an-eye-toggle-holds-the-ui-thread (11-18, step 3c): the marks keep
+    // themselves while what they are drawn from stands. The folded row asks
+    // no のりしろ where none is drawn, so there the cut's length is the one
+    // fact a trim moves.
+    testWidgets('the cut-end line keeps itself for the same cut, and '
+        'follows a new length', (tester) async {
+      TimelineBodyCutEndBoundary line() =>
+          tester.widget(find.byType(TimelineBodyCutEndBoundary));
+      await _pumpFrameGridStack(tester, frameCount: 10);
+      final before = line();
+
+      await _pumpFrameGridStack(tester, frameCount: 10);
+      expect(identical(line(), before), isTrue);
+
+      await _pumpFrameGridStack(tester, frameCount: 14);
+      expect(line().left, 14 * 24);
+    });
+
+    // ...and each thing they are drawn from, moved alone, builds them
+    // again. ⚠️A fact the overlay drops is a row here that goes red.
+    group('the marks hear each thing they are drawn from, alone:', () {
+      TimelineNoriShiro margin() => (drawnFrameCount: 12, label: '');
+      TimelineNoriShiro sameMargin() => (drawnFrameCount: 12, label: '');
+      final trim = TimelineCutEndDragCallbacks(
+        cutId: const CutId('cut-1'),
+        onBegin: () => true,
+        onUpdate: (_) {},
+        onEnd: () {},
+        onCancel: () {},
+      );
+      final moves =
+          <
+            String,
+            (
+              Future<void> Function(WidgetTester tester) still,
+              Future<void> Function(
+                WidgetTester tester,
+                ValueListenable<TimelineDragPreview?> channel,
+              )
+              moved,
+            )
+          >{
+            'their axis': (
+              _pumpFrameGridStack,
+              (tester, _) => _pumpFrameGridStack(tester, axis: Axis.vertical),
+            ),
+            'their cell (a zoom)': (
+              _pumpFrameGridStack,
+              (tester, _) => _pumpFrameGridStack(tester, frameCellExtent: 30),
+            ),
+            'the margin they ask, though it answers the same': (
+              (tester) => _pumpFrameGridStack(tester, noriShiro: margin),
+              (tester, _) => _pumpFrameGridStack(tester, noriShiro: sameMargin),
+            ),
+            'a trim\'s hooks': (
+              _pumpFrameGridStack,
+              (tester, _) => _pumpFrameGridStack(tester, cutEndDrag: trim),
+            ),
+            'a trim\'s preview': (
+              (tester) => _pumpFrameGridStack(tester, cutEndDrag: trim),
+              (tester, channel) => _pumpFrameGridStack(
+                tester,
+                cutEndDrag: trim,
+                dragPreview: channel,
+              ),
+            ),
+          };
+      for (final MapEntry(key: name, value: (still, moved))
+          in moves.entries) {
+        testWidgets(name, (tester) async {
+          final channel = ValueNotifier<TimelineDragPreview?>(null);
+          addTearDown(channel.dispose);
+          TimelineBodyCutEndBoundary line() =>
+              tester.widget(find.byType(TimelineBodyCutEndBoundary));
+          await still(tester);
+          final kept = line();
+          await still(tester);
+          expect(
+            identical(line(), kept),
+            isTrue,
+            reason: '⛔premise: the same facts keep them',
+          );
+
+          await moved(tester, channel);
+
+          expect(identical(line(), kept), isFalse);
+        });
+      }
     });
 
     // The slot gives the playhead its length along the frames and leaves its
@@ -111,10 +207,11 @@ void main() {
       // length stands between them.
       expect((playheadPositioned.child as SizedBox).child!.key, playheadKey);
       final overlay = stack.children[3] as TickOverlay;
-      expect(overlay.children, hasLength(3));
-      expect(overlay.children[0], isA<TimelineOutsideCutWash>());
-      expect(overlay.children[1], isA<TimelineBodyNoriShiroBoundary>());
-      expect(overlay.children[2], isA<TimelineBodyCutEndBoundary>());
+      final marks = overlay.keptChildren!();
+      expect(marks, hasLength(3));
+      expect(marks[0], isA<TimelineOutsideCutWash>());
+      expect(marks[1], isA<TimelineBodyNoriShiroBoundary>());
+      expect(marks[2], isA<TimelineBodyCutEndBoundary>());
     });
 
     // A stand rebuilds the sheet for two rows' grounds, so it is laid out
@@ -130,7 +227,7 @@ void main() {
       final stack = tester.widget<Stack>(find.byType(Stack).first);
       final slot = (stack.children[0] as Positioned).child as IgnorePointer;
       final layer = slot.child! as TickLayer;
-      expect(layer.child.key, gridSheetKey);
+      expect(layer.child!.key, gridSheetKey);
     });
 
     testWidgets('does not duplicate stable keys', (tester) async {
@@ -149,6 +246,9 @@ Future<void> _pumpFrameGridStack(
   double playheadExtent = 480,
   double frameCellExtent = 24,
   int frameCount = 10,
+  TimelineNoriShiro Function()? noriShiro,
+  TimelineCutEndDragCallbacks? cutEndDrag,
+  ValueListenable<TimelineDragPreview?>? dragPreview,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -176,6 +276,9 @@ Future<void> _pumpFrameGridStack(
             ),
             frameCellExtent: frameCellExtent,
             playbackFrameCount: frameCount,
+            noriShiro: noriShiro,
+            cutEndDrag: cutEndDrag,
+            dragPreview: dragPreview,
           ),
         ),
       ),

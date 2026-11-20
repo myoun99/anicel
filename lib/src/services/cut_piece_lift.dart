@@ -56,10 +56,12 @@ CutRead? readCutPiece({
   // The MOVE's lift, the same steps: whole pixels unless a feather asked
   // for a soft edge — with no options every mask byte is 0 or 255 and there
   // is nothing to decide.
+  final id = _nextCutPieceId();
   final lifted = liftSelectionPixels(
     region: region,
     surface: surface,
     options: options,
+    stampId: id,
   );
   // Scraping an empty stretch of cel must NOT hand back a blank piece: the
   // slot is a long-term holder that survives frames, cuts and projects, and
@@ -71,11 +73,15 @@ CutRead? readCutPiece({
   final box = lifted.box;
   return (
     piece: CutPiece(
+      // ⛔ITS OWN BYTES, read once here: a piece outlives the cel it was cut
+      // from, and a stamp the engine keeps is taken again off that cel on
+      // the next engine (`EngineStampPictures.lifted`) — holding the cel's
+      // every tile for as long as the piece lives.
       image: BrushStampImage(
-        id: _nextCutPieceId(),
+        id: id,
         width: box.width,
         height: box.height,
-        rgba: lifted.rgba,
+        rgba: lifted.stamp.rgba,
       ),
       originLeft: box.left,
       originTop: box.top,

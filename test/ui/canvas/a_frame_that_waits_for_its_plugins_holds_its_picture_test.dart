@@ -244,7 +244,9 @@ void main() {
   /// frame's nodes where it is handed them, over another store's pictures
   /// where it is handed one. Where [parked], the frame is shown as the
   /// track stack shows a cut it parks on instead: whole, made where it is
-  /// missed, nothing of it drawn live.
+  /// missed, nothing of it drawn live. Where [justOpened], the frame is a
+  /// file's first, nothing of it on screen yet (Q7); elsewhere a view put
+  /// one of the file's frames on screen before.
   Future<
     ({
       EngineFramePictureStore<FramePictureKey> store,
@@ -264,6 +266,7 @@ void main() {
     EngineFramePictureStore<FramePictureKey>? laidBy,
     bool penOnABlankCel = false,
     bool parked = false,
+    bool justOpened = false,
   }) async {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
@@ -321,12 +324,22 @@ void main() {
     final store = laidBy ?? aStoreOfPictures();
     addTearDown(store.dispose);
     var standing = nodes;
-    StackRun runBy(EngineFramePictureStore<FramePictureKey> store) => runOver(
-      images,
-      store,
-      canvasSize: canvasSize,
-      stackOf: (_) => standing,
-    );
+    StackRun runBy(EngineFramePictureStore<FramePictureKey> store) {
+      final run = runOver(
+        images,
+        store,
+        canvasSize: canvasSize,
+        stackOf: (_) => standing,
+      );
+      // A file on screen already, unless [justOpened]: one just opened
+      // stands bare till its first frame's picture comes (the-standing-
+      // canvas-composes-a-frame-twice-before-its-picture-Q7).
+      if (!justOpened) {
+        run.pictures.putOnScreen();
+      }
+      return run;
+    }
+
     var run = runBy(store);
     final shown = (
       cut: cut,
@@ -1631,6 +1644,31 @@ void main() {
     expect(tester.takeException(), same(failure));
     expect(tester.takeException(), isNull, reason: 'said once');
     expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🗣️the-standing-canvas-composes-a-frame-twice-before-its-picture-Q7 =
+  // blank (유저 2026-11-18): a file just opened stands bare till its first
+  // frame's picture comes — nothing of it drawn meanwhile, so its place is
+  // marked while that picture waits behind kernels still to be compiled,
+  // as a cut parked on is (gpu-canonical-store-Q12).
+  testWidgets('a file just opened, its first frame bare till its picture '
+      'comes, marks its place while the picture waits behind kernels still '
+      'to be compiled', (tester) async {
+    theMarkStands();
+    final store = _OnItsWayAndTold();
+    await itsToolsOpen(tester, store);
+    final screen = GlobalKey();
+    await standOn(tester, screen, parkedOn, laidBy: store, justOpened: true);
+    store.said.value = true;
+    await theMarkFollows(tester);
+
+    expect(theMark, findsOneWidget);
+    expect(onlyTheScreen(await shotOf(tester, screen)), isTrue);
+
+    store.said.value = false;
+    await theMarkFollows(tester);
+    expect(theMark, findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

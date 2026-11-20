@@ -32,8 +32,10 @@ abstract interface class PlaybackPictures {
   void noteFailure(DemandedPicture picture);
 
   /// The bytes making [picture] would add — what its parts will be made as,
-  /// where what they are made of is in hand ([readIn]).
-  int bytesToMake(DemandedPicture picture);
+  /// where what they are made of is in hand ([readIn]): by what is kept
+  /// once everything asked for before this has been made, and told when
+  /// that is known — this isolate waits for none of it.
+  Future<int> bytesToMake(DemandedPicture picture);
 
   /// Reads in what making [picture] reads first, so [bytesToMake] weighs it
   /// by what it will be made as. Never throws: what will not read is said by

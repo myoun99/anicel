@@ -69,9 +69,16 @@ class TvppSlot {
     required this.chunkLength,
     required this.compressed,
     this.v10WholeCanvas = false,
+    this.before,
   });
 
   final TvppSlotKind kind;
+
+  /// The picture before this slot in its stream — the last image slot
+  /// before it, null for the stream's first. A tile of this slot's picture
+  /// may show that one's (card F-621 ②), so it reads after it
+  /// (`TvppMakeup`).
+  final TvppSlot? before;
 
   /// Offset of the image chunk's PAYLOAD (past FourCC + length) in the
   /// file, and that payload's length. For v12 this is the ZCHK payload
@@ -133,7 +140,16 @@ class TvppLayer {
     this.visible = true,
     this.collapsed = false,
     this.locked = false,
+    this.blendingModeId = 0,
   });
+
+  /// LRHD[15]: the layer's blending mode, by TVPaint's own number — 0 is
+  /// Color, its normal. 🔬The whole word, read off the user's calibration
+  /// file (card F-621 ③, 11-19): one layer per mode of TVPaint 12's
+  /// picker, each named with the picker's label — no header word but
+  /// this one and the layer id told one layer from the next. What each
+  /// number is called is the converter's table (`tvpp_convert.dart`).
+  final int blendingModeId;
 
   /// LRHD[7] bit 4: the layer is LOCKED in TVPaint (memory
   /// `tvpp-format-notes`, beside the hidden bit [visible] reads). No row
@@ -407,7 +423,7 @@ int _findLast(Uint8List bytes, List<int> needle, int from, int until) {
 
 /// UTF-8, stopping at the first NUL: LNAM/LNAW carry the name twice in
 /// the same encoding (measured — the "wide" chunk is not UTF-16), padded
-/// to the chunk length.
+/// to the chunk length — and LEXT its instances' names the same way.
 String _nameFrom(Uint8List bytes, int at, int length) {
   var end = at;
   final limit = at + length;
@@ -437,32 +453,26 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
   // DLOC..TLNT runs straight into the first LNAM — byte-identical layout
   // across every measured version). Everything between the previous clip's end and DLOC
   // is project/preview data plus the clip's UTF-16 property block.
-  final clipStarts = <int>[];
-  var scan = 0;
+  //
+  // ⚡A clip's head is looked for from where the clip before it ENDED — its
+  // chunks walked, not its bytes searched (card F-621 ⑤). ↩️Every DLOC was
+  // searched for byte by byte across the whole file first, and each clip's
+  // name again across the whole clip before it: a 1.5 GB project's pixels
+  // read twice, 4.2 s of the 5.7 s the open stood still at 50% (서피스
+  // 11-19) — for heads that lie only in the gaps between the chains.
+  final clips = <TvppClip>[];
+  var from = 0;
   while (true) {
-    final at = indexOfBytes(bytes, 'DLOC'.codeUnits, scan);
-    if (at < 0) {
+    final start = _nextClipHead(bytes, from);
+    if (start < 0) {
       break;
     }
-    // A real DLOC is 8 bytes: u16 W, u16 H, u32 0 — cheap validation that
-    // also skips the string appearing inside pixel data.
-    if (_u32(bytes, at + 4) == 8 && _u32(bytes, at + 12) == 0) {
-      clipStarts.add(at);
-      scan = at + 8;
-    } else {
-      scan = at + 4;
-    }
+    final (clip, end) = _parseClip(bytes, start, from, clips.length, warnings);
+    clips.add(clip);
+    from = end;
   }
-  if (clipStarts.isEmpty) {
+  if (clips.isEmpty) {
     throw const TvppParseException('DLOC 청크가 없다 — TVPaint 프로젝트가 아니다.');
-  }
-
-  final clips = <TvppClip>[];
-  for (var c = 0; c < clipStarts.length; c++) {
-    final start = clipStarts[c];
-    final end = c + 1 < clipStarts.length ? clipStarts[c + 1] : bytes.length;
-    final nameFrom = c == 0 ? 0 : clipStarts[c - 1];
-    clips.add(_parseClip(bytes, start, end, nameFrom, c, warnings));
   }
   return TvppParseResult(
     clips: clips,
@@ -470,6 +480,20 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
     projectCameraWidth: _projectProperty(bytes, 'Camera.Width'),
     projectCameraHeight: _projectProperty(bytes, 'Camera.Height'),
   );
+}
+
+/// Where the next clip's DLOC chunk is, at or after [from] — -1 when none.
+/// A real DLOC is 8 bytes: u16 W, u16 H, u32 0 — cheap validation that
+/// also skips the string appearing inside other data.
+int _nextClipHead(Uint8List bytes, int from) {
+  var scan = from;
+  while (true) {
+    final at = indexOfBytes(bytes, 'DLOC'.codeUnits, scan);
+    if (at < 0 || (_u32(bytes, at + 4) == 8 && _u32(bytes, at + 12) == 0)) {
+      return at;
+    }
+    scan = at + 4;
+  }
 }
 
 /// Reads an integer project property from the file-head UTF-16BE block:
@@ -536,14 +560,17 @@ String _clipName(Uint8List bytes, int from, int until, int clipIndex) {
 /// rather than documented (`tvpp-format-notes.md`). Cutting it into
 /// "phases" would hide the order the bytes actually arrive in, which is
 /// the one thing a reader of this function needs.
-TvppClip _parseClip(
+///
+/// Answers where the walk stopped as well — where the next clip's head is
+/// looked for from, and the start of the gap its name is read out of.
+(TvppClip, int) _parseClip(
   Uint8List bytes,
   int start,
-  int end,
   int nameFrom,
   int clipIndex,
   List<ImportWarning> warnings,
 ) {
+  final end = bytes.length;
   var width = 0;
   var height = 0;
   var frameRate = 24.0;
@@ -586,6 +613,7 @@ TvppClip _parseClip(
         visible: header == null || field(7) & 1 == 0,
         collapsed: header != null && field(11) & 0xFFFF == 1,
         locked: field(7) & 0x10 != 0,
+        blendingModeId: field(15),
         slots: frozenList(slots),
         ctgSecondStream: frozenList(secondStream),
         instanceNames: frozenMap(instanceNames),
@@ -602,6 +630,18 @@ TvppClip _parseClip(
 
   void addSlot(TvppSlot slot) {
     (inSecondStream ? secondStream : slots).add(slot);
+  }
+
+  /// The stream's last image slot so far — the picture before the next
+  /// slot ([TvppSlot.before]).
+  TvppSlot? imageBefore() {
+    final stream = inSecondStream ? secondStream : slots;
+    for (var i = stream.length - 1; i >= 0; i -= 1) {
+      if (stream[i].kind == TvppSlotKind.image) {
+        return stream[i];
+      }
+    }
+    return null;
   }
 
   var p = start;
@@ -630,7 +670,9 @@ TvppClip _parseClip(
     final chunk = String.fromCharCodes(bytes, p, p + 4);
     final length = _u32(bytes, p + 4);
     final payload = p + 8;
-    if (payload + length > end) {
+    // A DLOC past the clip's own is the next clip's head: its chain ran
+    // straight into the next, and what follows is that clip's.
+    if (payload + length > end || (chunk == 'DLOC' && p != start)) {
       break;
     }
 
@@ -691,7 +733,13 @@ TvppClip _parseClip(
         // Zero-length separator between a CTG layer's two image streams.
         inSecondStream = true;
       case 'LEXT':
-        final text = _printable(bytes, payload, length);
+        // 🗣️THE NAMES AS WRITTEN, WHATEVER THEIR LETTERS (F-621 ④, 유저
+        // 2026-11-19: 「이름은 영문숫자든뭐든 상관없이 그대로 들여오는게
+        // 맞지않나」). 🔬Every LEXT of the user's three files is UTF-8 with
+        // no NUL in it. ↩️It was read printable ASCII only, every other
+        // byte a space: a layer of 한글 or かな names came in as blanks, and
+        // blanks of one length are one name — the second became 「-1」.
+        final text = _nameFrom(bytes, payload, length);
         instanceNames = _imagesNameTable(text);
       case 'ZCHK':
         // v12: [SRAW u32 rawLen-8]['czmp' u32][blocks], then per block
@@ -705,6 +753,7 @@ TvppClip _parseClip(
             chunkOffset: payload,
             chunkLength: length,
             compressed: true,
+            before: imageBefore(),
           ),
         );
       case 'SRAW':
@@ -717,6 +766,7 @@ TvppClip _parseClip(
             chunkOffset: payload,
             chunkLength: length,
             compressed: false,
+            before: imageBefore(),
           ),
         );
       case 'DBOD':
@@ -727,6 +777,7 @@ TvppClip _parseClip(
             chunkOffset: payload,
             chunkLength: length,
             compressed: false,
+            before: imageBefore(),
             v10WholeCanvas: true,
           ),
         );
@@ -753,7 +804,7 @@ TvppClip _parseClip(
   }
   flushLayer();
 
-  return TvppClip(
+  final clip = TvppClip(
     name: _clipName(bytes, nameFrom, start, clipIndex),
     width: width,
     height: height,
@@ -765,6 +816,7 @@ TvppClip _parseClip(
     cameraDataText: cameraDataText,
     audioTracks: audioTracks,
   );
+  return (clip, p);
 }
 
 /// `[audio+N]` sections of the clip config: one per sound track.
@@ -795,19 +847,6 @@ List<TvppAudioTrack> _audioTracks(String fcfgText) {
     );
   }
   return frozenList(tracks);
-}
-
-String _printable(Uint8List bytes, int at, int length) {
-  final sb = StringBuffer();
-  for (var i = at; i < at + length; i++) {
-    final c = bytes[i];
-    if ((c >= 0x20 && c < 0x7f) || c == 0x0a) {
-      sb.writeCharCode(c);
-    } else {
-      sb.write(' ');
-    }
-  }
-  return sb.toString();
 }
 
 /// LEXT carries INI text (`[images auid]`, `[images name]`). Only the

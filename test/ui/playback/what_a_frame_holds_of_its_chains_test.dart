@@ -1,10 +1,14 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart'
+    show Color, GlobalKey, Row, Size, SizedBox, Widget;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -22,11 +26,13 @@ import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/a_fill_on_a_session.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★WHAT A FRAME'S CHAINS PUT IS HELD WHERE ITS SCREEN STANDS
 /// (`FramePictures.heldNodes` · `aheadNodes`; card
@@ -136,18 +142,19 @@ void main() {
     );
   }
 
-  /// Laid for a screen to show, [keepsNodes] where a canvas stands on it.
+  /// Laid for a screen to show — for [s]'s canvas, standing on it to
+  /// draw, where it [drawsLive].
   Future<void> shown(
     EditorSessionManager s,
     DemandedPicture picture, {
-    bool keepsNodes = true,
+    bool drawsLive = true,
   }) {
     final pictures = s.playbackRig.framePictures;
     return pictures.makeShown(
       pictures.stackOf(picture),
       picture,
       shouldAbort: () => false,
-      keepsNodes: keepsNodes,
+      canvas: drawsLive ? s : null,
     );
   }
 
@@ -171,11 +178,108 @@ void main() {
 
       final still = session();
       addTearDown(still.dispose);
-      await shown(still, drawn(still), keepsNodes: false);
+      await shown(still, drawn(still), drawsLive: false);
       final held = still.playbackRig.framePictures;
       expect(held.aheadNodes.heldBytes, greaterThan(0), reason: 'nothing live');
       expect(held.heldNodes.heldBytes, 0);
     });
+  });
+
+  /// Frame [frame] of [s]'s cut, drawn ([drawn]) — on its paper.
+  DemandedPicture frameAt(EditorSessionManager s, int frame) => (
+    cut: s.requireActiveCut,
+    frameIndex: frame,
+    paintPaper: true,
+    ghosts: FrameGhosts.none,
+  );
+
+  /// What a canvas holds, stood on [frames] of a cut whose cel turns, in
+  /// turn.
+  Future<int> heldOn(List<int> frames) async {
+    final s = session(turning: true);
+    addTearDown(s.dispose);
+    drawn(s);
+    for (final frame in frames) {
+      await shown(s, frameAt(s, frame));
+    }
+    return s.playbackRig.framePictures.heldNodes.heldBytes;
+  }
+
+  // 🗣️유저 2026-10-27, Q3 = c: 「다른 프레임으로 가면 놓는다」
+  // (`EngineChainHolds.settleOnce`).
+  testWidgets('🚨the canvas gone on to another frame holds that one\'s '
+      'folder alone', (tester) async {
+    await tester.runAsync(() async {
+      final alone = await heldOn([1]);
+      expect(alone, greaterThan(0), reason: '⛔premise: held');
+      expect(await heldOn([0, 1]), alone);
+    });
+  });
+
+  // The canvas a view is to what is held (`FramePictureView.standsAs`):
+  // the conte's pictures stand on frames of their own beside the canvas,
+  // on its holds (브러시/렌더링 2026-11-20).
+  testWidgets('🚨views drawing live on frames of their own each hold their '
+      'own, and one gone lets go of its own', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final alone = (await tester.runAsync(
+      () async => [await heldOn([0]), await heldOn([1])],
+    ))!;
+    final s = session(turning: true);
+    addTearDown(s.dispose);
+    drawn(s);
+    final pictures = s.playbackRig.framePictures;
+    final run = (
+      landings: s.playbackRig.prerenderScheduler.landings,
+      pictures: pictures,
+    );
+    Widget viewOn(int frame) => SizedBox(
+      width: canvasSize.width.toDouble(),
+      height: canvasSize.height.toDouble(),
+      child: standingOn(
+        run,
+        picture: frameAt(s, frame),
+        nodes: pictures.stackOf(frameAt(s, frame)),
+        viewport: CanvasViewport(),
+        live: (
+          activeSurfacePainter: BitmapSurfacePainter(
+            surface: BitmapSurface(canvasSize: canvasSize, tileSize: 16),
+            showTransparentBackground: false,
+            lineage: 'a view on frame $frame',
+          ),
+          floatOverlay: null,
+          liftedRows: const {},
+        ),
+      ),
+    );
+    final screen = GlobalKey();
+    Widget views({required bool both}) => onAScreen(
+      screen,
+      size: Size(2.0 * canvasSize.width, canvasSize.height.toDouble()),
+      under: const Color(0xFF000000),
+      view: Row(children: [viewOn(0), if (both) viewOn(1)]),
+    );
+
+    await tester.pumpWidget(views(both: true));
+    expect(
+      await settleAsync(
+        tester,
+        () => pictures.heldNodes.heldBytes == alone[0] + alone[1],
+      ),
+      isTrue,
+      reason: 'each its own',
+    );
+    await tester.pumpWidget(views(both: false));
+    expect(
+      await settleAsync(
+        tester,
+        () => pictures.heldNodes.heldBytes == alone[0],
+      ),
+      isTrue,
+      reason: 'the one gone, its own let go of',
+    );
+    await tester.pumpWidget(const SizedBox());
   });
 
   // What a fill reads is the frame's rows planned as a screen's are

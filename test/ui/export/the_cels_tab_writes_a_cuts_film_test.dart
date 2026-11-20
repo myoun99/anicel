@@ -59,7 +59,8 @@ void main() {
   Frame frame(String id, String name) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
-  Cut cut(String id, String name) => Cut(
+  /// [aShown] false: A hidden on the canvas.
+  Cut cut(String id, String name, {bool aShown = true}) => Cut(
     id: CutId(id),
     name: name,
     duration: 2,
@@ -70,16 +71,21 @@ void main() {
         name: 'A',
         frames: [frame('$id-a1', '1'), frame('$id-a2', '2')],
         mark: const LayerMark(process: LayerProcess.key),
+        isVisible: aShown,
       ),
       createCameraLayer(cutId: CutId(id)),
     ],
   );
 
-  /// Cuts 301 and 302, each a KEY row A with two cels — on [paper].
+  /// Cuts 301 and 302, each a KEY row A with two cels — on [paper], A
+  /// hidden on the canvas where [aShown] is false, a dab of ink in every
+  /// cel where [inked].
   EditorSessionManager film({
     ProjectBackground paper = ProjectBackground.defaultBackground,
-  }) => inkEveryCel(
-    EditorSessionManager(
+    bool aShown = true,
+    bool inked = true,
+  }) {
+    final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
@@ -90,12 +96,16 @@ void main() {
           Track(
             id: const TrackId('track'),
             name: 'Track',
-            cuts: [cut('c1', '301'), cut('c2', '302')],
+            cuts: [
+              cut('c1', '301', aShown: aShown),
+              cut('c2', '302', aShown: aShown),
+            ],
           ),
         ],
       ),
-    ),
-  );
+    );
+    return inked ? inkEveryCel(session) : session;
+  }
 
   /// A black dot on each of A's cels, so the run has pictures to write.
   void draw(EditorSessionManager session) {
@@ -198,7 +208,7 @@ void main() {
   });
 
   testWidgets('🚨ONE run writes the cels and the cut\'s film — the film as '
-      'the Sequence tab writes the cut, at the tab\'s size', (tester) async {
+      'the Sequence tab writes the cut, at its own size', (tester) async {
     final temp = scratch();
     final session = film();
     addTearDown(session.dispose);
@@ -231,8 +241,8 @@ void main() {
     )!;
     expect(
       (movie.width, movie.height),
-      (size.width, size.height),
-      reason: 'the tab\'s size: the canvas',
+      (32, 18),
+      reason: 'its own 크기, by default the camera (F-616)',
     );
     expect(
       [for (final picture in movie.frames) picture.frameDuration ~/ 10]
@@ -346,8 +356,9 @@ void main() {
     );
   });
 
-  testWidgets('the film is as large as the tab\'s size says: through the '
-      'camera, the camera\'s', (tester) async {
+  testWidgets('🗣️F-616: the film is as large as its own 크기 says — the '
+      'camera\'s at first, the canvas\'s once 동영상 형식 picks it; the '
+      'cels\' 셀 크기 does not move it', (tester) async {
     final temp = scratch();
     final session = film();
     addTearDown(session.dispose);
@@ -358,18 +369,31 @@ void main() {
       spec: const CelsExportSpec(
         kinds: {ExportCelKind.video},
         videoFormat: gif,
-        sizeMode: ExportSizeMode.camera,
       ),
       into: temp,
     );
+    expect(
+      state.debugSpecs.cels.sizeMode,
+      ExportSizeMode.canvas,
+      reason: '셀 크기: the canvas',
+    );
+    expect(find.text(AppText.strings.exCelSize), findsOneWidget);
 
     await tester.runAsync(state.export);
     await tester.pump();
-
     final movie = img.decodeGif(
       File('${temp.path}/_CUT301.gif').readAsBytesSync(),
     )!;
-    expect((movie.width, movie.height), (32, 18));
+    expect((movie.width, movie.height), (32, 18), reason: 'the camera\'s');
+
+    await pickFromExportList(
+      tester,
+      'export-film-size',
+      'export-film-size-canvas',
+    );
+    expect(state.debugSpecs.cels.videoSizeMode, ExportSizeMode.canvas);
+    await press(tester, 'export-cels-stand-document-video');
+    expect(tester.exportPreviewDocument!.sizeOf(0), size);
   });
 
   testWidgets('🗣️under the project scope too, a film a CUT: 「셀은 컷마다 '
@@ -432,12 +456,25 @@ void main() {
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
 
+    final first = tester.exportPreviewImage;
+
     await tester.seekExportPreview(1);
+    // 🔬F-617 (2026-11-19, master red here): a hand's seek to a frame not
+    // yet drawn stands on the frame shown, its picture up, until the
+    // frame's picture comes — and under the test's faked clock it comes
+    // only when settled (measured: frame 0 after 5 s faked and 3 s real).
+    // ↩️This read the frame at once: the playhead went before its picture.
+    expect(tester.exportTransport.currentFrame, 0, reason: 'not drawn yet');
+    expect(tester.exportPreviewImage, same(first));
+
+    await tester.settleExportPreview();
     expect(
       tester.exportTransport.currentFrame,
       1,
       reason: 'a hand on its transport moves the film, not the list',
     );
+    expect(tester.exportPreviewImage, isNotNull);
+    expect(tester.exportPreviewImage, isNot(same(first)));
   });
 
   testWidgets('the film\'s sound is asked where its format has room for it: '
@@ -526,5 +563,138 @@ void main() {
     expect(name, endsWith('.gif'));
     final movie = img.decodeGif(File('${temp.path}/$name').readAsBytesSync())!;
     expect((movie.width, movie.height), (32, 18), reason: 'the camera\'s');
+  });
+
+  group('🗣️F-618 ① (유저 2026-11-19): the film is drawn of the rows the '
+      'label picks — 「캔버스 보이는대로가아니라 … 출력 셀 리스트에서 다른 셀 '
+      'off했던 신경안쓰고 색라벨 고른 초기상태처럼」', () {
+    Map<LayerId, bool> filmChecks(EditorSessionManager session) =>
+        session.repository
+            .requireProject()
+            .exportOverrides
+            .deltaFor(const CutId('c1'))
+            ?.filmLayers ??
+        const {};
+
+    testWidgets('standing on the film, 출력할 레이어 offers its rows, each on '
+        'as the label picks it — A hidden on the canvas and its cels '
+        'turned off — and its checks are the film\'s own', (tester) async {
+      final session = film(aShown: false);
+      addTearDown(session.dispose);
+      await pumpCels(
+        tester,
+        session,
+        spec: const CelsExportSpec(
+          kinds: {ExportCelKind.cel, ExportCelKind.video},
+        ),
+      );
+      await tester.pressInCelsBoard(tester.celsBoardSwitch('c1-a'));
+      expect(listed(tester), ['_CUT301.mp4'], reason: 'A\'s cels are off');
+
+      await press(tester, 'export-cels-stand-document-video');
+      expect(tester.celsStackLines, [('c1-a', true)]);
+
+      await tester.pressCelsStackSwitch('c1-a');
+      expect(tester.celsStackLines, [('c1-a', false)]);
+      expect(filmChecks(session), {const LayerId('c1-a'): false});
+      expect(listed(tester), ['_CUT301.mp4'], reason: 'the cels are not moved');
+
+      await tester.pressCelsStackSwitch('c1-a');
+      expect(tester.celsStackLines, [('c1-a', true)]);
+      expect(filmChecks(session), isEmpty, reason: 'back on the rule');
+    });
+
+    /// [session], A's cels on cut 301 laid red all over — a colour neither
+    /// the paper nor the stage's apron is.
+    EditorSessionManager redA(EditorSessionManager session) {
+      final shot = session.cutById(const CutId('c1'))!;
+      const tile = defaultCelTileSize;
+      final pixels = Uint8List(tile * tile * 4);
+      for (var y = 0; y < size.height; y += 1) {
+        for (var x = 0; x < size.width; x += 1) {
+          pixels.setAll((y * tile + x) * 4, const [255, 0, 0, 255]);
+        }
+      }
+      for (final cel in ['c1-a1', 'c1-a2']) {
+        session.renderCaches.brushFrameStore.storeBakedSurface(
+          session.brushFrameKeyForCut(
+            shot,
+            const LayerId('c1-a'),
+            FrameId(cel),
+          ),
+          BitmapSurface(
+            canvasSize: size,
+            tileSize: tile,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels),
+            },
+          ),
+        );
+      }
+      return session;
+    }
+
+    /// How many pixels of cut 301's film, its first frame, are A's red.
+    int redIn(Directory temp) {
+      final movie = img.decodeGif(
+        File('${temp.path}/_CUT301.gif').readAsBytesSync(),
+      )!;
+      return movie.frames.first
+          .where((pixel) => pixel.r > 200 && pixel.g < 60 && pixel.b < 60)
+          .length;
+    }
+
+    // ↩️A camera-size film — its size's default — and a transition's frame
+    // drew the project's cut, the canvas's eyes and all; only a canvas-size
+    // frame of one cut drew the film's (F-618 ①, the Surface's release,
+    // 2026-11-19: A off in 출력할 레이어 and drawn).
+    for (final sizeMode in ExportSizeMode.values) {
+      testWidgets('🚨the film draws A, which the canvas hides — at its '
+          '${sizeMode.name} size', (tester) async {
+        final temp = scratch();
+        final session = film(aShown: false, inked: false);
+        addTearDown(session.dispose);
+        inkEveryCel(redA(session));
+        final state = await pumpCels(
+          tester,
+          session,
+          spec: CelsExportSpec(
+            kinds: const {ExportCelKind.video},
+            videoFormat: gif,
+            videoSizeMode: sizeMode,
+          ),
+          into: temp,
+        );
+        await tester.runAsync(state.export);
+        await tester.pump();
+
+        expect(redIn(temp), greaterThan(0));
+      });
+
+      testWidgets('🚨the film leaves A out, its check turned off, which the '
+          'canvas shows — at its ${sizeMode.name} size', (tester) async {
+        final temp = scratch();
+        final session = film(inked: false);
+        addTearDown(session.dispose);
+        inkEveryCel(redA(session));
+        final state = await pumpCels(
+          tester,
+          session,
+          spec: CelsExportSpec(
+            kinds: const {ExportCelKind.cel, ExportCelKind.video},
+            videoFormat: gif,
+            videoSizeMode: sizeMode,
+          ),
+          into: temp,
+        );
+        await press(tester, 'export-cels-stand-document-video');
+        await tester.pressCelsStackSwitch('c1-a');
+        expect(tester.celsStackLines, [('c1-a', false)], reason: '⛔premise');
+        await tester.runAsync(state.export);
+        await tester.pump();
+
+        expect(redIn(temp), 0);
+      });
+    }
   });
 }

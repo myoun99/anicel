@@ -180,17 +180,23 @@ String? outsideInputs(
   return flutter == null ? null : 'flutter $flutter';
 }
 
+/// The Flutter SDKs [environment] reaches, the one it names first: its
+/// `FLUTTER_ROOT`, then each folder of its `PATH` that holds `flutter` —
+/// the SDK is that folder's parent. What a run's results depend on is read
+/// from here ([outsideInputs]), and how a batch launches the tool too
+/// (affected_tests' `flutterLaunch`).
+List<String> flutterRootsIn(Map<String, String> environment) => [
+  ?environment['FLUTTER_ROOT'],
+  for (final folder in (environment['PATH'] ?? environment['Path'] ?? '')
+      .split(Platform.isWindows ? ';' : ':'))
+    if (folder.isNotEmpty &&
+        File('$folder/flutter${Platform.isWindows ? '.bat' : ''}')
+            .existsSync())
+      Directory(folder).parent.path,
+];
+
 String? _flutterVersion(Map<String, String> environment) {
-  final roots = [
-    ?environment['FLUTTER_ROOT'],
-    for (final folder in (environment['PATH'] ?? environment['Path'] ?? '')
-        .split(Platform.isWindows ? ';' : ':'))
-      if (folder.isNotEmpty &&
-          File('$folder/flutter${Platform.isWindows ? '.bat' : ''}')
-              .existsSync())
-        Directory(folder).parent.path,
-  ];
-  for (final root in roots) {
+  for (final root in flutterRootsIn(environment)) {
     final version = File('$root/bin/cache/flutter.version.json');
     try {
       final about = jsonDecode(version.readAsStringSync());

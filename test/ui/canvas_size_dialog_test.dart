@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -88,6 +89,60 @@ void main() {
         anchor: CanvasResizeAnchor.center,
       ),
     );
+  });
+
+  Future<void> pickFit(WidgetTester tester, MediaFitMode fit) async {
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-size-fit')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>('canvas-size-fit-${fit.name}')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  // 🗣️I-180: 원본 크기 (born) is the default, the resize there always was.
+  testWidgets('confirms with a picked fit, born by default', (tester) async {
+    await pumpOpenDialog(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(dialogResult!.fit, MediaFitMode.born);
+
+    await pumpOpenDialog(tester);
+    await pickFit(tester, MediaFitMode.stretch);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(dialogResult!.fit, MediaFitMode.stretch);
+  });
+
+  // 🗣️I-180-Q5 a: a fit stands the picture in the middle — the grid keeps
+  // its place and answers no press under one.
+  testWidgets('under a fit the anchor grid stays where it is and takes no '
+      'press', (tester) async {
+    await pumpOpenDialog(tester);
+    final before = tester.getRect(
+      find.byKey(const ValueKey<String>('canvas-size-anchor-bottomRight')),
+    );
+    await pickFit(tester, MediaFitMode.contain);
+    expect(
+      tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-size-anchor-bottomRight')),
+      ),
+      before,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-anchor-bottomRight')),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(dialogResult!.anchor, CanvasResizeAnchor.center);
+    expect(dialogResult!.fit, MediaFitMode.contain);
   });
 
   testWidgets('confirms with a picked anchor', (tester) async {

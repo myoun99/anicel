@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/sliced_value_listenable_builder.dart';
 
 /// 🗣️I-127-Q2 (유저 2026-10-27): 「같은 값을 찍는 칸은 전부 — 타임시트
 /// 머리와 같은 길」 — the envelope's episode and title boxes are the work's,
@@ -68,10 +69,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          // Built again when the project moves, as the workspace builds it
+          // Built again when what it prints moves, as the workspace builds it
           // (`CutEnvelopeTabHost.printedBy`).
-          body: ListenableBuilder(
+          body: SlicedListenableBuilder<Object?>(
             listenable: session,
+            slice: () => CutEnvelopeTabHost.printedBy(session),
             builder: (context, _) => CutEnvelopeTabHost(
               session: session,
               inkController: ink,

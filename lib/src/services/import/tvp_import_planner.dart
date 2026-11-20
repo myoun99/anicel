@@ -65,8 +65,15 @@ class TvpImportPlan {
 /// 🪦A `fit` (default 1:1) rode on every planned bake here, and the door
 /// never read it: a clip's cels are decoded tile for tile at the clip's
 /// own size (`bakeCelTiles`), on a cut made at that size.
+///
+/// [camera] is [parsed]'s camera as [planTvpCamera] fits it, fitted by the
+/// caller: ⚡the fit is nearly all of a plan's time (1.0 s of ER's 1.1 s,
+/// 서피스 11-19), and it is pure, so the door fits it on the worker that
+/// read the file (card F-621 ⑤) — while this plan, which names drawings
+/// from the run's one count (`mintFrameId`), stays on the run's isolate.
 TvpImportPlan planTvpImport({
   required TvpImportClip parsed,
+  required CutCamera camera,
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
   required InbetweenMark unnamedMark,
@@ -97,6 +104,7 @@ TvpImportPlan planTvpImport({
           frames: const [],
           timeline: SplayTreeMap<int, TimelineExposure>(),
           opacity: source.opacity,
+          blendMode: _blendModeFor(source, warnings),
           kind: LayerKind.folder,
           collapsed: source.collapsed,
         ),
@@ -244,11 +252,6 @@ TvpImportPlan planTvpImport({
       ),
     );
   }
-
-  final camera = planTvpCamera(
-    camera: parsed.camera,
-    frameCount: duration,
-  );
 
   final defaultCut = createDefaultCut(
     cutId: cutId,
@@ -418,35 +421,39 @@ CameraPose _cameraPoseFor(TvpCameraPose pose) {
   );
 }
 
-/// TVPaint's blending-mode NAME to Anicel's enum.
+/// TVPaint's blending-mode NAME — the converter's, in TVPaint's own
+/// English — to Anicel's enum.
 ///
 /// `Color` is TVPaint's NORMAL — not a hue/luminosity blend — and it is
-/// what every layer of every measured file carries. Modes with no
-/// Anicel formula fall back to normal and say so rather than picking a
-/// lookalike.
+/// what nearly every layer of every measured file carries. 🗣️A mode
+/// Anicel has no formula for comes in as normal and the notice names it,
+/// rather than picking a lookalike or growing a formula for it (유저
+/// 2026-11-19, card F-621 ③: 「우리한테 없는 블렌드가 있으니 그런거
+/// 구현하지말고 표준으로 들여도 문제없어. 메시지로 표시만 잘하면됨.」).
+///
+/// Darken Only / Lighten Only are the min and max every other app has —
+/// TVPaint's Japanese picker calls them 比較(暗く) / 比較(明るく), Clip
+/// Studio 比較(暗) / 比較(明). Shade and Light (暗くする / 明るくする) are
+/// TVPaint's own and are not them.
 ///
 /// ⚠️`Add` reads as [LayerBlendMode.glowAdd] because that is the formula it
 /// has always drawn by: the plus of old, which turned out to be Clip
 /// Studio's 加算(発光), not its 加算. Which one TVPaint's Add is has not been
 /// measured (brush-fidelity-Q15) — this keeps the picture as it was.
 LayerBlendMode _blendModeFor(TvpLayer source, List<ImportWarning> warnings) {
-  final key = source.blendingMode
-      .toLowerCase()
-      .replaceAll(RegExp(r'[\s_()-]'), '');
-  final mode = switch (key) {
-    'color' || 'normal' => LayerBlendMode.normal,
-    'add' || 'addgamma' => LayerBlendMode.glowAdd,
-    'multiply' => LayerBlendMode.multiply,
-    'screen' => LayerBlendMode.screen,
-    'darken' => LayerBlendMode.darken,
-    'lighten' => LayerBlendMode.lighten,
-    'difference' => LayerBlendMode.difference,
-    'exclusion' => LayerBlendMode.exclusion,
-    'overlay' => LayerBlendMode.overlay,
-    'softlight' => LayerBlendMode.softLight,
-    'hardlight' => LayerBlendMode.hardLight,
-    'burn' || 'colorburn' => LayerBlendMode.colorBurn,
-    'dodge' || 'colordodge' => LayerBlendMode.colorDodge,
+  final mode = switch (source.blendingMode) {
+    'Color' => LayerBlendMode.normal,
+    'Add' => LayerBlendMode.glowAdd,
+    'Multiply' => LayerBlendMode.multiply,
+    'Screen' => LayerBlendMode.screen,
+    'Darken Only' => LayerBlendMode.darken,
+    'Lighten Only' => LayerBlendMode.lighten,
+    'Difference' => LayerBlendMode.difference,
+    'Overlay' => LayerBlendMode.overlay,
+    'Soft Light' => LayerBlendMode.softLight,
+    'Hard Light' => LayerBlendMode.hardLight,
+    'Burn' => LayerBlendMode.colorBurn,
+    'Dodge' => LayerBlendMode.colorDodge,
     _ => null,
   };
   if (mode == null) {

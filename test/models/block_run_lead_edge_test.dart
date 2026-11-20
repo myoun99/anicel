@@ -108,16 +108,19 @@ void main() {
     }
   });
 
-  test('shrinking stops at the dragged block\'s own minimum', () {
-    final layout = planBlockRunLeadEdge(
+  test('pulled into its floor, the dragged block holds there until the '
+      'edge has passed it whole — then it is gone (I-179)', () {
+    List<int> pulled(int pull) => planBlockRunLeadEdge(
       slots: slots([(0, 4), (0, 4)]),
       targetIndex: 1,
-      frameDelta: 99,
+      frameDelta: pull,
       limits: (minLength: 2, reach: 1),
-    );
+    ).lengths;
 
-    expect(layout.lengths, [6, 2]);
-    expect(startsOf(layout), [0, 6], reason: 'the neighbour held its head');
+    expect(pulled(2), [6, 2], reason: 'down to its floor');
+    expect(pulled(3), [6, 2], reason: 'the edge holds at the floor');
+    expect(pulled(4), [8, 0], reason: 'passed whole, it is gone');
+    expect(pulled(99), [8, 0], reason: 'as far as the row\'s last frame');
   });
 
   test('the FIRST slot has no neighbour — the head of the axis absorbs it', () {
@@ -147,17 +150,86 @@ void main() {
     expect(layout.lengths, [6, 4], reason: 'it grew by the 2 frames of head');
   });
 
-  test('a block ALREADY under the floor refuses to shrink instead of '
-      'throwing — the clamp bounds cannot cross', () {
-    final layout = planBlockRunLeadEdge(
+  test('a block ALREADY under the floor holds still instead of throwing — '
+      'until the edge has passed it whole', () {
+    BlockRunLeadEdgeLayout pulled(int pull) => planBlockRunLeadEdge(
       slots: slots([(0, 4), (0, 2)]),
       targetIndex: 1,
-      frameDelta: 3,
+      frameDelta: pull,
       limits: (minLength: 5, reach: 1),
     );
 
-    expect(layout.lengths, [4, 2], reason: 'nothing shrinks below the floor');
-    expect(startsOf(layout), [0, 4]);
+    expect(pulled(1).lengths, [4, 2], reason: 'nothing shrinks below it');
+    expect(startsOf(pulled(1)), [0, 4]);
+    expect(pulled(2).lengths, [6, 0], reason: 'passed whole, it is gone');
+  });
+
+  group('pulled back past its last frame, the edge sweeps on (I-179, 유저 '
+      '2026-11-19: 「자기 자신 없애고 뒤의 블록들도 없앨수있게」)', () {
+    test('the block goes, then each one behind it, and the glued '
+        'predecessor follows the edge', () {
+      // [0,4) [4,5) [5,6) [6,7), all glued.
+      List<int> pulled(int pull) => planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 1), (0, 1), (0, 1)]),
+        targetIndex: 1,
+        frameDelta: pull,
+      ).lengths;
+
+      expect(pulled(1), [5, 0, 1, 1], reason: '「자기 자신 없애고」');
+      expect(pulled(2), [6, 0, 0, 1], reason: '「당길때마다 뒤에 것을 없앰」');
+      expect(pulled(3), [7, 0, 0, 0]);
+      expect(pulled(99), [7, 0, 0, 0], reason: 'the row ends where it ended');
+    });
+
+    test('a block the edge stands in is shortened from its front, its end '
+        'where it was', () {
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 2), (0, 5)]),
+        targetIndex: 1,
+        frameDelta: 4,
+      );
+
+      expect(layout.lengths, [8, 0, 3]);
+      expect(startsOf(layout), [0, 8, 8]);
+      expect(layout.leadingGaps, [0, 0, 0], reason: 'no emptiness appears');
+    });
+
+    test('a SEPARATED predecessor holds and the gap grows', () {
+      // [0,4) .. [6,8) [8,11)
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (2, 2), (0, 3)]),
+        targetIndex: 1,
+        frameDelta: 4,
+      );
+
+      expect(layout.lengths, [4, 0, 1]);
+      expect(startsOf(layout)[2], 10, reason: 'the follower ends at 11');
+      expect(layout.leadingGaps, [0, 6, 0]);
+    });
+
+    test('through a gap behind it the glued predecessor goes on following, '
+        'and a block past the edge holds still', () {
+      // [0,4) [4,6) .. [9,11)
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 2), (3, 2)]),
+        targetIndex: 1,
+        frameDelta: 3,
+      );
+
+      expect(layout.lengths, [7, 0, 2]);
+      expect(startsOf(layout), [0, 7, 9]);
+    });
+
+    test('the FIRST block has no predecessor — the head of the axis grows', () {
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 1), (0, 1), (0, 1)]),
+        targetIndex: 0,
+        frameDelta: 2,
+      );
+
+      expect(layout.lengths, [0, 0, 1]);
+      expect(startsOf(layout)[2], 2, reason: 'the last block holds still');
+    });
   });
 
   group('reach — how far in front the edge may trade (유저 2026-09-12)', () {
@@ -240,5 +312,125 @@ void main() {
 
     expect(layout.leadingGaps, [1, 0, 3]);
     expect(layout.lengths, [4, 4, 4]);
+  });
+
+  group('a band\'s lead edge pulled back thins it out (I-179-Q1, 유저 '
+      '2026-11-19: 「솎아내기 — 당긴 칸 수만큼 건너뛰며 남긴다」)', () {
+    /// The row as the user wrote it: each block by its number on the frame
+    /// it starts, `-` on the frames it holds after that, `.` where none.
+    String written(BlockRunLeadEdgeLayout layout) {
+      final row = StringBuffer();
+      final starts = startsOf(layout);
+      for (var i = 0; i < starts.length; i += 1) {
+        if (layout.lengths[i] > 0) {
+          row
+            ..write('.' * (starts[i] - row.length))
+            ..write('${i + 1}${'-' * (layout.lengths[i] - 1)}');
+        }
+      }
+      return row.toString();
+    }
+
+    String thinned(
+      List<(int, int)> pairs, {
+      required List<int> selected,
+      required int pull,
+    }) => written(
+      planBlockRunThinning(
+        slots: slots(pairs),
+        selected: selected,
+        pull: pull,
+      ),
+    );
+
+    const onOnes = [(0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1)];
+    final eight = [...onOnes, (0, 1)];
+    final all = [for (var i = 0; i < 8; i += 1) i];
+
+    test('🗣️the user\'s eight on ones: one frame keeps every second, two '
+        'every third — 「1-3-5-7-」 · 「1--4--7-」', () {
+      expect(thinned(eight, selected: all, pull: 0), '12345678');
+      expect(thinned(eight, selected: all, pull: 1), '1-3-5-7-');
+      expect(thinned(eight, selected: all, pull: 2), '1--4--7-');
+      expect(thinned(eight, selected: all, pull: 3), '1---5---');
+    });
+
+    test('pulled as far as the band holds blocks, the first is all that '
+        'stays, the band\'s length whole — and no further', () {
+      expect(thinned(eight, selected: all, pull: 7), '1-------');
+      expect(thinned(eight, selected: all, pull: 99), '1-------');
+    });
+
+    test('counted in blocks, whatever their lengths', () {
+      expect(
+        thinned(
+          [(0, 2), (0, 2), (0, 2), (0, 2)],
+          selected: [0, 1, 2, 3],
+          pull: 1,
+        ),
+        '1---3---',
+      );
+      expect(
+        thinned(
+          [(0, 1), (0, 3), (0, 2), (0, 1)],
+          selected: [0, 1, 2, 3],
+          pull: 1,
+        ),
+        '1---3--',
+      );
+    });
+
+    test('nothing outside the band moves', () {
+      final six = onOnes.take(6).toList();
+      expect(thinned(six, selected: [1, 2, 3, 4], pull: 1), '12-4-6');
+      expect(thinned(six, selected: [1, 2, 3, 4], pull: 3), '12---6');
+      expect(thinned(six, selected: [1, 2, 3, 4], pull: 9), '12---6');
+    });
+
+    test('the last run short of a whole one is thinned as far as it goes',
+        () {
+      expect(
+        thinned(onOnes.take(5).toList(), selected: [0, 1, 2, 3, 4], pull: 2),
+        '1--4-',
+      );
+    });
+
+    test('a band holding one block on a row keeps it', () {
+      expect(thinned(eight, selected: [3], pull: 2), '12345678');
+    });
+
+    test('a gap is the single lead edge\'s: the block in front of it holds '
+        'and the gap grows; one the edge passes through, the glued block '
+        'in front follows over', () {
+      const band = [0, 1, 2, 3];
+      expect(
+        thinned([(0, 1), (1, 1), (0, 1), (0, 1)], selected: band, pull: 1),
+        '1..3-',
+      );
+      expect(
+        thinned([(0, 1), (0, 1), (1, 1), (0, 1)], selected: band, pull: 2),
+        '1---4',
+      );
+    });
+
+    test('each run is swept as the lead edge of its second block pulled to '
+        'the run\'s end would sweep it — the same rule, not a second one', () {
+      final row = slots([(0, 2), (0, 1), (1, 3), (0, 1), (2, 2)]);
+      final single = planBlockRunLeadEdge(
+        slots: row,
+        targetIndex: 1,
+        // From block 2's start (2) to block 4's end (8).
+        frameDelta: 6,
+      );
+      final band = planBlockRunThinning(
+        slots: row,
+        selected: [0, 1, 2, 3],
+        pull: 3,
+      );
+      expect(written(band), written(single));
+      expect(band.lengths, single.lengths);
+      expect(band.leadingGaps, single.leadingGaps);
+      expect(written(band), '1-------..5-');
+    });
   });
 }

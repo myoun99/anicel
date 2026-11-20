@@ -9,6 +9,7 @@ import '../audio/waveform_painter.dart';
 import '../input/pen_friendly_scroll_controller.dart';
 import '../theme/app_theme.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeightIn;
+import '../widgets/content_scrollbar.dart';
 import 'media_asset_kind_icon.dart';
 import 'media_pool_pictures.dart';
 
@@ -82,30 +83,35 @@ class _MediaPoolIconsState extends State<MediaPoolIcons> {
   Widget build(BuildContext context) {
     const gap = MediaPoolIcons.gap;
     final captionHeight = timelineLayerRowHeightIn(context);
-    return LayoutBuilder(
-      builder: (context, room) {
-        final across = math.max(
-          1,
-          ((room.maxWidth - gap) / (MediaPoolIcons.narrowest + gap)).floor(),
-        );
-        final boxHeight =
-            math.max(1.0, (room.maxWidth - gap * (across + 1)) / across) /
-            MediaPoolPictures.aspect;
-        // Its bar is the scroll behaviour's, as every bar is.
-        return GridView.builder(
-          controller: _down,
-          padding: const EdgeInsets.all(gap),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: across,
-            mainAxisSpacing: gap,
-            crossAxisSpacing: gap,
-            mainAxisExtent: boxHeight + captionHeight,
-          ),
-          itemCount: widget.assets.length,
-          itemBuilder: (context, index) =>
-              _tile(context, widget.assets[index], boxHeight, captionHeight),
-        );
-      },
+    // Its bar in a lane of its own, always there, as the list's is
+    // (🗣️H62, `MediaPoolList`) — the boxes laid out in what the lane
+    // leaves.
+    return ContentScrollbar(
+      controller: _down,
+      builder: (context, controller) => LayoutBuilder(
+        builder: (context, room) {
+          final across = math.max(
+            1,
+            ((room.maxWidth - gap) / (MediaPoolIcons.narrowest + gap)).floor(),
+          );
+          final boxHeight =
+              math.max(1.0, (room.maxWidth - gap * (across + 1)) / across) /
+              MediaPoolPictures.aspect;
+          return GridView.builder(
+            controller: controller,
+            padding: const EdgeInsets.all(gap),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: across,
+              mainAxisSpacing: gap,
+              crossAxisSpacing: gap,
+              mainAxisExtent: boxHeight + captionHeight,
+            ),
+            itemCount: widget.assets.length,
+            itemBuilder: (context, index) =>
+                _tile(context, widget.assets[index], boxHeight, captionHeight),
+          );
+        },
+      ),
     );
   }
 

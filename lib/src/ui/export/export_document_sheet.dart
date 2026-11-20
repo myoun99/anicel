@@ -50,6 +50,12 @@ class ExportDocumentSheet extends ExportListSheet {
   /// other document.
   final XdtsSheetHalf? half;
 
+  /// The page of its cut's timesheet the block shows: its own — or, for a
+  /// digital sheet file, which has no picture of its own, the sheet's first.
+  /// 🗣️F-618 ④ (유저 2026-11-19): 동화 picked showed a blank screen — its
+  /// half's place ([page] 1) was asked of a sheet one page long.
+  int get sheetPage => half == null ? page : 0;
+
   @override
   final String fileName;
 
@@ -72,8 +78,7 @@ class ExportDocumentSheet extends ExportListSheet {
   /// digital sheet file says its block's stage, as a row's label does.
   @override
   String get word => switch (half) {
-    XdtsSheetHalf.genga => layerStepAbbrev(LayerProcess.key),
-    XdtsSheetHalf.douga => layerStepAbbrev(LayerProcess.inbetween),
+    final half? => xdtsHalfWord(half),
     null => pageCount > 1 ? '${page + 1}' : of.name,
   };
 
@@ -136,3 +141,10 @@ String exportDocumentExtension(ExportCelKind kind, CelsExportSpec spec) =>
             ? 'xdts'
             : spec.sheetImage.stillFormat.fileExtension,
     };
+
+/// What a digital sheet file's [half] is called — its block in the list and
+/// its pill in the timesheet's format: its stage, as a row's label says it.
+String xdtsHalfWord(XdtsSheetHalf half) => switch (half) {
+  XdtsSheetHalf.genga => layerStepAbbrev(LayerProcess.key),
+  XdtsSheetHalf.douga => layerStepAbbrev(LayerProcess.inbetween),
+};

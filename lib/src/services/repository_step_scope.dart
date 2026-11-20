@@ -1,3 +1,4 @@
+import 'brush_frame_store.dart';
 import 'history_step_scope.dart';
 import 'project_repository.dart';
 
@@ -30,10 +31,20 @@ import 'project_repository.dart';
 /// own undo takes back the base cel it made, and the pass only ever adds
 /// (관제 2026-11-12, card
 /// `undo-leaves-empty-mirror-cels-on-a-synced-attach-row`).
+///
+/// ⑤ A step is ONE edit of the cels too ([BrushFrameStore.asOneEdit]), and
+/// so is its undo and its redo: a step that lands many cels — a paste over
+/// a range, a colour verb, a 확정 over a folder — is heard once, naming
+/// every cel it crossed, however many it lands. 🔬F-615 (S5_BA cut 352, a
+/// pixel paste landing 127 cels): an announcement each, every one walking
+/// every picture the frames keep, cost the step about 1.5 s of its 2.5 s,
+/// and its undo and its redo as much again; as one edit, about 0.2 s.
 final class RepositoryStepScope implements HistoryStepScope {
-  RepositoryStepScope(this._repository);
+  RepositoryStepScope(this._repository, {required BrushFrameStore cels})
+    : _cels = cels;
 
   final ProjectRepository _repository;
+  final BrushFrameStore _cels;
 
   @override
   Object? execute(void Function() write) => _made(write);
@@ -42,7 +53,7 @@ final class RepositoryStepScope implements HistoryStepScope {
   void undo(void Function() write, List<Object> made) {
     final steps = made.cast<ConteWriteMade>();
     _repository.asOneConteWrite(() {
-      write();
+      _cels.asOneEdit(write);
       _repository.dropConteFills({for (final step in steps) ...step.fills});
       _repository.takeOffConteHeads([
         for (final step in steps) ...step.heads,
@@ -57,7 +68,7 @@ final class RepositoryStepScope implements HistoryStepScope {
   Object? redo(void Function() write) => _made(write);
 
   ConteWriteMade? _made(void Function() write) {
-    final made = _repository.asOneConteWrite(write);
+    final made = _repository.asOneConteWrite(() => _cels.asOneEdit(write));
     return made.fills.isEmpty && made.heads.isEmpty && made.mirrors.isEmpty
         ? null
         : made;

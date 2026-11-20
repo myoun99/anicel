@@ -2,7 +2,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
-import 'package:anicel/src/ui/canvas/tile_origin.dart';
+import 'package:anicel/src/services/tile_origin.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cel_text_fixture.dart';

@@ -29,9 +29,12 @@ part of '../brush_canvas_panel.dart';
 /// is why a seek, a row press and a cut switch were refused for as long as a
 /// box was open (F-116·F-86, 유저: 「타임라인쪽 조작이 안먹힘」).
 class _CanvasPanelLift {
-  _CanvasPanelLift(this._state);
+  _CanvasPanelLift(this._state) : _range = _ConfirmRange(_state);
 
   final _BrushCanvasPanelState _state;
+
+  /// The range a confirm reaches past the session's own cels.
+  final _ConfirmRange _range;
 
   /// The open session, or null when no move is pending.
   _MoveSession? _session;
@@ -76,8 +79,9 @@ class _CanvasPanelLift {
   }
 
   /// The cels a confirm of the open session lands on: the ones it lifted,
-  /// and every one the ladder names beside them ([_landingsPerCel]) — as
-  /// their keys spell them, a cel named twice once. Empty with no session.
+  /// and every one the ladder names beside them
+  /// ([_ConfirmRange.landingsPerCel]) — as their keys spell them, a cel
+  /// named twice once. Empty with no session.
   Iterable<BrushFrameKey> get confirmLandsOn sync* {
     final session = _session;
     if (session == null) {
@@ -148,19 +152,6 @@ class _CanvasPanelLift {
     }
     return session;
   }
-
-  /// The dabs a landing writes, in the order that makes the picture: the
-  /// erase the session has been SHOWING, then the stamp where it ended up.
-  ///
-  /// 🚨★★★**BOTH, AND IN THIS ORDER** — the session's hole was a view, so
-  /// the landing is the first time the cel hears about it at all. Landing
-  /// the stamp alone (which is what this did while the erase was committed
-  /// up front) would leave the original pixels under the moved copy: the
-  /// ink twice, once where it was and once where it went.
-  List<BrushDab> _landingDabs(BrushDab eraseDab, BrushDab stampDab) => [
-    eraseDab,
-    stampDab,
-  ];
 
   /// The landing of [cel]: its erase, then the float it ends with back in
   /// the artwork of the row it was lifted from — the one crossing a landing
@@ -249,162 +240,15 @@ class _CanvasPanelLift {
     );
   }
 
-  /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
-  /// whole block (F-116-b / F-164).
-  ///
-  /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
-  /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」 · 2026-09-18:
-  /// 「**여러프레임 확정가능**하게한다던가」.
-  ///
-  /// ⛔**THE SAME MOVE, NOT THE SAME PIXELS.** The float carries what was
-  /// lifted from the cel the session started on; stamping it onto another
-  /// cel would paste that drawing into this one. Each cel lifts its OWN
-  /// pixels and takes the same transform.
-  ///
-  /// 🚨★★★**THROUGH THE USER'S SELECTION, ELSE ITS OWN WHOLE PICTURE** —
-  /// 🗣️유저 2026-09-24 (H41): 「선택도구 사용했으면 어떤프레임이든 선택도구
-  /// 안쪽만, 아니면 각자 그림 전체적용」 · 「다른 프레임 그림의 잘려서
-  /// 변형안먹힌 부분이 있었어」. With nothing selected the session's region
-  /// is the move tool's box around the STANDING cel's ink, and every other
-  /// cel was cut through that same box: whatever of its drawing lay outside
-  /// the standing cel's picture stayed where it was. Each cel now frames
-  /// its own ink ([CanvasSelectionShape.wholePicture], the one the standing
-  /// cel's box is), and only a selection the user made is shared.
-  ///
-  /// 🚨★★★**ONE LANDING PER CEL, AND THE MAP IS WHAT SAYS SO.** [landed] —
-  /// the session's own cels', each carrying the float its preview already
-  /// resampled — SEEDS the result under their own keys, so the loop cannot
-  /// add a second landing for one of them however the ladder is spelled.
-  /// ⛔It is not a `key == session.key` skip: the ladder may also name one
-  /// cel twice (two frame keys can fold onto one physical cel), and a skip
-  /// that names only the session would let that through.
-  ///
-  /// 🧪A duplicate is invisible in the picture — the second erase wipes the
-  /// second stamp's ground and the stamp puts back the same pixels, both
-  /// built from the same pre-landing surface — so nothing on screen would
-  /// ever have reported it. What it costs is a whole second resample and a
-  /// whole second pre-landing surface held in history for that cel, which
-  /// is what `retainedBytes` is pinned on.
-  ///
-  /// 「불가능하면 그냥 무시」 is the two nulls: a cel the ladder names but
-  /// that yields no lift (nothing in it, nothing under the outline) simply
-  /// contributes no landing.
-  Map<BrushFrameKey, Command> _landingsPerCel(
-    _MoveSession session,
-    Map<BrushFrameKey, Command> landed,
-    StampCarry? carry,
-  ) {
-    final ladder = _state.widget.transformTargetKeys?.call();
-    final coordinator = _state.widget.coordinator;
-    if (ladder == null || coordinator == null) {
-      return landed;
+  /// 🗣️F-615 — the work a confirm of the session [liftToken] has ahead of
+  /// it, over the range it reaches ([_ConfirmRange.ahead]). Null with no
+  /// such session.
+  WorkAhead? confirmAhead(int liftToken, StampCarry? carry) {
+    final session = _session;
+    if (session == null || session.token != liftToken) {
+      return null;
     }
-    // 🚨★★★**KEYED BY THE PHYSICAL CEL.** `pixelVerbCellKeys` deliberately
-    // does NOT dedupe — 「the one that owns the surfaces owns this」 — and
-    // linked rows are windows onto one bank, so the ladder can name one
-    // cel under two row keys. `CelPixelOverwriteCommand` answers that with
-    // `canonicalKeyOf`; this is the same answer, not a second one — and
-    // [landed] is keyed by it already.
-    final store = coordinator.frameStore;
-    final landings = {...landed};
-    // 🚨★★★**WHAT THE TRANSFORM DID — ALL OF IT.**
-    //
-    // 🗣️유저 2026-09-22, 실기: 「1과 2 동일한 그림 만들고 **이동+확대**하고
-    // **둘다 동시적용** 해봤는데 **한쪽 값의 확대가 사라졌어. 이동은
-    // 남아있는데**」.
-    //
-    // ↩️This read a DISPLACEMENT off the float — `stampDab.center` against
-    // where it was cut from — and offset each cel's own lift by it. That
-    // is the move and nothing else: the scale and the rotation live in the
-    // affine, which never came down here, so a pure ×2 (whose centre does
-    // not move) shifted the other cels by exactly zero. The comment that
-    // stood here argued for reading the dabs 「rather than the affine」,
-    // which was true of the one number it was reading and false of the
-    // three it was not.
-    //
-    // ⛔The pivot is the BOX's — 유저: 「확대/축소의 기준점은 **항상 상자의
-    // 중심**」, and with a range live that is the one box on screen, so the
-    // same affine describes every cel's landing.
-    //
-    // ↩️And the affine was not all of it either. Under 퍼스 and 메쉬 it is
-    // the identity while the box's corners or grid carry the warp, so a
-    // warp confirmed over a range bent the cel you stood on and left the
-    // others untouched (measured 2026-10-06). What comes down here now is
-    // the box's mapping of the canvas, whichever of the three it was
-    // ([StampCarry]) — the one the float itself went through.
-    // 🚨A POSED ROW'S CELS CROSS THE WAY THE STANDING ONE DID
-    // (a-marquee-on-a-posed-row): the user's outline is taken back into the
-    // cel's artwork, and the cel's own stamp goes out onto the canvas, takes
-    // the box's transform there and comes back ([stampOnCanvas] ·
-    // [stampInArtwork]) — each through its OWN row's placement
-    // ([BrushCanvasPanel.cellPlacementOf]), since a range can name several
-    // rows placed differently. A cel's own whole picture is already its
-    // artwork.
-    // A host that names no placements has one row: the one it stands on.
-    final placementOf =
-        _state.widget.cellPlacementOf ?? (_) => session.cels.first.placement;
-    final userSelection = session.userSelection;
-    for (final key in ladder) {
-      final cel = store.canonicalKeyOf(key);
-      if (landings.containsKey(cel)) {
-        continue;
-      }
-      final placement = placementOf(key);
-      // A row that shows this cel as NOTHING — scaled to zero on an axis,
-      // the frame a flip passes through — has put nothing of it on the
-      // canvas for the box to have moved (「불가능하면 그냥 무시」).
-      // ↩️Only a cel read through the user's selection was turned away
-      // here, by the region coming back null; a cel taken whole went on,
-      // and was moved as if its row lay unplaced.
-      if (placement != null && canvasToArtwork(placement) == null) {
-        continue;
-      }
-      final userSelectionInArtwork = userSelection == null
-          ? null
-          : regionInArtworkSpace(
-              region: userSelection,
-              placement: placement,
-            );
-      final surface = coordinator.currentSurfaceOf(key);
-      final lift = buildSelectionLiftDabs(
-        region:
-            userSelectionInArtwork ??
-            CanvasSelectionRegion.shape(
-              CanvasSelectionShape.wholePicture(
-                surface.pasteboard,
-                bitmapSurfaceContentBounds(surface),
-              ),
-            ),
-        surface: surface,
-        liftId: '${session.token}-${landings.length}',
-        options:
-            _state.widget.selectionMaskOptions?.value ??
-            SelectionMaskOptions.none,
-      );
-      if (lift == null) {
-        continue;
-      }
-      landings[cel] = BrushLiftMoveHistoryCommand(
-        coordinator: coordinator,
-        frameKey: key,
-        preLiftSurface: coordinator.currentSurfaceOf(key),
-        landingDabs: _landingDabs(
-          lift.eraseDab,
-          // ⚠️The SAME mapping the standing cel's float went through, on
-          // this cel's own pixels — affine, quad or mesh, whichever the box
-          // was doing ([StampCarry]). A pure translation still costs
-          // nothing: the carry moves the centre.
-          carry == null
-              ? lift.stampDab
-              : stampInArtwork(
-                  carry.through(stampOnCanvas(lift.stampDab, placement)),
-                  placement,
-                ),
-        ),
-        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-      );
-    }
-    return landings;
+    return _range.ahead(session, carry);
   }
 
   /// R16-① confirm: lands the move as ONE undo entry whose undo target is
@@ -471,7 +315,7 @@ class _CanvasPanelLift {
       }
       historyManager.executeAsOneStep(
         landed.values.first.description,
-        _landingsPerCel(session, landed, carry).values.toList(),
+        _range.landingsPerCel(session, landed, carry).values.toList(),
       );
     }
 
@@ -525,6 +369,294 @@ class _CanvasPanelLift {
 
 }
 
+/// The dabs a landing writes, in the order that makes the picture: the
+/// erase the session has been SHOWING, then the stamp where it ended up.
+///
+/// 🚨★★★**BOTH, AND IN THIS ORDER** — the session's hole was a view, so
+/// the landing is the first time the cel hears about it at all. Landing
+/// the stamp alone (which is what this did while the erase was committed
+/// up front) would leave the original pixels under the moved copy: the
+/// ink twice, once where it was and once where it went.
+List<BrushDab> _landingDabs(BrushDab eraseDab, BrushDab stampDab) => [
+  eraseDab,
+  stampDab,
+];
+
+/// 🗣️F-615 — the frame range a confirm reaches past the cels its session
+/// lifted: walked once ([_rangeRows]), at the step's pace or a row at a
+/// time behind the wait window ([ahead]).
+///
+/// A collaborator carved out of [_CanvasPanelLift] (2026-11-19) when the
+/// range's work-ahead took it past six hundred lines. It reaches the panel
+/// through `_state`.
+class _ConfirmRange {
+  _ConfirmRange(this._state);
+
+  final _BrushCanvasPanelState _state;
+
+  /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
+  /// whole block (F-116-b / F-164).
+  ///
+  /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
+  /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」 · 2026-09-18:
+  /// 「**여러프레임 확정가능**하게한다던가」.
+  ///
+  /// ⛔**THE SAME MOVE, NOT THE SAME PIXELS.** The float carries what was
+  /// lifted from the cel the session started on; stamping it onto another
+  /// cel would paste that drawing into this one. Each cel lifts its OWN
+  /// pixels and takes the same transform.
+  ///
+  /// 🚨★★★**THROUGH THE USER'S SELECTION, ELSE ITS OWN WHOLE PICTURE** —
+  /// 🗣️유저 2026-09-24 (H41): 「선택도구 사용했으면 어떤프레임이든 선택도구
+  /// 안쪽만, 아니면 각자 그림 전체적용」 · 「다른 프레임 그림의 잘려서
+  /// 변형안먹힌 부분이 있었어」. With nothing selected the session's region
+  /// is the move tool's box around the STANDING cel's ink, and every other
+  /// cel was cut through that same box: whatever of its drawing lay outside
+  /// the standing cel's picture stayed where it was. Each cel now frames
+  /// its own ink ([CanvasSelectionShape.wholePicture], the one the standing
+  /// cel's box is), and only a selection the user made is shared.
+  ///
+  /// 🚨★★★**ONE LANDING PER CEL, AND THE WALK IS WHAT SAYS SO.** [landed] —
+  /// the session's own cels', each carrying the float its preview already
+  /// resampled — SEEDS the result under their own keys, and the walk
+  /// ([_rangeRows]) counts them, and every cel a row before has landed, by
+  /// the physical cel: it offers none of them a second landing however the
+  /// ladder is spelled.
+  /// ⛔It is not a `key == session.key` skip: the ladder may also name one
+  /// cel twice (two frame keys can fold onto one physical cel), and a skip
+  /// that names only the session would let that through.
+  ///
+  /// 🧪A duplicate is invisible in the picture — the second erase wipes the
+  /// second stamp's ground and the stamp puts back the same pixels, both
+  /// built from the same pre-landing surface — so nothing on screen would
+  /// ever have reported it. What it costs is a whole second resample and a
+  /// whole second pre-landing surface held in history for that cel, which
+  /// is what `retainedBytes` is pinned on.
+  ///
+  /// 「불가능하면 그냥 무시」 is the two nulls: a cel the ladder names but
+  /// that yields no lift (nothing in it, nothing under the outline) simply
+  /// contributes no landing.
+  Map<BrushFrameKey, Command> landingsPerCel(
+    _MoveSession session,
+    Map<BrushFrameKey, Command> landed,
+    StampCarry? carry,
+  ) {
+    final coordinator = _state.widget.coordinator;
+    if (coordinator == null) {
+      return landed;
+    }
+    // 🗣️F-615: a row worked out ahead lands as it was worked — on the
+    // picture it was worked from and no other. A cel the store let go of
+    // and took back since is a picture that work never saw, so its row is
+    // worked again here with whatever is left.
+    session.range.removeWhere(
+      (key, work) => !identical(work.from, coordinator.currentSurfaceOf(key)),
+    );
+    final landings = {...landed};
+    for (final row in _rangeRows(session)) {
+      final work = session.range[row.key] ??= _workRow(
+        coordinator,
+        session,
+        row,
+        carry,
+      );
+      if (work.landing case final landing?) {
+        landings[row.cel] = landing;
+      }
+    }
+    return landings;
+  }
+
+  /// 🚨★★★**THE RANGE A CONFIRM REACHES, WALKED ONCE — AT EITHER PACE.**
+  ///
+  /// 🗣️F-615 (유저 2026-11-19): 「항상 하듯이 ui안멈추게 뒤에서 돌게?하고
+  /// 대상 프레임 수에 맞춰서 몇퍼센트인지 표시」. The step takes the walk
+  /// whole ([landingsPerCel]); the work ahead of a confirm behind the wait
+  /// window takes it a row at a time, the screen's turn between
+  /// ([ahead]). ⛔One walk at two paces — which rows land, and
+  /// through which key, is this function's alone.
+  ///
+  /// Every row the range names whose cel is still to land, in the range's
+  /// order. ⚠️LAZY: whether a row's cel landed is read as the walk moves
+  /// past it ([_MoveSession.range]), so its caller works each row before
+  /// asking for the next.
+  Iterable<_RangeRow> _rangeRows(_MoveSession session) sync* {
+    final ladder = _state.widget.transformTargetKeys?.call();
+    final coordinator = _state.widget.coordinator;
+    if (ladder == null || coordinator == null) {
+      return;
+    }
+    // 🚨★★★**KEYED BY THE PHYSICAL CEL.** `pixelVerbCellKeys` deliberately
+    // does NOT dedupe — 「the one that owns the surfaces owns this」 — and
+    // linked rows are windows onto one bank, so the ladder can name one
+    // cel under two row keys. `CelPixelOverwriteCommand` answers that with
+    // `canonicalKeyOf`; this is the same answer, not a second one — and
+    // the session's own cels are counted by it too.
+    final store = coordinator.frameStore;
+    // A host that names no placements has one row: the one it stands on.
+    final placementOf =
+        _state.widget.cellPlacementOf ?? (_) => session.cels.first.placement;
+    final landing = {
+      for (final cel in session.cels) store.canonicalKeyOf(cel.key),
+    };
+    for (final (index, key) in ladder.indexed) {
+      final cel = store.canonicalKeyOf(key);
+      if (landing.contains(cel)) {
+        continue;
+      }
+      final placement = placementOf(key);
+      // A row that shows this cel as NOTHING — scaled to zero on an axis,
+      // the frame a flip passes through — has put nothing of it on the
+      // canvas for the box to have moved (「불가능하면 그냥 무시」).
+      // ↩️Only a cel read through the user's selection was turned away
+      // here, by the region coming back null; a cel taken whole went on,
+      // and was moved as if its row lay unplaced.
+      if (placement != null && canvasToArtwork(placement) == null) {
+        continue;
+      }
+      yield (
+        index: index,
+        of: ladder.length,
+        key: key,
+        cel: cel,
+        placement: placement,
+      );
+      if (session.range[key]?.landing != null) {
+        landing.add(cel);
+      }
+    }
+  }
+
+  /// What [row] lands as: its cel's own pixels lifted — through the user's
+  /// selection, else its whole picture — and carried through what the box
+  /// did ([carry]), worked out from the picture the cel holds now.
+  _RowWork _workRow(
+    BrushFrameEditingCoordinator coordinator,
+    _MoveSession session,
+    _RangeRow row,
+    StampCarry? carry,
+  ) {
+    // 🚨★★★**WHAT THE TRANSFORM DID — ALL OF IT.**
+    //
+    // 🗣️유저 2026-09-22, 실기: 「1과 2 동일한 그림 만들고 **이동+확대**하고
+    // **둘다 동시적용** 해봤는데 **한쪽 값의 확대가 사라졌어. 이동은
+    // 남아있는데**」.
+    //
+    // ↩️This read a DISPLACEMENT off the float — `stampDab.center` against
+    // where it was cut from — and offset each cel's own lift by it. That
+    // is the move and nothing else: the scale and the rotation live in the
+    // affine, which never came down here, so a pure ×2 (whose centre does
+    // not move) shifted the other cels by exactly zero. The comment that
+    // stood here argued for reading the dabs 「rather than the affine」,
+    // which was true of the one number it was reading and false of the
+    // three it was not.
+    //
+    // ⛔The pivot is the BOX's — 유저: 「확대/축소의 기준점은 **항상 상자의
+    // 중심**」, and with a range live that is the one box on screen, so the
+    // same affine describes every cel's landing.
+    //
+    // ↩️And the affine was not all of it either. Under 퍼스 and 메쉬 it is
+    // the identity while the box's corners or grid carry the warp, so a
+    // warp confirmed over a range bent the cel you stood on and left the
+    // others untouched (measured 2026-10-06). What comes down here now is
+    // the box's mapping of the canvas, whichever of the three it was
+    // ([StampCarry]) — the one the float itself went through.
+    // 🚨A POSED ROW'S CELS CROSS THE WAY THE STANDING ONE DID
+    // (a-marquee-on-a-posed-row): the user's outline is taken back into the
+    // cel's artwork, and the cel's own stamp goes out onto the canvas, takes
+    // the box's transform there and comes back ([stampOnCanvas] ·
+    // [stampInArtwork]) — each through its OWN row's placement
+    // ([BrushCanvasPanel.cellPlacementOf]), since a range can name several
+    // rows placed differently. A cel's own whole picture is already its
+    // artwork.
+    final placement = row.placement;
+    final userSelection = session.userSelection;
+    final userSelectionInArtwork = userSelection == null
+        ? null
+        : regionInArtworkSpace(region: userSelection, placement: placement);
+    final surface = coordinator.currentSurfaceOf(row.key);
+    final lift = buildSelectionLiftDabs(
+      region:
+          userSelectionInArtwork ??
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.wholePicture(
+              surface.pasteboard,
+              bitmapSurfaceContentBounds(surface),
+            ),
+          ),
+      surface: surface,
+      liftId: '${session.token}-${row.index}',
+      options:
+          _state.widget.selectionMaskOptions?.value ??
+          SelectionMaskOptions.none,
+    );
+    return (
+      from: surface,
+      landing: lift == null
+          ? null
+          : BrushLiftMoveHistoryCommand(
+              coordinator: coordinator,
+              frameKey: row.key,
+              preLiftSurface: surface,
+              landingDabs: _landingDabs(
+                lift.eraseDab,
+                // ⚠️The SAME mapping the standing cel's float went through,
+                // on this cel's own pixels — affine, quad or mesh,
+                // whichever the box was doing ([StampCarry]). A pure
+                // translation still costs nothing: the carry moves the
+                // centre.
+                carry == null
+                    ? lift.stampDab
+                    : stampInArtwork(
+                        carry.through(stampOnCanvas(lift.stampDab, placement)),
+                        placement,
+                      ),
+              ),
+              cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+            ),
+    );
+  }
+
+  /// 🗣️F-615 — the work a confirm of [session] has ahead of it, asked as
+  /// 확정 is pressed: every row of the range past the session's own cels
+  /// worked ([_workRow]) and made ([BrushLiftMoveHistoryCommand.workAhead]),
+  /// a row at a time with the screen's turn between and the range's share
+  /// of it told — so the step lands what is already made.
+  ///
+  /// ⚠️The range lands with the [carry] the box showed as 확정 was pressed:
+  /// the wait window keeps every hand off the box until the step has
+  /// landed (`takeBehindTheWaitWindow`).
+  WorkAhead? ahead(_MoveSession session, StampCarry? carry) {
+    final coordinator = _state.widget.coordinator;
+    if (coordinator == null) {
+      return null;
+    }
+    return (report) async {
+      final canvasSize = coordinator.sessionStore.canvasSize;
+      for (final row in _rangeRows(session)) {
+        await coordinator.frameStore.thawAhead(
+          row.key,
+          canvasSize: canvasSize,
+        );
+        final work = session.range[row.key] ??= _workRow(
+          coordinator,
+          session,
+          row,
+          carry,
+        );
+        await theScreensTurn();
+        await work.landing?.workAhead(undo: false)?.call((_) {});
+        report(doneShare(row.index + 1, row.of));
+      }
+      // The range's last keys may name only cels already landing — a
+      // linked row's, or one its row shows as nothing — and those tell no
+      // share of their own. 🔬S5_BA: the bar stood at 167 of 204 as the
+      // window went.
+      report(1);
+    };
+  }
+}
+
 /// An open move session: the cels it holds lifted, and the selection it was
 /// cut through.
 class _MoveSession {
@@ -575,7 +707,33 @@ class _MoveSession {
   /// in for this one in `regionBefore`, and undo stopped bringing the ants
   /// back — F-231 ②.
   final CanvasSelectionRegion? userSelection;
+
+  /// 🗣️F-615: what each row of the range a confirm reaches lands as, as far
+  /// as it has been worked out — a row at a time by the work ahead of a
+  /// confirm behind the wait window ([_ConfirmRange.ahead]), and
+  /// whatever is left by its step ([_ConfirmRange.landingsPerCel]).
+  /// Keyed by the row's key; a row whose cel lands nothing is kept too, so
+  /// it is not worked twice.
+  final Map<BrushFrameKey, _RowWork> range = {};
 }
+
+/// A row of the range a confirm reaches whose cel is still to land: where
+/// it stands in the range ([index] of [of]), the key it is named by, the
+/// physical cel that key names, and where its row puts that cel.
+typedef _RangeRow = ({
+  int index,
+  int of,
+  BrushFrameKey key,
+  BrushFrameKey cel,
+  LayerPlacement? placement,
+});
+
+/// What a row of the range lands as — null when its cel lands nothing —
+/// and the picture it was worked out from, the only one it may land on.
+typedef _RowWork = ({
+  BitmapSurface from,
+  BrushLiftMoveHistoryCommand? landing,
+});
 
 /// One cel an open move session holds lifted: which cel, the erase that
 /// makes its hole, where its row stands, where its float shows, and the

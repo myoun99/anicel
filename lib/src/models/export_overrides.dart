@@ -35,12 +35,14 @@ class ExportCelsCutDelta {
     Set<ExportCelRef> cameraOver = const {},
     Set<ExportCelRef> guidesOver = const {},
     Set<ExportDocumentPage> skippedPages = const {},
+    Map<LayerId, bool> filmLayers = const {},
   }) : layerOverrides = frozenMap(layerOverrides),
        skippedCels = frozenSet(skippedCels),
        directionOver = frozenSet(directionOver),
        cameraOver = frozenSet(cameraOver),
        guidesOver = frozenSet(guidesOver),
-       skippedPages = frozenSet(skippedPages);
+       skippedPages = frozenSet(skippedPages),
+       filmLayers = frozenMap(filmLayers);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
   /// NAMES are not unique, ids are. A non-empty map is what makes the
@@ -95,13 +97,27 @@ class ExportCelsCutDelta {
   /// switch turns its files off now (export-four-tabs ③, 유저 2026-10-09).
   final Set<ExportDocumentPage> skippedPages;
 
+  /// The rows the user put into the cut's film, or took out of it, against
+  /// the rules ([exportFilmLayersOf]) — the film's own checks, a line of its
+  /// 출력할 레이어 each.
+  ///
+  /// 🗣️F-618 ① (유저 2026-11-19): 「리스트에서 동영상 누르면 출력할 레이어에
+  /// … 레이어들 보여주고, 이 레이어도 라벨따라서 적용되있도록. 즉 LO로해두면
+  /// 출력 셀 리스트에서 다른 셀 off했던 신경안쓰고 색라벨 고른 초기상태처럼
+  /// LO인레이어들 다 on」. Separate from [layerOverrides] and [skippedCels]:
+  /// what the cels hold and what the film holds are two questions, and the
+  /// cels' answers do not move the film's. ↩️The film drew the rows the
+  /// canvas showed.
+  final Map<LayerId, bool> filmLayers;
+
   bool get isEmpty =>
       layerOverrides.isEmpty &&
       skippedCels.isEmpty &&
       directionOver.isEmpty &&
       cameraOver.isEmpty &&
       guidesOver.isEmpty &&
-      skippedPages.isEmpty;
+      skippedPages.isEmpty &&
+      filmLayers.isEmpty;
 
   /// Whether a LAYER of this cut answers by hand rather than by the rules —
   /// what makes the label button read 「커스텀」. A file turned off is no
@@ -111,7 +127,10 @@ class ExportCelsCutDelta {
   /// Whether this cut has left its rules: a row answered by hand, or a file
   /// turned off — what [backOnTheRules] undoes.
   bool get leavesTheRules =>
-      hasRowExceptions || skippedCels.isNotEmpty || skippedPages.isNotEmpty;
+      hasRowExceptions ||
+      skippedCels.isNotEmpty ||
+      skippedPages.isNotEmpty ||
+      filmLayers.isNotEmpty;
 
   /// This delta with what the hand did changed.
   ExportCelsCutDelta _with({
@@ -121,6 +140,7 @@ class ExportCelsCutDelta {
     Set<ExportCelRef>? cameraOver,
     Set<ExportCelRef>? guidesOver,
     Set<ExportDocumentPage>? skippedPages,
+    Map<LayerId, bool>? filmLayers,
   }) => ExportCelsCutDelta(
     layerOverrides: layerOverrides ?? this.layerOverrides,
     skippedCels: skippedCels ?? this.skippedCels,
@@ -128,6 +148,7 @@ class ExportCelsCutDelta {
     cameraOver: cameraOver ?? this.cameraOver,
     guidesOver: guidesOver ?? this.guidesOver,
     skippedPages: skippedPages ?? this.skippedPages,
+    filmLayers: filmLayers ?? this.filmLayers,
   );
 
   ExportCelsCutDelta withLayerOverride(LayerId id, bool? include) {
@@ -138,6 +159,18 @@ class ExportCelsCutDelta {
       next[id] = include;
     }
     return _with(layerOverrides: next);
+  }
+
+  /// This delta with [id] put into the cut's film, taken out of it, or
+  /// ([include] null) left to the rules.
+  ExportCelsCutDelta withFilmLayer(LayerId id, bool? include) {
+    final next = Map<LayerId, bool>.from(filmLayers);
+    if (include == null) {
+      next.remove(id);
+    } else {
+      next[id] = include;
+    }
+    return _with(filmLayers: next);
   }
 
   /// This delta with [cel] turned off, or back on.
@@ -182,9 +215,11 @@ class ExportCelsCutDelta {
     return next;
   }
 
-  /// The row exceptions dropped, the rest kept — a filter press re-applies
-  /// the rule without touching which files are written.
-  ExportCelsCutDelta withoutRowExceptions() => _with(layerOverrides: const {});
+  /// The row exceptions dropped — the cels' and the film's ([filmLayers]) —
+  /// the rest kept: a filter press re-applies the rule without touching
+  /// which files are written.
+  ExportCelsCutDelta withoutRowExceptions() =>
+      _with(layerOverrides: const {}, filmLayers: const {});
 
   /// Reset: every row back on the rule and every drawing on. What is laid
   /// over a drawing is no answer to a rule, and stays.
@@ -228,6 +263,13 @@ class ExportCelsCutDelta {
         entry.key.value: entry.value,
     },
     if (skippedCels.isNotEmpty) 'skippedCels': _refsJson(skippedCels),
+    if (filmLayers.isNotEmpty)
+      'filmLayers': {
+        for (final id
+            in filmLayers.keys.toList()
+              ..sort((a, b) => a.value.compareTo(b.value)))
+          id.value: filmLayers[id],
+      },
     if (cameraOver.isNotEmpty) 'cameraOver': _refsJson(cameraOver),
     if (guidesOver.isNotEmpty) 'guidesOver': _refsJson(guidesOver),
     if (skippedPages.isNotEmpty)
@@ -261,6 +303,7 @@ class ExportCelsCutDelta {
     final raw = json['layerOverrides'] as Map<String, dynamic>? ?? const {};
     final over = json['directionOver'] as List<dynamic>? ?? const [];
     final pages = json['skippedPages'] as List<dynamic>? ?? const [];
+    final film = json['filmLayers'] as Map<String, dynamic>? ?? const {};
     return ExportCelsCutDelta(
       skippedPages: {
         for (final page in pages.cast<Map<String, dynamic>>())
@@ -276,6 +319,10 @@ class ExportCelsCutDelta {
           LayerId(entry.key): entry.value as bool,
       },
       skippedCels: _refsFromJson(json['skippedCels']),
+      filmLayers: {
+        for (final entry in film.entries)
+          LayerId(entry.key): entry.value as bool,
+      },
       cameraOver: _refsFromJson(json['cameraOver']),
       guidesOver: _refsFromJson(json['guidesOver']),
       directionOver: {
@@ -297,7 +344,8 @@ class ExportCelsCutDelta {
           setEquals(other.directionOver, directionOver) &&
           setEquals(other.cameraOver, cameraOver) &&
           setEquals(other.guidesOver, guidesOver) &&
-          setEquals(other.skippedPages, skippedPages);
+          setEquals(other.skippedPages, skippedPages) &&
+          mapEquals(other.filmLayers, filmLayers);
 
   @override
   int get hashCode => Object.hash(
@@ -310,6 +358,10 @@ class ExportCelsCutDelta {
     Object.hashAllUnordered(cameraOver),
     Object.hashAllUnordered(guidesOver),
     Object.hashAllUnordered(skippedPages),
+    Object.hashAllUnordered([
+      for (final entry in filmLayers.entries)
+        Object.hash(entry.key, entry.value),
+    ]),
   );
 }
 

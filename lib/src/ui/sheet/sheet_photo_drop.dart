@@ -176,22 +176,24 @@ class _SheetPhotoDropState extends State<SheetPhotoDrop> {
     if (window == null) {
       return;
     }
+    // What it lands in and the photo, ONE entry: both are written here, in
+    // one event.
     final history = widget.session.historyManager;
-    final start = history.gestures.mark;
-    widget.beforeLanding?.call(window);
-    widget.ink.putPhoto(
-      plane: null,
-      key: window.key,
-      reference: droppedSheetPhoto(
-        path: path,
-        picture: picture,
-        placement: window.placement,
-        paper: paper,
-      ),
-      historyManager: history,
-      cacheInvalidationSink: widget.cacheInvalidationSink,
-    );
-    history.gestures.foldSince(start, CelPhotoEditCommand.label);
+    history.runAsOneStep(CelPhotoEditCommand.label, () {
+      widget.beforeLanding?.call(window);
+      widget.ink.putPhoto(
+        plane: null,
+        key: window.key,
+        reference: droppedSheetPhoto(
+          path: path,
+          picture: picture,
+          placement: window.placement,
+          paper: paper,
+        ),
+        historyManager: history,
+        cacheInvalidationSink: widget.cacheInvalidationSink,
+      );
+    });
   }
 
   @override

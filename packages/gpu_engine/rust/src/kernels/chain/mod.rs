@@ -34,7 +34,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::held::HeldChains;
 use crate::kernels::composite::{
-    Composite, KeyChain, Step, TILE, TILE_TEXELS, TileAt, TileSet, Through,
+    Composite, KeyChain, Lent, Step, TILE, TILE_TEXELS, TileAt, TileSet, Through,
 };
 use crate::kernels::effects::MATRIX_WORDS;
 use crate::kernels::effects::blur::TileRect;
@@ -91,12 +91,12 @@ impl Stored<'_> {
     /// tile the set has none of, and no colour taken through anything. A
     /// low alpha's colour is not rounded on the way, as a walk over nothing
     /// would round it.
-    fn copied(&self, engine: &Engine, composite: &Composite, set: u32, rect: TileRect) -> Option<wgpu::Buffer> {
+    fn copied(&self, engine: &Engine, composite: &Composite, set: u32, rect: TileRect) -> Option<Lent> {
         let Some(set) = self.sets.get(set as usize) else {
             return fail(format!("no tile set {set} of {}", self.sets.len()));
         };
-        let done = composite.copied(engine, self.pages, set, &tiles_of(rect), composite.widest())?;
-        Some(done.out)
+        let (read, stored) = (tiles_of(rect), Through::default());
+        composite.copied_spare(engine, self.pages, set, &read, stored, composite.widest())
     }
 }
 
@@ -108,11 +108,19 @@ pub(crate) struct ChainRead {
 }
 
 /// The tiles [`ChainRead`] keeps.
+///
+/// 🚨ITS TILES ARE HELD ([`Lent`]), AND EACH ROW'S: what a chain had come
+/// to is the buffer a walk ran it on or an op of it put, one of the
+/// engine's spares as a row's is, and the host's plug-in reads them
+/// after that walk is through — kept as a bare buffer, the next walk
+/// would take it and write its own tiles over what the plug-in is yet
+/// to read (브러시/렌더링 2026-11-20, found reading, before the spares
+/// landed).
 #[derive(Clone)]
 pub(crate) struct Kept {
-    pub(crate) tiles: wgpu::Buffer,
+    pub(crate) tiles: Lent,
     pub(crate) rect: TileRect,
-    pub(crate) rows: Vec<wgpu::Buffer>,
+    pub(crate) rows: Vec<Lent>,
 }
 
 impl ChainRead {
@@ -153,7 +161,7 @@ impl ChainRead {
                 None => return fail(format!("no row {row} of {}", rows.len())),
             },
         };
-        let bytes = engine.read_buffer(&tiles)?;
+        let bytes = engine.read_buffer(tiles.buffer())?;
         let mut out = vec![0u8; picture_bytes(picture)];
         each_pixel(picture, rect, |at, tile| {
             out[at..at + 4].copy_from_slice(&bytes[tile..tile + 4]);
@@ -218,8 +226,8 @@ impl<'a> Op<'a> {
 
 /// `ops` with each map drawn from steps ([`Op::map_rows`]) laid as the
 /// tiles `drawn` holds at that op's place.
-pub(crate) fn with_drawn<'b>(ops: &[Op<'b>], drawn: &'b [Option<wgpu::Buffer>]) -> Vec<Op<'b>> {
-    let laid = |(op, drawn): (&Op<'b>, &'b Option<wgpu::Buffer>)| match (op, drawn) {
+pub(crate) fn with_drawn<'b>(ops: &[Op<'b>], drawn: &'b [Option<Lent>]) -> Vec<Op<'b>> {
+    let laid = |(op, drawn): (&Op<'b>, &'b Option<Lent>)| match (op, drawn) {
         (
             Op::Lens {
                 picture,
@@ -231,7 +239,7 @@ pub(crate) fn with_drawn<'b>(ops: &[Op<'b>], drawn: &'b [Option<wgpu::Buffer>]) 
             picture: *picture,
             lens: *lens,
             map: Some(BlurMap {
-                tiles: MapTiles::Laid(tiles),
+                tiles: MapTiles::Laid(tiles.buffer()),
                 ..*map
             }),
         },
@@ -270,16 +278,19 @@ impl Chain {
     /// `tiles` — straight RGBA8 over `rect`, tile after tile row by row —
     /// through `ops` in turn, what they read beside them of `stored`: the
     /// tiles the last put over the same rectangle. Submits the work; the
-    /// caller waits.
+    /// caller waits. The tiles are held as they pass ([`Lent`]): what an
+    /// op puts is one of the engine's spares, its holders' till the last
+    /// lets go (`composite/spares.rs`), and what an op hands on as it is,
+    /// is the buffer it was handed, its holders' still.
     pub(crate) fn run(
         &self,
         engine: &Engine,
         composite: &Composite,
         stored: Stored,
-        tiles: wgpu::Buffer,
+        tiles: Lent,
         rect: TileRect,
         ops: &[Op],
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         if ops.is_empty() {
             return fail("a chain of no op changes no pixel — a plan leaves it out");
         }
@@ -295,16 +306,15 @@ impl Chain {
         engine: &Engine,
         composite: &Composite,
         stored: Stored,
-        tiles: &wgpu::Buffer,
+        held: &Lent,
         rect: TileRect,
         op: &Op,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
+        let tiles = held.buffer();
         let coloured = |through: Through| {
             let (set, pages) = (laid_as(rect, 0), std::slice::from_ref(tiles));
             let budget = composite.widest();
-            composite
-                .copied_through(engine, pages, &set, &tiles_of(rect), through, budget)
-                .map(|done| done.out)
+            composite.copied_spare(engine, pages, &set, &tiles_of(rect), through, budget)
         };
         match op {
             Op::Matrix(matrix) => coloured(Through { keys: None, matrix: Some(matrix) }),
@@ -335,8 +345,8 @@ impl Chain {
                     .iter()
                     .map(|&set| stored.copied(engine, composite, set, rect))
                     .collect::<Option<Vec<_>>>()?;
-                read.keep(Kept { tiles: tiles.clone(), rect, rows });
-                Some(tiles.clone())
+                read.keep(Kept { tiles: held.clone(), rect, rows });
+                Some(held.clone())
             }
             Op::Put(set) => stored.copied(engine, composite, *set, rect),
         }

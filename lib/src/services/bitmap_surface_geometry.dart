@@ -9,10 +9,14 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
+import '../models/cut_content_translation.dart'
+    show ResizeWalk, carriedPoint, carriedPose, resizeSizeOf, resizeWalk;
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/engine_tile_ledger.dart';
+import 'cel_text_box_edits.dart' show celTextScaledAbout;
+import 'guide_geometry.dart' show GuideTransform;
 
 /// Raster geometry ops for baked surfaces (R19 bake-only): canvas resize
 /// and anchored-content translation operate on PIXELS now — the raster
@@ -41,25 +45,11 @@ import '../native/engine_tile_ledger.dart';
 /// getter hands the field over.
 ({int left, int top, int rightExclusive, int bottomExclusive})?
 bitmapSurfaceContentBounds(BitmapSurface surface) {
+  rememberInkOf([surface]);
   final box = _InkBox();
   final tileSize = surface.tileSize;
-  // Tiles that already know their own box cost a lookup each; only the
-  // rest reach a pixel scan.
-  final unscanned = <MapEntry<TileCoord, BitmapTile>>[];
   for (final entry in surface.tiles.entries) {
-    if (!entry.value.inkBoundsKnown) {
-      unscanned.add(entry);
-      continue;
-    }
     _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
-  }
-  if (unscanned.isNotEmpty) {
-    EngineTileLedger.instance.rememberInk(BrushFrameKey.noCel, [
-      for (final entry in unscanned) entry.value,
-    ]);
-    for (final entry in unscanned) {
-      _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
-    }
   }
   if (box.maxX < box.minX) {
     return null;
@@ -70,6 +60,37 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     rightExclusive: box.maxX + 1,
     bottomExclusive: box.maxY + 1,
   );
+}
+
+/// Has the engine find the ink of every tile of [surfaces] that does not
+/// know its own box yet ([BitmapTile.inkBoundsKnown]) — in ONE scan,
+/// whichever cels they are of: [EngineTileLedger.rememberInk] lays the
+/// tiles side by side as a cel of those tiles alone. A tile that knows
+/// costs nothing; a tile two of them share is asked once.
+///
+/// 🗣️브러시/렌더링 2026-11-20 (card
+/// opening-a-transform-box-holds-the-ui-over-half-a-second): a walk that
+/// asks [bitmapSurfaceContentBounds] of many pictures asks this of them
+/// all first — the scan waits for the GPU, once a call. ↩️The box at rest
+/// over S5_BA cut 352 asked it a picture at a time: the UI thread waited
+/// for the GPU 58 times in Ctrl+T's one frame, 62 rows shown (공통
+/// 2026-11-20, 메인 PC 테스트 VM).
+void rememberInkOf(Iterable<BitmapSurface> surfaces) {
+  // ⛔Not a plain set: a tile is equal to any tile of its pixels, read.
+  final unknown = Set<BitmapTile>.identity();
+  for (final surface in surfaces) {
+    for (final tile in surface.tiles.values) {
+      if (!tile.inkBoundsKnown) {
+        unknown.add(tile);
+      }
+    }
+  }
+  if (unknown.isNotEmpty) {
+    EngineTileLedger.instance.rememberInk(
+      BrushFrameKey.noCel,
+      unknown.toList(),
+    );
+  }
 }
 
 /// Folds one tile's LOCAL box onto the canvas axis. A null box is an
@@ -478,29 +499,30 @@ BitmapSurface celTextPlateSurface(
   tiles: plate,
 );
 
-/// [surface]'s photos as a move of its pixels by ([dx], [dy]) leaves them:
-/// each where the picture now is. A photo stands on the picture's grid
-/// (I-97), so it moves by the very offset the drawing does — and nothing is
-/// clamped, as nothing is for a text (the tool law above).
-///
-/// ⚠️The reference row's resize moves its pose by the same arithmetic
-/// (`translateLayerForResize`): two spellings of 「a reference moves with
-/// the content」, left two by the rule of three until a third appears.
+/// [surface]'s photos as a move of its pixels by ([dx], [dy]) leaves them
+/// ([celPhotosCarried]).
 List<CelPhoto> _photosMoved(
   BitmapSurface surface, {
   required int dx,
   required int dy,
-}) => [
-  for (final photo in surface.photos)
+}) => celPhotosCarried(
+  surface.photos,
+  resizeWalk(dx: dx.toDouble(), dy: dy.toDouble(), centreDx: 0, centreDy: 0),
+);
+
+/// [photos] as a resize carries the picture they stand on, by [walk]: each
+/// where the picture now is, and as large. A photo stands on the picture's
+/// grid (I-97), so it goes by the very map the drawing does — and nothing
+/// is clamped, as nothing is for a text (the tool law above).
+///
+/// ↩️It moved its centre by the offset alone, a spelling of 「a reference
+/// goes with the content」 beside the reference row's (`carryLayerForResize`)
+/// — two, left two by the rule of three until a fit's photos (I-180) made
+/// the third: all three are [carriedPose] now.
+List<CelPhoto> celPhotosCarried(List<CelPhoto> photos, ResizeWalk walk) => [
+  for (final photo in photos)
     photo.withReference(
-      photo.reference.copyWith(
-        pose: photo.reference.pose.copyWith(
-          center: CanvasPoint(
-            x: photo.reference.pose.center.x + dx,
-            y: photo.reference.pose.center.y + dy,
-          ),
-        ),
-      ),
+      photo.reference.copyWith(pose: carriedPose(photo.reference.pose, walk)),
     ),
 ];
 
@@ -537,6 +559,64 @@ CelTextContent celTextContentMoved(
         anchor: CanvasPoint(x: content.anchor.x + dx, y: content.anchor.y + dy),
       );
 
+/// [content] as a resize's fit by [walk] leaves it: standing where the
+/// picture now is — its anchor carried by the walk — with every length of
+/// it ([celTextScaledAbout]: the letters' size, tracking and outline, the
+/// box's width and least height) the walk's one size ([resizeSizeOf])
+/// times what it was.
+///
+/// 🗣️I-180-Q7 a (유저 2026-11-20): 「a 숫자를 키워 다시 조판」 — the numbers
+/// grow by Q2's law, and the text is set again from them ([celTextsFitted]):
+/// a fit that differs across and down leaves the letters' shape as it was.
+CelTextContent celTextContentFitted(
+  CelTextContent content,
+  ResizeWalk walk,
+) => celTextScaledAbout(
+  content,
+  resizeSizeOf(walk),
+  content.anchor,
+).copyWith(anchor: carriedPoint(content.anchor, walk));
+
+/// How a text is SET from its numbers: its content's plate behind a wall
+/// ([CelText.plate]) — the text tool's own setting, which lives where
+/// letters are laid out (`setCelTextPlate`) and is handed in.
+typedef CelTextSetter =
+    Future<Map<TileCoord, BitmapTile>> Function(
+      CelTextContent content,
+      PasteboardWall wall,
+    );
+
+/// [texts] as a resize's fit by [walk] leaves them, behind [wall]: each
+/// one's numbers fitted ([celTextContentFitted]) and set again from them by
+/// [setText] — never its old plate stretched (🗣️I-180-Q7 a).
+///
+/// ⚠️Throws where there are texts and nothing to set them with: a step
+/// that cannot set them is not taken, as a lay that fails is not
+/// (`BrushFrameStore.fitCutCelsAhead`).
+Future<List<CelText>> celTextsFitted(
+  List<CelText> texts,
+  ResizeWalk walk, {
+  required PasteboardWall wall,
+  required CelTextSetter? setText,
+}) async {
+  if (texts.isEmpty) {
+    return texts;
+  }
+  if (setText == null) {
+    throw StateError('a fit of a cel with texts was given no way to set them');
+  }
+  Future<CelText> fitted(CelText text) async {
+    final content = celTextContentFitted(text.content, walk);
+    return CelText(
+      id: text.id,
+      content: content,
+      plate: await setText(content, wall),
+    );
+  }
+
+  return Future.wait([for (final text in texts) fitted(text)]);
+}
+
 /// A text's [pixels] — its plate moved by whole pixels — cut onto the grid
 /// of its cel, [canvasSize] in tiles of [tileSize]: the very pass a
 /// drawing's tiles take ([translateBitmapSurface]), run on the plate as a
@@ -565,6 +645,25 @@ Map<TileCoord, BitmapTile> celTextPlateMoved(
 /// A resize's move of a cut's pictures: onto [canvasSize], by ([dx], [dy])
 /// whole pixels — what [translateBitmapSurface] makes of each.
 typedef CelMove = ({CanvasSize canvasSize, int dx, int dy});
+
+/// A resize's fit of a cel's picture (I-180): onto [canvasSize], each
+/// canvas pixel of the cel carried where [move] takes it — a scale and an
+/// offset, laid anew as a picture is laid (`celFitted`).
+typedef CelFit = ({CanvasSize canvasSize, GuideTransform move});
+
+/// [fit] as the whole-pixel move it is ([CelMove]) — a translation by whole
+/// pixels — or null where it scales or moves by part of a pixel: the one a
+/// resize by an anchor makes, which copies its pixels where a fit lays them.
+CelMove? wholePixelMoveOf(CelFit fit) {
+  final GuideTransform(:a, :b, :c, :d, :tx, :ty) = fit.move;
+  if (a != 1 || b != 0 || c != 0 || d != 1) {
+    return null;
+  }
+  if (tx != tx.roundToDouble() || ty != ty.roundToDouble()) {
+    return null;
+  }
+  return (canvasSize: fit.canvasSize, dx: tx.toInt(), dy: ty.toInt());
+}
 
 /// [surface] as [move] leaves it ([translateBitmapSurface]) — on the UI
 /// thread where a resize takes it, and on a worker ahead of it.

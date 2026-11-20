@@ -20,8 +20,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/services/command.dart';
+import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart'
-    show DragVerbClaim;
+    show ControlPressClaim, DragVerbClaim, PressFire, PressFireScope;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show RailSwipeColumn, RailSwipeColumnPointer;
 import 'package:anicel/src/ui/timeline/rail_column_swipe.dart';
@@ -495,4 +497,65 @@ void main() {
     await gesture.up();
     await tester.pump();
   });
+
+  // 🗣️a-gesture-at-the-history-cap-does-not-fold-Q1 (「동작하나에 1줄」): a
+  // press opens its line before its button writes ([PressFireWatch]). A
+  // press no column takes has no sweep to end the line, so it goes up as
+  // the press lifts — left open, it would take every edit after it.
+  testWidgets('a press on a button no column takes is up as it lifts — the '
+      'edit after it is its own', (tester) async {
+    final history = HistoryManager();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: RailSweepHistory(
+              history: history.gestures,
+              changed: () {},
+              child: RailColumnSwipe<int>(
+                axis: Axis.vertical,
+                columns: const <RailToggleColumn<int>>[],
+                rowsIn: (from, to) => const <RailSwipeRow<int>>[],
+                // A rail row's button: it fires on the down.
+                child: PressFireScope(
+                  fireOn: PressFire.down,
+                  child: SizedBox(
+                    width: 80,
+                    height: _rowHeight,
+                    child: ControlPressClaim(
+                      onPressed: () => history.execute(_Step()),
+                      child: const ColoredBox(color: Colors.transparent),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tapAt(const Offset(40, 20));
+    await tester.pump();
+
+    expect(
+      (history.undoCount, history.gestures.heldSteps),
+      (1, 0),
+      reason: 'the press\'s line went up as the press lifted',
+    );
+    history.execute(_Step());
+    expect(history.undoCount, 2, reason: 'its own entry');
+  });
+}
+
+class _Step implements Command {
+  @override
+  String get description => 'Step';
+
+  @override
+  void execute() {}
+
+  @override
+  void undo() {}
 }

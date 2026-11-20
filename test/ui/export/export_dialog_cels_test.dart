@@ -313,16 +313,13 @@ void main() {
   Future<void> pressBlock(WidgetTester tester, String row, String cel) =>
       tapKey(tester, 'export-cels-block-$row-$cel');
 
-  /// Unfolds the naming module, and finds it.
-  Future<Finder> openNaming(WidgetTester tester) async {
+  /// The naming module, open as every module stands (F-618 ②).
+  Future<Finder> namingModule(WidgetTester tester) async {
     final naming = find.byWidgetPredicate(
       (widget) =>
           widget is ExportAccordion && widget.title == AppText.strings.exNaming,
     );
     await tester.ensureVisible(naming);
-    await tester.tap(
-      find.descendant(of: naming, matching: find.byType(InkWell)).first,
-    );
     await tester.pump();
     return naming;
   }
@@ -1280,7 +1277,7 @@ void main() {
     // 없음으로」.
     final state = await pumpCels(tester, celsSession());
     await standOn(tester, 'a');
-    final naming = await openNaming(tester);
+    final naming = await namingModule(tester);
 
     Finder field(ExportCelKind kind) =>
         find.byKey(ValueKey<String>('export-cel-prefix-${kind.jsonValue}'));
@@ -1335,7 +1332,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1700, 660));
     await tester.pump();
     await standOn(tester, 'a');
-    final naming = await openNaming(tester);
+    final naming = await namingModule(tester);
 
     Finder field(String folder, String side) =>
         find.byKey(ValueKey<String>('export-cel-folder-$folder-$side'));
@@ -1430,7 +1427,7 @@ void main() {
     // 무슨내용인지 이름지정 호버하면 뜨게하도록. 폴더도 마찬가지」 ·
     // 「범위에서 프로젝트 고르면 이름규칙 폴더생성에서 컷 체크 고정되도록」.
     final state = await pumpCels(tester, celsSession());
-    await openNaming(tester);
+    await namingModule(tester);
     Finder saying(String message) => find.byWidgetPredicate(
       (widget) => widget is AppTooltip && widget.message == message,
     );
@@ -1448,9 +1445,6 @@ void main() {
     expect(saying(strings.exCutFolderHeld), findsNothing);
     expect(pill(tester, 'export-cel-folder-cut').selected, isFalse);
 
-    await tester.ensureVisible(find.textContaining(strings.exScope));
-    await tester.tap(find.textContaining(strings.exScope));
-    await tester.pump();
     await tapKey(tester, 'export-scope-project');
     final held = pill(tester, 'export-cel-folder-cut');
     expect((held.selected, held.onTap), (true, null));
@@ -1482,10 +1476,6 @@ void main() {
       'excludes both cuts at once', (tester) async {
     final session = celsSession();
     await pumpCels(tester, session);
-    // The Scope accordion sits collapsed by default — open it.
-    await tester.ensureVisible(find.textContaining(AppText.strings.exScope));
-    await tester.tap(find.textContaining(AppText.strings.exScope));
-    await tester.pump();
     await tapKey(tester, 'export-scope-project');
 
     // In the grid: the Cels list's cut column names the pair's folder too

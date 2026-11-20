@@ -45,6 +45,7 @@ class SeEntries {
     required Camera camera,
     required FrameVerbs frameVerbs,
     required ProjectSettings projectSettings,
+    required void Function(void Function() edit) followTheBand,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -52,7 +53,8 @@ class SeEntries {
        _controllers = controllers,
        _camera = camera,
        _frameVerbs = frameVerbs,
-       _projectSettings = projectSettings;
+       _projectSettings = projectSettings,
+       _followTheBand = followTheBand;
 
   final Camera _camera;
   final FrameVerbs _frameVerbs;
@@ -60,6 +62,10 @@ class SeEntries {
   /// Where each cut's own frames stand on its track
   /// ([ProjectSettings.projectAxis]) — the name tags' one question of it.
   final ProjectSettings _projectSettings;
+
+  /// Runs an edit that can push the blocks a band holds with the band
+  /// following them (`RangeSelections.followTheBandThrough`, F-619-Q1).
+  final void Function(void Function() edit) _followTheBand;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -213,12 +219,15 @@ class SeEntries {
         _controllers.timelineController.currentFrameIndex;
     final toCutEnd = remaining < 1 ? 1 : remaining;
     final requested = lengthFrames ?? toCutEnd;
-    _controllers.timelineController.createDrawingFrameForLayer(
-      layerId: layer.id,
-      frameId: _frameIds.mintFrameId(layer.id),
-      length: requested < 1 ? 1 : requested,
-      name: name,
-      seName: seName,
+    // At an entry's head the new one pushes it and the ones glued after it.
+    _followTheBand(
+      () => _controllers.timelineController.createDrawingFrameForLayer(
+        layerId: layer.id,
+        frameId: _frameIds.mintFrameId(layer.id),
+        length: requested < 1 ? 1 : requested,
+        name: name,
+        seName: seName,
+      ),
     );
     _changes.notifyChanged();
   }

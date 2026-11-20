@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/gestures.dart'
-    show kMiddleMouseButton, kPrimaryButton, kSecondaryMouseButton;
+    show kMiddleMouseButton, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +39,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/cel_text_fixture.dart' show textOf;
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/the_points_the_os_saw.dart';
 
 /// The sub colour a gradient runs to (I-160-Q3), and as a pixel reads it.
 const _sub = 0xFF00FF00;
@@ -970,6 +971,65 @@ void main() {
       expect(overlay.fillRange, isNull);
     });
 
+    /// The floods a stylus fill made, pressed at the view's centre and
+    /// dragged through [moves] — each a move the OS merged those points
+    /// into, the newest its own, offsets from the centre — and lifted.
+    Future<List<CanvasPoint>> floodsThrough(
+      WidgetTester tester,
+      List<List<Offset>> moves, {
+      required bool continuous,
+    }) async {
+      final (coordinator: _, overlay: _, :floods) = await pumpHeld(
+        tester,
+        continuous: continuous,
+      );
+      final centre = tester.getCenter(
+        find.byKey(const ValueKey<String>('brush-canvas-view')),
+      );
+      await dragThroughMergedMoves(
+        tester,
+        centre,
+        [
+          for (final points in moves) [
+            for (final point in points) centre + point,
+          ],
+        ],
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pumpAndSettle();
+      return floods;
+    }
+
+    const throughThree = [Offset(40, 0), Offset(80, 0), Offset(120, 0)];
+
+    // 🗣️F-612 (유저 2026-11-18): 「연속으로 채울대상 고를때 렉걸리면 …
+    // 중간을 건너뛰어버리는」.
+    testWidgets('🎯F-612 a continuous fill takes in every region a move the '
+        'OS merged went through, as the same points moved one by one', (
+      tester,
+    ) async {
+      final merged = await floodsThrough(tester, [
+        throughThree,
+      ], continuous: true);
+      final apart = await floodsThrough(tester, [
+        for (final point in throughThree) [point],
+      ], continuous: true);
+
+      expect(merged, hasLength(4), reason: 'the press and three regions');
+      expect(merged, apart);
+    });
+
+    // H56 (관제 2026-11-14): 「마지막 점보다 많이 읽는 곳만 큐로」 — a
+    // fill that is not continuous reads where the press is.
+    testWidgets('a fill that is not continuous floods where a merged move '
+        'ends alone', (tester) async {
+      final merged = await floodsThrough(tester, [
+        throughThree,
+      ], continuous: false);
+
+      expect(merged, hasLength(2), reason: 'the press, and where it is now');
+    });
+
     testWidgets('⛔a palm landing while the pen holds the fill takes '
         'nothing — the first press holds it', (tester) async {
       final saved = AppInput.settings.value;
@@ -1663,44 +1723,16 @@ void main() {
     expect(drawn(), isTrue, reason: 'let go, and the drag is the brush again');
   });
 
-  testWidgets('🗣️I-15: a held RIGHT button picks through the ONE eyedropper '
-      'pick — live along the drag, and no stroke', (tester) async {
-    final frameKeys = BrushCanvasFixture.createFrameKeys();
-    final coordinator = BrushCanvasFixture.createCoordinator(
-      frameKeys: frameKeys,
-    );
-    final picks = <int>[];
-    await tester.pumpWidget(
-      app(
-        BrushCanvasPanel(
-          coordinator: coordinator,
-          availableFrameKeys: frameKeys,
-          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          sampleColorAt: (point) => 0xFF000000 | point.x.round(),
-          onEyedropperPick: picks.add,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final right = await tester.startGesture(
-      canvasGlobalOffset(tester, const Offset(10, 10)),
-      kind: PointerDeviceKind.mouse,
-      buttons: kSecondaryMouseButton,
-    );
-    await tester.pump();
-    await right.moveTo(canvasGlobalOffset(tester, const Offset(40, 10)));
-    await tester.pump();
-    await right.up();
-    await tester.pumpAndSettle();
-
-    expect(picks.length, greaterThanOrEqualTo(2), reason: 'press AND drag');
-    expect(picks.last, isNot(picks.first), reason: 'it followed the pointer');
-    expect(
-      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
-      isFalse,
-    );
-  });
+  // ↩️「🗣️I-15: a held RIGHT button picks through the ONE eyedropper pick —
+  // live along the drag, and no stroke」 stood here, on a panel no shell
+  // wired: nothing took the tool for the hold, and the press picked into
+  // the brush in hand. A pick is the eyedropper's, made with it in hand
+  // (I-15 「툴 바껴서 해당툴을 사용한다」 · F-615-Q1 「누름은 착지만」), so it
+  // went red on master (11-19) while the app picked all along the drag (검증/
+  // 서피스 23:37). The same press, drag and no stroke are pinned where a real
+  // press goes — a panel wired as the shell wires it, through the real
+  // TemporaryTool, under every tool and ground:
+  // `a_mapped_button_answers_under_every_tool_test`.
 
   testWidgets('the eyedropper cursor is the TOOL alone — a painting tool '
       'with the pick wired never arms it (I-15: Alt switches the tool)', (

@@ -26,15 +26,33 @@ const Duration cloudWaitSaysNothingAfter = Duration(seconds: 10);
 /// happening. ↩️It was 「has anything at all arrived」 till 2026-11-17, and
 /// a download that stopped halfway counted on as if it were moving (F-608
 /// ①, 유저: the stalled words only when the bytes truly stop changing).
-String cloudWaitLine(Duration waited, Duration quiet) {
+///
+/// 🗣️THE CLOUD IS NAMED ONLY WHILE THE DEVICE SAYS SO ([fromTheCloud] —
+/// F-621-Q2, 유저 2026-11-19: 「투명하게만 하면되. 1번대로하자」): while
+/// the file is not here yet — an iPad's provider holding the coordinated
+/// read, a placeholder asked to come down — the line says it is coming
+/// from the cloud, and while bytes come in that the app can see, that it
+/// is reading the file. ↩️Every wait said the cloud, and a file on the
+/// disk read for two seconds under 「クラウドから受信中」. ⚠️What the
+/// device cannot tell reads as reading — a document an Android provider
+/// pours in (from its network or its cache, the app cannot know), and a
+/// file Drive on Windows calls here while it still comes down
+/// (`readOpenedFile`'s 🚨): the line says what the device says, never a
+/// guess.
+String cloudWaitLine(
+  Duration waited,
+  Duration quiet, {
+  required bool fromTheCloud,
+}) {
   final strings = AppText.strings;
-  return quiet >= cloudWaitSaysNothingAfter
-      ? strings.openWaitingStalledTemplate.replaceAll(
-          '{sec}',
-          '${quiet.inSeconds}',
-        )
-      : strings.openWaitingCloudTemplate.replaceAll(
-          '{sec}',
-          '${waited.inSeconds}',
-        );
+  if (quiet >= cloudWaitSaysNothingAfter) {
+    return strings.openWaitingStalledTemplate.replaceAll(
+      '{sec}',
+      '${quiet.inSeconds}',
+    );
+  }
+  final template = fromTheCloud
+      ? strings.openWaitingCloudTemplate
+      : strings.openWaitingReadingTemplate;
+  return template.replaceAll('{sec}', '${waited.inSeconds}');
 }

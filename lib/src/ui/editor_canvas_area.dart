@@ -18,6 +18,8 @@ import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
+import '../models/rows_as_printed.dart'
+    show EyeOnThePage, trackAsPrinted;
 import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
@@ -50,8 +52,8 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
-import 'brush/canvas_view_commands.dart';
 import 'canvas/paper_background.dart' show paintAbsentPlane;
+import 'canvas/presses_wait_for_the_frame.dart';
 import 'canvas/stage_planes_painter.dart'
     show StagePlane, backdropOnScreen, stageColorOnScreen, stageGround;
 import 'canvas/viewport_canvas_transform.dart';
@@ -96,10 +98,11 @@ import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/memo_token.dart' show ByIdentity, ByList;
+import 'timeline/memo_token.dart' show AsPrinted, ByIdentity, ByList;
 import 'timeline/timeline_drag_preview.dart'
     show
         BlockMoveDragPreview,
+        StagePlanesPreview,
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor,
         timelineDragPreviewLayerFor;
@@ -229,7 +232,7 @@ class EditorCanvasArea extends StatefulWidget {
     required this.cameraViewEnabled,
     required this.cameraDimOpacity,
     this.onBrushToolStateChanged,
-    this.canvasViewCommands,
+    this.bringTool,
     this.navigationRegionKey,
     this.canvasSelectionCommands,
     this.canvasTextCommands,
@@ -265,9 +268,9 @@ class EditorCanvasArea extends StatefulWidget {
   /// the sampled color (and return to the painting tool) through here.
   final ValueChanged<BrushToolState>? onBrushToolStateChanged;
 
-  /// The app-level rotate/flip shortcut channel (P8), forwarded to the
-  /// canvas panel which binds the actual viewport handlers.
-  final CanvasViewCommands? canvasViewCommands;
+  /// Where a held button or the pen's tail brings its tool — as a press
+  /// brings one (`TemporaryTool.bring`); null where there is none.
+  final void Function(CanvasTool tool)? bringTool;
 
   /// D13: attached to the canvas panel's container so the playback
   /// actuation gate can measure the navigation region (pan/zoom keep
@@ -347,15 +350,38 @@ class EditorCanvasArea extends StatefulWidget {
   /// is bound to, the playback mode and the sound's conforms are drawn
   /// nowhere on the canvas; the guide picked and a recording's streamer
   /// are, by the guides and the streamer, which hear them themselves.
+  ///
+  /// 🔬An eye toggled made its track anew, and the area — the panel, its
+  /// viewport and their layers, some 80 widgets — was built again for it
+  /// (card an-eye-toggle-holds-the-ui-thread, 11-18, step 3b). The eyes
+  /// are the picture's to print: the parts that draw the rows hear the
+  /// tracks themselves ([tracksDrawnBy]), and the area hears them with
+  /// every eye open ([EyeOnThePage.notPrinted]) — but for the two eyes it
+  /// prints itself: the stood row's, which refuses the pen
+  /// (`EditingCanvas.activeRowStrokeRefusal`, its folders' eyes with it),
+  /// and the row the camera layer is framed over
+  /// (`Camera.cameraBackdropSelection`). Neither hears the rail's folds and
+  /// twirls, which no page prints ([trackAsPrinted]).
   static Object shownBy(EditorSessionManager session) {
     final project = session.repository.requireProject();
     final cels = session.renderCaches.brushFrameStore;
+    final camera = session.camera;
     // ⚠️A project's lists are made anew by every write (`Project` holds them
     // unmodifiable), so they compare by what they hold: the tracks each by
     // identity — a write keeps the ones it did not touch — and the media's
     // and the fonts' entries, small values, by `==`.
     return (
-      tracks: ByList([for (final track in project.tracks) ByIdentity(track)]),
+      tracks: ByList([
+        for (final track in project.tracks)
+          AsPrinted(
+            track,
+            (track) => trackAsPrinted(track, EyeOnThePage.notPrinted),
+          ),
+      ]),
+      refusal: session.editingCanvas.activeRowStrokeRefusal,
+      framedOver: camera.isCameraLayerActive
+          ? camera.cameraBackdropSelection?.layerId
+          : null,
       frameRate: project.frameRate,
       cameraSize: project.cameraSize,
       trailingFrames: project.trailingFrames,
@@ -379,6 +405,14 @@ class EditorCanvasArea extends StatefulWidget {
       celPixels: cels.celPixelRevision.value,
     );
   }
+
+  /// The tracks as the parts that draw their rows hear them — each as they
+  /// print it ([EyeOnThePage.printed]), an eye toggled among them included,
+  /// which the area does not hear ([shownBy]).
+  static Object tracksDrawnBy(EditorSessionManager session) => ByList([
+    for (final track in session.repository.requireProject().tracks)
+      AsPrinted(track, (track) => trackAsPrinted(track, EyeOnThePage.printed)),
+  ]);
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -593,8 +627,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// What the canvas AREA takes from a drag: the row being drawn on as the
   /// panel is handed it — its display opacity, its colour keys and the pose
-  /// the pen draws in ([_InteractiveCanvasBuild.standingOf]) — and, in
-  /// camera mode, the camera's pose the Fit button frames.
+  /// the pen draws in ([_InteractiveCanvasBuild.standingOf]) —, in camera
+  /// mode the camera's pose the Fit button frames, and the stage planes a
+  /// colour window shows (F-620-Q1), which the panel and its swatches wear.
   ///
   /// 🚨canvas-wakes-for-what-it-shows: a block carried under the playhead
   /// changes the PICTURE, which the underlay follows by itself — not these.
@@ -622,6 +657,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         isCameraLayerActive: isCameraLayerActive,
       ).pose,
       isCameraLayerActive ? session.camera.cameraPoseAtCurrentFrame : null,
+      session.projectSettings.shownPlanes,
     );
   }
 
@@ -653,6 +689,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       ],
       if (preview case BlockMoveDragPreview(:final picturesMoved))
         picturesMoved,
+      // The stage planes a colour window shows (F-620-Q1).
+      if (preview case StagePlanesPreview(:final planes)) planes,
       session.camera.activeCutCameraTrack,
       if (session.transitions.activeCutPlaceShown case final place?) ...[
         place.start,
@@ -811,6 +849,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     _TrackStackMount mount,
   ) {
     final project = session.repository.requireProject();
+    final planes = session.projectSettings.shownPlanes;
     // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
     // view rebuilds itself as the frame it follows crosses into another cut
     // (a run's clock; a scrub's parking did too until I-57 ②), and bare under
@@ -834,11 +873,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cameraPoseOf: session.camera.cameraPoseForCut,
         run: mount.run,
         viewport: viewport,
-        background: session.projectSettings.projectBackground,
-        backdropArgb: project.backdropArgb,
-        backdropNone: project.backdropNone,
-        pasteboardArgb: project.pasteboardArgb,
-        pasteboardNone: project.pasteboardNone,
+        background: planes.paper,
+        backdropArgb: planes.backdrop.argb,
+        backdropNone: planes.backdrop.none,
+        pasteboardArgb: planes.pasteboard.argb,
+        pasteboardNone: planes.pasteboard.none,
         pasteboardReach: project.pasteboardReach,
       ),
     );
@@ -1978,7 +2017,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final standing = session.editingGlobalFrame;
     final partners = _olPartnersAt(session, standing);
     final frame = session.camera.cameraFrameSize;
-    final project = session.repository.requireProject();
+    final backdrop = session.projectSettings.shownPlanes.backdrop;
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -2025,8 +2064,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
                 backdrop: backdropOnScreen((
-                  color: stageColorOnScreen(project.backdropArgb),
-                  none: project.backdropNone,
+                  color: stageColorOnScreen(backdrop.argb),
+                  none: backdrop.none,
                 ), stageGround),
                 share: backdropShareUnder(cutFadeOpacity, [
                   for (final partner in partners) partner.opacity,

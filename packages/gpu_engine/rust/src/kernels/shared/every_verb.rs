@@ -15,7 +15,8 @@
 //!   (`device::let_go`, `device::let_go_unwaited`), or the bytes'
 //!   (`device::let_go_bytes`: what holds nothing of a device);
 //! - neither: it reaches the engine's thread by the thing it is handed
-//!   (`device::on_thread_of`), or it makes a thing of bytes
+//!   (`device::on_thread_of`, or `device::posted_of`, its caller waiting
+//!   for none of it), or it makes a thing of bytes
 //!   (`device::hands_bytes`), or it is on the ledger with why it has no
 //!   hand on the device ([`NO_HAND_ON_THE_DEVICE`]).
 //!
@@ -28,7 +29,7 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 10] = [
+const ON_THEIR_CALLERS: [(&str, &str); 13] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
@@ -50,6 +51,25 @@ const ON_THEIR_CALLERS: [(&str, &str); 10] = [
         "the engine's own counts of the pictures' idle slots and its work buffer \
          (`Pictures::idle_bytes`, `Work::bytes`): no device is asked, and the memory census \
          asks it on the UI's thread, which behind a compile would stand",
+    ),
+    (
+        "gpu_engine_pictures_unowned_bytes",
+        "the engine's own count of the pictures' tiles no picture weighs, as the last release \
+         left it (`Pictures::unowned_bytes`): no device is asked, and no book is waited for — \
+         the playback's budget asks it on the UI's thread, where a frame is built",
+    ),
+    (
+        "gpu_engine_unfinished",
+        "the engine's own ledger of its submits, under a lock of its own (`Submits`): no device \
+         is asked, and it is read after the device went, when the engine's thread may answer \
+         nothing",
+    ),
+    (
+        "gpu_engine_pool_give_back",
+        "the pool's books, kept where its verbs are called, and each page given back handed to \
+         the pages' thread, which it waits for none of (`Pool::give_back`): no buffer is made — \
+         what stands in a page's place is the engine's, made with it (`Engine::no_page`) — and \
+         none is let go here. A memory warning asks it on the UI's thread",
     ),
 ];
 
@@ -80,6 +100,8 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_export_png_row_bytes",
             "gpu_engine_composited_bytes",
             "gpu_engine_crc32_update",
+            "gpu_engine_mix_ground",
+            "gpu_engine_rub_ground",
         ],
     ),
     (
@@ -105,12 +127,13 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_cel_passed_tiles",
             "gpu_engine_cel_passed_run_count",
             "gpu_engine_cel_passed_runs",
+            "gpu_engine_finished_changes",
             "gpu_engine_held_bytes_of",
             "gpu_engine_plan_steps",
+            "gpu_engine_plan_weighed",
             "gpu_engine_plugin_reads_the_moment",
             "gpu_engine_screen_bytes",
             "gpu_engine_stroke_bytes",
-            "gpu_engine_stroke_met",
             "gpu_engine_blurs_by_strips",
             "gpu_engine_blurs_bytes",
             "gpu_engine_selection_masks_bytes",
@@ -183,11 +206,12 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
     ),
     (
         "sets a word in the faces on the CPU, where it is called — which of its letters they have \
-         (`words::whole`), and its coverage (`words::rastered`): the faces are bytes \
+         (`words::whole`), and its coverage (`words::rastered`), and a picture of letters its \
+         covers (`letters::set`, kept for its land to lay): the faces are bytes \
          (`hands_bytes`), their files and what each weight is set in — behind a lock under which \
          nothing waits for the engine's thread — and no device is asked. The paint that asks for \
          a tile's word bakes it (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3)",
-        &["gpu_engine_word_whole", "gpu_engine_word_raster"],
+        &["gpu_engine_word_whole", "gpu_engine_word_raster", "gpu_engine_letters_cover"],
     ),
 ];
 
@@ -200,8 +224,13 @@ fn handed_the_engine(verb: &Verb) -> bool {
 /// or not (`Engine::posted`).
 fn on_the_engines_thread(body: &str) -> bool {
     // `run_lent` is the thread's own hand, where the engine is let go on it
-    // (`gpu_engine_close`).
-    [".on_thread(", ".run_lent(", ".posted("].iter().any(|door| body.contains(door))
+    // (`gpu_engine_close`); `lands_unwaited` hands its put over by
+    // `Engine::posted`, its books the caller's (`Pool::lands_unwaited`),
+    // and so a fold and its settle hand over theirs
+    // (`Pool::folds_unwaited`, `Pool::settles_unwaited`).
+    const DOORS: [&str; 6] =
+        [".on_thread(", ".run_lent(", ".posted(", ".lands_unwaited(", ".folds_unwaited(", ".settles_unwaited("];
+    DOORS.iter().any(|door| body.contains(door))
 }
 
 /// Whether `body` names the engine for nothing but to hand out by it the
@@ -237,7 +266,8 @@ fn through_the_door(verb: &Verb) -> bool {
     } else if verb.name.ends_with("_free") {
         lets_go_through_a_door(&verb.body)
     } else {
-        verb.body.contains("on_thread_of(") || hands_out_bytes(&verb.body)
+        const BY_ITS_THING: [&str; 2] = ["on_thread_of(", "posted_of("];
+        BY_ITS_THING.iter().any(|door| verb.body.contains(door)) || hands_out_bytes(&verb.body)
     }
 }
 
@@ -265,7 +295,8 @@ fn every_verb_does_what_it_does_of_the_device_on_the_engines_thread() {
     assert!(
         off.is_empty(),
         "a verb's hand on the device on its caller's thread — hand its body to `Engine::on_thread` \
-         (`device::on_thread_of`, handed no engine; a door of `device.rs`, a free), or read it and write \
+         (`device::on_thread_of` or `device::posted_of`, handed no engine; a door of `device.rs`, a \
+         free), or read it and write \
          it on its ledger with why it has none: {off:?}"
     );
     for (name, why, handed) in ledgers() {
@@ -304,6 +335,7 @@ fn a_verb_goes_through_the_door_by_what_it_is_handed() {
     let other = |body| verb("gpu_engine_thing_let_go", false, body);
     let on_thread = " {\n    engine.on_thread(|| thing.run(engine))";
     let by_its_thing = " {\n    unsafe { on_thread_of(thing, || (*thing).let_go()) };";
+    let handed_over_by_its_thing = " {\n    unsafe { posted_of(thing, move || kept.let_go()) };";
     let let_go = " {\n    unsafe { let_go(thing) };";
     let unwaited = " {\n    unsafe { let_go_unwaited(thing) };";
     let its_own = " {\n    unsafe { &mut *thing }.let_go();";
@@ -325,6 +357,9 @@ fn a_verb_goes_through_the_door_by_what_it_is_handed() {
     // Handed neither: by the thing's own engine's thread, or a maker of
     // bytes.
     assert!(through_the_door(&other(by_its_thing)));
+    assert!(through_the_door(&other(handed_over_by_its_thing)));
+    assert!(!through_the_door(&run(true, handed_over_by_its_thing)));
+    assert!(!through_the_door(&free(handed_over_by_its_thing)));
     assert!(through_the_door(&other(made_of_bytes)));
     assert!(through_the_door(&other(made_or_not)));
     assert!(!through_the_door(&other(its_own)));

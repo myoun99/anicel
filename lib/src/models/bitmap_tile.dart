@@ -64,6 +64,13 @@ abstract interface class TilePixelsOnEngine {
 /// So the tiles it reads are never the engine's alone
 /// ([BitmapTile.isOnlyOnEngine]): a full pool lets their slots go as
 /// freely as those of a tile whose bytes are here.
+///
+/// 🚨AND A READ OF ONE KEEPS NOTHING HERE ([BitmapTile.readPixels]): its
+/// bytes are kept twice already, and a third copy that stayed with the
+/// tile was the RAM its cel had let go, back for good at the first
+/// reader that asked (card
+/// cel-originals-are-held-twice-in-ram-and-on-the-gpu ②, 저장's draft
+/// 2026-11-19: 「CPU 독자 하나만 돌아도 그 타일은 다시 RAM」).
 abstract interface class TilePixelsKeptBesides implements TilePixelsOnEngine {}
 
 /// The word every pixel of [pixels] — RGBA, four bytes each — is, or null
@@ -283,7 +290,8 @@ final class _ColourBlock implements _PixelsHere, Finalizable {
 /// cel's tiles, and whatever reads a colour behind no alpha, find what
 /// they found.
 /// ⚠️A tile the engine made ([BitmapTile.onEngine]) is never one: its
-/// bytes come here after it was made, and after it was weighed.
+/// bytes come here after it was made — and its is the one weight that
+/// moves, as they come ([ownBytes]).
 ///
 /// NOTE — Finalizable objects cannot cross isolates: the .anicel save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
@@ -393,7 +401,9 @@ class BitmapTile implements Finalizable {
   ///
   /// ⏳A caller still on the CPU reads a copy that stays with the tile, flip
   /// lane ⓒ's bridge: each writer moved to the engine is one less, and ⓔ
-  /// deletes the bytes with the last.
+  /// deletes the bytes with the last. Not where its pixels are kept
+  /// besides ([TilePixelsKeptBesides]): that read is lent its bytes
+  /// ([readPixels]).
   BitmapTile.onEngine({
     required this.size,
     required TilePixelsOnEngine on,
@@ -413,21 +423,28 @@ class BitmapTile implements Finalizable {
   /// for a caller that asks.
   bool get isOnEngine => _onEngine != null;
 
+  /// Whether its pixels lie here — a block of its own, or its colour's:
+  /// not one the engine made whose bytes have not come.
+  bool get hasItsBytesHere => _here != null;
+
   /// Whether the engine holds the only copy of its pixels — none here to
   /// store again from, so its slot there is not one a full pool lets go. A
   /// shell's are kept besides ([TilePixelsKeptBesides]).
   bool get isOnlyOnEngine =>
       _onEngine != null && _onEngine is! TilePixelsKeptBesides && _here == null;
 
-  /// Holds [bytes] — the pixels of a tile the engine alone holds
-  /// ([isOnlyOnEngine]), read back by whoever holds its slot — as a read of
-  /// its own would ([_readBack]).
+  /// Holds [bytes] — the pixels of a tile the engine made, none of them
+  /// here yet: one the engine alone holds ([isOnlyOnEngine]), read back
+  /// by whoever holds its slot as a read of its own would ([_readBack]);
+  /// or one kept besides ([TilePixelsKeptBesides]), as what kept them is
+  /// about to go (`BrushFrameStore._letTheFileRefGo`).
   void keepBytesHere(Uint8List bytes) {
-    assert(isOnlyOnEngine, 'its pixels are here already');
+    assert(mayWeighMore, 'its pixels are here already');
     _validatePixelLength(bytes.length, size);
     final block = TileBlocks.alloc(bytes.length);
     block.asTypedList(bytes.length).setAll(0, bytes);
     _hold(block);
+    _timesBytesCameHere += 1;
   }
 
   /// Throws for a [size] no tile takes — what every constructor asks first.
@@ -440,15 +457,40 @@ class BitmapTile implements Finalizable {
   /// budget that lies about what it holds, so there is one place now.
   static int bytesFor(int size) => size * size * bytesPerPixel;
 
-  /// What this tile holds that no other does: a tile's bytes, and nothing
-  /// where its pixels are its colour's block — the one answer for whoever
-  /// weighs tiles (the hot cels, an undo entry, the memory census).
+  /// What this tile holds HERE that no other does: a tile's bytes where it
+  /// holds a block of its own, and nothing where its pixels are its
+  /// colour's block, or lie on the engine and none of them here
+  /// ([BitmapTile.onEngine]) — the one answer for whoever weighs tiles
+  /// (the hot cels, an undo entry, the memory census).
   ///
   /// A colour's block itself is in nobody's sum: one tile's bytes for each
   /// colour alive.
-  /// ⚠️A tile the engine made weighs a tile's bytes wherever they lie, as
-  /// it did before this was asked.
-  int get ownBytes => _here is _ColourBlock ? 0 : bytesFor(size);
+  ///
+  /// 🚨THE BYTES HELD HERE, NOT THE TILE'S WHEREVER THEY LIE (card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu ②, 저장's draft
+  /// 2026-11-19: 「「여기 든 바이트」로 센다」). ↩️Till then a tile the engine
+  /// made weighed a tile's bytes from the start, as one made here does: a
+  /// shell's tile, which holds none (`EngineTileLedger.shellOf`), weighed
+  /// in what the looks hold beside their store and in the census as RAM
+  /// its cel had let go, and a tile just landed read as RAM while the
+  /// device alone held it.
+  /// So this is the one weight that MOVES — once, up, as the bytes come
+  /// ([_readBack], [keepBytesHere]) — and a sum kept of weights is
+  /// weighed again where that happened ([timesBytesCameHere],
+  /// `HotCelWeights`).
+  int get ownBytes => _here is _OwnBlock ? bytesFor(size) : 0;
+
+  /// Whether this tile may yet weigh more than it does ([ownBytes]): one
+  /// the engine made, none of whose bytes are here.
+  bool get mayWeighMore => _onEngine != null && _here == null;
+
+  /// How many times a tile made without its bytes has come to hold them
+  /// — one the engine made, read here ([_readBack]) or handed its copy
+  /// ([keepBytesHere]): every time any tile's weight moved ([ownBytes]).
+  /// A sum kept of weights is good while this stands where it stood as
+  /// the sum was made.
+  static int get timesBytesCameHere => _timesBytesCameHere;
+  static int _timesBytesCameHere = 0;
 
   /// What a store of this tile's pixels elsewhere is found by: the tile
   /// itself, or — where its pixels are its colour's block — that block,
@@ -475,28 +517,28 @@ class BitmapTile implements Finalizable {
   /// ([isOnlyOnEngine]).
   _PixelsHere? _here;
 
-  _PixelsHere get _read => _here ?? _readBack();
-
-  Pointer<Uint8> get _pixels => _read.block;
-
-  Uint8List get _view => _read.view;
-
+  /// Reads back the pixels of a tile the engine alone holds, which
+  /// keeps them from here on: the copy that was to come once the hand
+  /// rested, come sooner (`EngineTileLedger.copyHereABatch`).
   _PixelsHere _readBack() {
     _hold(TileBlocks.alloc(bytesFor(size)));
     final read = _here!;
     try {
       _onEngine!.readInto(this, read.block);
-      return read;
     } catch (_) {
       // The block stays with the tile's finalizer; a garbage view must not.
       _here = null;
       rethrow;
     }
+    // Said once the bytes are its: a read refused left it weighing what
+    // it did.
+    _timesBytesCameHere += 1;
+    return read;
   }
 
   /// A defensive COPY of the pixel bytes (cold paths: codec, json,
   /// stamp/lift builds). Hot paths use [readPixels]/[copyPixelsInto].
-  Uint8List get pixels => Uint8List.fromList(_view);
+  Uint8List get pixels => readPixels((_, view) => Uint8List.fromList(view));
 
   /// Runs [body] with the tile's native buffer — the pointer the engine
   /// reads directly (blend staging, premultiply) and a view over the same
@@ -520,9 +562,37 @@ class BitmapTile implements Finalizable {
   /// Inside [body] the tile is the receiver of an executing method, so it
   /// — and its buffer — are alive for the whole call. Do not let the
   /// pointer or the view escape [body] unless the caller keeps the TILE
-  /// itself reachable for as long as they are used.
+  /// itself reachable for as long as they are used — and the tile is one
+  /// whose bytes are here ([hasItsBytesHere]).
+  ///
+  /// 🚨A TILE KEPT BESIDES IS READ INTO A BLOCK LENT FOR THE CALL
+  /// ([TilePixelsKeptBesides]), given back as [body] returns: nothing of
+  /// the read stays with the tile, and a pointer let out of [body] is to
+  /// bytes that are gone, whatever is held. The one caller that lets one
+  /// out — the engine's store, which reads it once it has returned — asks
+  /// only of tiles whose bytes are here (`EngineTileLedger._storedFrom`).
+  /// ↩️Till 2026-11-19 every read of a tile the engine made was a copy
+  /// that stayed ([_readBack]): the first CPU reader of a shell's tile
+  /// brought back the RAM its cel had let go, for as long as the tile
+  /// lived.
   T readPixels<T>(T Function(Pointer<Uint8> pointer, Uint8List view) body) {
-    return body(_pixels, _view);
+    final here = _here;
+    if (here != null) {
+      return body(here.block, here.view);
+    }
+    final on = _onEngine!;
+    if (on is! TilePixelsKeptBesides) {
+      final read = _readBack();
+      return body(read.block, read.view);
+    }
+    final bytes = bytesFor(size);
+    final lent = TileBlocks.alloc(bytes);
+    try {
+      on.readInto(this, lent);
+      return body(lent, lent.asTypedList(bytes));
+    } finally {
+      TileBlocks.free(lent);
+    }
   }
 
   bool? _hasInk;
@@ -550,7 +620,8 @@ class BitmapTile implements Finalizable {
   ///
   /// ⚠️A tile a worker laid comes home with it ([BitmapTile.adoptNative]):
   /// the worker asked its bytes ([anyInkIn]), so this thread reads none.
-  bool get hasInk => _hasInk ??= anyInkIn(_view);
+  bool get hasInk =>
+      _hasInk ??= readPixels<bool>((_, view) => anyInkIn(view));
 
   TileInkBounds? _inkBounds;
 
@@ -622,16 +693,18 @@ class BitmapTile implements Finalizable {
   /// picture that is not a tile asks the same scan. ↩️Till ABI 74 it was
   /// also the twin a native parity test measured a batched C scan against;
   /// the engine finds a cel's ink now (`EngineTileLedger.rememberInk`).
-  TileInkBounds _scanInkBounds() => inkBoundsOfWords(
-    _view.buffer.asUint32List(_view.offsetInBytes, size * size),
-    width: size,
-    height: size,
+  TileInkBounds _scanInkBounds() => readPixels(
+    (_, view) => inkBoundsOfWords(
+      view.buffer.asUint32List(view.offsetInBytes, size * size),
+      width: size,
+      height: size,
+    ),
   );
 
   /// Copies the pixel bytes into [target] without the intermediate copy
   /// the [pixels] getter makes.
   void copyPixelsInto(Uint8List target) {
-    target.setRange(0, _view.length, _view);
+    readPixels((_, view) => target.setRange(0, view.length, view));
   }
 
   int byteOffsetForPixel({required int x, required int y}) {
@@ -670,17 +743,15 @@ class BitmapTile implements Finalizable {
   /// keeps the very same object — and with it every decoded picture
   /// the image cache holds under it.
   BitmapTile copyWith({int? size, Uint8List? pixels}) {
-    return BitmapTile(
-
-      size: size ?? this.size,
-      pixels: pixels ?? _view,
-    );
+    BitmapTile of(Uint8List pixels) =>
+        BitmapTile(size: size ?? this.size, pixels: pixels);
+    return pixels == null ? readPixels((_, view) => of(view)) : of(pixels);
   }
 
   Map<String, dynamic> toJson() => {
 
     'size': size,
-    'pixels': _view.toList(),
+    'pixels': readPixels((_, view) => view.toList()),
   };
 
   factory BitmapTile.fromJson(Map<String, dynamic> json) {
@@ -721,14 +792,14 @@ class BitmapTile implements Finalizable {
   /// unread where the two are of one colour, and so hold one block.
   bool _samePixelsAs(BitmapTile other) =>
       (_here != null && identical(_here, other._here)) ||
-      holdsBytes(other._view);
+      other.readPixels((_, theirs) => holdsBytes(theirs));
 
   /// Whether [bytes], a tile's worth lying on a word's edge, are this
   /// tile's pixels.
-  bool holdsBytes(Uint8List bytes) {
+  bool holdsBytes(Uint8List bytes) => readPixels((_, view) {
     // RGBA: one 32-bit word is one pixel.
     final count = size * size;
-    final mine = _view.buffer.asUint32List(_view.offsetInBytes, count);
+    final mine = view.buffer.asUint32List(view.offsetInBytes, count);
     final theirs = bytes.buffer.asUint32List(bytes.offsetInBytes, count);
     for (var i = 0; i < count; i += 1) {
       if (mine[i] != theirs[i]) {
@@ -736,14 +807,17 @@ class BitmapTile implements Finalizable {
       }
     }
     return true;
-  }
+  });
 
   @override
-  int get hashCode => Object.hash(size, Object.hashAll(_view));
+  int get hashCode =>
+      Object.hash(size, readPixels((_, view) => Object.hashAll(view)));
 
+  /// ⚠️Reads no pixel: said of a tile the engine made, it would bring its
+  /// bytes here to count them.
   @override
   String toString() =>
-      'BitmapTile(size: $size, pixelLength: ${_view.length})';
+      'BitmapTile(size: $size, pixelLength: ${bytesFor(size)})';
 }
 
 /// What [tiles] hold that no other tile does, in all — each as it says of

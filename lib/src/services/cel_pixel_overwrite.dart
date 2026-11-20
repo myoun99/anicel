@@ -887,10 +887,10 @@ typedef _Walked = ({TileCoord coord, BitmapTile tile});
         (column: column, row: row, under: null),
     ];
     final landed = ledger.land(
-      EngineTileLedger.landedCel,
       asks,
       by: (pool, cel, asked) =>
           passed.land(pool, cel, asks.length - asked.length, asked),
+      ofTheHand: true,
     );
     final rebuilt = <TileCoord, BitmapTile>{
       for (final (at, (change: _, :tile)) in landed.indexed)

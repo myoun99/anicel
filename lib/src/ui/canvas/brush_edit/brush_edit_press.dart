@@ -319,7 +319,7 @@ class _BrushEditPress {
   }
 
   void pointerMove(PointerMoveEvent event) {
-    _state._celPress.resumePressThatMadeTheCel(event.pointer);
+    _state._celPress.resumePressThatMadeTheCel(event);
     if (!_state.widget.editable) {
       return; // Standing down: inert, exactly as when nothing was built.
     }
@@ -327,7 +327,10 @@ class _BrushEditPress {
     // 그게 바뀌고」). ⛔Before the drawing-pointer gate: a fill press never
     // becomes the drawing pointer.
     if (_state._fill.holds(event.pointer)) {
-      _state._fill.reach(_state._canvasPositionFromLocal(event.localPosition));
+      _state._fill.reach([
+        for (final point in PenPath.eventsOf(event))
+          _state._canvasPositionFromLocal(point.localPosition),
+      ]);
       return;
     }
     if (event.pointer != _state._activeDrawingPointer) {
@@ -367,8 +370,8 @@ class _BrushEditPress {
     _state._toolHolds.heardByTheView.remove(event.pointer);
     // A TAP on an empty cel is a dot, so the press still begins here — and
     // then this same event ends it: one dab, one undo entry.
-    _state._celPress.resumePressThatMadeTheCel(event.pointer);
-    if (_state._celPress._pendingCelPress?.pointer == event.pointer) {
+    _state._celPress.resumePressThatMadeTheCel(event);
+    if (_state._celPress._pendingCelPress?.down.pointer == event.pointer) {
       _state._celPress._pendingCelPress =
           null; // Never resumed; nothing is left to draw.
     }
@@ -479,7 +482,7 @@ class _BrushEditPress {
 
   void pointerCancel(PointerCancelEvent event) {
     _state._toolHolds.heardByTheView.remove(event.pointer);
-    if (_state._celPress._pendingCelPress?.pointer == event.pointer) {
+    if (_state._celPress._pendingCelPress?.down.pointer == event.pointer) {
       _state._celPress._pendingCelPress = null;
     }
     _discardPress(event.pointer);

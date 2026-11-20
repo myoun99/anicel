@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart' show EffectId;
 import 'package:anicel/src/models/layer_id.dart';
@@ -35,19 +37,21 @@ import 'package:flutter_test/flutter_test.dart';
 /// the sheet, the cursor and every drag read [TimelineRowEdges] instead.
 void main() {
   group('rows of one height read exactly as the division did', () {
-    test('the window is the uniform division anywhere inside the rows', () {
+    test('the window is the uniform division of the viewport and a notch '
+        'on each side, anywhere inside the rows', () {
+      const margin = timelineRowWindowMargin;
       for (final extent in [28.0, 20.5]) {
         for (final count in [0, 1, 5, 40]) {
           final edges = TimelineRowEdges.uniform(count, extent);
           final total = count * extent;
           for (final viewport in [0.0, 50.0, 196.0, 1000.0]) {
             for (var at = 0.0; at < total; at += extent / 3) {
-              // No rows past the viewport (2026-10-28).
+              final from = math.max(0.0, at - margin);
               expect(
                 edges.window(scrollOffset: at, viewportExtent: viewport),
                 calculateVisibleIndexRange(
-                  scrollOffset: at,
-                  viewportExtent: viewport,
+                  scrollOffset: from,
+                  viewportExtent: at + viewport + margin - from,
                   itemExtent: extent,
                   itemCount: count,
                   overscanBefore: 0,
@@ -172,26 +176,17 @@ void main() {
 
     test('a window never cuts a unit', () {
       expect(
-        edges.window(
-          scrollOffset: 100,
-          viewportExtent: 50,
-        ),
+        edges.over(100, 150),
         const TimelineVisibleRange(startIndex: 1, endIndexExclusive: 3),
         reason: 'only the room is in view, and its unit is built whole',
       );
       expect(
-        edges.window(
-          scrollOffset: 30,
-          viewportExtent: 10,
-        ),
+        edges.over(30, 40),
         const TimelineVisibleRange(startIndex: 1, endIndexExclusive: 3),
         reason: 'one lane in view builds the graph',
       );
       expect(
-        edges.window(
-          scrollOffset: 0,
-          viewportExtent: 10,
-        ),
+        edges.over(0, 10),
         const TimelineVisibleRange(startIndex: 0, endIndexExclusive: 1),
       );
     });

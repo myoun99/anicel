@@ -136,6 +136,11 @@ enum AppStrings {
   String effectKindName(String key, String fallback) =>
       _values['effectKind.$key'] ?? fallback;
 
+  /// A sound preset's name, by its key (`SoundPreset.jsonValue`) — the
+  /// English its enum keeps where a table has none.
+  String soundPresetName(String key, String fallback) =>
+      _values['soundPreset.$key'] ?? fallback;
+
   /// An effect parameter's lane name, by the id its spec carries — F-37
   /// (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도 한국어로」), on the
   /// contract [effectKindName] follows.
@@ -627,6 +632,11 @@ enum AppStrings {
   /// the work — the app is not slow, the file is not here yet.
   String get openWaitingCloudTemplate => _s('openWaitingCloudTemplate');
 
+  /// '{sec}' is whole seconds waited. The file is here, as far as the
+  /// device can tell, and the app is reading it in — said rather than the
+  /// cloud, which would be a guess (F-621-Q2).
+  String get openWaitingReadingTemplate => _s('openWaitingReadingTemplate');
+
   /// '{sec}' is whole seconds waited. Said once the wait is long enough
   /// to be worth a decision; the window's cancel is the decision.
   String get openWaitingStalledTemplate => _s('openWaitingStalledTemplate');
@@ -820,6 +830,18 @@ enum AppStrings {
   String get gpuWentByRemoval => _s('gpuWentByRemoval');
   String get gpuWentByReset => _s('gpuWentByReset');
   String get gpuWentByDriver => _s('gpuWentByDriver');
+
+  /// What Windows' window says once the screen's own graphics device went
+  /// (`LostScreen`, a-lost-gpu-leaves-the-window-unpainted-Q1: 「화면을 그리는
+  /// 그래픽 장치가 멈췄습니다」 + [저장하고 다시 시작] [닫기]) — and what it says
+  /// where the save or the restart did not go through.
+  String get screenWentTitle => _s('screenWentTitle');
+  String get screenWentMessage => _s('screenWentMessage');
+  String get screenWentSaveAndRestart => _s('screenWentSaveAndRestart');
+  String get screenWentQuitWithoutSaving =>
+      _s('screenWentQuitWithoutSaving');
+  String get screenWentNotSaved => _s('screenWentNotSaved');
+  String get screenWentNotStarted => _s('screenWentNotStarted');
 
   // --- A save its file refused: why, and the failed copy (실패본) the work
   // went to instead (whole-write-temp-beside-the-file, 2026-09-23) ---
@@ -1107,6 +1129,7 @@ enum AppStrings {
   String get linkWindowUnsync => _s('linkWindowUnsync');
   String get tlResetGroup => _s('tlResetGroup');
   String get tlEffects => _s('tlEffects');
+  String get tlEffectPresets => _s('tlEffectPresets');
   String get tlEffectsOfSound => _s('tlEffectsOfSound');
   String get tlEffectsOfPicture => _s('tlEffectsOfPicture');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
@@ -1168,9 +1191,6 @@ enum AppStrings {
   String get tlPush => _s('tlPush');
   String get tlPull => _s('tlPull');
   String get tlSetCommasN => _s('tlSetCommasN');
-
-  /// Refused: a cut holds at most one storyboard row.
-  String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
 
   /// The conte sheet panel.
 
@@ -1279,6 +1299,22 @@ enum AppStrings {
   String get mediaPresetSpan => _s('mediaPresetSpan');
   String mediaPresetTitle(String name) =>
       _s('mediaPresetTitleTemplate').replaceAll('{name}', name);
+  String get mediaSync => _s('mediaSync');
+  String mediaSyncTitle(String name) =>
+      _s('mediaSyncTitleTemplate').replaceAll('{name}', name);
+  String get mediaSyncFields => _s('mediaSyncFields');
+  String mediaSyncPlaces({required int total, required int parting}) =>
+      _s('mediaSyncPlacesTemplate')
+          .replaceAll('{total}', '$total')
+          .replaceAll('{parting}', '$parting');
+  String get mediaSyncSame => _s('mediaSyncSame');
+  String mediaSyncApply(int count) => count == 0
+      ? commonApply
+      : _s('mediaSyncApplyTemplate').replaceAll('{n}', '$count');
+  String get mediaSyncApplyAll => _s('mediaSyncApplyAll');
+  String mediaSyncApplyAllOf(int count) => count == 0
+      ? mediaSyncApplyAll
+      : _s('mediaSyncApplyAllTemplate').replaceAll('{n}', '$count');
 
   /// Shown on opening a project written by a build that kept its media in
   /// a sibling folder. `{name}` is that folder.
@@ -1634,6 +1670,7 @@ enum AppStrings {
   String get exPresets => _s('exPresets');
   String get exQueue => _s('exQueue');
   String get exSize => _s('exSize');
+  String get exCelSize => _s('exCelSize');
 
   /// The paper a cut envelope is written on: the cut's own pixels, or the
   /// real envelope's.
@@ -2671,6 +2708,7 @@ enum AppStrings {
     'saveStepHandingBack': 'Handing the file back to its document…',
     'openProgressRunning': 'Opening…',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
+    'openWaitingReadingTemplate': 'Reading the file · {sec}s',
     'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
     'bakeProgressRunning': 'Rasterizing…',
@@ -2791,7 +2829,7 @@ enum AppStrings {
     'memoryTracked': 'Accounted for',
     'memoryUntracked': 'Engine, fonts and framework',
     'memoryAvailable': 'Still available',
-    'memoryPinned': 'held for playback',
+    'memoryPinned': 'shown on screen',
     'memoryDeviceTotal': 'Device memory',
     'memoryAllowance': 'App allowance',
     'memoryAllowanceAutomatic': 'Back to the automatic allowance',
@@ -2908,6 +2946,19 @@ enum AppStrings {
         'Whether it came from this program or another could not be '
         'determined.',
     'gpuWentByDriver': 'Cause: an error inside the graphics driver.',
+    'screenWentTitle': 'The graphics device that draws the screen stopped.',
+    'screenWentMessage':
+        'The screen can no longer be drawn. Save and restart saves every '
+        'open project, then starts the program again with the same '
+        'projects.',
+    'screenWentSaveAndRestart': 'Save and restart',
+    'screenWentQuitWithoutSaving': 'Quit without saving',
+    'screenWentNotSaved':
+        'Some projects could not be saved, so the program was not '
+        'restarted.',
+    'screenWentNotStarted':
+        'The program could not be restarted. Your projects are saved: close '
+        'the program and start it again.',
     'uiScaleLabel': 'Interface scale',
     'colorModeLabel': 'Appearance',
     'colorModeDark': 'Dark',
@@ -3046,6 +3097,14 @@ enum AppStrings {
     'mediaPresetMenu': 'Placement preset',
     'mediaPresetSpan': 'Start · End',
     'mediaPresetTitleTemplate': 'Placement preset — {name}',
+    'mediaSync': 'Sync to preset',
+    'mediaSyncTitleTemplate': 'Sync — {name}',
+    'mediaSyncFields': 'Fields to match — preset value',
+    'mediaSyncPlacesTemplate': 'Places to match — {parting} of {total} in use differ',
+    'mediaSyncSame': 'Same',
+    'mediaSyncApplyTemplate': 'Apply ({n})',
+    'mediaSyncApplyAll': 'Apply to all',
+    'mediaSyncApplyAllTemplate': 'Apply to all ({n})',
     'mediaMono': 'Mono',
     'mediaStereo': 'Stereo',
     'mediaChannelsTemplate': '{n} ch',
@@ -3303,6 +3362,7 @@ enum AppStrings {
     'exPresets': 'Presets',
     'exQueue': 'Queue',
     'exSize': 'Size',
+    'exCelSize': 'Cel size',
     'exCutSize': 'Cut size',
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
@@ -3888,6 +3948,7 @@ enum AppStrings {
     'linkWindowUnsync': 'Unsync',
     'tlResetGroup': 'Reset (keeps keys)',
     'tlEffects': 'Effects',
+    'tlEffectPresets': 'Presets',
     'tlEffectsOfSound': 'Audio',
     'tlEffectsOfPicture': 'Video',
     'tlAddEffectTemplate': 'Add {name}',
@@ -3917,8 +3978,6 @@ enum AppStrings {
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
-    'sbOneStoryboardRowPerCut':
-        'This cut already has a storyboard row. A cut can hold only one.',
     'cnHeadCut': 'CUT',
     'cnHeadPicture': 'PICTURE',
     'cnHeadAction': 'ACTION',
@@ -4212,6 +4271,7 @@ enum AppStrings {
     'saveStepHandingBack': '元の書類にファイルを渡しています…',
     'openProgressRunning': '読み込み中…',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
+    'openWaitingReadingTemplate': 'ファイルを読み込み中 · {sec}秒',
     'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
     'bakeProgressRunning': 'ラスタライズ中…',
@@ -4357,7 +4417,7 @@ enum AppStrings {
     'memoryTracked': '内訳がわかる分',
     'memoryUntracked': 'エンジン・フォント・フレームワーク',
     'memoryAvailable': 'まだ使える分',
-    'memoryPinned': '再生のため保持中',
+    'memoryPinned': '画面に表示中の絵',
     'memoryDeviceTotal': 'デバイスのメモリ',
     'memoryAllowance': 'アプリの割り当て',
     'memoryAllowanceAutomatic': '自動の割り当てに戻す',
@@ -4441,6 +4501,14 @@ enum AppStrings {
         '原因：グラフィックカードが不正な命令を受けてリセットされました。'
         'このプログラムによるものか、他のプログラムによるものかは特定できませんでした。',
     'gpuWentByDriver': '原因：グラフィックドライバーの内部でエラーが発生しました。',
+    'screenWentTitle': '画面を描くグラフィックデバイスが停止しました。',
+    'screenWentMessage':
+        '画面はこれ以上描画されません。「保存して再起動」を押すと、開いているプロジェクトをすべて保存してから、同じプロジェクトでプログラムを起動し直します。',
+    'screenWentSaveAndRestart': '保存して再起動',
+    'screenWentQuitWithoutSaving': '保存せずに終了',
+    'screenWentNotSaved': '保存できなかったプロジェクトがあるため、再起動しませんでした。',
+    'screenWentNotStarted':
+        'プログラムを再起動できませんでした。プロジェクトは保存されています。プログラムを閉じてから起動し直してください。',
     'uiScaleLabel': 'UIの大きさ',
     'colorModeLabel': 'カラーモード',
     'colorModeDark': 'ダーク',
@@ -4701,6 +4769,11 @@ enum AppStrings {
     'effectKind.celNumber': 'セル番号',
     'effectKind.equalizer': 'イコライザー',
     'effectKind.compressor': 'コンプレッサー',
+    'effectKind.noiseRemoval': 'ノイズ除去',
+    'soundPreset.dialogue': 'セリフ',
+    'soundPreset.music': '音楽',
+    'soundPreset.soundEffects': '効果音',
+    'soundPreset.ambience': '環境音',
     'effectKind.plugin': 'プラグイン',
     'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
@@ -4808,6 +4881,14 @@ enum AppStrings {
     'mediaPresetMenu': '配置プリセット',
     'mediaPresetSpan': '開始 · 終了',
     'mediaPresetTitleTemplate': '配置プリセット — {name}',
+    'mediaSync': 'プリセットに同期',
+    'mediaSyncTitleTemplate': '同期 — {name}',
+    'mediaSyncFields': '合わせる項目 — プリセットの値',
+    'mediaSyncPlacesTemplate': '合わせる場所 — 使用中 {total} のうち違う {parting}',
+    'mediaSyncSame': '同じ',
+    'mediaSyncApplyTemplate': '適用（{n}）',
+    'mediaSyncApplyAll': 'すべて適用',
+    'mediaSyncApplyAllTemplate': 'すべて適用（{n}）',
     'mediaMono': 'モノラル',
     'mediaStereo': 'ステレオ',
     'mediaChannelsTemplate': '{n}ch',
@@ -5055,6 +5136,7 @@ enum AppStrings {
     'exPresets': 'プリセット',
     'exQueue': 'キュー',
     'exSize': 'サイズ',
+    'exCelSize': 'セルサイズ',
     'exCutSize': 'カットサイズ',
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
@@ -5847,6 +5929,7 @@ enum AppStrings {
     'linkWindowUnsync': '同期を解除',
     'tlResetGroup': 'リセット（キーは残す）',
     'tlEffects': 'エフェクト',
+    'tlEffectPresets': 'プリセット',
     'tlEffectsOfSound': '音声',
     'tlEffectsOfPicture': '映像',
     'tlAddEffectTemplate': '{name}を追加',
@@ -5873,7 +5956,6 @@ enum AppStrings {
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
-    'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
     'cnHeadCut': 'カット',
     'cnHeadPicture': '画面',
     'cnHeadAction': '内容',
@@ -5899,7 +5981,6 @@ enum AppStrings {
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
     'tlShowSeRows': 'SE行を表示',
     'tlShowCameraRows': 'カメラ行を表示',
-    'shortcutAction.layer-storyboard': '絵コンテレイヤー',
     'setLengthAction': '露光の長さの設定',
     'markEveryField': '間隔',
     'frameCountEntryFrames': 'コマ数',
@@ -6169,6 +6250,7 @@ enum AppStrings {
     'saveStepHandingBack': '원래 문서로 파일을 넘기는 중…',
     'openProgressRunning': '여는 중…',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
+    'openWaitingReadingTemplate': '파일을 읽는 중 · {sec}초',
     'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
     'bakeProgressRunning': '래스터라이즈 중…',
@@ -6312,7 +6394,7 @@ enum AppStrings {
     'memoryTracked': '내역을 아는 만큼',
     'memoryUntracked': '엔진·폰트·프레임워크',
     'memoryAvailable': '아직 쓸 수 있는 양',
-    'memoryPinned': '재생용으로 붙잡힘',
+    'memoryPinned': '화면에 띄운 그림',
     'memoryDeviceTotal': '기기 메모리',
     'memoryAllowance': '앱 허용치',
     'memoryAllowanceAutomatic': '자동 허용치로 되돌리기',
@@ -6404,6 +6486,17 @@ enum AppStrings {
         '원인: 그래픽 장치가 잘못된 명령을 받아 초기화되었습니다. 이 앱 때문인지 '
         '다른 프로그램 때문인지는 확인되지 않았습니다.',
     'gpuWentByDriver': '원인: 그래픽 드라이버 안에서 오류가 났습니다.',
+    // 🗣️유저 2026-11-16 (a-lost-gpu-leaves-the-window-unpainted-Q1): 「윈도
+    // 창으로 알리고 저장하고 다시 시작할지 묻는다」 — 「화면을 그리는 그래픽
+    // 장치가 멈췄습니다」 + [저장하고 다시 시작] [닫기].
+    'screenWentTitle': '화면을 그리는 그래픽 장치가 멈췄습니다.',
+    'screenWentMessage':
+        '화면은 더 그려지지 않습니다. 「저장하고 다시 시작」을 누르면 열린 프로젝트를 모두 저장한 뒤 같은 프로젝트로 앱을 다시 시작합니다.',
+    'screenWentSaveAndRestart': '저장하고 다시 시작',
+    'screenWentQuitWithoutSaving': '저장하지 않고 종료',
+    'screenWentNotSaved': '저장하지 못한 프로젝트가 있어 다시 시작하지 않았습니다.',
+    'screenWentNotStarted':
+        '앱을 다시 시작하지 못했습니다. 프로젝트는 저장되었습니다. 앱을 닫고 다시 시작해 주세요.',
     'uiScaleLabel': 'UI 크기',
     'colorModeLabel': '화면 모드',
     'colorModeDark': '다크',
@@ -6664,6 +6757,11 @@ enum AppStrings {
     'effectKind.celNumber': '셀 번호',
     'effectKind.equalizer': '이퀄라이저',
     'effectKind.compressor': '컴프레서',
+    'effectKind.noiseRemoval': '노이즈 제거',
+    'soundPreset.dialogue': '대사',
+    'soundPreset.music': '음악',
+    'soundPreset.soundEffects': '효과음',
+    'soundPreset.ambience': '환경음',
     'effectKind.plugin': '플러그인',
     'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
@@ -6773,6 +6871,14 @@ enum AppStrings {
     'mediaPresetMenu': '배치 프리셋',
     'mediaPresetSpan': '시작 · 끝',
     'mediaPresetTitleTemplate': '배치 프리셋 — {name}',
+    'mediaSync': '프리셋에 동기화',
+    'mediaSyncTitleTemplate': '동기화 — {name}',
+    'mediaSyncFields': '맞출 칸 — 프리셋 값',
+    'mediaSyncPlacesTemplate': '맞출 곳 — 쓰는 곳 {total} 중 다른 곳 {parting}',
+    'mediaSyncSame': '같음',
+    'mediaSyncApplyTemplate': '적용 ({n}곳)',
+    'mediaSyncApplyAll': '모두 적용',
+    'mediaSyncApplyAllTemplate': '모두 적용 ({n}곳)',
     'mediaMono': '모노',
     'mediaStereo': '스테레오',
     'mediaChannelsTemplate': '{n}채널',
@@ -7017,6 +7123,7 @@ enum AppStrings {
     'exPresets': '프리셋',
     'exQueue': '대기열',
     'exSize': '크기',
+    'exCelSize': '셀 크기',
     'exCutSize': '컷 크기',
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
@@ -7803,6 +7910,7 @@ enum AppStrings {
     'linkWindowUnsync': '동기 해제',
     'tlResetGroup': '리셋 (키는 유지)',
     'tlEffects': '이펙트',
+    'tlEffectPresets': '프리셋',
     'tlEffectsOfSound': '오디오',
     'tlEffectsOfPicture': '영상',
     'tlAddEffectTemplate': '{name} 추가',
@@ -7830,7 +7938,6 @@ enum AppStrings {
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
-    'sbOneStoryboardRowPerCut': '이 컷에는 이미 콘티 레이어가 있습니다. 컷당 하나만 가능합니다.',
     'cnHeadCut': '컷',
     'cnHeadPicture': '화면',
     'cnHeadAction': '내용',
@@ -7856,7 +7963,6 @@ enum AppStrings {
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
     'tlShowSeRows': 'SE 행 표시',
     'tlShowCameraRows': '카메라 행 표시',
-    'shortcutAction.layer-storyboard': '콘티 레이어',
     'setLengthAction': '노출 길이 설정',
     'markEveryField': '간격',
     'frameCountEntryFrames': '프레임',
@@ -8296,7 +8402,7 @@ enum AppStrings {
     'memoryTracked': 'Détail connu',
     'memoryUntracked': 'Moteur, polices et framework',
     'memoryAvailable': 'Encore disponible',
-    'memoryPinned': 'retenu pour la lecture',
+    'memoryPinned': "affiché à l'écran",
     'memoryDeviceTotal': "Mémoire de l'appareil",
     'memoryAllowance': "Allocation de l'app",
     'memoryAllowanceAutomatic': "Revenir à l'allocation automatique",
@@ -8411,6 +8517,20 @@ enum AppStrings {
         "invalide. Il n'a pas été possible de déterminer si elle venait de "
         "ce programme ou d'un autre.",
     'gpuWentByDriver': 'Cause : une erreur interne du pilote graphique.',
+    'screenWentTitle':
+        "Le périphérique graphique qui dessine l'écran s'est arrêté.",
+    'screenWentMessage':
+        "L'écran ne peut plus être affiché. « Enregistrer et redémarrer » "
+        'enregistre tous les projets ouverts, puis relance le programme '
+        'avec les mêmes projets.',
+    'screenWentSaveAndRestart': 'Enregistrer et redémarrer',
+    'screenWentQuitWithoutSaving': 'Quitter sans enregistrer',
+    'screenWentNotSaved':
+        "Certains projets n'ont pas pu être enregistrés : le programme n'a "
+        'pas été redémarré.',
+    'screenWentNotStarted':
+        "Le programme n'a pas pu être redémarré. Vos projets sont "
+        'enregistrés : fermez le programme puis relancez-le.',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -8673,6 +8793,11 @@ enum AppStrings {
     'effectKind.celNumber': 'Numéro de cellulo',
     'effectKind.equalizer': 'Égaliseur',
     'effectKind.compressor': 'Compresseur',
+    'effectKind.noiseRemoval': 'Réduction du bruit',
+    'soundPreset.dialogue': 'Dialogue',
+    'soundPreset.music': 'Musique',
+    'soundPreset.soundEffects': 'Effets sonores',
+    'soundPreset.ambience': 'Ambiance',
     'effectKind.plugin': 'Plug-in',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
@@ -8779,6 +8904,14 @@ enum AppStrings {
     'mediaPresetMenu': 'Préréglage de placement',
     'mediaPresetSpan': 'Début · Fin',
     'mediaPresetTitleTemplate': 'Préréglage de placement — {name}',
+    'mediaSync': 'Synchroniser au préréglage',
+    'mediaSyncTitleTemplate': 'Synchroniser — {name}',
+    'mediaSyncFields': 'Champs à aligner — valeur du préréglage',
+    'mediaSyncPlacesTemplate': 'Emplacements à aligner — {parting} sur {total} diffèrent',
+    'mediaSyncSame': 'Identique',
+    'mediaSyncApplyTemplate': 'Appliquer ({n})',
+    'mediaSyncApplyAll': 'Appliquer à tous',
+    'mediaSyncApplyAllTemplate': 'Appliquer à tous ({n})',
     'mediaMono': 'Mono',
     'mediaStereo': 'Stéréo',
     'mediaChannelsTemplate': '{n} canaux',
@@ -9043,6 +9176,7 @@ enum AppStrings {
     'exPresets': 'Préréglages',
     'exQueue': 'File d\'attente',
     'exSize': 'Taille',
+    'exCelSize': 'Taille des cellulos',
     'exCutSize': 'Taille du plan',
     'exRealSheet': 'Feuille réelle',
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
@@ -9908,6 +10042,7 @@ enum AppStrings {
     'linkWindowUnsync': 'Désynchroniser',
     'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlEffects': 'Effets',
+    'tlEffectPresets': 'Préréglages',
     'tlEffectsOfSound': 'Audio',
     'tlEffectsOfPicture': 'Vidéo',
     'tlAddEffectTemplate': 'Ajouter {name}',
@@ -9940,8 +10075,6 @@ enum AppStrings {
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
-    'sbOneStoryboardRowPerCut':
-        'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'blockFrameLinesLabel': "Lignes d'image dans les blocs",
     'brDualBlend': 'Fusion double',
     'brTextureBrightness': 'Luminosité',
@@ -9954,6 +10087,7 @@ enum AppStrings {
     'mediaRelinkScanning': 'Lecture du dossier…',
     'openProgressRunning': 'Ouverture…',
     'openWaitingCloudTemplate': 'Téléchargement depuis le cloud · {sec} s',
+    'openWaitingReadingTemplate': 'Lecture du fichier · {sec} s',
     'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
     'prefsDisplay': 'Affichage',
     'uiScaleLabel': "Taille de l'interface",
@@ -10005,7 +10139,6 @@ enum AppStrings {
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
     'tlShowSeRows': 'Afficher les lignes SE',
     'tlShowCameraRows': 'Afficher les lignes caméra',
-    'shortcutAction.layer-storyboard': 'Calque storyboard',
     'setLengthAction': "Définir la durée d'exposition",
     'markEveryField': 'Intervalle',
     'frameCountEntryFrames': 'Images',
@@ -10387,7 +10520,7 @@ enum AppStrings {
     'memoryTracked': '已知明细',
     'memoryUntracked': '引擎、字体与框架',
     'memoryAvailable': '尚可使用',
-    'memoryPinned': '播放占用中',
+    'memoryPinned': '屏幕上显示的画面',
     'memoryDeviceTotal': '设备内存',
     'memoryAllowance': '应用配额',
     'memoryAllowanceAutomatic': '恢复自动配额',
@@ -10456,6 +10589,13 @@ enum AppStrings {
     'gpuWentByRemoval': '原因：很可能是显卡驱动已更新，或显卡被禁用或断开。这不是本程序造成的。',
     'gpuWentByReset': '原因：显卡收到无效命令后被重置。无法确定该命令来自本程序还是其他程序。',
     'gpuWentByDriver': '原因：显卡驱动内部发生错误。',
+    'screenWentTitle': '绘制画面的图形设备已停止。',
+    'screenWentMessage':
+        '画面已无法继续绘制。点击“保存并重新启动”会保存所有打开的项目，然后用相同的项目重新启动程序。',
+    'screenWentSaveAndRestart': '保存并重新启动',
+    'screenWentQuitWithoutSaving': '不保存并退出',
+    'screenWentNotSaved': '有项目未能保存，因此没有重新启动程序。',
+    'screenWentNotStarted': '无法重新启动程序。项目已保存，请关闭程序后重新启动。',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',
@@ -10704,6 +10844,11 @@ enum AppStrings {
     'effectKind.celNumber': '赛璐珞编号',
     'effectKind.equalizer': '均衡器',
     'effectKind.compressor': '压缩器',
+    'effectKind.noiseRemoval': '降噪',
+    'soundPreset.dialogue': '对白',
+    'soundPreset.music': '音乐',
+    'soundPreset.soundEffects': '音效',
+    'soundPreset.ambience': '环境音',
     'effectKind.plugin': '插件',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
@@ -10810,6 +10955,14 @@ enum AppStrings {
     'mediaPresetMenu': '放置预设',
     'mediaPresetSpan': '开始 · 结束',
     'mediaPresetTitleTemplate': '放置预设 — {name}',
+    'mediaSync': '同步到预设',
+    'mediaSyncTitleTemplate': '同步 — {name}',
+    'mediaSyncFields': '要对齐的项 — 预设值',
+    'mediaSyncPlacesTemplate': '要对齐的位置 — 使用中 {total} 处中不同 {parting} 处',
+    'mediaSyncSame': '相同',
+    'mediaSyncApplyTemplate': '应用（{n}）',
+    'mediaSyncApplyAll': '全部应用',
+    'mediaSyncApplyAllTemplate': '全部应用（{n}）',
     'mediaMono': '单声道',
     'mediaStereo': '立体声',
     'mediaChannelsTemplate': '{n}声道',
@@ -11049,6 +11202,7 @@ enum AppStrings {
     'exPresets': '预设',
     'exQueue': '队列',
     'exSize': '尺寸',
+    'exCelSize': '赛璐珞尺寸',
     'exCutSize': '镜头尺寸',
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
@@ -11780,6 +11934,7 @@ enum AppStrings {
     'linkWindowUnsync': '取消同步',
     'tlResetGroup': '重置（保留关键帧）',
     'tlEffects': '效果',
+    'tlEffectPresets': '预设',
     'tlEffectsOfSound': '音频',
     'tlEffectsOfPicture': '视频',
     'tlAddEffectTemplate': '添加{name}',
@@ -11805,7 +11960,6 @@ enum AppStrings {
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
-    'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'blockFrameLinesLabel': '块内帧线',
     'brDualBlend': '双重混合',
     'brTextureBrightness': '亮度',
@@ -11818,6 +11972,7 @@ enum AppStrings {
     'mediaRelinkScanning': '正在读取该文件夹…',
     'openProgressRunning': '正在打开…',
     'openWaitingCloudTemplate': '正在从云端下载 · {sec} 秒',
+    'openWaitingReadingTemplate': '正在读取文件 · {sec} 秒',
     'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
     'prefsDisplay': '显示',
     'uiScaleLabel': '界面大小',
@@ -11884,7 +12039,6 @@ enum AppStrings {
     'tlProjectAudioRate': '项目音频采样率',
     'tlShowSeRows': '显示 SE 行',
     'tlShowCameraRows': '显示摄影机行',
-    'shortcutAction.layer-storyboard': '分镜图层',
     'setLengthAction': '设置曝光长度',
     'markEveryField': '间隔',
     'frameCountEntryFrames': '帧数',

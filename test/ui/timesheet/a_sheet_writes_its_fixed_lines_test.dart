@@ -205,7 +205,10 @@ void main() {
         ['c2 × c3 カットO.L'],
       ]);
 
-      final source = buildConteSheetSource(work, olWord: olWord);
+      final source = buildConteSheetSource(
+        work,
+        words: (ol: olWord, wholeCut: ja.wholeCut),
+      );
       final conte = [
         for (final line in source.cuts.first.cells.first.fixedLines.writtenIn(
           ja,
@@ -260,7 +263,8 @@ void main() {
       ]);
     });
 
-    test('⛔a conte cell keeps what it holds of a move two cells share', () {
+    test('⛔a conte cell keeps what it holds of a move two cells share — '
+        'the part it holds, by its ends (F-622)', () {
       final work = Project(
         id: const ProjectId('sheet-camera'),
         name: 'Sheet camera',
@@ -283,8 +287,8 @@ void main() {
         for (final cell in buildConteSheetSource(work).cuts.single.cells)
           cell.fixedLines.camera.where((line) => line.contains('PAN')),
       ];
-      expect(first, ['21f-41f PAN (0+10)']);
-      expect(second, ['21f-41f PAN (0+11)']);
+      expect(first, ['21f-30f PAN (0+10)']);
+      expect(second, ['31f-41f PAN (0+11)']);
     });
 
     test('a cut on no track writes none', () {
@@ -336,6 +340,18 @@ void main() {
         <String>[],
         <String>[],
       ]);
+    });
+
+    test('🎯a conte of one panel writes the same line — 「타임시트용지패널이랑 '
+        '똑같이 대상-대상 T.B (全尺)」 (F-622)', () {
+      final work = workOf(CutCamera(keyframes: {0: at(0), 23: at(40)}));
+      final conte = buildConteSheetSource(
+        work,
+        words: (ol: olWord, wholeCut: ja.wholeCut),
+      ).cuts.single.cells.single.fixedLines.writtenIn(ja);
+
+      expect(conte, pagesOf(work, 0, 1).single);
+      expect(conte, ['1f-24f PAN (全尺)'], reason: 'fixture');
     });
   });
 

@@ -156,6 +156,52 @@ void main() {
     expect(stabilizer.lookAtFrame(_ms(520)), isEmpty, reason: 'marks only');
   });
 
+  // 🎯THE D (H56, 2026-11-19): a frame came between the line and the
+  // points a busy thread had yet to hand over; the line stood still for
+  // every one of them and then cut straight across.
+  test('a sample from before where the frames took the line — its points '
+      'came late, behind a busy thread — still moves it, by its own time '
+      'since the sample before', () {
+    final stabilizer = _from(CanvasPoint(x: 0, y: 0));
+    stabilizer.follow(CanvasPoint(x: 100, y: 0), _rest, at: Duration.zero);
+    stabilizer.lookAtFrame(_ms(7000));
+    stabilizer.lookAtFrame(_ms(7010));
+    final late = stabilizer.follow(
+      CanvasPoint(x: 100, y: 100),
+      _rest,
+      at: _ms(5),
+    );
+    final share = 1 - math.exp(-0.5);
+    final framesLeftIt = 100 * _oneLag;
+    expect(
+      late.single.position.x,
+      closeTo(framesLeftIt + (100 - framesLeftIt) * share, 1e-9),
+    );
+    expect(late.single.position.y, closeTo(100 * share, 1e-9));
+  });
+
+  // 🎯A STROKE WITH NO LATE SAMPLE IS LAID AS IT WAS (관제 11-19): what
+  // takes a late sample from the sample before touches no other.
+  test('a sample from after where the frames took the line — the pen did '
+      'rest — closes only its own time past them, from where they left '
+      'it', () {
+    final stabilizer = _from(CanvasPoint(x: 0, y: 0));
+    stabilizer.follow(CanvasPoint(x: 100, y: 0), _rest, at: Duration.zero);
+    stabilizer.lookAtFrame(_ms(7000));
+    stabilizer.lookAtFrame(_ms(7010));
+    final onTime = stabilizer.follow(
+      CanvasPoint(x: 100, y: 100),
+      _rest,
+      at: _ms(20),
+    );
+    final framesLeftIt = 100 * _oneLag;
+    expect(
+      onTime.single.position.x,
+      closeTo(framesLeftIt + (100 - framesLeftIt) * _oneLag, 1e-9),
+    );
+    expect(onTime.single.position.y, closeTo(100 * _oneLag, 1e-9));
+  });
+
   test('the line settles exactly on a resting pen, readings and all, and '
       'then nothing moves it', () {
     final stabilizer = _from(CanvasPoint(x: 0, y: 0));

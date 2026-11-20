@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use super::{TileRect, words_buffer};
 use crate::device::Engine;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
+use crate::kernels::composite::{Lent, TILE, TILE_TEXELS};
 use crate::kernels::effects::tests::rgba;
 use crate::testing::read_buffer;
 
@@ -58,10 +58,12 @@ pub(super) struct Blurred {
 }
 
 impl Blurred {
-    /// `out`, the tiles over `rect` a blur put.
-    pub(super) fn read(engine: &Engine, rect: TileRect, out: &wgpu::Buffer) -> Self {
-        let words = read_buffer(engine, out)
+    /// `out`, the tiles over `rect` a blur put: the words of those tiles,
+    /// of a buffer that may hold more (`composite/spares.rs`).
+    pub(super) fn read(engine: &Engine, rect: TileRect, out: &Lent) -> Self {
+        let words = read_buffer(engine, out.buffer())
             .chunks_exact(4)
+            .take((rect.tiles() * TILE_TEXELS) as usize)
             .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
             .collect();
         Blurred { rect, words }

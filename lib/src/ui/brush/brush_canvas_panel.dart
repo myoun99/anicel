@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuRefused;
 
 import '../canvas/canvas_drag_in_flight.dart';
 import '../canvas/shown_cels.dart';
@@ -16,13 +17,14 @@ import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/input/modifier_keys.dart';
+import '../../services/input/pen_path.dart';
 import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
 import '../../services/bitmap_surface_geometry.dart'
-    show bitmapSurfaceContentBounds, celTextPlateSurface;
+    show bitmapSurfaceContentBounds, celTextPlateSurface, rememberInkOf;
 import '../../services/bitmap_surface_brush_commit.dart'
     show materializeBrushDabSequenceOnBitmapSurface;
 import '../../services/brush_stroke_blend.dart'
@@ -123,6 +125,8 @@ import '../../services/layer_pose_matrix.dart' show placedRectBounds;
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
+import '../../core/progress_share.dart';
+import '../../core/screens_turn.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
@@ -178,6 +182,36 @@ part 'canvas_panel/canvas_panel_control_holds.dart';
 /// plugin at its chain's head, while that ran on the cel here
 /// (float-warp-resamples-in-the-c-engine (2), 2026-11-11).
 typedef _ShownThrough = String;
+
+/// What a painter of the row being drawn on was made for: the surface
+/// it reads, the cel it is scoped to, and what that is shown through.
+typedef _PainterToken = ({
+  BitmapSurface surface,
+  BrushFrameKey key,
+  _ShownThrough fx,
+});
+
+/// Whether [now] is what a painter made for [was] draws: the very
+/// surface — the object —, its cel and what it is shown through.
+///
+/// 🚨THE SURFACE BY IDENTITY, NEVER BY ITS PIXELS. ↩️Till 2026-11-20 the
+/// two were compared as records, and a record asks each field `==`: a
+/// surface answers that with its tiles' pixels, so the build after
+/// every stroke read the tile the engine had just landed back from it
+/// — on this thread, a wait for the GPU, and the tile's bytes here
+/// ahead of the rest that copies them — to learn that a commit had
+/// swapped the surface. 🔬Main PC, S5 cut 352, a hand's round with
+/// every read of a tile here counted by its asker (브러시/렌더링,
+/// card cel-originals-are-held-twice-in-ram-and-on-the-gpu ②): one or
+/// two tiles read back at every stroke after the first, and no other
+/// asker in the round read one back. Whoever hands a surface here
+/// hands the same object till what it shows changes — the cel's
+/// session, the lift's hole, the text's, the preview's.
+bool _drawsTheSame(_PainterToken now, _PainterToken? was) =>
+    was != null &&
+    identical(now.surface, was.surface) &&
+    now.key == was.key &&
+    now.fx == was.fx;
 
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
@@ -321,6 +355,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.backdropNone,
     this.onBackdropColorChanged,
     this.onBackdropNone,
+    this.onStagePlanesSettled,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -337,7 +372,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.shapeFillRangeFor,
     this.selectionMaskOptions,
     this.transformOptions,
-    this.viewCommands,
     this.selectionCommands,
     this.textCommands,
     this.textToolOptions,
@@ -913,6 +947,11 @@ class BrushCanvasPanel extends StatefulWidget {
   final bool? backdropNone;
   final VoidCallback? onBackdropNone;
 
+  /// A colour window of the three planes closed: the colours its wheel
+  /// passed came through the changed callbacks, shown, and the one it
+  /// rests on is written now, once (F-620-Q1).
+  final VoidCallback? onStagePlanesSettled;
+
   /// An eyedropper pick — the tool's tap and drag, and a held mapped
   /// button's live pick alike. ONE pick (I-15): the Alt-only pick that stood
   /// beside it is gone, because Alt switches to the eyedropper tool now.
@@ -977,10 +1016,6 @@ class BrushCanvasPanel extends StatefulWidget {
   /// grid — turned by the box's pill too (I-165). Null keeps the defaults,
   /// which is what focused tests want.
   final ValueNotifier<TransformToolOptions>? transformOptions;
-
-  /// The app-level rotate/flip shortcut channel (P8); the panel binds its
-  /// viewport-center handlers while mounted.
-  final CanvasViewCommands? viewCommands;
 
   /// The app-level selection channel (P9: Ctrl+D, arrow nudges), bound by
   /// the selection layer while a selection tool is active.
@@ -1305,6 +1340,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// behind the gear (유저 확정 2026-08-13: 「바닥 둘만」).
   bool get _onFloor => _floor != null;
 
+  /// What the view keys drive, as the floor hands it ([CanvasFloorInsets
+  /// .viewCommands]) — this panel's presses bound while it lies there
+  /// (F-623), none anywhere else.
+  CanvasViewCommands? _viewCommands;
+
   /// The edges of this panel's box that other panels are lying on — of the
   /// split [canvasVisibleRect] describes, what is not part of the window the
   /// artist looks through.
@@ -1345,8 +1385,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The token is what the painter DRAWS — the surface it reads and the cel
   /// it is scoped to. A commit swaps the surface and the memo falls.
   BitmapSurfacePainter? _memoActiveSurfacePainter;
-  ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})?
-  _activeSurfacePainterToken;
+  _PainterToken? _activeSurfacePainterToken;
 
   // ── the tool cursor: its own object, in its own file ────────────────
   //
@@ -1423,7 +1462,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return null;
     }
     if (_memoActiveSurfacePainter != null &&
-        token == _activeSurfacePainterToken) {
+        _drawsTheSame(token, _activeSurfacePainterToken)) {
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
@@ -1534,7 +1573,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void initState() {
     super.initState();
     _saveKeeper?.up(_landWorkInFlight);
-    _viewportState.bindViewCommands();
     _hearTheHand();
     _stampPreview.addListener(_showStampGhost);
     // The softness is read where it is used, so nothing rebuilds this panel
@@ -1631,6 +1669,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _shellBars.readStageColors();
     _floor = CanvasFloorInsets.maybeOf(context);
+    final viewCommands = _floor?.viewCommands;
+    if (!identical(viewCommands, _viewCommands)) {
+      _viewCommands?.unbind(this);
+      _viewCommands = viewCommands?..bind(this, _viewportState.viewPresses);
+    }
     _lane = _onFloor
         ? AppScrollbarLane.thick
         : AppScrollbarLaneScope.of(context);
@@ -1724,9 +1767,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
     }
-    // A stamp's drag in flight as the canvas goes ends with it: nothing
-    // waits for it any more ([_StampTrail]).
-    _tap._trail.drop();
+    // A stamp's drag in flight as the canvas goes lands what it laid, and
+    // ends with it: nothing waits for it any more ([_StampTrail]).
+    _tap._trail.leave();
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     _stopAskingTheGhost();
@@ -1757,7 +1800,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _penPose.dispose();
     _stampPreview.dispose();
     _controlHolds.dispose();
-    widget.viewCommands?.unbind(this);
+    _viewCommands?.unbind(this);
     super.dispose();
   }
 
@@ -1976,10 +2019,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         oldWidget.backdropNone != widget.backdropNone ||
         oldWidget.pasteboardNone != widget.pasteboardNone) {
       _shellBars.readStageColors();
-    }
-    if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
-      oldWidget.viewCommands?.unbind(this);
-      _viewportState.bindViewCommands();
     }
     // A host can hand over a DIFFERENT view to own — a document tab
     // swapping slots. Follow the new object, and stop hearing the old one.
@@ -2254,11 +2293,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // strokes) — 유저 direction ⑧b.
               onLiftRequested:
                   _selectionSeat.handleSelectionLift,
+              onBoxAtRest: _selectionSeat.boxAtRest,
               onLiftConfirmed:
                   _lift.handleLiftConfirmed,
               onLiftReverted:
                   _lift.handleLiftReverted,
               confirmLandsOn: () => _lift.confirmLandsOn,
+              confirmAhead: _lift.confirmAhead,
               // R26 #13 follow-up: the implicit
               // whole-picture box frames the
               // cel's tight ink bounds.
@@ -2361,6 +2402,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       gradientRangeHold: _rangeHold,
       onActiveStrokeChanged: (stroke) {
         if (_stroke != stroke) {
+          if (_stroke == StrokeInFlight.none) {
+            widget.coordinator?.aStrokeGoesUp();
+          }
           widget.onStrokeInputActiveChanged?.call(stroke);
           // ⛔NOT a setState (2026-09-26): nothing the panel draws reads
           // this — the gesture layer asks for it when an event arrives —
@@ -2587,10 +2631,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null) {
       return null;
     }
+    final rows = [
+      for (final under in _celsUnderfoot())
+        (surface: coordinator.currentSurfaceOf(under.key), under: under),
+    ];
+    // 🗣️브러시/렌더링 2026-11-20: the ink of every row not known yet is
+    // found in one scan — the scan waits for the GPU once a call.
+    rememberInkOf([
+      for (final row in rows)
+        if (!_inkMemo.containsKey(row.surface)) row.surface,
+    ]);
     ({int left, int top, int rightExclusive, int bottomExclusive})? held;
     final asked = Set<BitmapSurface>.identity();
-    for (final under in _celsUnderfoot()) {
-      final surface = coordinator.currentSurfaceOf(under.key);
+    for (final (:surface, :under) in rows) {
       asked.add(surface);
       final shown = _whereTheRowShows(_inkOf(surface), under.placement);
       if (shown == null) {
@@ -2754,13 +2807,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (!AppInput.toolAcceptsPointer(event.kind)) {
       return;
     }
-    final point = _viewportState.canvasPointOf(event);
+    // 🗣️F-612 (유저 2026-11-18 「다른 도구같은곳에서도 검사후 통일적용」):
+    // the stamp's trail goes along every point the OS saw ([PenPath]), as
+    // a stroke's line does — it went from the newest point of each move
+    // to the next, straight across what the hand did while the UI was
+    // busy. The dropper reads where the press is now.
     if (canvasToolStamps(_brush.tool)) {
-      _tap.dragStampTo(point);
+      for (final point in PenPath.eventsOf(event)) {
+        _tap.dragStampTo(_viewportState.canvasPointOf(point));
+      }
       return;
     }
     if (_brush.tool == CanvasTool.eyedropper) {
-      _tap.toolTapHandler()?.call(point);
+      _tap.toolTapHandler()?.call(_viewportState.canvasPointOf(event));
     }
   }
 
@@ -2945,7 +3004,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ),
       pieces: () sync* {
         if (answer() case final answer?) {
-          yield answer.dab;
+          yield* answer.dabs;
         }
       },
       blend: blend,
@@ -2969,9 +3028,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         asked = true;
         answered = pieceDabs(
           coordinator: coordinator,
-          ground: ground,
+          ground: ground.on(standing, coordinator.frameStore.canonicalKeyOf),
           stamp: stamp,
-          only: standing,
         )[standing];
       }
       return answered;
@@ -3275,11 +3333,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        () {
-          if (mounted) {
-            _landStamp((_) => dab);
-          }
-        },
+        _landStamp(_stampLaying([(_) => dab])),
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
         ),
@@ -3290,9 +3344,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// Lands the held piece with the stamp tool's own blend — [onTheRow] is
-  /// the piece as a row standing at a placement takes it
-  /// ([PieceStamp.onTheRow]).
+  /// The held piece laid as [laid] lays it ([PieceStamp.laid]), in the
+  /// stamp's own blend — as its opacity is ([pasteCutPieceAtOrigin]) and as
+  /// its ghost shows it. ↩️It read the tool in hand — the same number only
+  /// while the stamp's own tile was the one pressing.
+  PieceStamp _stampLaying(List<PieceOnTheRow> laid) => PieceStamp.along(
+    laid: laid,
+    blend: _brush.cutStampBlendMode,
+    description: 'Stamp',
+  );
+
+  /// Lands [stamp] on [ground] — the ground a press reads now, unless the
+  /// press that began a drag read it already ([_StampTrail]).
   ///
   /// 🚨★★★**ALL THREE STAMP ROADS, THROUGH THE PIECE DOOR** ([pieceLandings])
   /// — a press on the canvas, a drag's trail and 원래 위치에 붙여넣기 land
@@ -3312,29 +3375,40 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// is the trail's first stamp, and a window put ahead of it would land the
   /// trail before the press. Only 원래 위치에 붙여넣기 stands behind one
   /// ([pasteCutPieceAtOrigin]).
-  void _landStamp(BrushDab? Function(LayerPlacement? placement) onTheRow) {
+  ///
+  /// The press: its landings named as it is pressed, the step that lands
+  /// them, and each cel's landing worked out ahead of it for the door that
+  /// stands it behind the window (`BrushLiftMoveHistoryCommand.workAhead`,
+  /// 🗣️F-615) — a press on the canvas takes its step at once.
+  ///
+  /// [shown] names the cel a drag's trail was already written on, and the
+  /// picture it was written over: that cel lands as it shows
+  /// (`BrushLiftMoveHistoryCommand.shownOver`). [rebuild] false takes the
+  /// step without rebuilding the panel: a drag that lands as the canvas
+  /// goes away ([_StampTrail.leave]).
+  PressedStep _landStamp(
+    PieceStamp stamp, {
+    PieceGround? ground,
+    ({BrushFrameKey cel, BitmapSurface before})? shown,
+    bool rebuild = true,
+  }) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
-      return;
+      return (ahead: null, step: () {});
     }
-    // The stamp's own, as its opacity is ([pasteCutPieceAtOrigin]) and as
-    // its ghost shows it. ↩️It read the tool in hand — the same number only
-    // while the stamp's own tile was the one pressing.
-    final blend = _brush.cutStampBlendMode;
     final landed = pieceLandings(
       coordinator: coordinator,
-      ground: _pieceGround(coordinator),
-      stamp: PieceStamp(
-        onTheRow: onTheRow,
-        blend: blend,
-        description: 'Stamp',
-      ),
+      ground: ground ?? _pieceGround(coordinator),
+      stamp: stamp,
       cacheInvalidationSink: widget.cacheInvalidationSink,
     );
+    if (shown != null) {
+      landed[shown.cel]?.landing.shownOver(shown.before);
+    }
     if (landed.isEmpty) {
       // No cel named, or nothing of the piece inside the selection: nothing
       // lands, nothing undoes.
-      return;
+      return (ahead: null, step: () {});
     }
     // What landed, cut as it landed — the pixels 확정 lays down again
     // ([LastStrokeSlot]): the cel you stand on's share when it took one.
@@ -3344,25 +3418,58 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       coordinator.activeFrameKey,
     );
     final record = landed[standing] ?? landed.values.first;
-    widget.lastStroke?.hold(
-      BrushStrokeCommitData(
-        sourceDabs: [record.dab],
-        blendMode: blend,
-        selection: record.within,
-      ),
+    final landings = [for (final cel in landed.values) cel.landing];
+    final history = widget.historyManager;
+    final step = history == null
+        ? null
+        : oneStepOf(stamp.description, landings);
+    return (
+      ahead: switch (step) {
+        final WorksAheadCommand works => works.workAhead(undo: false),
+        _ => null,
+      },
+      step: () {
+        if (!mounted) {
+          return;
+        }
+        widget.lastStroke?.hold(
+          BrushStrokeCommitData(
+            sourceDabs: record.dabs,
+            blendMode: stamp.blend,
+            selection: record.within,
+          ),
+        );
+        _takeTheStamp(step, landings, rebuild: rebuild);
+      },
     );
-    setState(() {
-      final landings = [for (final cel in landed.values) cel.landing];
-      final historyManager = widget.historyManager;
-      if (historyManager == null) {
-        // Headless hosts (focused tests): land raw.
+  }
+
+  /// The stamp's [step] taken, as one undo — or, in a headless host with no
+  /// history to take it (focused tests), its [landings] landed raw.
+  ///
+  /// [rebuild] false while the panel is being disposed: a rebuild asked of
+  /// a State on its way out throws ([_landStamp]).
+  void _takeTheStamp(
+    Command? step,
+    List<Command> landings, {
+    required bool rebuild,
+  }) {
+    final history = widget.historyManager;
+    void take() {
+      if (history == null || step == null) {
         for (final landing in landings) {
           landing.execute();
         }
         return;
       }
-      historyManager.executeAsOneStep('Stamp', landings);
-    });
+      history.execute(step);
+    }
+
+    if (!rebuild) {
+      take();
+      return;
+    }
+    setState(take);
     // ⛔The ghost is not asked again here: the rebuild above asks, as an
     // undo's does ([_askTheGhostAgain]) — one road for every write under
     // it. ↩️It was asked here, a count of stamps landed in its shape: an
@@ -4533,6 +4640,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.currentColorOf,
     required this.onBackdropColorChanged,
     required this.onBackdropNone,
+    required this.onStagePlanesSettled,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
     required this.liveViewport,
@@ -4558,10 +4666,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// floor's does, wherever the panel stands.
   final bool oneToOneOnPill;
 
-  /// Whether the view KEYS drive this canvas — its panel holds the
-  /// [BrushCanvasPanel.viewCommands] the key funnel calls (I-40). Only then
-  /// do its view buttons name their keys: on any other canvas the same key
-  /// moves the editor's canvas, not this one ([_viewKeys]).
+  /// Whether the view KEYS drive this canvas — its panel lies on the floor
+  /// and holds the [CanvasViewCommands] the key funnel calls (I-40 ·
+  /// F-623). Only then do its view buttons name their keys: on any other
+  /// canvas the same key moves what lies on the floor, not this one
+  /// ([_viewKeys]).
   final bool drivenByViewKeys;
 
   /// R26 #41: host controls at the head of the pill.
@@ -4607,6 +4716,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   final ValueChanged<bool>? onPasteboardInUseChanged;
   final bool backdropNone;
   final VoidCallback? onBackdropNone;
+
+  /// A colour window of the three planes closed: the colours its wheel
+  /// passed came through the changed callbacks, shown, and the one it
+  /// rests on is written now, once (F-620-Q1).
+  final VoidCallback? onStagePlanesSettled;
 
   /// The tool's own colour, handed to every picker this bar opens for
   /// its 현재 색 반영 button (see [ColorSwatchButton.currentColorOf]).

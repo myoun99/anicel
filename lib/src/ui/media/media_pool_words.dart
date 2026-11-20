@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart' show IconData;
 
-import '../../models/import/cut_folder_edits.dart';
 import '../../models/kept_span.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
 import '../../services/media/media_facts.dart';
 import '../import/import_file_settings.dart' show importFitLabel;
@@ -25,7 +25,7 @@ import 'media_pool_list.dart';
 /// 종류 · 맞춤 · 시작 · 끝 · 길이.
 final class MediaPoolWords {
   const MediaPoolWords({
-    required this.framesPerSecond,
+    required this.clock,
     this.storedBytes = const {},
     this.conformBytes = const {},
     this.modifiedTimes = const {},
@@ -33,8 +33,12 @@ final class MediaPoolWords {
     this.soundFramesOf = _nothingHeard,
   });
 
+  /// The project's clock — what a length is told in, and what a movie's
+  /// frames are counted in the project's by ([placedPicturesOf]).
+  final ProjectClock clock;
+
   /// The project's counting base — what a length is told in.
-  final int framesPerSecond;
+  int get framesPerSecond => clock.rate.countingBase;
 
   /// What each carried file ACTUALLY occupies (유저 2026-08-30: 「아무튼
   /// 실제크기」) — see [sizeWord].
@@ -119,7 +123,7 @@ final class MediaPoolWords {
       MediaPoolColumn(
         id: 'kind',
         label: strings.mediaKindOfLayer,
-        wordOf: (asset) => layerKindDisplayName(kindOf(asset)),
+        wordOf: (asset) => layerKindDisplayName(placedKindOf(asset)),
         iconOf: kindIconOf,
         keepsRoomFor: [
           for (final kind in const [
@@ -199,7 +203,7 @@ final class MediaPoolWords {
     if (length == null || _isAStill(asset)) {
       return none;
     }
-    return _framesWord(asset, length);
+    return framesWord(asset, length);
   }
 
   /// `1920×1080 · 23.976 fps` — the picture's size, and a movie's rate.
@@ -249,21 +253,7 @@ final class MediaPoolWords {
         '${two(modified.hour)}:${two(modified.minute)}';
   }
 
-  /// The kind of layer [asset]'s preset places it as: a sound's SE block, and
-  /// a picture's kind as far as the pictures it keeps allow — the import
-  /// window's answer for the same file ([CutFolderEdits.holding], F-429).
-  LayerKind kindOf(MediaAsset asset) {
-    if (asset.kind == MediaAssetKind.audio) {
-      return LayerKind.se;
-    }
-    final pictures = asset.pictures;
-    final kept = pictures == null
-        ? 1
-        : asset.preset.spanOf(pictures).count;
-    return CutFolderEdits.holding(asset.preset.pictureKind, kept);
-  }
-
-  IconData kindIconOf(MediaAsset asset) => layerKindIcon(kindOf(asset));
+  IconData kindIconOf(MediaAsset asset) => layerKindIcon(placedKindOf(asset));
 
   /// How the preset fits a picture to the cut — nothing for a sound.
   String fitWord(MediaAsset asset) => asset.kind == MediaAssetKind.audio
@@ -273,14 +263,16 @@ final class MediaPoolWords {
   /// How long what the preset places runs ([MediaPreset.spanOf]).
   String spanWord(MediaAsset asset) {
     final span = _spanOf(asset);
-    return span == null ? none : _framesWord(asset, span.count);
+    return span == null ? none : framesWord(asset, span.count);
   }
 
-  /// The preset's first or last frame — counted from 1, as a transport
-  /// counts — or page.
+  /// A frame of a span — counted from 1, as a transport counts.
+  String frameWord(int frame) => '${frame + 1}';
+
+  /// The preset's first or last frame ([frameWord]) — or page.
   String _endWord(MediaAsset asset, int Function(KeptSpan span) end) {
     final span = _spanOf(asset);
-    return span == null ? none : '${end(span) + 1}';
+    return span == null ? none : frameWord(end(span));
   }
 
   /// What [asset]'s preset keeps of it — null for a still, which is held
@@ -293,10 +285,10 @@ final class MediaPoolWords {
   }
 
   /// [asset]'s whole length in what a placement counts — a sound's project
-  /// frames, a file's pictures ([MediaAsset.pictures]).
+  /// frames, a picture file's ([placedPicturesOf]).
   int? _lengthOf(MediaAsset asset) => asset.kind == MediaAssetKind.audio
       ? soundFramesOf(asset.path)
-      : asset.pictures;
+      : placedPicturesOf(asset, factsOf(asset.path)?.picture, clock);
 
   /// One picture in a picture file: a still, which has no length.
   bool _isAStill(MediaAsset asset) =>
@@ -304,7 +296,7 @@ final class MediaPoolWords {
 
   /// [count] of [asset]'s frames as a length — pages for a PDF, a running
   /// time for the rest.
-  String _framesWord(MediaAsset asset, int count) =>
+  String framesWord(MediaAsset asset, int count) =>
       asset.kind == MediaAssetKind.pdf
       ? AppText.strings.mediaPages(count)
       : runningTimeLabel(count, framesPerSecond);

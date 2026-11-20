@@ -84,7 +84,12 @@ void main() {
     final pasteInPlace = sourceBodyOf(panel, 'void pasteCutPieceAtOrigin()');
     expect(pasteInPlace.contains('_landStamp('), isTrue);
     expect(pasteInPlace.contains('_commitSourceStroke('), isFalse);
-    final landStamp = sourceBodyOf(panel, 'void _landStamp(');
+    // To the parameter list's close: named parameters open a brace of
+    // their own before the body's.
+    final landStamp = sourceBodyOf(
+      panel,
+      RegExp(r'PressedStep _landStamp\([^)]*\)'),
+    );
     expect(landStamp.contains('pieceLandings('), isTrue);
     expect(landStamp.contains('_commitSourceStroke('), isFalse);
 
@@ -92,12 +97,12 @@ void main() {
       'lib/src/ui/session/pixel_verbs.dart',
     ).readAsStringSync();
     expect(
-      sourceBodyOf(verbs, 'void _land(').contains('pieceLandings('),
+      sourceBodyOf(verbs, 'PressedStep _land(').contains('pieceLandings('),
       isTrue,
       reason: 'and the paste lands through the same one',
     );
     expect(
-      sourceBodyOf(verbs, 'void _pastePixels(').contains('_land('),
+      sourceBodyOf(verbs, 'PressedStep _pastePixels(').contains('_land('),
       isTrue,
     );
     // vanishing-point-types-Q5: 래스터라이즈 lays its picture as a paste does.
@@ -105,8 +110,7 @@ void main() {
     expect(
       sourceBodyOf(
         verbs,
-        'void landCanvasPicture(CutPiece picture, '
-        '{required String description})',
+        RegExp(r'PressedStep canvasPictureStep\([^)]*\)'),
       ).contains('_land('),
       isTrue,
     );

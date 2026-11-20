@@ -13,6 +13,7 @@ import '../../models/layer_effect.dart'
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../models/sound_preset.dart';
 import '../../native/window_full_screen.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_press.dart';
@@ -27,7 +28,8 @@ import '../text/model_vocabulary.dart'
         EffectKindWords,
         LayerBlendModeWords,
         LayerKindWords,
-        LayerMarkWords;
+        LayerMarkWords,
+        SoundPresetWords;
 import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
 import 'shortcut_activator_codec.dart' show modifiersAlone;
 import 'shortcut_shelf.dart';
@@ -417,6 +419,27 @@ List<EditorActionDefinition> _addEffectActions() => [
 ];
 
 String addEffectActionId(EffectKind kind) => 'effect-add-${kind.jsonValue}';
+
+/// The fx pill's プリセット rows as actions, one per sound preset
+/// ([SoundPreset]) — named as their column names them:
+/// 「プリセット: セリフ」.
+List<EditorActionDefinition> _soundPresetActions() => [
+  for (final preset in SoundPreset.values)
+    EditorActionDefinition.composed(
+      id: soundPresetActionId(preset),
+      name: (language) => soundPresetActionLabel(preset, language),
+      shelf: ShortcutShelf.fxPill,
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String soundPresetActionId(SoundPreset preset) =>
+    'effect-preset-${preset.jsonValue}';
+
+String soundPresetActionLabel(SoundPreset preset, AppLanguage language) =>
+    '${AppStrings.of(language).tlEffectPresets}: '
+    '${preset.labelFor(language)}';
 
 /// The rail legend's rows as actions — every row the columns' flyouts can
 /// show (`TimelineLegendMenus`), on the timeline's rail and the
@@ -894,7 +917,6 @@ abstract final class EditorActionIds {
   static const cutConvertLinked = 'cut-convert-linked';
   static const layerRename = 'layer-rename';
   static const layerDetach = 'layer-detach';
-  static const layerStoryboard = 'layer-storyboard';
   static const layerAttachFreeAbove = 'layer-attach-free-above';
   static const layerAttachFreeBelow = 'layer-attach-free-below';
   static const layerAttachSyncedAbove = 'layer-attach-synced-above';
@@ -2029,13 +2051,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerStoryboard,
-    label: 'Storyboard layer',
-    shelf: ShortcutShelf.layerPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
   ..._addLayerKindActions(),
   const EditorActionDefinition(
     id: EditorActionIds.layerAttachFreeAbove,
@@ -2082,7 +2097,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
-  // The fx pill's rows, after the frame pill's — the bar's order.
+  // The fx pill's rows, after the frame pill's — the bar's order: its
+  // presets first, as its menu shows them.
+  ..._soundPresetActions(),
   ..._addEffectActions(),
   // The rail legend's rows, under the bar: its columns from left to right.
   ..._railLegendActions(),

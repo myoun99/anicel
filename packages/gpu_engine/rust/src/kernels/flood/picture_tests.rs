@@ -43,6 +43,7 @@ fn plan<'a>(pages: &'a [wgpu::Buffer], sets: &'a [TileSet], steps: &'a [Step]) -
         chains: &[],
         steps,
         mask: None,
+        stamps: None,
     }
 }
 

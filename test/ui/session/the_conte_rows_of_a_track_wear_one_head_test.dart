@@ -367,7 +367,10 @@ void main() {
     session.selectCut(const CutId('a'));
     session.selectLayer(const LayerId('a-conte'));
 
-    session.layerSwitches.toggleTargetLayerKind();
+    session.layerSwitches.changeLayerKind(
+      const LayerId('a-conte'),
+      LayerKind.animation,
+    );
 
     expect(
       heads(session, (row) => row.kind),

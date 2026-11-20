@@ -69,11 +69,12 @@ class ActiveCutControllers {
   late LayerController layerController;
   late TimelineController timelineController;
 
-  /// A frame index that exists in the active cut. The playhead's landing
-  /// after a run and the controller's own start index are the same
-  /// question, so they read one answer.
-  int clampedFrameIndex(int frameIndex) {
-    final maxIndex = math.max(0, _playbackFrameCount() - 1);
+  /// A frame index that exists in the active cut — or in a cut of
+  /// [frameCount] frames ([playbackFrameCountOf]), where one is about to
+  /// open. The playhead's landing after a run and the controller's own start
+  /// index are the same question, so they read one answer.
+  int clampedFrameIndex(int frameIndex, {int? frameCount}) {
+    final maxIndex = math.max(0, (frameCount ?? _playbackFrameCount()) - 1);
     return frameIndex.clamp(0, maxIndex);
   }
 

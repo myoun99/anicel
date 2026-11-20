@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -84,7 +85,7 @@ void main() {
     await f.coordinator.placeCutCanvasAhead(
       cutId: f.cut,
       canvasSize: f.size,
-      contentOffset: (dx: 0.4, dy: -0.4),
+      place: const PictureMovedBy((dx: 0.4, dy: -0.4)),
     );
     expect(
       f.store.hotBakedSurfaceOrNull(f.kept),
@@ -98,15 +99,35 @@ void main() {
     await f.coordinator.placeCutCanvasAhead(
       cutId: f.cut,
       canvasSize: f.size,
-      contentOffset: (dx: 9.6, dy: 0),
+      place: const PictureMovedBy((dx: 9.6, dy: 0)),
     );
     expect(f.store.movedAheadOf(f.kept), isNotNull);
     f.coordinator.placeCutCanvas(
       cutId: f.cut,
       canvasSize: f.size,
-      contentOffset: (dx: 9.6, dy: 0),
+      place: const PictureMovedBy((dx: 9.6, dy: 0)),
     );
     expect(f.store.celsMovedHere, 0);
+  });
+
+  test('a step by a move none was worked out for lets go of what was — the '
+      'move it was worked out for is not the one taken', () async {
+    final f = fixture();
+    await f.coordinator.placeCutCanvasAhead(
+      cutId: f.cut,
+      canvasSize: f.size,
+      place: const PictureMovedBy((dx: 9.6, dy: 0)),
+    );
+    expect(f.store.movedAheadOf(f.kept), isNotNull, reason: '⛔premise');
+
+    f.coordinator.placeCutCanvas(
+      cutId: f.cut,
+      canvasSize: f.size,
+      place: const PictureMovedBy((dx: 0, dy: 9.6)),
+    );
+
+    expect(f.store.celsMovedHere, 1, reason: '⛔premise: moved here');
+    expect(f.store.movedAheadOf(f.kept), isNull);
   });
 
   // Linked cuts show ONE physical cel, kept under one of them: a resize of
@@ -197,13 +218,13 @@ void main() {
     await coordinator.placeCutCanvasAhead(
       cutId: linked,
       canvasSize: size,
-      contentOffset: (dx: 3, dy: 0),
+      place: const PictureMovedBy((dx: 3, dy: 0)),
     );
     expect(store.movedAheadOf(kept), isNotNull);
     coordinator.placeCutCanvas(
       cutId: linked,
       canvasSize: size,
-      contentOffset: (dx: 3, dy: 0),
+      place: const PictureMovedBy((dx: 3, dy: 0)),
     );
     expect(store.celsMovedHere, 0);
   });
@@ -211,16 +232,16 @@ void main() {
   test('a resize works out its anchor\'s move', () async {
     final f = fixture();
     final size = CanvasSize(width: f.size.width - 20, height: f.size.height);
-    await f.coordinator.resizeCutCanvasAhead(
+    await f.coordinator.placeCutCanvasAhead(
       cutId: f.cut,
       canvasSize: size,
-      anchor: CanvasResizeAnchor.center,
+      place: const PictureKeptTo(CanvasResizeAnchor.center),
     );
     expect(f.store.movedAheadOf(f.kept), isNotNull);
-    f.coordinator.resizeCutCanvas(
+    f.coordinator.placeCutCanvas(
       cutId: f.cut,
       canvasSize: size,
-      anchor: CanvasResizeAnchor.center,
+      place: const PictureKeptTo(CanvasResizeAnchor.center),
     );
     expect(f.store.celsMovedHere, 0);
     expect(f.store.bakedSurfaceOrNull(f.kept)!.canvasSize, size);

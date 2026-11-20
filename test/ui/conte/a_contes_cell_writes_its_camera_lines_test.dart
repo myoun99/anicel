@@ -34,6 +34,11 @@ import '../../helpers/camera_key_names.dart';
 /// 「액션쪽도 카메라레이어 움직임인거니까 그거 시트off되면 사라지게」 ·
 /// 「컷ol처럼 이런거 대상도 적도록. 픽스는 예외. 1f-5f T.U 이런식. 이름있으면
 /// A-B T.U가 되겟고」.
+///
+/// 🗣️F-622 (유저 2026-11-19): 「컷 양 끝에 걸쳐 키가 하나씩 있으면
+/// 타임시트용지패널이랑 똑같이 대상-대상 T.B (全尺) … 패널이 2개이상이면 …
+/// 첫번째패널은 1f-73f T.B (해당 길이) 두번째는 74f-144f (해당길이)」 ·
+/// 「패널마다 전체라고 쓰면안됨」.
 void main() {
   CameraPose at(double x, {double zoom = 1, double turn = 0}) => CameraPose(
     center: CanvasPoint(x: x, y: 0),
@@ -50,10 +55,10 @@ void main() {
         rotation: name,
       );
 
-  /// The lines each cell of a 24-frame cut writes — one block to each of
-  /// [lengths], in order — whose camera is keyed [keys] and named as
-  /// [named] names it.
-  List<List<String>> linesOf(
+  /// A work of one cut — one block to each of [lengths], in order, the cut
+  /// as long as they are together — whose camera is keyed [keys] and named
+  /// as [named] names it.
+  Project workOf(
     Map<int, CameraPose> keys, {
     List<int> lengths = const [24],
     bool bypassed = false,
@@ -85,7 +90,7 @@ void main() {
             Cut(
               id: const CutId('c'),
               name: '1',
-              duration: 24,
+              duration: lengths.fold(0, (sum, length) => sum + length),
               canvasSize: const CanvasSize(width: 640, height: 360),
               camera: camera,
               layers: [
@@ -111,11 +116,39 @@ void main() {
         ),
       ],
     );
-    return [
-      for (final cell in buildConteSheetSource(project).cuts.single.cells)
-        cell.fixedLines.camera,
-    ];
+    return project;
   }
+
+  /// The lines each cell of [work]'s cut writes, in [words].
+  List<List<String>> linesIn(
+    Project work, {
+    PaperWords words = (ol: 'O.L', wholeCut: '全尺'),
+  }) => [
+    for (final cell in buildConteSheetSource(
+      work,
+      words: words,
+    ).cuts.single.cells)
+      cell.fixedLines.camera,
+  ];
+
+  /// The lines each cell writes of [workOf]'s work.
+  List<List<String>> linesOf(
+    Map<int, CameraPose> keys, {
+    List<int> lengths = const [24],
+    bool bypassed = false,
+    bool onSheet = true,
+    CameraInstructionSet? glossary,
+    CutCamera Function(CutCamera camera)? named,
+  }) => linesIn(
+    workOf(
+      keys,
+      lengths: lengths,
+      bypassed: bypassed,
+      onSheet: onSheet,
+      glossary: glossary,
+      named: named,
+    ),
+  );
 
   test('🎯the user\'s example: no key 1f to 5f, a key on 6f and on 16f, the '
       'cut ending on 24f — FIX (0+5), 6f-16f PAN (0+11), FIX (0+8)', () {
@@ -163,12 +196,105 @@ void main() {
     ]);
   });
 
-  test('a move two panels share is a line in each, as long as each holds '
-      'it', () {
+  test('🎯a move two panels share is a line in each, as long as each holds '
+      'it — named by the part it holds: a key where it holds one, else its '
+      'own first or last frame (F-622 — ↩️each named the move\'s two keys)',
+      () {
     expect(linesOf({6: at(0), 18: at(40)}, lengths: const [12, 12]), [
-      ['FIX (0+6)', '7f-19f PAN (0+6)'],
-      ['7f-19f PAN (0+7)', 'FIX (0+5)'],
+      ['FIX (0+6)', '7f-12f PAN (0+6)'],
+      ['13f-19f PAN (0+7)', 'FIX (0+5)'],
     ]);
+  });
+
+  test('🎯the user\'s example: keys on the cut\'s two ends, its panels '
+      'ending on 73f and 144f — 1f-73f T.B, 74f-144f T.B, each with its '
+      'length (「지시명 빠진건 그냥 줄임이야」)', () {
+    expect(
+      linesOf({0: at(0), 143: at(0, zoom: 0.5)}, lengths: const [73, 71]),
+      [
+        ['1f-73f T.B (3+1)'],
+        ['74f-144f T.B (2+23)'],
+      ],
+    );
+  });
+
+  test('a move whose last key stands on the next panel\'s first frame: the '
+      'panel before writes up to its own last frame, and the next holds the '
+      'key — the frame a move ends on is its own (I-93)', () {
+    expect(linesOf({0: at(0), 12: at(40)}, lengths: const [12, 12]), [
+      ['1f-12f PAN (0+12)'],
+      ['13f-13f PAN (0+1)', 'FIX (0+11)'],
+    ]);
+  });
+
+  test('a part keeps the names of the keys it holds, and a frame names the '
+      'end it does not', () {
+    expect(
+      linesOf(
+        {0: at(0), 23: at(40)},
+        lengths: const [12, 12],
+        named: (camera) => called(called(camera, 0, 'A'), 23, 'B'),
+      ),
+      [
+        ['A-12f PAN (0+12)'],
+        ['13f-B PAN (0+12)'],
+      ],
+    );
+  });
+
+  group('🎯(全尺): a cut of one panel and a move from its first frame to its '
+      'last writes it as its timesheet does — (全尺) for its length', () {
+    test('says so, by the keys\' names where they have them', () {
+      expect(linesOf({0: at(0), 143: at(0, zoom: 0.5)}, lengths: const [144]), [
+        ['1f-144f T.B (全尺)'],
+      ]);
+      expect(
+        linesOf(
+          {0: at(0), 23: at(40)},
+          named: (camera) => called(called(camera, 0, 'A'), 23, 'B'),
+        ),
+        [
+          ['A-B PAN (全尺)'],
+        ],
+      );
+    });
+
+    test('in the paper\'s word, read again when the paper\'s words change',
+        () {
+      final work = workOf({0: at(0), 23: at(40)});
+
+      expect(linesIn(work), [
+        ['1f-24f PAN (全尺)'],
+      ]);
+      expect(linesIn(work, words: (ol: 'O.L', wholeCut: 'Full cut')), [
+        ['1f-24f PAN (Full cut)'],
+      ]);
+    });
+
+    test('⛔short of either end does not: its length, as before', () {
+      expect(linesOf({1: at(0), 23: at(40)}), [
+        ['FIX (0+1)', '2f-24f PAN (0+23)'],
+      ]);
+      expect(linesOf({0: at(0), 22: at(40)}), [
+        ['1f-23f PAN (0+23)', 'FIX (0+1)'],
+      ]);
+    });
+
+    test('⛔two moves that meet are not one', () {
+      expect(linesOf({0: at(0), 12: at(40), 23: at(0)}), [
+        ['1f-13f PAN (0+12)', '13f-24f PAN (0+12)'],
+      ]);
+    });
+
+    test('⛔never on a panel — 「패널마다 전체라고 쓰면안됨」: the cut of '
+        'more than one writes the part each holds, each panel the move fills '
+        'that move alone', () {
+      expect(linesOf({0: at(0), 23: at(40)}, lengths: const [8, 8, 8]), [
+        ['1f-8f PAN (0+8)'],
+        ['9f-16f PAN (0+8)'],
+        ['17f-24f PAN (0+8)'],
+      ]);
+    });
   });
 
   test('🎯a panel the camera does nothing in writes nothing, and the panel '
@@ -176,15 +302,6 @@ void main() {
     expect(linesOf({14: at(0), 20: at(40)}, lengths: const [12, 12]), [
       <String>[],
       ['FIX (0+2)', '15f-21f PAN (0+7)', 'FIX (0+3)'],
-    ]);
-  });
-
-  test('a panel the move fills is that move alone, in every panel it '
-      'fills', () {
-    expect(linesOf({0: at(0), 23: at(40)}, lengths: const [8, 8, 8]), [
-      ['1f-24f PAN (0+8)'],
-      ['1f-24f PAN (0+8)'],
-      ['1f-24f PAN (0+8)'],
     ]);
   });
 
@@ -335,6 +452,67 @@ void main() {
         ['13f-23f PAN (0+11)', 'FIX (0+9)'],
         <String>[],
       ],
+    );
+  });
+
+  test('🎯(全尺) counts the のりしろ an O.L asks before the conte, as the '
+      'sheet counts its rows: a move from the cut\'s first frame to its last '
+      'is the one that says so, not one over the conte alone', () {
+    // Two 48-frame cuts of one panel each and a 24-frame O.L on their
+    // boundary: the second is drawn for 60 frames, 12 of のりしろ first.
+    List<String> secondsLines(Map<int, CameraPose> keys) {
+      Cut cut(String id, {CutCamera? camera}) => Cut(
+        id: CutId(id),
+        name: id,
+        duration: 48,
+        canvasSize: const CanvasSize(width: 64, height: 36),
+        camera: camera,
+        layers: [
+          Layer(
+            id: LayerId('conte-$id'),
+            name: 'conte',
+            kind: LayerKind.storyboard,
+            frames: [
+              Frame(id: FrameId('$id-p'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(FrameId('$id-p'), length: 48),
+            },
+          ),
+        ],
+      );
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('p'),
+          name: 'P',
+          createdAt: DateTime.utc(2026),
+          tracks: [
+            Track(
+              id: const TrackId('t'),
+              name: 'T',
+              cuts: [
+                cut('a'),
+                cut('b', camera: CutCamera(keyframes: keys)),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+      session.transitions.updateTransitionInstructions({
+        36: const InstructionEvent(instructionId: 'ol', length: 24),
+      });
+      return buildConteSheetSource(
+        session.repository.requireProject(),
+        words: (ol: 'O.L', wholeCut: '全尺'),
+      ).cuts.last.cells.single.fixedLines.camera;
+    }
+
+    expect(secondsLines({0: at(0), 59: at(9)}), ['1f-60f PAN (全尺)']);
+    expect(
+      secondsLines({12: at(0), 59: at(9)}),
+      ['13f-60f PAN (2+0)'],
+      reason: 'the conte\'s frames alone, short of the のりしろ',
     );
   });
 }

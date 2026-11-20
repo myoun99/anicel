@@ -119,6 +119,19 @@ jobs:
       # ARM64, a compiler nothing else here ran — on the engine read in the
       # build folder, which `cmp` held to the file the bundle shipped, with
       # QA_REQUIRE_NATIVE so a missing engine failed rather than skipped.
+      # 🧭Which device the engine opens here, said before its tests (card
+      # windows-arm64-runner-engine-tests-stall-on-a-software-gpu,
+      # 2026-11-18): rounds 1091 and 1093 stood past the job's hour on GPU
+      # work past 30 s and an 8 GB commit, and no log named the device. A
+      # step of its own, so the name is in the log even when the tests
+      # after it run out of time.
+      - name: The device the engine opens
+        run: |
+          set -euo pipefail
+          echo test/native/the_engine_names_the_device_it_opened_test.dart \
+            > "$RUNNER_TEMP/device.txt"
+          dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/device.txt"
+
       - name: Tests on the engine as this runner builds it
         run: |
           set -euo pipefail

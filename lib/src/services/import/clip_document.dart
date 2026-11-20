@@ -649,8 +649,8 @@ final class _DocumentReader {
   /// it is said.
   List<ClipLettering> _textsOf(Map<String, Object?> layer) {
     final texts = [
-      if (layer['TextLayerString'] case final Object one) _utf8(one),
-      for (final part in _parts(layer['TextLayerStringArray'])) _utf8(part),
+      if (layer['TextLayerString'] case final Object one) _text(one),
+      for (final part in _parts(layer['TextLayerStringArray'])) _text(part),
     ];
     final settings = [
       if (layer['TextLayerAttributes'] case final Uint8List one) one,
@@ -959,16 +959,18 @@ final class _DocumentReader {
     _ => 0,
   };
 
+  /// A text column as the program wrote it — a string, or its UTF-8 bytes
+  /// (`TextLayerString`, an id of an external chunk).
+  ///
+  /// 🗣️THE NAMES AS WRITTEN, WHATEVER THEIR LETTERS (F-621 ④, 유저
+  /// 2026-11-19). 🔬The names of the user's twelve samples are all TEXT
+  /// (4,657 layer names, 1,713 of them past ASCII — 11-19). ↩️Bytes were
+  /// read here a byte a letter, and as UTF-8 only by a second reader kept
+  /// beside it for the text layers: one column, two readings.
   static String _text(Object? value) => switch (value) {
     final String v => v,
-    final Uint8List v => String.fromCharCodes(v),
-    _ => '',
-  };
-
-  /// A text column the program writes as UTF-8 bytes (`TextLayerString`).
-  static String _utf8(Object value) => switch (value) {
     final Uint8List v => utf8.decode(v, allowMalformed: true),
-    _ => '$value',
+    _ => '',
   };
 
   /// An `…Array` column's parts: `u32 LE length + bytes`, again and again —

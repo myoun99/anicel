@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'dart:typed_data' show Int16List;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuShown;
 
 import '../../core/path_names.dart';
+import '../../core/set_toggle.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -21,6 +23,7 @@ import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
 import '../../services/export/xdts_viewer_ink.dart';
 import '../../models/timesheet_sheet_kind.dart';
 import '../../models/xdts_sheet_form.dart';
+import '../../models/xdts_sheet_half.dart';
 import '../../models/xdts_viewer_sheet.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
@@ -32,6 +35,7 @@ import '../frame_shots.dart' show pictureOfShot;
 import '../panel_pictures.dart';
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
@@ -61,6 +65,7 @@ import 'conte_pdf_writer.dart';
 import 'ae_script_plan.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
+import 'export_document_sheet.dart' show xdtsHalfWord;
 import 'export_cels_board.dart';
 import 'export_cels_stack.dart';
 import 'export_cels_standing.dart';
@@ -308,6 +313,11 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The frame a cut's film on the Cels list stands on ([_filmShown]).
   int _filmPosition = 0;
+
+  /// The last cut a film was drawn of ([_filmCutOf]), kept while the cut
+  /// and the rows it holds are the same: a running preview is asked of ONE
+  /// cut, and the renderer keeps what it made by the cut it was made of.
+  ({Cut of, Set<LayerId> holds, Cut film})? _filmCut;
   late int _imageFrame;
   /// The cut the Cels list shows — the picker's pick; null shows the cut
   /// the window opened on ([_celCutShown]).
@@ -554,28 +564,23 @@ class ExportDialogState extends State<ExportDialog> {
     _celCutFolderFields.show(naming.cutFolderName);
   }
 
-  bool _expandedFor(String id, {bool fallback = false}) =>
-      _expanded['${_tab.jsonValue}:$id'] ?? fallback;
-
-  void _toggleExpanded(String id, {bool fallback = false}) {
-    setState(() {
-      _expanded['${_tab.jsonValue}:$id'] = !_expandedFor(
-        id,
-        fallback: fallback,
-      );
-    });
-  }
-
   /// One panel's expansion, read and toggled from ONE key. Twenty-four
   /// accordions wrote the key twice — once each way — which is two chances
   /// to disagree about which panel is being opened.
-  ({bool expanded, VoidCallback onToggle}) _expansion(
-    String stateKey, {
-    bool open = false,
-  }) => (
-    expanded: _expandedFor(stateKey, fallback: open),
-    onToggle: () => _toggleExpanded(stateKey, fallback: open),
-  );
+  ///
+  /// 🗣️F-618 ② (유저 2026-11-19 01:2x): 「다른 탭도 포함해서 그냥 펼친걸
+  /// 기본값으로? 번복하는거같아서 미안하지만」 — every accordion of every
+  /// tab stands open until the person folds it. ↩️Each had a default of its
+  /// own: the Cels tab's format and size, naming, audio, the layer fx and
+  /// most tabs' scope stood folded (the F-289 mock), the rest open.
+  ({bool expanded, VoidCallback onToggle}) _expansion(String stateKey) {
+    final key = '${_tab.jsonValue}:$stateKey';
+    bool expanded() => _expanded[key] ?? true;
+    return (
+      expanded: expanded(),
+      onToggle: () => setState(() => _expanded[key] = !expanded()),
+    );
+  }
 
   /// A format/scale chip that is DEAD while an export runs. Thirteen sites
   /// wrote that guard out; it is the same law each time — a run in flight
@@ -698,8 +703,15 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The attach column of [row] — the row the list stands on
   /// ([ExportCelsStack]): what its files can hold, each line switched as the
-  /// rules and the hand say ([_celsSelectionOf]).
+  /// rules and the hand say ([_celsSelectionOf]) — the film's, its own
+  /// ([_filmStack]).
   Widget _celStack(Cut cut, ExportCelsBoardRow? row) {
+    if (row case ExportCelsDocumentRow(
+      kind: ExportCelKind.video,
+      :final sheets,
+    ) when sheets.isNotEmpty) {
+      return _filmStack(sheets.first.of, row);
+    }
     final selection = _celsSelectionOf(cut);
     return ExportCelsStack(
       row: row,
@@ -714,6 +726,40 @@ class ExportDialogState extends State<ExportDialog> {
       onSwitched: _isExporting
           ? null
           : (layer, on) => _toggleCelRows(cut, [layer], on),
+    );
+  }
+
+  /// The film's 출력할 레이어 ([ExportCelsListing.stackOf]): each row it
+  /// offers, on while the film holds it ([exportFilmLayersOf]) — the film's
+  /// own checks, which no answer of the cels' moves (F-618 ①).
+  Widget _filmStack(Cut cut, ExportCelsBoardRow row) {
+    final holds = _filmLayersOf(cut, _celsSpec);
+    return ExportCelsStack(
+      row: row,
+      lines: [
+        for (final layer in ExportCelsListing(
+          cut,
+          _celsSpec,
+        ).stackOf(row, _celsSelectionOf(cut, withDelta: false)))
+          (layer: layer, on: holds.contains(layer.id)),
+      ],
+      onSwitched: _isExporting
+          ? null
+          : (layer, on) => _toggleFilmLayer(cut, layer, on),
+    );
+  }
+
+  /// [layer] put into [cut]'s film, or taken out — kept as the hand's
+  /// answer only where it is not the rules', as a row of the cels is
+  /// ([_toggleCelRows]).
+  void _toggleFilmLayer(Cut cut, Layer layer, bool include) {
+    final rule = exportFilmLayersOf(cut: cut, spec: _celsSpec);
+    _editCelDelta(
+      cut.id,
+      (delta) => delta.withFilmLayer(
+        layer.id,
+        include == rule.contains(layer.id) ? null : include,
+      ),
     );
   }
 
@@ -1211,7 +1257,7 @@ class ExportDialogState extends State<ExportDialog> {
         cut: sheet.of,
         cutLabel: sheet.of.name,
         cutStartFrame: _trackStartOf(sheet.of),
-        pageIndex: sheet.page,
+        pageIndex: sheet.sheetPage,
         pageCount: _sheetPagesOf(sheet.of),
         fileName: sheet.fileName,
       );
@@ -1225,7 +1271,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final source = buildConteSheetSource(
       project,
-      olWord: sheetOlWord(_session),
+      words: paperWords(_session),
     );
     final pages = layoutConteBook(
       source,
@@ -1784,11 +1830,16 @@ class ExportDialogState extends State<ExportDialog> {
     // A film runs: its frames, as the run writes them ([_cutFilmFile]).
     final film = _filmShown();
     if (film != null) {
-      final plan = _cutFilmPlan(film.of);
+      final plan = _cutFilmPlan(film.of, _celsSpec);
+      // The rows it holds are part of what a film is: another set of them
+      // is another film to draw (F-618 ①).
+      final holds = [
+        for (final id in _filmLayersOf(film.of, _celsSpec)) id.value,
+      ]..sort();
       return plan.isEmpty
           ? null
           : _runningPreview(
-              (_tab, film.idValue),
+              (_tab, film.idValue, holds.join('\u0000')),
               plan,
               _cutFilmRun(_celsSpec),
             );
@@ -1889,7 +1940,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     return (
       size: _sheetDocFor(page.of).$2.paperPixelSize,
-      look: 'sheet:$owner:${page.page}:${face.fontFamily}',
+      look: 'sheet:$owner:${page.sheetPage}:${face.fontFamily}',
       render: (size) =>
           _renderSheetPage(_sheetPageTask(page), face: face, outputSize: size),
     );
@@ -2936,9 +2987,7 @@ class ExportDialogState extends State<ExportDialog> {
           (layers) => render(index, layers),
         ),
       );
-      if (!await document.add([folder])) {
-        return _exportDone(AppText.strings.exFileCount(0), skipped: 1);
-      }
+      await document.add([folder]);
       if (_cancelRequested) {
         return AppText.strings.exCancelled;
       }
@@ -3093,21 +3142,63 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// The frames of [cut]'s film, first to last — the plan the Sequence tab
-  /// writes a cut by ([ExportRange.activeCut]), of this cut.
-  List<ExportFrameTask> _cutFilmPlan(Cut cut) => buildExportFramePlan(
-    project: _session.repository.requireProject(),
-    activeCutId: cut.id,
-    range: ExportRange.activeCut,
-  );
+  /// The frames of [cut]'s film under [spec], first to last — the plan the
+  /// Sequence tab writes a cut by ([ExportRange.activeCut]), of this cut —
+  /// each drawn of the rows the film holds ([_filmCutOf]).
+  List<ExportFrameTask> _cutFilmPlan(Cut cut, CelsExportSpec spec) {
+    final film = _filmCutOf(cut, spec);
+    return [
+      for (final task in buildExportFramePlan(
+        project: _session.repository.requireProject(),
+        activeCutId: cut.id,
+        range: ExportRange.activeCut,
+      ))
+        ExportFrameTask(cut: film, frameIndex: task.frameIndex),
+    ];
+  }
+
+  /// The rows [cut]'s film holds under [spec] ([exportFilmLayersOf]).
+  Set<LayerId> _filmLayersOf(Cut cut, CelsExportSpec spec) =>
+      exportFilmLayersOf(
+        cut: cut,
+        spec: spec,
+        delta: _overrides.deltaFor(cut.id),
+      );
+
+  /// [cut] as its film draws it: the rows it holds shown and the other rows
+  /// it offers hidden, whatever the canvas shows — and a folder shown, so
+  /// that what it holds is drawn. The choice as DATA, as the layer FX's is
+  /// ([ExportFrameRenderer]): the plan renders exactly the cut it is given.
+  Cut _filmCutOf(Cut cut, CelsExportSpec spec) {
+    final holds = _filmLayersOf(cut, spec);
+    final kept = _filmCut;
+    if (kept != null &&
+        identical(kept.of, cut) &&
+        setEquals(kept.holds, holds)) {
+      return kept.film;
+    }
+    final film = cut.copyWith(
+      layers: [
+        for (final layer in cut.layers)
+          if (exportFilmOffers(layer))
+            layer.copyWith(isVisible: holds.contains(layer.id))
+          else if (layer.kind.groupsLayers)
+            layer.copyWith(isVisible: true)
+          else
+            layer,
+      ],
+    );
+    _filmCut = (of: cut, holds: holds, film: film);
+    return film;
+  }
 
   /// A cut's film on the list of [spec], as its preview shows it and its
-  /// file is written: at the tab's size, through its layer FX, in the
-  /// film's own format and with its sound. The size and the FX are the
-  /// tab's: my call, not the user's (I-151).
+  /// file is written: at its own size ([CelsExportSpec.videoSizeMode]),
+  /// through the tab's layer FX, in the film's own format and with its
+  /// sound. The FX is the tab's: my call, not the user's (I-151).
   _FrameRun _cutFilmRun(CelsExportSpec spec) => (
     format: spec.videoFormat,
-    sizeMode: spec.sizeMode,
+    sizeMode: spec.videoSizeMode,
     layerFx: spec.layerFx,
     withSound: spec.videoAudio,
   );
@@ -3115,7 +3206,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// [sheet]'s film, a file after the run's pictures: its cut's frames as
   /// the Sequence tab writes a cut ([_writeFilm]), as [_cutFilmRun] says.
   _AfterFile _cutFilmFile(ExportDocumentSheet sheet) {
-    final plan = _cutFilmPlan(sheet.of);
+    final plan = _cutFilmPlan(sheet.of, _specs.cels);
     return _AfterFile(
       steps: math.max(1, plan.length),
       write: (step) async {
@@ -4100,7 +4191,7 @@ class ExportDialogState extends State<ExportDialog> {
     return ExportAccordion(
       title: AppText.strings.commonNameField,
       summary: _patternPreview(),
-      expansion: _expansion('name', open: true),
+      expansion: _expansion('name'),
       child: ExportFileNameModule(
         controller: field.controller,
         ghost: field.unnamed,
@@ -4279,7 +4370,7 @@ class ExportDialogState extends State<ExportDialog> {
         return ExportTimesheetPage(
           cutId: sheet.of.id,
           layout: _sheetDocFor(sheet.of).$2,
-          page: sheet.page,
+          page: sheet.sheetPage,
         );
       // A film is no paper: it runs in the preview ([_celsPreview]).
       case ExportCelKind.video ||
@@ -4324,8 +4415,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// the setting changing under the export it is feeding.
   ///
   /// On the Cels tab it is 「셀 형식」 — one of the formats the tab writes,
-  /// beside the timesheet's, the cut envelope's and the film's — and stands
-  /// folded (drawn so in the F-289 mock).
+  /// beside the timesheet's, the cut envelope's and the film's. ↩️It stood
+  /// folded (drawn so in the F-289 mock); it opens like every accordion
+  /// now ([_expansion]).
   ExportAccordion _formatAccordion({
     required ExportFormatSelection format,
     required ExportFormatCapabilities capabilities,
@@ -4336,7 +4428,7 @@ class ExportDialogState extends State<ExportDialog> {
         ? AppText.strings.exCelFormat
         : AppText.strings.exFormat,
     summary: ExportFormatModule.summarize(format),
-    expansion: _expansion('format', open: _tab != ExportTab.cels),
+    expansion: _expansion('format'),
     reset: reset,
     child: ExportFormatModule(
       selection: format,
@@ -4407,13 +4499,11 @@ class ExportDialogState extends State<ExportDialog> {
                 : spec.sizeMode,
           ),
         ),
-        fold: (key: 'scope', open: true),
       ),
       _sizeAccordion(
         sizeMode: spec.sizeMode,
         canvasSizes: _scopeCanvasSizes(spec.scope),
         projectScope: projectScope,
-        open: true,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       // A movie with nowhere to put sound — a GIF — is not asked it.
@@ -4449,7 +4539,6 @@ class ExportDialogState extends State<ExportDialog> {
         sizeMode: spec.sizeMode,
         canvasSizes: {_activeCut.canvasSize},
         projectScope: false,
-        open: true,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _fxAccordion(
@@ -4927,10 +5016,12 @@ class ExportDialogState extends State<ExportDialog> {
           ),
       ],
       _sizeAccordion(
+        // 🗣️F-616 (유저 2026-11-19): 「기존 크기 항목은 셀 크기 라는식으로
+        // 이름변경」 — the film has a 크기 of its own now. ↩️「크기」.
+        title: AppText.strings.exCelSize,
         sizeMode: spec.sizeMode,
         canvasSizes: {_activeCut.canvasSize},
         projectScope: false,
-        open: false,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _celNamingAccordion(spec),
@@ -5015,7 +5106,7 @@ class ExportDialogState extends State<ExportDialog> {
           ? 'XDTS · ${strings.exXdtsInk} · '
                 '${strings.xdtsViewerSheetName(viewer)}'
           : 'XDTS',
-      expansion: _expansion('sheet-format', open: true),
+      expansion: _expansion('sheet-format'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5042,6 +5133,29 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ),
             ],
+          ),
+          // Which of the digital sheet's two files go out (F-618 ③): a row
+          // that stands under either format and is live under XDTS alone,
+          // as its ink is. Neither picked writes none, as a kind turned off.
+          ExportModuleRow.strip(
+            caption: ExportCaption.target,
+            strip: PillStrip(
+              items: [
+                for (final half in XdtsSheetHalf.values)
+                  PillItem(
+                    keyValue: 'export-tsformat-xdts-${half.jsonValue}',
+                    label: xdtsHalfWord(half),
+                    selected: spec.xdtsHalves.contains(half),
+                    onTap: _isExporting || pictured
+                        ? null
+                        : () => _updateSpec(
+                            spec.copyWith(
+                              xdtsHalves: toggledSet(spec.xdtsHalves, half),
+                            ),
+                          ),
+                  ),
+              ],
+            ),
           ),
           settingsHelpTooltip(
             unread,
@@ -5096,7 +5210,7 @@ class ExportDialogState extends State<ExportDialog> {
       summary:
           '${ExportPaperFormatModule.summarize(spec.envelopeImage)} · '
           '${cutPaper ? strings.exCutSize : strings.exRealSheet}',
-      expansion: _expansion('envelope-format', open: true),
+      expansion: _expansion('envelope-format'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5138,22 +5252,45 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// 동영상 형식: the movie a cut's film is written as — the Sequence tab's
   /// movies, the same lineup (I-151, 유저 2026-11-03: 「오른쪽 옵션에도
-  /// 동영상 형식 넣고」).
+  /// 동영상 형식 넣고」) — and the frame it is written at, its own 크기
+  /// (F-616, 유저 2026-11-19: 「동영상 형식항목에 크기(카메라or캔버스)도
+  /// 넣기」), offered as the cels' is.
   ExportAccordion _filmFormatAccordion(CelsExportSpec spec) => ExportAccordion(
     title: AppText.strings.exVideoFormat,
-    summary: ExportFormatModule.summarize(spec.videoFormat),
-    expansion: _expansion('video-format', open: true),
-    child: ExportFormatModule(
-      keyPrefix: 'export-film-format',
-      selection: spec.videoFormat,
-      capabilities: ExportFormatCapabilities(
-        stills: const [],
-        video: _videoLineup,
-        videoEnabled: _availability.videoAllowed,
-        videoReason: _availability.videoBlockedReason,
-      ),
-      enabled: !_isExporting,
-      onChanged: (format) => _updateSpec(spec.copyWith(videoFormat: format)),
+    summary:
+        '${ExportFormatModule.summarize(spec.videoFormat)} · '
+        '${ExportSizeModule.summarize(spec.videoSizeMode)}',
+    expansion: _expansion('video-format'),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExportFormatModule(
+          keyPrefix: 'export-film-format',
+          selection: spec.videoFormat,
+          capabilities: ExportFormatCapabilities(
+            stills: const [],
+            video: _videoLineup,
+            videoEnabled: _availability.videoAllowed,
+            videoReason: _availability.videoBlockedReason,
+          ),
+          enabled: !_isExporting,
+          onChanged: (format) =>
+              _updateSpec(spec.copyWith(videoFormat: format)),
+        ),
+        ExportModuleRow(
+          caption: ExportCaption.size,
+          child: ExportSizeModule(
+            keyPrefix: 'export-film-size',
+            sizeMode: spec.videoSizeMode,
+            cameraSize: _session.camera.cameraFrameSize,
+            canvasSizes: {_activeCut.canvasSize},
+            projectScope: false,
+            enabled: !_isExporting,
+            onChanged: (mode) =>
+                _updateSpec(spec.copyWith(videoSizeMode: mode)),
+          ),
+        ),
+      ],
     ),
   );
 
@@ -5214,7 +5351,7 @@ class ExportDialogState extends State<ExportDialog> {
         summary: pictured
             ? ExportPaperFormatModule.summarize(spec.image)
             : AppText.strings.exVectorPdf,
-        expansion: _expansion('format', open: true),
+        expansion: _expansion('format'),
         child: ExportPaperFormatModule(
           keyPrefix: 'export-conteformat',
           caption: ExportCaption.format,
@@ -5322,20 +5459,21 @@ class ExportDialogState extends State<ExportDialog> {
         : (value) => _updateSpec(write(value)),
   );
 
-  /// The Size accordion three tabs offer: one title, one fold key, one
-  /// enabled law. What differs per tab is values — which canvas sizes are
-  /// on the table, whether the scope is the project, whether it opens by
-  /// default — the same shape [_scopeAccordion] was extracted for.
+  /// The Size accordion three tabs offer: one title — the Cels tab's says
+  /// whose size it is ([title]) — one fold key, one enabled law. What
+  /// differs per tab is values — which canvas sizes are on the table,
+  /// whether the scope is the project — the same shape [_scopeAccordion]
+  /// was extracted for.
   ExportAccordion _sizeAccordion({
+    String? title,
     required ExportSizeMode sizeMode,
     required Set<CanvasSize> canvasSizes,
     required bool projectScope,
-    required bool open,
     required void Function(ExportSizeMode mode) onChanged,
   }) => ExportAccordion(
-    title: AppText.strings.exSize,
+    title: title ?? AppText.strings.exSize,
     summary: ExportSizeModule.summarize(sizeMode),
-    expansion: _expansion('size', open: open),
+    expansion: _expansion('size'),
     child: ExportSizeModule(
       sizeMode: sizeMode,
       cameraSize: _session.camera.cameraFrameSize,
@@ -5355,17 +5493,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// The "this cut or the whole film" accordion every tab offers.
   ///
   /// ⛔ONE SCOPE CONTROL. Five tabs wrote out the title, the summarize
-  /// call and the enabled pair; what actually differs is the fold key,
-  /// whether it opens by default, and what rides inside it — the cut grid.
+  /// call and the enabled pair; what actually differs is what rides
+  /// inside it — the cut grid.
   ExportAccordion _scopeAccordion({
     required ExportScopeKind scope,
     required void Function(ExportScopeKind scope) onChanged,
-    ({String key, bool open}) fold = (key: 'scope', open: false),
     Widget? child,
   }) => ExportAccordion(
     title: AppText.strings.exScope,
     summary: ExportScopeModule.summarize(scope),
-    expansion: _expansion(fold.key, open: fold.open),
+    expansion: _expansion('scope'),
     child: ExportScopeModule(
       scope: scope,
       enabled: !_isExporting,

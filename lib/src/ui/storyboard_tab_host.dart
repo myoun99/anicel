@@ -233,14 +233,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     revision: _session.layerStack.celTintRevision,
   );
 
-  /// Whatever can change a frame's cached-ness — warm progress AND pixel
-  /// edits (composites self-validate by signature, so an edit raises no
-  /// event of its own). The ruler's green bar repaints off this; the
-  /// timeline host carries the identical signal.
-  late final Listenable _frameReadySignal = Listenable.merge([
-    _session.playbackRig.prerenderScheduler.progress,
-    _session.renderCaches.brushFrameStore.celPixelRevision,
-  ]);
+  /// Whatever can move a frame's readiness, and a hand letting go of a count
+  /// put off under it (`PlaybackCacheBudget.readinessMoved`): the ruler's
+  /// green bar repaints off it, as the timeline's does.
+  late final Listenable _frameReadySignal =
+      _session.playbackRig.playbackCache.readinessMoved;
 
   late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
     (start, end) => storyboardReadyRuns(_session, start, end),
@@ -427,12 +424,27 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// ⛔It was not this door's to put right: adding the のりしろ to the
   /// frame handed on moved the playhead, and the name still landed where
   /// the session stood.
-  Future<void> _editConteBlock(TrackId _, LayerId layerId, int _) =>
-      activateCellOnDoubleTap(
-        context,
-        _session,
-        layerId: layerId,
-        frameIndex: _session.currentFrameIndex,
+  void _editConteBlock(TrackId _, LayerId layerId, int _) => _openInTurn(
+    () => activateCellOnDoubleTap(
+      context,
+      _session,
+      layerId: layerId,
+      frameIndex: _session.currentFrameIndex,
+    ),
+  );
+
+  /// A double click opens its cell where the press before it stood the
+  /// session — in its turn (`StandsWithItsPicture.inTurn`): that press's
+  /// move may still wait for its frame, in another cut, and the cell is
+  /// the one it lands on.
+  void _openInTurn(Future<void> Function() open) =>
+      _session.standsWithItsPicture.inTurn(
+        () {
+          if (mounted) {
+            unawaited(open());
+          }
+        },
+        repeated: false,
       );
 
   /// THE CAMERA ROW's press that lands in a cut (I-73 ④) — the row's, or
@@ -457,7 +469,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// …and its double click: the timeline camera row's own
   /// ([activateCellOnDoubleTap] — a key opens, an empty cell is keyed), on
   /// the camera layer the first click seated, at the frame it stood on.
-  Future<void> _editCameraCell() async {
+  void _editCameraCell() => _openInTurn(() async {
     final camera = _session.activeCutOrNull?.layers.cameraLayer;
     if (camera == null) {
       return;
@@ -468,7 +480,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       layerId: camera.id,
       frameIndex: _session.currentFrameIndex,
     );
-  }
+  });
 
   /// The cells' double tap on a LANE (유저 2026-09-11: 「…싹 법 하나로
   /// 통일」) — the timeline's own door ([activateCellOnDoubleTap]: a key
@@ -480,15 +492,17 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   ///
   /// ↩️It forked by itself on this rail's Edit and ＋, and answered where
   /// the first click had stood (I-89 ① ⓕ, 2026-10-20).
-  Future<void> _activateLaneCell(int globalFrame) async {
+  void _activateLaneCell(int globalFrame) {
     if (_session.editingGlobalFrame != globalFrame) {
       _session.selectGlobalFrame(globalFrame);
     }
-    await activateCellOnDoubleTap(
-      context,
-      _session,
-      layerId: _session.activeLayer?.id,
-      frameIndex: _session.currentFrameIndex,
+    _openInTurn(
+      () => activateCellOnDoubleTap(
+        context,
+        _session,
+        layerId: _session.activeLayer?.id,
+        frameIndex: _session.currentFrameIndex,
+      ),
     );
   }
 
@@ -671,10 +685,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     final colorScheme = Theme.of(context).colorScheme;
     // No per-tick host rebuild (W4 perf pass): playback ticks and scrub
     // moves ride the session's track cursor into the panel's playhead
-    // overlay + ruler; the green bar rides the prerender progress into the
-    // ruler; the counter subscribes to the cursor. Cut crossings during
-    // playback still notify the session (cut follow), which rebuilds the
-    // host from the workspace subscription.
+    // overlay + ruler; the green bar rides what moves a frame's standing
+    // into the ruler; the counter subscribes to the cursor. Cut crossings
+    // during playback still notify the session (cut follow), which
+    // rebuilds the host from the workspace subscription.
     // The panel being worked in owns the frame-axis verbs (user,
     // 2026-08-05): touching the storyboard hands the flip its rail's row,
     // so the arrows count CUTS from here without having to pick a row
@@ -1034,7 +1048,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onCreateKeys:
                           _session.cellInstances.createInstancesForSelection,
                       onActivateAt: (_, _, globalFrame) =>
-                          unawaited(_activateLaneCell(globalFrame)),
+                          _activateLaneCell(globalFrame),
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
                       moveLands: _session.laneMove.laneRangeMoveLands,
                       onMoveUpdate:
@@ -1112,6 +1126,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onLayerOpacityChanged: _rowPresses.previewOpacity,
                     onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
                     onLayerMarkSelected: _rowPresses.pickMark,
+                    layerKindMenu: _rowPresses.kindMenu,
                     // B5③ (ordered twice): the timeline rows' sheet toggle on
                     // this rail too — the same session verb.
                     onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
@@ -1252,7 +1267,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // names, a double click is the timeline camera row's, and
                     // its head is that row's.
                     onCameraCutPress: _pressCameraCut,
-                    onEditCameraCell: () => unawaited(_editCameraCell()),
+                    onEditCameraCell: _editCameraCell,
                     // A projection row's lane labels read the cut stood in
                     // at its own frame and walk its keys there, as the
                     // timeline's lane labels do (I-73 ④ⓔ).

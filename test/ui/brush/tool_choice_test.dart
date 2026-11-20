@@ -23,6 +23,7 @@ void main() {
     cutStampBlendMode: BrushBlendMode.color,
     fillOpacity: 0.5,
     cutStampOpacity: 1.0,
+    cutStampSpacing: 0.5,
     cutDeletesSource: true,
     cutSource: CanvasReadSource.display,
   );
@@ -42,6 +43,7 @@ void main() {
     expect(back.cutStampBlendMode, BrushBlendMode.color);
     expect(back.fillOpacity, 0.5);
     expect(back.cutStampOpacity, 1.0);
+    expect(back.cutStampSpacing, 0.5, reason: "the stamp's spacing");
     expect(back.cutDeletesSource, isTrue, reason: 'I-90 「원본 삭제」');
     expect(back.cutSource, CanvasReadSource.display, reason: 'I-163 대상');
   });
@@ -60,6 +62,7 @@ void main() {
       'fillBlendMode': 'glow',
       'fillOpacity': 1.5,
       'cutStampOpacity': 0.25,
+      'cutStampSpacing': 40,
       'cutDeletesSource': 'yes',
       'cutSource': 'screen',
     });
@@ -79,6 +82,7 @@ void main() {
     expect(back.fillBlendMode, isNull);
     expect(back.fillOpacity, isNull, reason: 'past 1 is not an opacity');
     expect(back.cutStampOpacity, 0.25);
+    expect(back.cutStampSpacing, isNull, reason: 'past 400% is not one');
     expect(back.cutDeletesSource, isNull, reason: 'a word is not a switch');
     expect(back.cutSource, isNull, reason: 'a 대상 this build does not have');
   });

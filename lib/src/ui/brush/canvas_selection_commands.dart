@@ -331,6 +331,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   bool Function()? _movePending;
   bool Function()? _floatsCaughtUp;
   VoidCallback? _confirmPendingMove;
+  void Function(VoidCallback then)? _landPendingMoveThen;
   TransformValues? Function()? _transformValues;
   void Function(TransformValues Function(TransformValues now) change)?
   _editTransformValues;
@@ -361,6 +362,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     bool Function()? movePending,
     bool Function()? floatsCaughtUp,
     VoidCallback? confirmPendingMove,
+    void Function(VoidCallback then)? landPendingMoveThen,
     TransformValues? Function()? transformValues,
     void Function(TransformValues Function(TransformValues now) change)?
     editTransformValues,
@@ -393,6 +395,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _movePending = movePending;
     _floatsCaughtUp = floatsCaughtUp;
     _confirmPendingMove = confirmPendingMove;
+    _landPendingMoveThen = landPendingMoveThen;
     _transformValues = transformValues;
     _editTransformValues = editTransformValues;
     _editWarpPoint = editWarpPoint;
@@ -417,6 +420,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _movePending = null;
     _floatsCaughtUp = null;
     _confirmPendingMove = null;
+    _landPendingMoveThen = null;
     _transformValues = null;
     _editTransformValues = null;
     _editWarpPoint = null;
@@ -528,8 +532,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void invertSelection({
     required PasteboardWall pasteboard,
     required InvertReach reach,
-  }) {
-    confirmPendingMove();
+  }) => landPendingMoveThen(() {
     final before = region;
     final after = CanvasSelectionRegion.invertedWithin(
       before,
@@ -544,7 +547,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       return;
     }
     applyRegion(after);
-  }
+  });
 
   /// Whether a free-transform session is open (Escape then cancels it, and
   /// 확정 answers with [applyTransform]).
@@ -566,10 +569,25 @@ class CanvasSelectionCommands extends ChangeNotifier {
   bool get debugFloatsCaughtUp => _floatsCaughtUp?.call() ?? true;
 
   /// Lands the session — the open box, then the move it rides — as ONE undo
-  /// entry. Called by tool switches, the history manager's pre-undo/redo
-  /// hook, and [applyTransform] when the session holds changes. No-op
+  /// entry, at once. Called by what has to land before it returns: the
+  /// history manager's pre-undo/redo hook and a project switch. No-op
   /// without a session.
   void confirmPendingMove() => _confirmPendingMove?.call();
+
+  /// Lands the session as 확정 lands it — behind the wait window where it
+  /// lands on many cels — and then [then], once the window is down
+  /// (🗣️F-615: every path that lands a session takes 확정's one door). A
+  /// press lands this way; [confirmPendingMove] is for the hooks that have
+  /// to land before they return. With no layer bound there is no session,
+  /// and [then] follows at once.
+  void landPendingMoveThen(VoidCallback then) {
+    final land = _landPendingMoveThen;
+    if (land == null) {
+      then();
+      return;
+    }
+    land(then);
+  }
 
   /// The open transform box's values, or null when no box is up (the
   /// settings fields then show the identity).

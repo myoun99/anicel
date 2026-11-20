@@ -13,7 +13,6 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // layer menu and onto the pill, the same way 'delete-cut-button' left the
   // cut menu below.
   'delete-layer-button': 'timeline-layer-menu-button',
-  'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
   // R5 #5/#14: import audio, the two SECTION switches and both
   // folder-making commands left the Layer menu. Sections keep their own
   // door — the legend's sections cell, which is where they always also

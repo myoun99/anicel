@@ -106,7 +106,7 @@ void main() {
       reason: 'B was never zoomed — its conte opens at the default',
     );
 
-    projects.activate(first);
+    await projects.activate(first);
     await tester.pumpAndSettle();
     expect(conteZoom(), 4, reason: 'and A comes back at its own');
   });
@@ -146,7 +146,7 @@ void main() {
       reason: 'B was never turned — it writes frames',
     );
 
-    projects.activate(first);
+    await projects.activate(first);
     await tester.pumpAndSettle();
     expect(
       shown(),
@@ -208,7 +208,7 @@ void main() {
         reason: 'B was never scrolled — its layers open at their start',
       );
 
-      projects.activate(first);
+      await projects.activate(first);
       await tester.pump();
       expect(
         controller().offset,

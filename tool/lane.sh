@@ -301,6 +301,11 @@ lane_path() { echo "$LANES/lane-${1//\//-}"; }
 # written here — the users' folders differ from machine to machine, and a
 # dependency's name can grow. A machine whose folder is not there yet has
 # built nothing to measure, and opens as before. Only Windows has the 259.
+# ⚠️TWO READERS, NOT THREE: packages/gpu_engine/hook/target_link.dart
+# (`deepestLinkInput`) counts the same files where a build stands, for what
+# builds deeper than a lane's app — the probe in packages/gpu_engine/example
+# (card the-link-fit-check-measures-the-app-depth-only) — change both or
+# neither.
 fits_the_link() {
   local p="$1" hook deepest reach
   case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *) return 0 ;; esac
@@ -509,13 +514,30 @@ cmd_drop() {
   # it standing. A landing emptied that folder so, under another checkout's
   # build (the-hook-folder-lost-an-android-dep-file, 2026-11-08). rm takes
   # the link and not what it points at; prune then forgets the worktree.
+  # 🆕THE BRANCH THAT GOES IS THE ONE ITS WORKTREE HOLDS (관제 2026-11-20,
+  # card folders-still-appear-at-the-top-of-temp-on-the-main-pc). 공통
+  # dropped lane-measure-grid-on-the-engine, whose worktree held
+  # work/measure-grid-box — and the branch of the NAME went,
+  # work/measure-grid-on-the-engine, 31 commits on neither master nor a keep/
+  # branch (공통 set keep/ again from its sha; nothing was lost). A worktree
+  # that holds no branch (a check's, moved by commit) leaves the name's; one
+  # that holds a branch no lane's is refused, worktree and all.
+  local branch="work/$name" held=
+  if [ -e "$p/.git" ]; then
+    held="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  fi
+  case "$held" in
+    '') ;;
+    work/*) branch="$held" ;;
+    *) die "lane-$name holds $held, which is no lane's branch — nothing dropped" ;;
+  esac
   rm -rf "$p"
   git -C "$ROOT" worktree prune
-  git -C "$ROOT" branch -D "work/$name" 2>/dev/null
+  git -C "$ROOT" branch -D "$branch" 2>/dev/null
   # Its stamp goes with it: a lane opened later under the same name is
   # another lane.
   git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
-  echo "dropped work/$name"
+  echo "dropped $branch"
 }
 
 # 🚨THE TRUNK LIVES ON ONE DISK UNTIL SOMETHING COPIES IT. origin is frozen
@@ -1352,7 +1374,13 @@ cmd_land() {
     unmoved_since "$p" "$head" land
   else
     echo "lane: rebasing work/$name onto $TRUNK"
-    git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p
+    local below; below="$(own_base "work/$name")"
+    if [ "$below" = "$(git -C "$ROOT" merge-base "$TRUNK" "work/$name")" ]; then
+      git -C "$p" rebase "$TRUNK" >/dev/null 2>&1
+    else
+      echo "lane: work/$name sat on a lane that has landed — its own commits alone, from ${below:0:10}"
+      git -C "$p" rebase --onto "$TRUNK" "$below" >/dev/null 2>&1
+    fi || die "REBASE CONFLICT in $p
   Resolve it IN THE REBASE, commit by commit: fix the files, \`git -C $p add\`
   them, \`git -C $p rebase --continue\`, repeat. Then run land again.
   ⛔DO NOT abort and merge master into the lane instead. \`git rebase\` DROPS
@@ -1431,6 +1459,37 @@ lanes_landed() {
 # Its exit is 0 when every lane landed, and 1 when one was refused or left
 # out; the last lines say which.
 
+# The commit a lane's OWN commits sit on — the one a land rebases from, a
+# lone land and a bundle alike. Below a lane is the trunk where it forked,
+# unless it was sent stacked on another lane:
+#   · on a lane earlier in the same bundle — $2… are those lanes' heads as
+#     they were sent: the nearest one it holds;
+#   · on a lane that has landed since — its commits are on the trunk as
+#     copies, each with its author, author's time and subject: the run of
+#     the lane's first commits that are.
+# 🐞관제 2026-11-18 03:35 (queued-lanes-land-under-one-gate): the name tag
+# fold and the pan keys were sent stacked. Measured from the fork alone, the
+# pan keys laid the fold's commits as sent again on their copies, and a
+# later edit of the same lines met an earlier one: the bundle left it out,
+# and alone after the fold landed it conflicted again.
+own_base() {
+  local lane="$1" below c landed; shift
+  below="$(git -C "$ROOT" merge-base "$TRUNK" "$lane")"
+  for c in "$@"; do
+    if git -C "$ROOT" merge-base --is-ancestor "$c" "$lane" \
+      && git -C "$ROOT" merge-base --is-ancestor "$below" "$c"; then
+      below="$c"
+    fi
+  done
+  landed="$(git -C "$ROOT" log --format='%at %ae %s' "$below..$TRUNK")"
+  while read -r c; do
+    grep -qxF -- "$(git -C "$ROOT" log -1 --format='%at %ae %s' "$c")" \
+      <<<"$landed" || break
+    below="$c"
+  done < <(git -C "$ROOT" rev-list --reverse "$below..$lane")
+  echo "$below"
+}
+
 # The bundle being landed: each lane, the commit its own commits sit on, the
 # commit it held when the land began, and the one its stack was measured at.
 BUNDLE=() BELOW=() ORIG=() HEADS=() LANDED=() REFUSED=() LEFT_OUT=()
@@ -1439,7 +1498,7 @@ land_bundle() {
   local name first t
   for name in "$@"; do
     BUNDLE+=("$name")
-    BELOW+=("$(git -C "$ROOT" merge-base "$TRUNK" "work/$name")")
+    BELOW+=("$(own_base "work/$name" ${ORIG[@]+"${ORIG[@]}"})")
     ORIG+=("$(git -C "$ROOT" rev-parse "work/$name")")
   done
   echo "lane: a bundle of ${#BUNDLE[@]} — ${BUNDLE[*]}"

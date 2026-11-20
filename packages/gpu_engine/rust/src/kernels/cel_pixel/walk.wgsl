@@ -4,7 +4,8 @@
 // verbs (cel_pixel.wgsl) and the lift (lift.wgsl) read a walked tile, its
 // pixels and what covers them here alike.
 //
-// Needs shared/tile.wgsl, shared/pages.wgsl (with its bindings) and
+// Needs shared/tile.wgsl, shared/pages.wgsl (with its bindings) and its
+// shared/stored.wgsl, and
 // mask/byte.wgsl before it; defines byte.wgsl's `mask_word`.
 
 // A walked tile: the binding of its page, its slot, its index in the walk,
@@ -24,7 +25,7 @@ fn walk_tile(tile: u32, word: u32) -> u32 {
 
 // Pixel (x, y) of the tile, as stored.
 fn walk_texel(tile: u32, x: u32, y: u32) -> u32 {
-  return page_word(walk_tile(tile, 0u), walk_tile(tile, 1u) * TILE_TEXELS + y * TILE_SIDE + x);
+  return stored_word(walk_tile(tile, 0u), walk_tile(tile, 1u), y * TILE_SIDE + x);
 }
 
 // The coverage `mask` — the pass's rows of it — gives pixel (x, y) of the

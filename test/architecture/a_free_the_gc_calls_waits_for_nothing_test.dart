@@ -24,7 +24,9 @@ import '../helpers/engine_verbs.dart';
 /// nothing — a plan (B1-a, 2026-11-15; the test has why) —, nor one the
 /// app lets go of by the hundred and that counts nothing — a frame grid's
 /// tile picture (B1, 2026-11-15; the same) —, nor a screen's, which counts
-/// and counts its part off first (「다음 문」, 2026-11-16; the same).
+/// and counts its part off first (「다음 문」, 2026-11-16; the same) —,
+/// nor a landing's finished with no wait, freed behind the put it handed
+/// over and counting nothing (2026-11-20; the same).
 ///
 /// What holds nothing of a device is no engine's (`hands_bytes` — 🗣️관제
 /// 2026-11-14 05:16, the same card): its free lets go of its bytes where it
@@ -114,12 +116,33 @@ void main() {
       containsAll(standingBehindItsBodies),
       reason: 'LIVENESS — a free the UI stood behind its bodies for',
     );
+    // 🚨AND ONE THE UI CALLS RIGHT BEHIND THE PUT IT HANDED OVER, OF A
+    // THING THAT COUNTS NOTHING (opening-a-transform-box-holds-the-ui-
+    // over-half-a-second, 2026-11-20): what a landing finished with no
+    // wait, freed in the turn that is told once its tiles are on their
+    // way (`EngineTileLedger.landOnceTold`) — the put holds the tiles
+    // made as its own (`gpu_engine_finished_land_unwaited`), so nothing
+    // reads it after; its free waiting there stood that turn behind the
+    // put and every body ahead of it, the wait the door is there to
+    // take off the UI's thread (🗣️the user 11-19, Q1 「상자가 뜰 때 미리
+    // 들기」; 🔬공통's, on the card: a turn that waited stood 5–14 ms
+    // behind the GPU, 31–63 with its line full). The crate pins that
+    // it waits for no turn and that its put lands all the same
+    // (dab/finished_tests.rs).
+    // ⏳브러시/렌더링; the user's to overturn.
+    const freedBehindItsOwnPut = {'gpu_engine_finished_free'};
+    expect(
+      unwaited,
+      containsAll(freedBehindItsOwnPut),
+      reason: 'LIVENESS — a free the told turn calls behind its put',
+    );
     expect(
       unwaited
           .difference(collected)
           .difference(readByWhatWasHandedOver)
           .difference(freedByTheHundred)
-          .difference(standingBehindItsBodies),
+          .difference(standingBehindItsBodies)
+          .difference(freedBehindItsOwnPut),
       isEmpty,
       reason: 'nothing collects these, and their thing is not gone as they '
           'return: let go of it with `let_go` (device.rs)',

@@ -66,7 +66,9 @@ class _WorkspaceTabs {
   ///
   /// 🗣️F-551 (유저 2026-11-04): the bake and the lay behind the app's wait
   /// window, under the button's name — the bake works ahead, off the frame's
-  /// clock, so on one cel too ([workAheadBehindTheWaitWindow]).
+  /// clock, so on one cel too ([workAheadBehindTheWaitWindow]). The lay's
+  /// cels are worked out ahead too, each its share of the window's count
+  /// (🗣️F-615: 「대상 프레임 수에 맞춰서 몇퍼센트인지 표시」).
   ValueChanged<DrawingGuide>? _guideRasterizer(
     BuildContext context,
     CanvasSize? paper,
@@ -76,25 +78,31 @@ class _WorkspaceTabs {
     }
     final pixels = _state.widget.session.pixelVerbs;
     return (guide) {
-      CutPiece? picture;
+      PressedStep? lay;
       unawaited(
         workAheadBehindTheWaitWindow(
           context,
-          () {
-            if (picture case final baked?) {
-              pixels.landCanvasPicture(baked, description: 'Rasterize guide');
-            }
-          },
+          () => lay?.step(),
           window: AppWaitWindow(
             title: editorActionLabel(EditorActionIds.guideRasterize),
             runningLabel: AppText.strings.bakeProgressRunning,
             windowKey: const ValueKey<String>('guide-rasterize-progress'),
           ),
-          ahead: (_) async => picture = await guideLinesOnPaper(
-            guide,
-            canvasSize: paper,
-            color: guideColorOf(context),
-          ),
+          ahead: (report) async {
+            final baked = await guideLinesOnPaper(
+              guide,
+              canvasSize: paper,
+              color: guideColorOf(context),
+            );
+            if (baked == null) {
+              return;
+            }
+            lay = pixels.canvasPictureStep(
+              baked,
+              description: 'Rasterize guide',
+            );
+            await lay?.ahead?.call(report);
+          },
         ),
       );
     };
@@ -302,7 +310,7 @@ class _WorkspaceTabs {
     session: _state.widget.session,
     brushToolState: _state._brushTool,
     onBrushToolStateChanged: (state) => _state._brushTool.value = state,
-    canvasViewCommands: _state.widget.canvasViewCommands,
+    bringTool: _state._brushTool.bringTool,
     navigationRegionKey: _state.widget.canvasNavigationRegionKey,
     canvasSelectionCommands: _state.widget.canvasSelectionCommands,
     canvasTextCommands: _state.widget.canvasTextCommands,
@@ -932,14 +940,21 @@ class _WorkspaceTabs {
                   pictures: _state._views._poolPictures,
                 ),
               ),
+              onSync: (asset) => unawaited(
+                syncMediaPlaces(context, _state.widget.session, asset),
+              ),
               view: _state._mediaPoolView.value,
               onViewChanged: (view) => _state._mediaPoolView.value = view,
               factsOf: _state.widget.session.mediaPool.mediaFactsOf,
               // A sound's waveform where its conform is held — never asking
               // for one (`heldPeaksFor`).
               soundOf: _state.widget.session.audioConformStore.heldPeaksFor,
-              frameRate:
-                  _state.widget.session.projectSettings.projectFrameRate,
+              clock: (
+                rate: _state.widget.session.projectSettings.projectFrameRate,
+                speed: _state.widget.session.repository
+                    .requireProject()
+                    .audioSpeed,
+              ),
               pictures: _state._views._poolPictures,
             ),
           ),

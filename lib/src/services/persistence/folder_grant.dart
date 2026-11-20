@@ -23,8 +23,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 
+import '../../core/on_a_worker.dart';
 import '../../core/path_names.dart';
 import '../../core/piece_read.dart';
+import '../../core/progress_share.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 import 'provider_documents.dart';
@@ -280,9 +282,19 @@ typedef WaitClock = ({
 });
 
 /// What a wait tells the window it keeps, on every beat: how long it has
-/// gone on, and how long since a byte of the file last arrived — the two
+/// gone on, how long since a byte of the file last arrived, and whether
+/// the device says the file is still coming from where it is kept — the
 /// things `cloudWaitLine` says.
-typedef WaitReport = void Function(Duration waited, Duration quiet);
+typedef WaitReport =
+    void Function(
+      Duration waited,
+      Duration quiet, {
+      required bool fromTheCloud,
+    });
+
+/// How a file's bytes being made into something tell how far it is: [done]
+/// steps of [of] ([FolderPicker.readOpenedFileInto]).
+typedef MadeReport = void Function(int done, int of);
 
 abstract final class FolderPicker {
   /// Test seam. The repo's convention for a Dart→native call is an
@@ -1046,6 +1058,7 @@ abstract final class FolderPicker {
     // nothing to undo — only nothing left to wait for. Past the backstop the
     // pick is probed all the same.
     if (hasFileCoordinator) {
+      wait.fromTheCloud = true;
       await wait.outlast(readInPlaceCoordinated(path));
     }
     if (await arrivalOf(path) == FileArrival.whole) {
@@ -1054,6 +1067,7 @@ abstract final class FolderPicker {
     if (await File(path).exists()) {
       // Ask the platform to fetch it, then wait for the PICK to be ALL here
       // — no copy anywhere in this wait.
+      wait.fromTheCloud = true;
       await requestFileDownload(path);
       while (await wait.tick()) {
         final arrival = await arrivalOf(path);
@@ -1092,6 +1106,17 @@ abstract final class FolderPicker {
       // Never written, or held: the room goes with the run either way.
     }
     throw FileSystemException('파일을 읽지 못했습니다', path);
+  }
+
+  /// Lets go of [source]'s copy when it is the staged one
+  /// ([materializeOpenedFile]'s last resort) — quietly: a copy already
+  /// gone, or still held, is the run's room's to sweep. A pick read where
+  /// it is stays where it is.
+  static Future<void> letGoOfStagedCopy(({String path, bool staged}) source) {
+    if (!source.staged) {
+      return Future.value();
+    }
+    return File(source.path).delete().then<void>((_) {}, onError: (_) {});
   }
 
   /// The default backstop of a wait nobody can stop ([materializeOpenedFile]).
@@ -1135,6 +1160,43 @@ abstract final class FolderPicker {
     bool Function()? isCancelled,
     void Function(double fraction)? onRead,
   }) async {
+    final read = await readOpenedFileInto(
+      path,
+      then: _theBytes,
+      onWaiting: onWaiting,
+      isCancelled: isCancelled,
+      onRead: onRead,
+    );
+    return (path: read.path, staged: read.staged, bytes: read.made);
+  }
+
+  static Uint8List _theBytes(Uint8List bytes, MadeReport _) => bytes;
+
+  /// [path] read in under its wait as [readOpenedFile] reads it — and what
+  /// [then] makes of its bytes, made beside them.
+  ///
+  /// ⚡THE BYTES ARE READ ON A WORKER, and [then] runs there on them (card
+  /// F-621 ⑤): the window's isolate holds none of them and does none of
+  /// that work. ↩️A .tvpp came in whole on the window's isolate and was
+  /// read into a project there — 5.7 s of a 1.5 GB project with the window
+  /// standing still at 50% (유저 2026-11-19: 「50%되고나면 앱이 멈추고
+  /// 5초쯤지나면 다시진행되」). The wait stays here: every piece the worker
+  /// takes in asks this isolate first ([onAWorkerAsking]), which is the
+  /// arrival, the percent, and the stop — a stopped read takes no piece
+  /// after the one in flight.
+  ///
+  /// The wait is over once every byte is in: [then]'s own time is the
+  /// app's, not the cloud's, and [onMade] hears how far it is, as the steps
+  /// [then] counts. [then] crosses to the worker, so it is a function of
+  /// what it is handed alone (`onAWorkerReporting`'s 🚨).
+  static Future<({String path, bool staged, T made})> readOpenedFileInto<T>(
+    String path, {
+    required T Function(Uint8List bytes, MadeReport report) then,
+    WaitReport? onWaiting,
+    bool Function()? isCancelled,
+    void Function(double fraction)? onRead,
+    void Function(double fraction)? onMade,
+  }) async {
     final wait = _Wait(
       within: isCancelled == null ? _backstop : null,
       step: _firstStep,
@@ -1142,21 +1204,42 @@ abstract final class FolderPicker {
       isCancelled: isCancelled,
     );
     final source = await _materialize(path, wait);
-    final file = await File(source.path).open();
+    // The device holds it no longer: what is waited for now is the read.
+    wait.fromTheCloud = false;
+    final allIn = Completer<void>();
     var gaveUp = false;
-    final reading = _readInPieces(
-      length: file.length,
-      readInto: (into, from, to) {
-        if (gaveUp) {
-          throw FileSystemException('파일을 읽지 못했습니다', path);
+    final made = onAWorkerAsking<(int, int, bool), bool, T>(
+      (question) {
+        final (done, of, making) = question;
+        if (making) {
+          onMade?.call(doneShare(done, of));
+          return true;
         }
-        return (debugReadPiece ?? _readPiece)(file, into, from, to);
+        if (gaveUp) {
+          return false;
+        }
+        if (done > 0) {
+          wait.arrived();
+        }
+        onRead?.call(doneShare(done, of));
+        if (done >= of && !allIn.isCompleted) {
+          allIn.complete();
+        }
+        return true;
       },
-      arrived: wait.arrived,
-      onRead: onRead,
-    ).whenComplete(file.close);
+      _readInPieces(source.path, then),
+    );
+    // A read that fails ends the wait as its last byte would; what it ends
+    // in is read below.
+    unawaited(
+      made.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+        if (!allIn.isCompleted) {
+          allIn.complete();
+        }
+      }),
+    );
     try {
-      if (!await wait.outlast(reading)) {
+      if (!await wait.outlast(allIn.future)) {
         throw FileSystemException('파일을 읽지 못했습니다', path);
       }
     } on Object {
@@ -1164,26 +1247,47 @@ abstract final class FolderPicker {
       gaveUp = true;
       rethrow;
     }
-    return (path: source.path, staged: source.staged, bytes: await reading);
+    return (path: source.path, staged: source.staged, made: await made);
   }
 
-  /// The bytes [length] says, read a piece at a time by [readInto] — each
-  /// piece [arrived], and [onRead] told how much is in ([PieceRead]).
-  static Future<Uint8List> _readInPieces({
-    required Future<int> Function() length,
-    required Future<int> Function(Uint8List into, int from, int to) readInto,
-    required void Function() arrived,
-    void Function(double fraction)? onRead,
-  }) async {
-    final read = PieceRead(await length(), onRead: onRead);
-    while (!read.done) {
-      if (!read.took(await readInto(read.bytes, read.from, read.to))) {
-        throw const FileSystemException('파일이 제 길이보다 먼저 끝났습니다');
+  /// The job [readOpenedFileInto] sends: the file at [path] read a piece at
+  /// a time ([PieceRead]), each piece asked about first — how many bytes of
+  /// how many are in — then [then] of its bytes, its steps told as it goes.
+  /// Made HERE, so it carries nothing of its caller's scope.
+  static Future<T> Function(Future<bool> Function((int, int, bool)) ask)
+  _readInPieces<T>(
+    String path,
+    T Function(Uint8List bytes, MadeReport report) then,
+  ) => (ask) async {
+    final file = await File(path).open();
+    final Uint8List bytes;
+    try {
+      final read = PieceRead(await file.length());
+      if (!await ask((0, read.bytes.length, false))) {
+        throw FileSystemException('파일을 읽지 못했습니다', path);
       }
-      arrived();
+      while (!read.done) {
+        final got = await (debugReadPiece ?? _readPiece)(
+          file,
+          read.bytes,
+          read.from,
+          read.to,
+        );
+        if (!read.took(got)) {
+          throw const FileSystemException('파일이 제 길이보다 먼저 끝났습니다');
+        }
+        if (!await ask((read.from, read.bytes.length, false))) {
+          throw FileSystemException('파일을 읽지 못했습니다', path);
+        }
+      }
+      bytes = read.bytes;
+    } finally {
+      await file.close();
     }
-    return read.bytes;
-  }
+    // Told, not asked: what is being made is the app's own, and nothing
+    // the wait could stop.
+    return then(bytes, (done, of) => unawaited(ask((done, of, true))));
+  };
 
   static Future<int> _readPiece(
     RandomAccessFile file,
@@ -1470,6 +1574,15 @@ final class _Wait {
   Duration _pause;
   Duration _lastArrival = Duration.zero;
 
+  /// Whether the device says the file is not here yet — an iPad's provider
+  /// holding the coordinated read, or a placeholder asked to come down —
+  /// rather than bytes coming in that the app can see (F-621-Q2, 유저
+  /// 2026-11-19: 「투명하게만 하면되」).
+  /// ⚠️A document poured in (Android, PICK-7) is bytes coming in: the app
+  /// cannot tell its provider's network from its cache, so the cloud would
+  /// be a guess there.
+  bool fromTheCloud = false;
+
   static const Duration _maxStep = Duration(seconds: 2);
 
   /// How often a waiting window is told the time. ⛔It does NOT back off
@@ -1507,7 +1620,11 @@ final class _Wait {
       }
       slept += slice;
       final waited = _clock.elapsed();
-      onWaiting?.call(waited, waited - _lastArrival);
+      onWaiting?.call(
+        waited,
+        waited - _lastArrival,
+        fromTheCloud: fromTheCloud,
+      );
       if (slept >= _pause) {
         // Doubling, capped: the common case lands within a second or two.
         _pause = _pause * 2;

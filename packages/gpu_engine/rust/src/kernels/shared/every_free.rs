@@ -21,11 +21,14 @@ use crate::kernels::cel_pixel::abi::{
     gpu_engine_ink_free, gpu_engine_ink_new,
 };
 use crate::kernels::cel_pixel::Passed;
+use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
 use crate::kernels::dab::abi::{
-    gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_stamp_landing_free,
+    gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_finished_free,
+    gpu_engine_stamp_landing_free,
     gpu_engine_stamp_landing_new, gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new,
     gpu_engine_blurs_free, gpu_engine_blurs_new, gpu_engine_stroke_free, gpu_engine_stroke_new,
 };
+use crate::kernels::dab::landing::Finished;
 use crate::kernels::composite::abi::{
     gpu_engine_chain_read_free, gpu_engine_chain_read_new, gpu_engine_composite_free, gpu_engine_composite_new,
     gpu_engine_composited_free, gpu_engine_held_free,
@@ -46,10 +49,9 @@ use crate::kernels::flood::abi::{
     Filled, gpu_engine_flood_filled_free, gpu_engine_flood_picture_free,
     gpu_engine_flood_picture_new, gpu_engine_floods_free, gpu_engine_floods_new,
 };
-use crate::kernels::letters::Lettered;
 use crate::kernels::letters::abi::{
     gpu_engine_faces_file, gpu_engine_faces_free, gpu_engine_faces_handed, gpu_engine_faces_of,
-    gpu_engine_lettered_free, gpu_engine_letters_free, gpu_engine_word_free, gpu_engine_word_new,
+    gpu_engine_letters_free, gpu_engine_word_free, gpu_engine_word_new,
     gpu_engine_letters_new,
 };
 use crate::kernels::letters::glyphs_tests::file;
@@ -107,7 +109,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 40] {
+fn frees() -> [(&'static str, fn(&'static str)); 41] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, first_engine().clone().boxed(), gpu_engine_close)
@@ -154,6 +156,10 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_stamp_landing_new(first_engine()) };
             gives_back(name, made, gpu_engine_stamp_landing_free)
+        }),
+        ("gpu_engine_finished_free", |name| {
+            let made = first_engine().hands(Finished::of_none_inked(composited().out));
+            gives_back_unwaited(name, made, gpu_engine_finished_free)
         }),
         ("gpu_engine_stamp_picture_free", |name| {
             // SAFETY: the engine is live, and the bytes hold the picture's one pixel.
@@ -233,7 +239,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
             let rig = composite_rig();
             // SAFETY: the engine is live.
             let (pool, plan) =
-                unsafe { (gpu_engine_pool_new(rig.engine, 1 << 20), gpu_engine_plan_new(rig.engine)) };
+                unsafe { (gpu_engine_pool_new(rig.engine, u64::MAX, 1 << 20), gpu_engine_plan_new(rig.engine)) };
             // SAFETY: all are live, made on the engine; the extent holds four words.
             let made = unsafe {
                 gpu_engine_flood_picture_new(
@@ -270,6 +276,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
             let made = unsafe { gpu_engine_ink_new(first_engine()) };
             gives_back(name, made, gpu_engine_ink_free)
         }),
+        ("gpu_engine_fold_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_fold_new(first_engine()) };
+            gives_back(name, made, gpu_engine_fold_free)
+        }),
         ("gpu_engine_faces_free", |name| {
             let face = file("BIZUDPGothic-Regular.ttf");
             let handed = gpu_engine_faces_handed();
@@ -283,11 +294,6 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
         }),
         ("gpu_engine_letters_free", |name| gives_back(name, gpu_engine_letters_new(), gpu_engine_letters_free)),
         ("gpu_engine_word_free", |name| gives_back(name, gpu_engine_word_new(), gpu_engine_word_free)),
-        ("gpu_engine_lettered_free", |name| {
-            let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
-            let made = first_engine().hands(Lettered { rect, tiles: composited().out });
-            gives_back(name, made, gpu_engine_lettered_free)
-        }),
         ("gpu_engine_plugin_made_free", |name| {
             let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
             let made = first_engine().hands(PluginMade { rect, tiles: composited().out });
@@ -301,7 +307,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
         }),
         ("gpu_engine_pool_free", |name| {
             // SAFETY: the engine is live.
-            let made = unsafe { gpu_engine_pool_new(first_engine(), 1 << 20) };
+            let made = unsafe { gpu_engine_pool_new(first_engine(), u64::MAX, 1 << 20) };
             gives_back(name, made, gpu_engine_pool_free)
         }),
         ("gpu_engine_grid_free", |name| {

@@ -173,6 +173,34 @@ void main() {
       expect(reset.isEmpty, isFalse);
     });
 
+    test('🗣️F-618 ①: the film\'s own checks are a hand\'s answer of their '
+        'own — kept, round-tripped in one order, and dropped by a filter '
+        'press and by Reset', () {
+      final delta = ExportCelsCutDelta()
+          .withFilmLayer(const LayerId('bg'), true)
+          .withFilmLayer(const LayerId('a'), false)
+          .withLayerOverride(const LayerId('a'), true);
+      expect(delta.filmLayers, {
+        const LayerId('bg'): true,
+        const LayerId('a'): false,
+      });
+      expect(delta.leavesTheRules, isTrue);
+      final json = delta.toJson();
+      expect((json['filmLayers'] as Map).keys, ['a', 'bg']);
+      expect(ExportCelsCutDelta.fromJson(json), delta);
+      expect(
+        delta.withFilmLayer(const LayerId('bg'), null).filmLayers.keys,
+        [const LayerId('a')],
+      );
+      expect(delta.withoutRowExceptions().filmLayers, isEmpty);
+      expect(delta.backOnTheRules().filmLayers, isEmpty);
+      expect(
+        ExportCelsCutDelta().withFilmLayer(const LayerId('a'), true).isEmpty,
+        isFalse,
+        reason: 'a delta holding a film answer persists',
+      );
+    });
+
     test('all of it round-trips, written in one order whatever order the '
         'hand worked in', () {
       ExportCelsCutDelta made(List<String> order) {

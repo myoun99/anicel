@@ -77,6 +77,8 @@ TvppClipConversion convertTvppClip(
           end: layer.end,
           preBehavior: layer.preBehavior,
           postBehavior: layer.postBehavior,
+          // ⚠️No folder of a file measured here carries a mode word —
+          // LRFH[15] stays unread until one does (card F-621 ③).
           blendingMode: 'Color',
           groupColor: null,
           blocks: const [],
@@ -105,7 +107,13 @@ TvppClipConversion convertTvppClip(
           end: layer.end,
           preBehavior: layer.preBehavior,
           postBehavior: layer.postBehavior,
-          blendingMode: 'Color',
+          // The layer's blend goes where its two streams meet: the folder
+          // blends them as one picture onto what is below, as TVPaint
+          // blends the one layer. On each stream it would blend that
+          // stream onto the other inside the folder and never reach the
+          // picture below. ⚠️No CTG of a measured file carries a mode —
+          // LRSH[15] is read as LRHD[15] is, as its other words are.
+          blendingMode: _blendingModeName(layer.blendingModeId),
           groupColor: null,
           blocks: const [],
           isFolder: true,
@@ -126,6 +134,7 @@ TvppClipConversion convertTvppClip(
             slots,
             stream: stream,
             name: stream == 0 ? layer.name : '${layer.name} (2)',
+            blendingMode: 'Color',
             position: position,
             slotsByFile: slotsByFile,
             warnings: warnings,
@@ -148,6 +157,7 @@ TvppClipConversion convertTvppClip(
         layer.slots,
         stream: 0,
         name: layer.name,
+        blendingMode: _blendingModeName(layer.blendingModeId),
         position: position,
         slotsByFile: slotsByFile,
         warnings: warnings,
@@ -247,6 +257,7 @@ TvpLayer _rasterLayer(
   List<TvppSlot> slots, {
   required int stream,
   required String name,
+  required String blendingMode,
   required int position,
   required Map<String, TvppSlot> slotsByFile,
   required List<ImportWarning> warnings,
@@ -334,7 +345,7 @@ TvpLayer _rasterLayer(
     end: layer.end,
     preBehavior: layer.preBehavior,
     postBehavior: layer.postBehavior,
-    blendingMode: 'Color',
+    blendingMode: blendingMode,
     groupColor: null,
     blocks: blocks,
   );
@@ -344,3 +355,46 @@ TvpLayer _rasterLayer(
 /// the artist typed 76, the file holds 195, and 195/255 would surface as
 /// 76.47%. Round to the percent the artist chose.
 double _opacityFrom(int raw) => (raw / 255 * 100).round() / 100;
+
+/// TVPaint's name for blending mode [id] ([TvppLayer.blendingModeId]),
+/// in TVPaint's own English — the name the import's notice shows when
+/// Anicel has no such mode.
+///
+/// 🔬The numbers are read off the user's calibration file (card F-621 ③,
+/// 11-19): a layer per mode of TVPaint 12's picker, each named with the
+/// picker's label. The English is TVPaint's blending-mode list
+/// (doc.tvpaint.com); where the file's label carries it in brackets
+/// (Divide, Grain Extract, Subtract, Alpha Diff) the two agree. 13 and 14
+/// were in no layer — they come in by number, as any number TVPaint adds.
+String _blendingModeName(int id) => switch (id) {
+      0 => 'Color',
+      1 => 'Behind',
+      2 => 'Erase',
+      3 => 'Shade',
+      4 => 'Light',
+      5 => 'Colorize',
+      6 => 'Tint',
+      7 => 'Add',
+      8 => 'Sub',
+      9 => 'Multiply',
+      10 => 'Screen',
+      11 => 'Replace',
+      12 => 'Substitute',
+      15 => 'Difference',
+      16 => 'Divide',
+      17 => 'Overlay',
+      18 => 'Dodge',
+      19 => 'Burn',
+      20 => 'Hard Light',
+      21 => 'Soft Light',
+      22 => 'Grain Extract',
+      23 => 'Grain Merge',
+      24 => 'Subtract',
+      25 => 'Darken Only',
+      26 => 'Lighten Only',
+      27 => 'Value',
+      28 => 'Saturate',
+      29 => 'Overlay 2',
+      30 => 'Alpha Diff',
+      _ => '$id',
+    };

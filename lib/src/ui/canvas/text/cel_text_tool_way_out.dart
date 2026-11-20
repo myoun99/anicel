@@ -185,7 +185,7 @@ class _CelTextWayOut {
       celMade
         ..adopt()
         ..write(run)
-        ..end('Set text on a new frame');
+        ..end();
     } else if (of == _StepOf.box && boxSteps != null) {
       boxSteps.write(run);
     } else {

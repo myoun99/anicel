@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 namespace {
 
@@ -157,6 +158,22 @@ constexpr char kSayStage[] = "stage";
 constexpr char kHandedFilesChannel[] = "anicel/handed_files";
 constexpr char kOpenHanded[] = "open";
 
+// 🚨★★★A SCREEN WHOSE DEVICE WENT (lost_screen.h says why the runner
+// watches). The runner says so on this channel — once, the reason Windows
+// gave and the moment the watch saw it, [int32, int64 ms since 1970 UTC]
+// (H63 ③) — and Dart asks the user with Windows' own windows and has the
+// runner start Anicel again for the files it saved
+// (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5).
+// test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
+// these literals.
+constexpr char kScreenChannel[] = "anicel/screen";
+constexpr char kScreenWent[] = "went";
+constexpr char kAskWithWindows[] = "askWithWindows";
+constexpr char kStartAgain[] = "startAgain";
+constexpr char kEnd[] = "end";
+// Posted by the watch's thread: the channel speaks on this one.
+constexpr UINT kScreenWentMessage = WM_APP + 0x153;
+
 // 🚨★★★F-411 — A MODIFIER WINDOWS LET GO OF IS LET GO OF IN THE ENGINE TOO.
 //
 // 유저 2026-10-19: 「입력 인스펙터 확인하니 보통은 D held [D]라면 D held
@@ -256,6 +273,7 @@ bool FlutterWindow::OnCreate() {
   ListenForFullScreen();
   ListenForPlace();
   ListenForLaunchStages();
+  ListenForTheScreen();
   files_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(), kHandedFilesChannel,
@@ -290,7 +308,10 @@ void FlutterWindow::OnDestroy() {
   if (GetHandle()) {
     ::RemovePropW(GetHandle(), kRunningWindowProp);
   }
+  // The watch posts to this window, which is going.
+  screen_watch_ = nullptr;
   // The channels speak through the engine's messenger, so they go first.
+  screen_channel_ = nullptr;
   ime_channel_ = nullptr;
   window_channel_ = nullptr;
   place_channel_ = nullptr;
@@ -318,6 +339,17 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == kCloseApproved) {
     // What DefWindowProc does with a WM_CLOSE nobody stopped.
     ::DestroyWindow(hwnd);
+    return 0;
+  }
+  if (message == kScreenWentMessage) {
+    if (screen_channel_) {
+      screen_channel_->InvokeMethod(
+          kScreenWent,
+          std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
+              flutter::EncodableValue(static_cast<int32_t>(wparam)),
+              flutter::EncodableValue(static_cast<int64_t>(lparam)),
+          }));
+    }
     return 0;
   }
 
@@ -487,6 +519,57 @@ void FlutterWindow::ListenForLaunchStages() {
         launch_splash_.SayStage(*face, *name);
         result->Success();
       });
+}
+
+void FlutterWindow::ListenForTheScreen() {
+  screen_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kScreenChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  screen_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        const auto* said =
+            std::get_if<flutter::EncodableList>(call.arguments());
+        std::vector<std::wstring> words;
+        for (const flutter::EncodableValue& word :
+             said ? *said : flutter::EncodableList()) {
+          const auto* text = std::get_if<std::string>(&word);
+          if (!text) {
+            result->Error("not-words");
+            return;
+          }
+          words.push_back(Utf16FromUtf8(*text));
+        }
+        // [title, message, button...]: the index of the button pressed.
+        if (call.method_name() == kAskWithWindows && words.size() >= 3) {
+          const std::vector<std::wstring> buttons(words.begin() + 2,
+                                                  words.end());
+          result->Success(flutter::EncodableValue(
+              AskWithWindows(GetHandle(), words[0], words[1], buttons)));
+          return;
+        }
+        // [file...]: answers only where the next Anicel would not start.
+        if (call.method_name() == kStartAgain) {
+          result->Success(
+              flutter::EncodableValue(StartAgainFor(GetHandle(), words)));
+          return;
+        }
+        if (call.method_name() == kEnd) {
+          EndThisProcess();
+          return;
+        }
+        result->NotImplemented();
+      });
+  // Only on the adapter Flutter says it draws on: a device on another would
+  // hear another GPU's resets.
+  IDXGIAdapter* adapter = nullptr;
+  if (flutter_controller_->engine()->GetGraphicsAdapter(&adapter)) {
+    screen_watch_ =
+        std::make_unique<ScreenWatch>(adapter, GetHandle(), kScreenWentMessage);
+    adapter->Release();
+  }
 }
 
 void FlutterWindow::ListenForFullScreen() {

@@ -39,7 +39,9 @@ final class EngineStackScreen {
   /// all of it the first time, and when the world the frame holds is not
   /// the one kept: a stroke past the page grows it. Where it changed is
   /// the caller's to say ([StackedFrame.movedSince]); null is everywhere.
-  /// Its chains' puts are held in [holds], if any.
+  /// Its chains' puts are held in [holds], if any — for the canvas
+  /// [standing] stands for, where it lays whole the frame that canvas
+  /// stands on to draw ([EngineChainHolds.settleOnce]).
   ///
   /// Ends once the GPU has laid it, or fails by why it did not: the
   /// engine lays it with this isolate waiting for none of it
@@ -48,47 +50,56 @@ final class EngineStackScreen {
     StackedFrame frame, {
     Rect? changed,
     EngineChainHolds? holds,
-  }) => _laid(
-    frame,
-    holds,
-    (screen, pool, plan, world) =>
-        screen.compose(pool, plan, _edgesOf(changed ?? world)),
-  );
+    Object? standing,
+  }) {
+    assert(standing == null || changed == null, 'a step is laid for none');
+    return _laid(
+      frame,
+      holds,
+      standing,
+      (screen, pool, plan, world) =>
+          screen.compose(pool, plan, _edgesOf(changed ?? world)),
+    );
+  }
 
   /// Lays [frame] as [compose] does the first time, onto a screen nothing
-  /// is laid on yet, but over the world pixels [fresh] alone: the rest is
-  /// [film]'s kept frame, copied tile by tile as it is — a frame over the
+  /// is laid on yet, but [over] the world pixels fresh alone: the rest is
+  /// the film's kept frame, copied tile by tile as it is — a frame over the
   /// frame its ghosts lie on, which the tiles they do not reach show as it
   /// does. Over a film nothing is laid on, all of it; onto a screen laid
-  /// on already, refused with the engine's reason. Ends as [compose] does.
+  /// on already, refused with the engine's reason. Ends as [compose] does,
+  /// for the canvas [standing] stands for where it is the frame's picture
+  /// laid anew, not a step patched into a copy.
   Future<void> composeOver(
-    EngineStackScreen film,
     StackedFrame frame, {
-    required Rect fresh,
+    required ({EngineStackScreen film, Rect fresh}) over,
     EngineChainHolds? holds,
+    Object? standing,
   }) {
-    final under = film._screen;
+    final under = over.film._screen;
     if (under == null) {
-      return compose(frame, holds: holds);
+      return compose(frame, holds: holds, standing: standing);
     }
     return _laid(
       frame,
       holds,
+      standing,
       (screen, pool, plan, _) =>
-          screen.composeOver(under, pool, plan, _edgesOf(fresh)),
+          screen.composeOver(under, pool, plan, _edgesOf(over.fresh)),
     );
   }
 
   /// [frame]'s rows planned ([_planned]) and handed to [lay] with the kept
   /// frame — made again over the world the frame holds where it is not the
   /// one kept: what [lay] ends by. Its chains' puts are held in [holds], if
-  /// any.
+  /// any, for the canvas [standing] stands for, if any.
   ///
   /// Throws [FrameKernelsToCome], nothing laid, where the frame has an
   /// effect chain and the chains' kernels are not compiled yet.
   Future<void> _laid(
     StackedFrame frame,
     EngineChainHolds? holds,
+    Object? standing,
     Future<void> Function(
       GpuScreen screen,
       GpuPool pool,
@@ -104,6 +115,7 @@ final class EngineStackScreen {
       _letters,
       maskOf: _range.of,
       holds: holds,
+      standing: standing,
       run: (pool, plan, world) {
         if (stages != null && stages.aRoundComesAfter) {
           // On no screen: a round with a plug-in's step still to run lays
@@ -172,14 +184,13 @@ final class EngineStackScreen {
         d,
         camera[13] - c * cornerX - d * cornerY,
       ],
-      scale: scale,
       sampling: gpuSamplingOf(filterQualityForDisplayScale(scale)),
       rect: (0, 0, columns, rows),
     );
   }
 
   /// What a frame over the world [extent] will keep: a tile for each it
-  /// meets, before any halving a screen reads ([GpuScreen.bytes]).
+  /// meets ([GpuScreen.bytes]).
   static int bytesOver(Rect extent) {
     if (extent.isEmpty) {
       return gpuTileBytes;
@@ -191,6 +202,33 @@ final class EngineStackScreen {
     return span(extent.left, extent.right) *
         span(extent.top, extent.bottom) *
         gpuTileBytes;
+  }
+
+  /// What [frame] will weigh laid afresh ([compose]) on [composite]: a
+  /// tile for each the engine makes of it — of those its rows lay anything
+  /// on in the world it holds, each the engine's pictures keep none for
+  /// yet — by the engine's own count of the plan it lays
+  /// ([GpuPlan.tilesMade]), weighed on its thread; [bytesOver] is every
+  /// tile the world meets.
+  ///
+  /// Fails by [FrameKernelsToCome], nothing weighed, where [compose] would
+  /// throw it.
+  static Future<int> bytesToMake(
+    StackedFrame frame,
+    GpuComposite composite,
+    EngineLetters letters,
+  ) async {
+    final tiles = await _planned(
+      frame,
+      composite,
+      letters,
+      // Weighed ahead, a frame is its cels as they are stored: no hand is
+      // on it, so no row of it holds a range.
+      maskOf: (_) => throw StateError('a frame weighed ahead holds no range'),
+      holds: null,
+      run: (pool, plan, world) => plan.tilesMade(pool, _edgesOf(world)),
+    );
+    return tiles * gpuTileBytes;
   }
 
   /// The bytes the kept frame holds on the GPU ([GpuScreen.bytes]) — none
@@ -285,9 +323,10 @@ GpuFloodPicture fillPictureOf(
 /// any, as what the node shows ([_FrameReading._pictureOf]) on this paper
 /// ([_holding]) — and what its plug-ins' steps make kept past it where
 /// those are the pen's frame's ([EngineChainHolds.ofThePensFrame]). Those
-/// are weighed once [run]'s work is done: when [doneOf] its answer ends,
-/// where the engine runs it with no one waiting ([GpuScreen.compose]) —
-/// as it is answered, with none.
+/// are weighed — laid whole for the canvas [standing] stands for, if any
+/// ([EngineChainHolds.settleOnce]) — once [run]'s work is done: when
+/// [doneOf] its answer ends, where the engine runs it with no one waiting
+/// ([GpuScreen.compose]) — as it is answered, with none.
 ///
 /// 🚨ONE PLANNING: what a screen keeps ([EngineStackScreen._laid]) and what
 /// a fill reads ([fillPictureOf]) are the same rows by the same law.
@@ -302,6 +341,7 @@ T _planned<T>(
   required EngineChainHolds? holds,
   required T Function(GpuPool pool, GpuPlan plan, Rect world) run,
   Future<void>? Function(T ran)? doneOf,
+  Object? standing,
 }) {
   final pass = _FrameReading(frame._painter);
   // A frame of nothing keeps one pixel of nothing: shown through any
@@ -346,7 +386,7 @@ T _planned<T>(
       return ran;
     } finally {
       plan.free();
-      holds?.settleOnce(done);
+      holds?.settleOnce(done, standing: standing);
     }
   });
 }
