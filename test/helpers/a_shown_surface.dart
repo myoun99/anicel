@@ -115,7 +115,10 @@ ui.Image _readOnceAFrame(int textureId, GpuSurface surface, int drawn) {
   if (kept != null && kept.drawn == drawn) {
     return kept.image;
   }
-  kept?.image.dispose();
+  // Out of the keeping before it is let go of: a read the device refuses
+  // throws (`GpuReadFailed` — a test that loses its device reads on), and
+  // the screens' end would let go of it again.
+  _readBack.remove(textureId)?.image.dispose();
   final image = _readOf(surface);
   _readBack[textureId] = (image: image, drawn: drawn);
   return image;
