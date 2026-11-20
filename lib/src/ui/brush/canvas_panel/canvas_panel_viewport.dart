@@ -103,33 +103,6 @@ class _CanvasPanelViewport {
     _publishingViewport = false;
     // The page read follows the view it moved (F-201).
     _state._bookState.followView();
-    _tellMoved();
-  }
-
-  /// Told when the view as read may have moved: at once when it is written,
-  /// and in the layout that changed the window it is held and fitted in
-  /// ([rememberEditorViewportSize]). What is drawn through the view hears
-  /// it, and builds again by itself.
-  ///
-  /// 🚨a-view-change-rebuilds-the-whole-canvas-panel (2026-11-20): every
-  /// write rebuilt the whole panel — the shell, the pill, the deck's gates
-  /// and the tool's entrance with what the view moved — a pan's step, a
-  /// pinch's, and every frame a docked panel's height changed.
-  final Telling moved = Telling();
-
-  /// Told as [moved] is — but after the frame for a window that changed:
-  /// the shell's bars stand BESIDE the viewport's layout, and nothing
-  /// outside a layout may be marked to build while it runs.
-  final Telling movedForTheBars = Telling();
-
-  void _tellMoved() {
-    moved.tell();
-    movedForTheBars.tell();
-  }
-
-  void dispose() {
-    moved.dispose();
-    movedForTheBars.dispose();
   }
 
   /// [view] held to [BrushCanvasPanel.viewLimit] in the window you look
@@ -201,8 +174,8 @@ class _CanvasPanelViewport {
 
   /// True while the panel is writing the view itself.
   ///
-  /// Its own writes tell [moved] already, so hearing them back would only
-  /// tell it twice for the same change.
+  /// Its own writes ride a `setState` already, so hearing them back would
+  /// only schedule a second build for the same change.
   bool _publishingViewport = false;
 
   /// Repaints when the OWNER moves the view.
@@ -224,7 +197,7 @@ class _CanvasPanelViewport {
     _holdTheStoredView();
     _state._bookState.followView();
     // The value already lives in the notifier — this call IS the repaint.
-    _tellMoved();
+    _state._rebuild(() {});
   }
 
   /// The last value the CALLER handed us through [BrushCanvasPanel.viewport].
@@ -300,9 +273,6 @@ class _CanvasPanelViewport {
         ? null
         : canvasVisibleRect(previous, insets);
     _editorViewportSize = size;
-    // In the layout it changed in: what is drawn through the view is laid
-    // out under it, and builds before the frame is painted.
-    moved.tell();
     final after = canvasVisibleRect(size, insets);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_state.mounted) {
@@ -313,7 +283,7 @@ class _CanvasPanelViewport {
       }
       // Another window holds the view elsewhere (F-201).
       _holdTheStoredView();
-      movedForTheBars.tell();
+      _state._rebuild(() {});
     });
   }
 
@@ -358,7 +328,7 @@ class _CanvasPanelViewport {
   }
 
   void setViewport(CanvasViewport viewport) {
-    _viewport = viewport.clamped();
+    _state._rebuild(() => _viewport = viewport.clamped());
     _syncViewportParent();
   }
 
@@ -409,21 +379,23 @@ class _CanvasPanelViewport {
 
   void _zoomToAroundCenter(double nextZoom) {
     final anchor = _viewportCenterAnchor;
-    // ⛔The clamp is in DISPLAY units, and it is the same one for every
-    // absolute zoom verb. The ± buttons used to stop at the model's
-    // RENDER rail while the readout stopped at 10–1600%, so on a 2×
-    // tablet the buttons reached 3200% and then a one-pixel nudge of the
-    // readout halved the view in a single step.
-    //
-    // 🚨And since F-122 · I-27 (2026-09-17) it is not this road's own:
-    // [CanvasZoomScale.zoomedTo] is where EVERY zoom verb lands — the
-    // gesture layer's pinch, wheel and trackpad with these — in the range
-    // and on the grid the pill writes.
-    _viewport = _state._zoomScale.zoomedTo(
-      _viewport,
-      nextZoom: nextZoom,
-      anchor: anchor,
-    );
+    _state._rebuild(() {
+      // ⛔The clamp is in DISPLAY units, and it is the same one for every
+      // absolute zoom verb. The ± buttons used to stop at the model's
+      // RENDER rail while the readout stopped at 10–1600%, so on a 2×
+      // tablet the buttons reached 3200% and then a one-pixel nudge of the
+      // readout halved the view in a single step.
+      //
+      // 🚨And since F-122 · I-27 (2026-09-17) it is not this road's own:
+      // [CanvasZoomScale.zoomedTo] is where EVERY zoom verb lands — the
+      // gesture layer's pinch, wheel and trackpad with these — in the range
+      // and on the grid the pill writes.
+      _viewport = _state._zoomScale.zoomedTo(
+        _viewport,
+        nextZoom: nextZoom,
+        anchor: anchor,
+      );
+    });
     // ⚠️Through the shared publisher, not `onViewportChanged` directly:
     // that left `_lastWidgetViewport` stale for one build, and the
     // controlled re-apply on the next build would then overwrite — and
@@ -437,10 +409,12 @@ class _CanvasPanelViewport {
         _state.widget.fitFocusRect ??
         _state._bookState.fitRect ??
         canvasSize.canvasRect;
-    _viewport = _state._fittedInto(
-      _resolvedVisibleRect(),
-      canvasRect: target,
-    );
+    _state._rebuild(() {
+      _viewport = _state._fittedInto(
+        _resolvedVisibleRect(),
+        canvasRect: target,
+      );
+    });
     _syncViewportParent();
   }
 

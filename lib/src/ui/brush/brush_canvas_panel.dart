@@ -111,7 +111,7 @@ import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import '../../services/brush_poised_tip.dart';
-import 'brush_cursor_geometry.dart' show BrushCursorShape, brushCursorShape;
+import 'brush_cursor_geometry.dart' show brushCursorShape;
 import 'brush_cursor_painter.dart' show brushCursorLook, crosshairCursorLook;
 import 'drawing_cursor.dart';
 import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
@@ -127,7 +127,6 @@ import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
 import '../../core/progress_share.dart';
 import '../../core/screens_turn.dart';
-import '../../core/telling.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
@@ -1212,13 +1211,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   CanvasViewport get _viewShown =>
       _pictureUp.standing(_viewportState._viewport);
 
-  /// What [_viewShown] moves by: the picture standing at another view, and
-  /// the view itself ([_CanvasPanelViewport.moved]).
-  late final Listenable _viewShownMoves = Listenable.merge([
-    _pictureUp,
-    _viewportState.moved,
-  ]);
-
   // The book (F-201): the page its reader is on, kept true to the view.
   late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
 
@@ -1802,7 +1794,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _line.unbind();
     _pictureUp.dispose();
-    _viewportState.dispose();
     _idleAnts.dispose();
     _selectionFloat.dispose();
     _toolCursorHover.dispose();
@@ -2155,7 +2146,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // something and walked away.
         child: RepaintBoundary(
           child: ListenableBuilder(
-          listenable: _viewShownMoves,
+          listenable: _pictureUp,
           builder: (context, _) => CustomPaint(
             painter:
                 SelectionAntsPainter(
@@ -2201,7 +2192,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         child: _asideForTheContent(ListenableBuilder(
         listenable: Listenable.merge([
           widget.transformCelsUnderfootChanges,
-          _viewShownMoves,
+          _pictureUp,
         ]),
         builder: (context, _) => ValueListenableBuilder<TransformToolOptions>(
         valueListenable:

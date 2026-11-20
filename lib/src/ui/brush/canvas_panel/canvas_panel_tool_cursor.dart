@@ -274,13 +274,15 @@ class _CanvasPanelToolCursor {
   // 지우개나 다른툴누르면 커서가 사라짐」 — stays fixed, by construction
   // rather than by a build-time copy.
 
-  /// The brush cursor's outline for [tip] and the viewport as it is now —
-  /// null where it is too small to read.
-  BrushCursorShape? _brushShape(PoisedTip tip) => brushCursorShape(
-    viewport: _state._viewportState._viewport,
-    size: tip.size,
-    roundness: tip.roundness,
-    angleDegrees: tip.angleDegrees,
+  /// The brush cursor's look for [tip] and the viewport as it is now: the
+  /// outline of the tip, in a box that certainly holds it.
+  ToolCursorLook _brushLook(PoisedTip tip) => brushCursorLook(
+    brushCursorShape(
+      viewport: _state._viewportState._viewport,
+      size: tip.size,
+      roundness: tip.roundness,
+      angleDegrees: tip.angleDegrees,
+    ),
   );
 
   /// The composite colour under a panel-local point, for the eyedropper's
@@ -338,15 +340,11 @@ class _CanvasPanelToolCursor {
         // The hover SWATCH: its pixels change with the colour under the
         // pointer, so its picture is re-recorded per move — a disc — and
         // it samples in its own paint, once per frame.
-        // …and the colour under a resting aim changes as the view moves.
         tick(
-          ListenableBuilder(
-            listenable: _state._viewportState.moved,
-            builder: (context, _) => ToolCursorSprite(
-              key: const ValueKey<String>('eyedropper-hover-swatch'),
-              position: aim,
-              look: eyedropperSwatchLook(position: aim, sample: _sampleAt),
-            ),
+          ToolCursorSprite(
+            key: const ValueKey<String>('eyedropper-hover-swatch'),
+            position: aim,
+            look: eyedropperSwatchLook(position: aim, sample: _sampleAt),
           ),
         ),
         // R26 #22: the eyedropper ICON as the cursor. Its tip is the hot
@@ -401,14 +399,10 @@ class _CanvasPanelToolCursor {
             }
             // The ghost wears the stamp's opacity and blend, so it hears the
             // brush as well as the aim — the panel no longer rebuilds for
-            // either (H40 ②) — and stands where the aim is on the canvas,
-            // so it hears the view.
+            // either (H40 ②).
+            final brush = _state.widget.brushToolState;
             return ListenableBuilder(
-              listenable: Listenable.merge([
-                aim,
-                _state.widget.brushToolState,
-                _state._viewportState.moved,
-              ]),
+              listenable: brush == null ? aim : Listenable.merge([aim, brush]),
               builder: (context, _) {
                 final position = aim.value;
                 return CutStampPreviewPublisher(
@@ -449,25 +443,21 @@ class _CanvasPanelToolCursor {
       );
 
   /// The brush cursor. The tip's footprint — size, roundness, angle, as the
-  /// pen at the aim is held ([poisedTip], F-176-Q7) — through the view's
-  /// zoom, turn and flips is the one thing it SHOWS, so it hears the brush,
-  /// the pen's pose and the view for itself and rebuilds only when the
-  /// outline they make changes: the panel around it no longer rebuilds for
-  /// the brush (H40 ②, see [BrushCanvasPanel.brushToolState]), nor for the
-  /// view — and a pan moves no outline.
+  /// pen at the aim is held ([poisedTip], F-176-Q7) — is the one part of
+  /// the brush it SHOWS, so it hears the brush and the pen's pose for
+  /// itself and rebuilds only when the tip they make changes: the panel
+  /// around it no longer rebuilds for the brush (H40 ②, see
+  /// [BrushCanvasPanel.brushToolState]).
   Widget _brushCursor(ValueListenable<Offset?> aim) {
+    final brush = _state.widget.brushToolState;
     final pose = _state._penPose;
-    return SlicedListenableBuilder<BrushCursorShape?>(
-      listenable: Listenable.merge([
-        _state.widget.brushToolState,
-        pose,
-        _state._viewportState.moved,
-      ]),
-      slice: () => _brushShape(poisedTip(_state._brush.shape, pose.value)),
-      builder: (context, shape) => ToolCursorSprite(
+    return SlicedListenableBuilder<PoisedTip>(
+      listenable: brush == null ? pose : Listenable.merge([brush, pose]),
+      slice: () => poisedTip(_state._brush.shape, pose.value),
+      builder: (context, tip) => ToolCursorSprite(
         key: const ValueKey<String>('brush-cursor-overlay'),
         position: aim,
-        look: brushCursorLook(shape),
+        look: _brushLook(tip),
       ),
     );
   }

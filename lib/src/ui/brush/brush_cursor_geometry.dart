@@ -28,16 +28,6 @@ class BrushCursorShape {
 
   double get majorRadius => majorAxis.distance;
   double get minorRadius => minorAxis.distance;
-
-  /// The same outline — what the cursor rebuilds only for.
-  @override
-  bool operator ==(Object other) =>
-      other is BrushCursorShape &&
-      other.majorAxis == majorAxis &&
-      other.minorAxis == minorAxis;
-
-  @override
-  int get hashCode => Object.hash(majorAxis, minorAxis);
 }
 
 /// Below this on-screen LONG diameter the outline stops being readable — a

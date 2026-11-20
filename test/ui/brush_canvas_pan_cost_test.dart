@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
@@ -37,16 +38,15 @@ void main() {
 
   /// The panel, with both observation seams open:
   ///
-  ///  * `underlayBuilds` counts the underlay's builds — at each build of
-  ///    the panel, and at each move of the view, which it is drawn through
-  ///    (a-view-change-rebuilds-the-whole-canvas-panel: a pan builds no
-  ///    panel since 2026-11-20);
+  ///  * `panelBuilds` counts the panel's own `build` runs — the underlay
+  ///    builder is a callback invoked from it, so its call count IS the
+  ///    rebuild count;
   ///  * `painters` records the `activeSurfacePainter` handed down on each of
   ///    those builds, which is what the frame's picture view compares BY
   ///    IDENTITY (`FramePictureView._sameLive`).
   Future<void> pumpPanel(
     WidgetTester tester, {
-    required List<int> underlayBuilds,
+    required List<int> panelBuilds,
     required List<BitmapSurfacePainter?> painters,
     required ActiveStrokeOverlayModel overlay,
   }) async {
@@ -72,7 +72,7 @@ void main() {
             // round.) The panel owning its own viewport is what a pan looks
             // like between the host's rebuilds.
             viewportUnderlayBuilder: (context, viewport, activeSurfacePainter, _) {
-              underlayBuilds[0] += 1;
+              panelBuilds[0] += 1;
               painters.add(activeSurfacePainter);
               return const SizedBox.expand();
             },
@@ -86,14 +86,13 @@ void main() {
   /// The memoized view pill, by identity. `_ensureShellBars` hands back the
   /// SAME widget instance while its token holds, so "did panning throw the
   /// pill away" is a pointer comparison.
-  Object? pillBody(WidgetTester tester) => tester.widget(
-    find.descendant(
-      of: find.byKey(const ValueKey<String>('canvas-view-pill')),
-      matching: find.byWidgetPredicate(
-        (widget) => '${widget.runtimeType}' == '_CanvasViewportBottomBar',
-      ),
-    ),
-  );
+  Object? pillBody(WidgetTester tester) {
+    final capsule = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('canvas-view-pill')),
+    );
+    final hit = capsule.child! as SuperellipseHit;
+    return (hit.child! as SizedBox).child;
+  }
 
   /// A middle-button drag across the canvas, mapped to the pan above.
   Future<TestGesture> startPan(WidgetTester tester) async {
@@ -120,11 +119,11 @@ void main() {
     // to the field that had been caught rather than to the rule.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
-    final underlayBuilds = <int>[0];
+    final panelBuilds = <int>[0];
     final painters = <BitmapSurfacePainter?>[];
     await pumpPanel(
       tester,
-      underlayBuilds: underlayBuilds,
+      panelBuilds: panelBuilds,
       painters: painters,
       overlay: overlay,
     );
@@ -133,7 +132,7 @@ void main() {
     expect(before, isNotNull, reason: 'the pill has a body to keep');
 
     final gesture = await startPan(tester);
-    final buildsAtStart = underlayBuilds[0];
+    final buildsAtStart = panelBuilds[0];
     for (var i = 1; i <= 8; i += 1) {
       await gesture.moveBy(const Offset(6, 4));
       await tester.pump();
@@ -142,7 +141,7 @@ void main() {
     // LIVENESS — a pan that never reached the panel would pass everything
     // below without proving anything.
     expect(
-      underlayBuilds[0],
+      panelBuilds[0],
       greaterThan(buildsAtStart),
       reason: 'the pan must actually have moved the viewport',
     );
@@ -172,11 +171,11 @@ void main() {
     // that must not be served stale.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
-    final underlayBuilds = <int>[0];
+    final panelBuilds = <int>[0];
     final painters = <BitmapSurfacePainter?>[];
     await pumpPanel(
       tester,
-      underlayBuilds: underlayBuilds,
+      panelBuilds: panelBuilds,
       painters: painters,
       overlay: overlay,
     );
@@ -204,8 +203,8 @@ void main() {
     );
   });
 
-  testWidgets('a build of the underlay hands the layer stack the SAME '
-      'surface painter', (tester) async {
+  testWidgets('a panel rebuild hands the layer stack the SAME surface '
+      'painter', (tester) async {
     // 🐛`_activeSurfacePainterFor` minted a fresh `BitmapSurfacePainter` on
     // every call, and the layer stack compared that field with
     // `!identical(...)`. So the comparison could never answer false: ANY
@@ -220,11 +219,11 @@ void main() {
     // is every rebuild.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
-    final underlayBuilds = <int>[0];
+    final panelBuilds = <int>[0];
     final painters = <BitmapSurfacePainter?>[];
     await pumpPanel(
       tester,
-      underlayBuilds: underlayBuilds,
+      panelBuilds: panelBuilds,
       painters: painters,
       overlay: overlay,
     );
@@ -244,10 +243,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      underlayBuilds[0],
+      panelBuilds[0],
       greaterThan(1),
-      reason: 'the underlay must have been built again for this to mean '
-          'anything',
+      reason: 'the panel must have rebuilt for this to mean anything',
     );
     final distinct = <BitmapSurfacePainter>{};
     for (final painter in painters) {

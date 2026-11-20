@@ -282,7 +282,7 @@ class _CanvasPanelShellBars {
   void _rotateCwFromBar() => _state._viewportState._rotateStep(clockwise: true);
 
   void _setViewportDuringPanbarDrag(CanvasViewport viewport) {
-    _state._viewportState._viewport = viewport.clamped();
+    _state._rebuild(() => _state._viewportState._viewport = viewport.clamped());
   }
 
   void _zoomInFromBar() => _state._viewportState._zoomStep(zoomIn: true);
