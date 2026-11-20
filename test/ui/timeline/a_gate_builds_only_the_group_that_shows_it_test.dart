@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
@@ -12,7 +13,10 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
@@ -322,5 +326,53 @@ void main() {
       reason: "the seek moved the frame icons' gates alone",
     );
     expect(identical(tester.widget(bar), toolbar), isTrue);
+  });
+
+  // Every group bakes its words with its gates: a language switch fires no
+  // session notify, and a group that left it out of its gates would go on
+  // printing the language it was built in.
+  testWidgets('a language switch re-words a verb in every group of the '
+      'shared pill', (tester) async {
+    final s = await openOnAnEmptyCel(tester);
+    final bar = find.descendant(
+      of: find.byType(TimelineTabHost),
+      matching: find.byType(TimelineActionToolbar),
+    );
+    String tooltipOf(String key) => tester
+        .widget<AppIconButton>(
+          find.descendant(
+            of: bar,
+            matching: find.byWidgetPredicate(
+              (w) => w is AppIconButton && w.keyValue == key,
+            ),
+          ),
+        )
+        .tooltip;
+    // One verb of each group, with the words it prints.
+    final printed = {
+      'shared-edit-button': () =>
+          editorActionLabel(EditorActionIds.editInstance),
+      'shared-delete-button': () =>
+          editorActionLabel(EditorActionIds.editDelete),
+      'shared-colour-edit-button': () => AppText.strings.tlSharedColourEdit,
+    };
+    final before = {for (final key in printed.keys) key: tooltipOf(key)};
+    final settings = s.languageSettings.value;
+    s.languageSettings.value = settings.copyWith(
+      programLanguage: settings.programLanguage == AppLanguage.ko
+          ? AppLanguage.ja
+          : AppLanguage.ko,
+    );
+    addTearDown(() => s.languageSettings.value = settings);
+    await tester.pump();
+
+    for (final MapEntry(key: key, value: words) in printed.entries) {
+      expect(
+        words(),
+        isNot(before[key]),
+        reason: 'premise: $key prints apart in the two languages',
+      );
+      expect(tooltipOf(key), words(), reason: key);
+    }
   });
 }
