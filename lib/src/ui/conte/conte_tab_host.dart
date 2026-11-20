@@ -14,6 +14,7 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/rows_as_printed.dart';
 import '../../models/sheet_marks.dart' show SheetPicture;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
@@ -35,7 +36,7 @@ import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
-import '../timeline/memo_token.dart' show ByIdentity;
+import '../timeline/memo_token.dart' show AsPrinted;
 import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
@@ -132,20 +133,22 @@ class ConteTabHost extends StatefulWidget {
   /// cut a stroke makes is planned from ([_ConteTabHostState._brushPageOf]).
   /// The models are immutable, so a new one is the only way either moves.
   ///
-  /// ⛔THE EYE IS PRINTED HERE, so the project is not compared with its
-  /// eyes open as the timesheet's rows are (`AsPrinted`): a cell's picture
-  /// is the cut as it shows, and the page asks the picture store for it
-  /// again as it prints — the store keys a picture by its rows' eyes
-  /// (`StoryboardCutThumbnailStore`), card an-eye-toggle-holds-the-ui-thread
-  /// (11-18).
+  /// The project is compared as printed (`projectAsPrinted`): the rail's
+  /// folds and twirls at rest, which no page prints — card
+  /// a-twirl-rebuilds-the-open-conte-on-the-next-notice (11-20; a twirl
+  /// rebuilt the whole conte at the next word, 171 elements in the test VM,
+  /// as much as an eye).
   ///
-  /// ⚠️Nor are the rail's folds and twirls left out, though no page prints
-  /// them (`trackAsPrinted`): a project compared by value hears only what
-  /// `Project ==` compares, which skips the backdrop and the pasteboard —
-  /// card a-frame-lane-band-lets-its-image-go-on-one-row-pick-and-not-another
-  /// (11-20).
+  /// ⛔THE EYE IS PRINTED HERE, so it is kept, not left out as the
+  /// timesheet leaves it: a cell's picture is the cut as it shows, and the
+  /// page asks the picture store for it again as it prints — the store keys
+  /// a picture by its rows' eyes (`StoryboardCutThumbnailStore`), card
+  /// an-eye-toggle-holds-the-ui-thread (11-18).
   static Object printedBy(EditorSessionManager session) => (
-    project: ByIdentity(session.repository.requireProject()),
+    project: AsPrinted(
+      session.repository.requireProject(),
+      (project) => projectAsPrinted(project, EyeOnThePage.printed),
+    ),
     activeCanvas: session.activeCutOrNull?.canvasSize,
   );
 

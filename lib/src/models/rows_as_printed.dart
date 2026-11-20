@@ -3,6 +3,7 @@ import 'attached_placement.dart';
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_id.dart';
+import 'project.dart';
 import 'track.dart';
 import 'track_conte.dart';
 
@@ -162,3 +163,10 @@ Track trackAsPrinted(Track track, EyeOnThePage eye) {
           expandedLaneGroups: const {},
         );
 }
+
+/// [project] as a page prints it: every track of every timeline
+/// ([trackAsPrinted]).
+Project projectAsPrinted(Project project, EyeOnThePage eye) =>
+    project.withTracksOfEveryTimeline(
+      (tracks) => mappedOrSame(tracks, (track) => trackAsPrinted(track, eye)),
+    );

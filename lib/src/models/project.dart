@@ -517,6 +517,12 @@ class Project {
     );
   }
 
+  /// 🚨Every field, the stage's six among them. ↩️The backdrop and the
+  /// pasteboard came in (2ec7b9d59, 07-29) and grew (47aa1fc26 ·
+  /// 1e2500696) without a word here, by no one's decision: a project
+  /// compared by value did not hear them change, and the conte heard the
+  /// project by its identity for it — rebuilt for a twirl it does not print
+  /// (card a-twirl-rebuilds-the-open-conte-on-the-next-notice, 2026-11-20).
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -529,6 +535,7 @@ class Project {
           other.frameRate == frameRate &&
           other.cameraSize == cameraSize &&
           other.background == background &&
+          other._stage == _stage &&
           other.timesheetInfo == timesheetInfo &&
           other.cameraInstructions == cameraInstructions &&
           listEquals(other.mediaAssets, mediaAssets) &&
@@ -550,6 +557,7 @@ class Project {
     frameRate,
     cameraSize,
     background,
+    _stage,
     timesheetInfo,
     cameraInstructions,
     Object.hashAll(mediaAssets),
@@ -562,6 +570,16 @@ class Project {
     Object.hashAll([
       for (final entry in mediaViewerBookmarks.entries) (entry.key, entry.value),
     ]),
+  );
+
+  /// The stage's planes behind the paper, as one value for [==].
+  Object get _stage => (
+    backdropArgb,
+    backdropNone,
+    pasteboardArgb,
+    pasteboardNone,
+    pasteboardSize,
+    pasteboardInUse,
   );
 
   @override

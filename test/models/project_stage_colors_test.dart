@@ -4,6 +4,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 
 /// R3b: the stage's colors on the project — backdrop, pasteboard and paper,
 /// each an RGBA colour (the backdrop since F-114) and, since F-114, a plane
@@ -88,6 +89,26 @@ void main() {
       backdropArgb: 0x80102030,
     );
     expect(thinned.backdropArgb, 0x80102030);
+  });
+
+  test('each stage field is part of what a project is equal by', () {
+    // A conte heard the project by value would miss a stage change if one of
+    // these fell out of ==, and redraw nothing (card
+    // a-twirl-rebuilds-the-open-conte-on-the-next-notice).
+    final plain = createDefaultProject();
+    final changed = <String, Project>{
+      'backdropArgb': plain.copyWith(backdropArgb: 0xFF102030),
+      'backdropNone': plain.copyWith(backdropNone: true),
+      'pasteboardArgb': plain.copyWith(pasteboardArgb: 0x80445566),
+      'pasteboardNone': plain.copyWith(pasteboardNone: true),
+      'pasteboardSize': plain.copyWith(pasteboardSize: PasteboardSize.two),
+      'pasteboardInUse': plain.copyWith(pasteboardInUse: false),
+    };
+    for (final MapEntry(key: field, value: project) in changed.entries) {
+      expect(project, isNot(plain), reason: field);
+    }
+    expect(plain.copyWith(), plain);
+    expect(plain.copyWith().hashCode, plain.hashCode);
   });
 
   test('paper alpha rides the argb, and none is a second field beside it', () {

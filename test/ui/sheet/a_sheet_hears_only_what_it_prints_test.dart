@@ -27,6 +27,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -460,6 +461,95 @@ void main() {
     );
     await tester.pump();
     expect(envelope().formId, other, reason: 'a form picked is printed on');
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  // 🔬Card a-twirl-rebuilds-the-open-conte-on-the-next-notice (11-20): the
+  // conte heard the project by identity, and a twirl — written without a
+  // word — rebuilt the whole of it, 171 elements, at the next word.
+  testWidgets('in the app, a twirl or a fold on any row the conte holds '
+      'rebuilds no conte, at the next word either', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-conte-button')),
+    );
+    await tester.pumpAndSettle();
+    final host = find.byType(ConteTabHost);
+    final session = tester.widget<ConteTabHost>(host).session;
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    final track = session.repository.requireProject().tracks.single;
+    final rows = session.requireActiveCut.layers;
+    expect(
+      {for (final row in rows) row.kind},
+      containsAll([LayerKind.animation, LayerKind.storyboard]),
+      reason: '⛔premise: a cel row and the conte row',
+    );
+    expect(
+      track.conte.base,
+      isNotNull,
+      reason: '⛔premise: the conte row wears the track\'s conte head',
+    );
+    final presses = <(String, void Function())>[
+      for (final row in rows) ...[
+        (
+          '${row.kind.name} row twirled',
+          () => session.layerSwitches.toggleLayerLanes(row.id),
+        ),
+        (
+          '${row.kind.name} row folded',
+          () => session.folders.toggleLayerCollapsed(row.id),
+        ),
+      ],
+      for (final row in track.seLayers)
+        (
+          'se row twirled',
+          () => session.layerSwitches.toggleLayerLanes(row.id),
+        ),
+      (
+        'transition row twirled',
+        () => session.layerSwitches.toggleLayerLanes(track.transitionLayer.id),
+      ),
+      (
+        'the V row twirled',
+        () => session.layerSwitches.toggleLayerLanes(
+          trackTransformLaneCarrierId(track.id),
+        ),
+      ),
+    ];
+
+    for (final (index, (what, press)) in presses.indexed) {
+      final before = tester.widget(host);
+      final project = session.repository.requireProject();
+      press();
+      final heard = notifiesOf(
+        session,
+        () => session.cutVerbs.selectedGuideId = GuideId('picked-$index'),
+      );
+      await tester.pump();
+
+      expect(heard, greaterThan(0), reason: '⛔premise: a word came after');
+      expect(
+        identical(session.repository.requireProject(), project),
+        isFalse,
+        reason: '⛔premise: $what was written',
+      );
+      expect(
+        identical(tester.widget(host), before),
+        isTrue,
+        reason: '$what: nothing the conte prints',
+      );
+      await tester.pumpAndSettle();
+    }
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
