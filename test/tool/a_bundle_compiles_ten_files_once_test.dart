@@ -97,7 +97,9 @@ void main() {
           : 'void main() {}';
       final files = [
         for (var i = 0; i < 12; i++)
-          if (i.isEven)
+          // Dealt in turn as one lot, every second file would share a
+          // bundle: a third of them slow puts slow and plain in each.
+          if (i % 3 == 0)
             'test/slow${i}_test.dart'
           else
             'test/plain${i}_test.dart',
