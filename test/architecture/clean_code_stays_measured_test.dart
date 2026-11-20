@@ -1157,7 +1157,19 @@ void main() {
   /// bundled to fit: the bar's two stretches are the door's to place (the
   /// .tvpp door gives each half), and one callback told which stretch it
   /// is in would be one name answering two questions.
-  const wideSignatures = 456;
+  ///
+  /// ⚠️456 → 457 on 2026-11-20, one named as the rule above asks (F-610 —
+  /// 유저 F-610-Q5 「할수있는거 다하면서」: a band being made folds as it
+  /// fills): `EngineTileLedger.land` (five — the tiles asked, what makes
+  /// them, whether it compared, how the landing is made again, and whose
+  /// it is) took whether the landing is the hand's: a hand's puts the
+  /// folds off till it rests, and any other asks for them as a store
+  /// does. 🔬`clean_code_diff` against master (`55630003e`) names that one
+  /// added and nothing gone. ⛔Not bundled to fit, and no default: whose
+  /// landing it is is every caller's to say by name — one that said
+  /// nothing would be answered as the hand's, and what it lays would
+  /// stand unfolded for as long as it comes.
+  const wideSignatures = 457;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
