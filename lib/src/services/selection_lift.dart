@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuColour, GpuStampPicture, gpuTileSide;
+    show GpuColour, GpuMask, GpuPool, GpuStampPicture, GpuTile, gpuTileSide;
 
 import '../core/rgba_premultiply.dart' show copyRgb;
 import '../models/bitmap_surface.dart';
@@ -176,16 +176,22 @@ bool _gathersOnTheEngine(BitmapSurface surface) =>
 
 /// The gather on the engine (flip lane ⓒ): the law in the kernel
 /// (rust/src/kernels/cel_pixel/lift.wgsl), under the mask [clip] made there
-/// over [box] — asked for only where a tile lies under it —, over the tiles
+/// over its box — asked for only where a tile lies under it —, over the tiles
 /// where the pool has them, kept there as the box's picture: null where it
-/// took nothing.
-GpuStampPicture? _gatherOnEngine({
+/// took nothing. [by] is the engine's door ([_LiftsBy]): what it answers is
+/// answered, null where no tile lies under the box.
+///
+/// ⚠️The hold ends with the asking, whichever the door: the one that is
+/// told reads the tiles off the pool's pages as they stood there
+/// (rust/src/kernels/cel_pixel/abi.rs,
+/// `gpu_engine_cel_pixels_lift_picture_unwaited`).
+T? _gatherOnEngine<T>({
   required BitmapSurface surface,
   required SelectionClip clip,
-  required ({int left, int top, int width, int height}) box,
   required bool takeWholePixels,
+  required _LiftsBy<T> by,
 }) {
-  final (:left, :top, :width, :height) = box;
+  final (:left, :top, :width, :height) = clip.box!;
   final covered = tilesCovering(
     surface,
     DirtyRegion(
@@ -203,7 +209,7 @@ GpuStampPicture? _gatherOnEngine({
     final grid = hold.gridOf(BrushFrameKey.noCel, {
       for (final one in covered) one.coord: one.tile,
     });
-    return EngineCelPixels.pass.liftPicture(
+    return by(
       ledger.pool,
       grid.x0,
       grid.y0,
@@ -232,30 +238,9 @@ BrushStampImage? _liftedStamp({
 }) {
   final box = clip.box!;
   if (_gathersOnTheEngine(surface)) {
-    GpuStampPicture? lift() => _gatherOnEngine(
-      surface: surface,
-      clip: clip,
-      box: box,
-      takeWholePixels: takeWholePixels,
-    );
+    final lift = _liftWaitedFor(surface, clip, takeWholePixels);
     final picture = lift();
-    if (picture == null) {
-      return null;
-    }
-    final (left: _, top: _, :width, :height) = box;
-    return EngineStampPictures.lifted(
-      picture,
-      id: id,
-      // What the cel holds there, clear, should the next engine find none.
-      lift: () =>
-          lift() ??
-          GpuStampPicture(
-            appGpuEngine,
-            Uint8List(width * height * 4),
-            width,
-            height,
-          ),
-    );
+    return picture == null ? null : _keptOnEngine(picture, box, lift, id);
   }
   final gathered = gatherMaskedSurfacePixels(
     surface: surface,
@@ -270,6 +255,61 @@ BrushStampImage? _liftedStamp({
     width: box.width,
     height: box.height,
     rgba: gathered.rgba,
+  );
+}
+
+/// The engine's door a gather goes by ([_gatherOnEngine]):
+/// `GpuCelPixels.liftPicture`, waited for, or `lifted`, told.
+typedef _LiftsBy<T> =
+    T Function(
+      GpuPool pool,
+      int x0,
+      int y0,
+      int columns,
+      int rows,
+      List<GpuTile?> tiles, {
+      required GpuMask mask,
+      required bool whole,
+      required int width,
+      required int height,
+    });
+
+/// [clip]'s gather off [surface] on the engine, waited for: what takes it
+/// now, and again on the next engine ([_keptOnEngine]).
+GpuStampPicture? Function() _liftWaitedFor(
+  BitmapSurface surface,
+  SelectionClip clip,
+  bool takeWholePixels,
+) =>
+    () => _gatherOnEngine<GpuStampPicture?>(
+      surface: surface,
+      clip: clip,
+      takeWholePixels: takeWholePixels,
+      by: EngineCelPixels.pass.liftPicture,
+    );
+
+/// [picture] — what a gather over [box] took — as the stamp named [id],
+/// which stays on the engine ([EngineStampPictures.lifted]) and which
+/// [lift] takes again on the next one.
+BrushStampImage _keptOnEngine(
+  GpuStampPicture picture,
+  ({int left, int top, int width, int height}) box,
+  GpuStampPicture? Function() lift,
+  String id,
+) {
+  final (left: _, top: _, :width, :height) = box;
+  return EngineStampPictures.lifted(
+    picture,
+    id: id,
+    // What the cel holds there, clear, should the next engine find none.
+    lift: () =>
+        lift() ??
+        GpuStampPicture(
+          appGpuEngine,
+          Uint8List(width * height * 4),
+          width,
+          height,
+        ),
   );
 }
 
@@ -296,26 +336,11 @@ SelectionPixels? liftSelectionPixels({
   required SelectionMaskOptions options,
   required String stampId,
 }) {
-  // Pasteboard clip, not canvas — off-canvas artwork is selectable and
-  // liftable (the whole point of moving things on and off the stage).
-  // R26: grow/feather/AA may write beyond the polygon's bbox — the clip's
-  // box is padded for them.
-  final clip = SelectionClip.of(
-    region,
-    wall: surface.pasteboard,
-    options: options,
-  );
-  final box = clip.box;
-  if (box == null) {
+  final read = _readOf(region, surface, options);
+  if (read == null) {
     return null;
   }
-
-  // 🚨WHOLE PIXELS unless the softness was ASKED for. A feathered selection
-  // is a soft edge on purpose; anti-aliasing is not, and splitting a pixel
-  // between the moved copy and the old spot is what left a ghost along
-  // every AA selection the user moved.
-  final takeWholePixels = options.featherPx <= 0;
-
+  final (:clip, :box, :takeWholePixels) = read;
   // Lift the surface pixels under the mask (straight alpha, byte copies).
   final stamp = _liftedStamp(
     surface: surface,
@@ -332,6 +357,39 @@ SelectionPixels? liftSelectionPixels({
     stamp: stamp,
     takeWholePixels: takeWholePixels,
   );
+}
+
+/// What a lift reads of [region] over [surface] at [options] before a
+/// pixel is taken: the selection, its box, and whether a partly-covered
+/// pixel travels whole. Null when the box is empty.
+({
+  SelectionClip clip,
+  ({int left, int top, int width, int height}) box,
+  bool takeWholePixels,
+})?
+_readOf(
+  CanvasSelectionRegion region,
+  BitmapSurface surface,
+  SelectionMaskOptions options,
+) {
+  // Pasteboard clip, not canvas — off-canvas artwork is selectable and
+  // liftable (the whole point of moving things on and off the stage).
+  // R26: grow/feather/AA may write beyond the polygon's bbox — the clip's
+  // box is padded for them.
+  final clip = SelectionClip.of(
+    region,
+    wall: surface.pasteboard,
+    options: options,
+  );
+  final box = clip.box;
+  if (box == null) {
+    return null;
+  }
+  // 🚨WHOLE PIXELS unless the softness was ASKED for. A feathered selection
+  // is a soft edge on purpose; anti-aliasing is not, and splitting a pixel
+  // between the moved copy and the old spot is what left a ghost along
+  // every AA selection the user moved.
+  return (clip: clip, box: box, takeWholePixels: options.featherPx <= 0);
 }
 
 /// How many lift pairs [buildSelectionLiftDabs] has built — what a test
@@ -355,9 +413,65 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     options: options,
     stampId: 'lift-stamp-$liftId',
   );
-  if (lifted == null) {
+  return lifted == null ? null : _pairOf(lifted, liftId);
+}
+
+/// [buildSelectionLiftDabs] with no wait for the GPU: the gather asked
+/// now, of [surface]'s tiles as the engine holds them now, and the pair
+/// answered once the GPU has said whether it took any
+/// (`GpuCelPixels.lifted`). Where the gather is Dart's — a test's
+/// reference ([debugSelectionLiftInDart]) — there is no GPU to wait for,
+/// and the waited one answers.
+///
+/// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second (브러시/렌더링
+/// 2026-11-20): what a box at rest lifts ahead of the press; a press lifts
+/// through [buildSelectionLiftDabs]. One reading of the selection
+/// ([_readOf]), one gather ([_gatherOnEngine]) and one pair ([_pairOf])
+/// between the two — the engine's door alone differs.
+Future<SelectionLiftDabs?> buildSelectionLiftDabsOnceTold({
+  required CanvasSelectionRegion region,
+  required BitmapSurface surface,
+  required String liftId,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
+}) async {
+  if (!_gathersOnTheEngine(surface)) {
+    return buildSelectionLiftDabs(
+      region: region,
+      surface: surface,
+      liftId: liftId,
+      options: options,
+    );
+  }
+  debugSelectionLiftsBuilt += 1;
+  final read = _readOf(region, surface, options);
+  if (read == null) {
     return null;
   }
+  final (:clip, :box, :takeWholePixels) = read;
+  final picture = await _gatherOnEngine(
+    surface: surface,
+    clip: clip,
+    takeWholePixels: takeWholePixels,
+    by: EngineCelPixels.pass.lifted,
+  );
+  if (picture == null) {
+    return null;
+  }
+  final stamp = _keptOnEngine(
+    picture,
+    box,
+    _liftWaitedFor(surface, clip, takeWholePixels),
+    'lift-stamp-$liftId',
+  );
+  return _pairOf(
+    (clip: clip, box: box, stamp: stamp, takeWholePixels: takeWholePixels),
+    liftId,
+  );
+}
+
+/// The pair [lifted] makes, named by [liftId]: the erase that takes it
+/// off its cel, and the stamp carrying it at its box.
+SelectionLiftDabs _pairOf(SelectionPixels lifted, String liftId) {
   final (clip: _, :box, :stamp, takeWholePixels: _) = lifted;
   final (:left, :top, :width, :height) = box;
   final stampDab = BrushDab(

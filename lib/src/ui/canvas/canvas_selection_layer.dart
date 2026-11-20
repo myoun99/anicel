@@ -93,13 +93,34 @@ typedef LiftedFloat = ({
 BitmapSurface floatSurfaceOf(BrushDab dab, PasteboardWall pasteboard) {
   debugFloatSurfacesMade += 1;
   return materializeBrushDabSequenceOnBitmapSurface(
-    surface: BitmapSurface(
-      canvasSize: pasteboard.canvas,
-      pasteboardReach: pasteboard.reach,
-    ),
+    surface: _floatGround(pasteboard),
     sequence: BrushDabSequence([dab]),
   ).surface;
 }
+
+/// [floatSurfaceOf] with no wait for the GPU
+/// ([materializeStampOnceTold]): the float a box at rest lays ahead of
+/// the press. [unput] is called where the surface's tiles were not put
+/// after all: it is forgotten there, and the press lays its own.
+Future<BitmapSurface> floatSurfaceOnceTold(
+  BrushDab dab,
+  PasteboardWall pasteboard, {
+  required void Function() unput,
+}) async {
+  debugFloatSurfacesMade += 1;
+  final laid = await materializeStampOnceTold(
+    surface: _floatGround(pasteboard),
+    dab: dab,
+    unput: unput,
+  );
+  return laid.surface;
+}
+
+/// What a float is laid on: a surface of its own on [pasteboard], bare.
+BitmapSurface _floatGround(PasteboardWall pasteboard) => BitmapSurface(
+  canvasSize: pasteboard.canvas,
+  pasteboardReach: pasteboard.reach,
+);
 
 /// How many floats' surfaces [floatSurfaceOf] laid — a test's count of
 /// what a press lays that a box at rest laid already.
