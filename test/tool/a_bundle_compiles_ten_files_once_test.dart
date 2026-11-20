@@ -106,7 +106,10 @@ void main() {
       expect(cut.alone, isEmpty);
       for (final bundle in cut.bundles) {
         expect(
-          bundle.map((file) => libraryAnnotations(sourceOf(file))).toSet(),
+          {
+            for (final file in bundle)
+              libraryAnnotations(sourceOf(file)).join('\n'),
+          },
           hasLength(1),
           reason: '$bundle',
         );
