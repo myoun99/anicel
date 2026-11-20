@@ -696,22 +696,17 @@ class EngineFramePictureStore<K extends Object> {
   );
 
   /// One turn: the lay at the front laid, answered with what is there, or
-  /// given up — [dispose] answers them all. Where the tools it was asked
-  /// with were let go of since ([letGoWithItsTools]), the turn waits for the
-  /// ones asked for anew; why they would not open, every lay asked of them
-  /// hears ([_aTurn]), and the turns end.
+  /// given up — [dispose] answers them all. The turns end where the tools
+  /// they were asked with were let go of since ([letGoWithItsTools]): every
+  /// lay in the line was asked after, of the ones asked for anew, and its
+  /// turn comes with them ([_aTurn]).
   ///
   /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
   /// meanwhile waits on it, not laid a second time over it. A key a
   /// picture moved to meanwhile ([move]) answers with it: one picture a key.
   Future<bool> _layTheFirst() async {
     if (toolsOpen == null) {
-      try {
-        await tools;
-      } on Object {
-        return false;
-      }
-      return true;
+      return false;
     }
     final lay = _lays.first;
     final there = lay.unwanted ? null : peek(lay.key);
