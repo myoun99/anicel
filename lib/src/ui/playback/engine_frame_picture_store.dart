@@ -7,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 import '../../core/once_a_microtask.dart';
 import '../../core/one_pass_at_a_time.dart';
 import '../../core/pin_counts.dart';
+import '../../core/telling.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
 import '../../native/app_gpu_engine.dart' show EnginePictures;
@@ -160,12 +161,6 @@ class EngineFramePicture extends ChangeNotifier {
   }
 }
 
-/// What tells a store's news ([EngineFramePictureStore.waits],
-/// [EngineFramePictureStore.wentWithItsTools]).
-class _News extends ChangeNotifier {
-  void changed() => notifyListeners();
-}
-
 /// What a store has of the tools it lays with, from before they are asked
 /// for till it lets go of them ([EngineFramePictureStore.letGoWithItsTools]):
 /// ONE object, so what is still on its way with the last ones — their
@@ -214,7 +209,7 @@ class EngineFramePictureStore<K extends Object> {
     return its.opening ??= Zone.root.run<Future<EngineFrameTools>>(
       () => _open().then((opened) => its.open = opened).whenComplete(() {
         its.through = true;
-        _waits.changed();
+        _waits.tell();
       }),
     );
   }
@@ -238,13 +233,13 @@ class EngineFramePictureStore<K extends Object> {
   /// ([Zone.inSameErrorZone]) — a screen under a test's zone never heard
   /// that the engine would not open (🔬2026-11-11, the pin hung).
   Listenable get waits => _waits;
-  final _News _waits = _News();
+  final Telling _waits = Telling();
 
   /// Tells that every picture went with the tools it was laid with
   /// ([letGoWithItsTools]): a screen that shows one, or stands on a screen
   /// of those tools, lets go of it and asks for its frame again.
   Listenable get wentWithItsTools => _went;
-  final _News _went = _News();
+  final Telling _went = Telling();
 
   /// Tells that a picture was laid into the store, or let go of — once the
   /// code on its way is through: a screen lets go of one in its paint,
@@ -258,8 +253,8 @@ class EngineFramePictureStore<K extends Object> {
   /// into ([move], [patch]): that goes with an edit of a cel, which the
   /// cels tell — told here, a stroke would tell it at every step.
   Listenable get laidOrLetGo => _laidOrLetGo;
-  final _News _laidOrLetGo = _News();
-  late final _laidOrLetGoTold = OnceAMicrotask(_laidOrLetGo.changed);
+  final Telling _laidOrLetGo = Telling();
+  late final _laidOrLetGoTold = OnceAMicrotask(_laidOrLetGo.tell);
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -647,8 +642,8 @@ class EngineFramePictureStore<K extends Object> {
   void letGoWithItsTools() {
     _letGoOfAll();
     _its = _Tools();
-    _went.changed();
-    _waits.changed();
+    _went.tell();
+    _waits.tell();
   }
 
   /// The engine would not open: every lay asked for hears why.
@@ -731,7 +726,7 @@ class EngineFramePictureStore<K extends Object> {
         told: (told) => picture._told = told,
         waitsForKernels: (waits) {
           its.waitsForKernels = waits;
-          _waits.changed();
+          _waits.tell();
         },
       );
       // 🚨ANSWERED ONCE THE GPU HAS LAID IT (the-ui-thread-never-enters-

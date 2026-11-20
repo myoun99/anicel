@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuDeviceWent, GpuRefused;
 
+import '../core/telling.dart';
 import '../services/diagnostics/gpu_loss_log.dart';
 import 'app_gpu_engine.dart'
     show
@@ -80,7 +81,7 @@ abstract final class EngineRefusals {
   /// 🚨TOLD AFTER THE TURN IT IS HEARD IN: an error ends wherever it is
   /// thrown, in a paint too, and no window can be asked for there.
   static Listenable get told => _told;
-  static final _Told _told = _Told();
+  static final Telling _told = Telling();
   static final Set<Object> _causes = {};
 
   /// The cause of every refusal once the app's device is gone.
@@ -90,7 +91,7 @@ abstract final class EngineRefusals {
   /// whose device went ([wentBy] says why): the shell says so at each
   /// telling (`HomePage`).
   static Listenable get openedAnother => _openedAnother;
-  static final _Told _openedAnother = _Told();
+  static final Telling _openedAnother = Telling();
 
   /// Why the device of the engine last let go went, as far as anything
   /// says ([GpuDeviceWent]).
@@ -234,8 +235,4 @@ abstract final class EngineRefusals {
     _wentBy = GpuDeviceWent.unsaid;
     _openAnother = openTheAppsEngineAgain;
   }
-}
-
-final class _Told extends ChangeNotifier {
-  void tell() => notifyListeners();
 }

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../core/in_flight.dart';
+import '../../core/telling.dart';
 import '../../models/font_face_facts.dart' show FontLines;
 import '../../services/font_file_reader.dart' show readFontLines;
 import '../theme/app_theme.dart' show AppTypography;
@@ -66,7 +67,7 @@ class CanvasLetterFaces {
   /// in the engine, a family no longer held, other faces standing as
   /// [current].
   static Listenable get changes => _changes;
-  static final _FaceChanges _changes = _FaceChanges();
+  static final Telling _changes = Telling();
 
   static Future<List<Uint8List>> _noFiles(String family) async => const [];
 
@@ -289,8 +290,4 @@ class CanvasLetterFaces {
   void dispose() {
     _disposed = true;
   }
-}
-
-class _FaceChanges extends ChangeNotifier {
-  void tell() => notifyListeners();
 }

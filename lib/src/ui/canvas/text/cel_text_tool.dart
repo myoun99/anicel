@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
+import '../../../core/telling.dart';
 import '../../../models/bitmap_surface.dart';
 import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
@@ -155,11 +156,6 @@ class _Holding {
   bool becomesDrawing = false;
 }
 
-/// Tells of one thing, and holds nothing.
-class _Telling extends ChangeNotifier {
-  void tell() => notifyListeners();
-}
-
 /// THE TEXT TOOL'S HAND (R9-rest): the one text it holds, how it holds it,
 /// and the landing of what the person made of it.
 ///
@@ -227,7 +223,7 @@ class CelTextTool extends ChangeNotifier {
 
   /// Told when the cross is carried ([carryCross]).
   Listenable get crossCarried => _crossCarried;
-  final _Telling _crossCarried = _Telling();
+  final Telling _crossCarried = Telling();
 
   /// Whether a carry of the text in hand is under way ([carry]).
   bool get carrying => _held?.carry != null;
