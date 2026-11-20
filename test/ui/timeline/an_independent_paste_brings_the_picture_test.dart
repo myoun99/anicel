@@ -1,15 +1,14 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🚨★★★AN INDEPENDENT PASTE BRINGS THE PICTURE.
 ///
@@ -30,13 +29,8 @@ void main() {
   /// asks the store for that size, and a surface of another shape does not
   /// come back. 🧪The first version of this test stored 4x4 and died on its
   /// own premise — which is the premise assertion doing its job.
-  BitmapSurface ink(CanvasSize canvasSize) {
-    const tile = 256;
-    final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, 255);
-    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
-      (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: tile, pixels: pixels)),
-    ]);
-  }
+  BitmapSurface ink(CanvasSize canvasSize) =>
+      aCelOfOneTile(canvasSize, (bytes) => bytes.fillRange(0, 16, 255));
 
   ({EditorSessionManager session, LayerId from, LayerId to}) twoRows() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
@@ -147,16 +141,10 @@ void main() {
     store.storeBakedSurface(
       key,
       ink(cut.canvasSize).putTiles([
-        (
-          coord: TileCoord(x: 0, y: 0),
-          tile: BitmapTile(size: 256, pixels: Uint8List(256 * 256 * 4)),
-        ),
+        (coord: TileCoord(x: 0, y: 0), tile: aTileOfTheAppsSide((_) {})),
         (
           coord: TileCoord(x: 1, y: 0),
-          tile: BitmapTile(
-            size: 256,
-            pixels: Uint8List(256 * 256 * 4)..fillRange(0, 16, 255),
-          ),
+          tile: aTileOfTheAppsSide((bytes) => bytes.fillRange(0, 16, 255)),
         ),
       ]),
     );

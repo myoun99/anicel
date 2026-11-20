@@ -1,16 +1,12 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_splice.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
@@ -18,6 +14,7 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/session/independent_clip_mint.dart';
+import '../../helpers/a_cel_of_one_tile.dart';
 import '../../helpers/reference_to.dart';
 import '../../helpers/an_empty_drawing_row.dart';
 
@@ -47,19 +44,10 @@ void main() {
   FrameClipboard clipboardOf(EditorSessionManager s) => s.clipboard;
 
   /// A picture at the cut's canvas size, its first bytes [shade].
-  BitmapSurface ink(EditorSessionManager s, int shade) {
-    const tile = 256;
-    final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, shade);
-    return BitmapSurface(
-      canvasSize: s.requireActiveCut.canvasSize,
-      tileSize: tile,
-    ).putTiles([
-      (
-        coord: TileCoord(x: 0, y: 0),
-        tile: BitmapTile(size: tile, pixels: pixels),
-      ),
-    ]);
-  }
+  BitmapSurface ink(EditorSessionManager s, int shade) => aCelOfOneTile(
+    s.requireActiveCut.canvasSize,
+    (bytes) => bytes.fillRange(0, 16, shade),
+  );
 
   Layer rowOf(EditorSessionManager s, LayerId id) =>
       s.requireActiveCut.layers.firstWhere((layer) => layer.id == id);

@@ -1,12 +1,9 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -16,7 +13,6 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pill_subject.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -25,6 +21,7 @@ import 'package:anicel/src/ui/session/cell_verbs.dart';
 import 'package:anicel/src/ui/session/frame_verbs.dart';
 import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
 import 'package:anicel/src/ui/session/opacity_verbs.dart';
+import '../../helpers/a_cel_of_one_tile.dart';
 import '../../helpers/pill_row_clipboard.dart';
 import '../../helpers/reference_to.dart';
 
@@ -65,16 +62,8 @@ void main() {
   }
 
   /// A picture at the CUT's canvas size — the store answers only that shape.
-  BitmapSurface ink(CanvasSize canvasSize) {
-    const tile = 256;
-    final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, 255);
-    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
-      (
-        coord: TileCoord(x: 0, y: 0),
-        tile: BitmapTile(size: tile, pixels: pixels),
-      ),
-    ]);
-  }
+  BitmapSurface ink(CanvasSize canvasSize) =>
+      aCelOfOneTile(canvasSize, (bytes) => bytes.fillRange(0, 16, 255));
 
   Cut cutOf(EditorSessionManager s, CutId cutId) =>
       s.activeTrack.cuts.firstWhere((cut) => cut.id == cutId);

@@ -1,11 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -17,6 +13,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🗣️F-330 (유저 2026-10-10): 「같은 위치에 대한 행이동은 타임라인을 바꾸는게
 /// 아니고 서로의 그림을 바꾸는거라 가능해도될듯. 물론 … 이름이 사라진다던가
@@ -267,27 +265,12 @@ void main() {
   });
 }
 
-/// Paints [red] over the first tile of [row]'s cel [cel] — a tile of the
-/// side the app cuts its cels in ([defaultCelTileSize]): the engine stores
-/// no other, and refuses a cel of another the moment a frame on it is
-/// weighed ahead. 256 here went red on CI's Linux, where the engine opened
-/// within this file (11-21).
+/// Paints [red] over the first tile of [row]'s cel [cel].
 void paint(EditorSessionManager s, LayerId row, FrameId cel, int red) {
-  const side = defaultCelTileSize;
   final cut = s.requireActiveCut;
-  final bytes = Uint8List(side * side * 4);
-  for (var pixel = 0; pixel < side * side; pixel += 1) {
-    bytes.setRange(pixel * 4, pixel * 4 + 4, [red, 0, 0, 255]);
-  }
   s.pixelEditing.coordinator!.restoreSurfaceSnapshot(
     s.brushFrameKeyForCut(cut, row, cel),
-    BitmapSurface(
-      canvasSize: cut.canvasSize,
-      tileSize: side,
-      tiles: {
-        TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: bytes),
-      },
-    ),
+    aCelFilled(cut.canvasSize, [red, 0, 0, 255]),
   );
 }
 

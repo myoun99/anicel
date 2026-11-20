@@ -1,15 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -18,6 +14,8 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🚨image-row-cut-paste (유저 2026-10-04): a picture row's picture leaves
 /// and comes back through the clipboard, and a row standing empty takes a
@@ -43,19 +41,10 @@ void main() {
   FrameClipboard clipboardOf(EditorSessionManager s) => s.clipboard;
 
   /// A picture at the cut's canvas size, its first bytes [shade].
-  BitmapSurface ink(EditorSessionManager s, int shade) {
-    const tile = 256;
-    final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, shade);
-    return BitmapSurface(
-      canvasSize: s.requireActiveCut.canvasSize,
-      tileSize: tile,
-    ).putTiles([
-      (
-        coord: TileCoord(x: 0, y: 0),
-        tile: BitmapTile(size: tile, pixels: pixels),
-      ),
-    ]);
-  }
+  BitmapSurface ink(EditorSessionManager s, int shade) => aCelOfOneTile(
+    s.requireActiveCut.canvasSize,
+    (bytes) => bytes.fillRange(0, 16, shade),
+  );
 
   Layer rowOf(EditorSessionManager s, LayerId id) =>
       s.requireActiveCut.layers.firstWhere((layer) => layer.id == id);
@@ -88,10 +77,7 @@ void main() {
         first.frames.first.id,
       ),
       frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: cut.canvasSize,
-        tileSize: 256,
-      ),
+      sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
       historyPolicy: const BrushHistoryPolicy(),
     );
   }
