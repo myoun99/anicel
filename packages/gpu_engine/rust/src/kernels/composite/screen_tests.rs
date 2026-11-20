@@ -8,7 +8,7 @@ use super::{Camera, Screen, affine, meets, row};
 use crate::device::{Engine, gpu_engine_waits_here};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
-use crate::kernels::composite::kept::tests::{kept_bytes, moved, rested_on};
+use crate::kernels::composite::kept::tests::{A_REST_S_FOLDS, kept_bytes, moved, rested_on};
 use crate::kernels::composite::kept::{Film, Kept, Tiles, plan};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on, texel};
 use crate::kernels::composite::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
@@ -1018,7 +1018,7 @@ fn a_hand_at_work_stops_a_rest_s_folds_behind_their_batch() {
         pictures.rests(engine);
         pictures.hand_at_work();
     });
-    assert!(pictures.rested_within(Duration::from_secs(120)), "the rest's folds never ended");
+    assert!(pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
     assert_eq!(moved(&pictures, &names), 4, "the batch handed over before the hand was at work, and no more");
     assert!(canvas_bytes(&screen) == bytes);
     rested_on(engine, &pictures);
@@ -1041,7 +1041,7 @@ fn a_rest_folds_nothing_before_the_fold_s_kernels_are_compiled() {
     let screen = screen_of(kept.expect("kept"));
     let names = named(&screen);
     pictures.rests(&engine);
-    assert!(pictures.rested_within(Duration::from_secs(120)));
+    assert!(pictures.rested_within(A_REST_S_FOLDS));
     engine.on_thread(|| ());
     assert_eq!(moved(&pictures, &names), 0, "folded with no kernel compiled for it");
     rested_on(&engine, &pictures);

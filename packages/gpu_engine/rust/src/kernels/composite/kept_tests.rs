@@ -23,11 +23,21 @@ pub(crate) fn moved(pictures: &Pictures, names: &[TileAt]) -> usize {
     names.iter().filter(|&&at| pictures.lies(at) != at).count()
 }
 
+/// How long a rest's folds may take before a test says they never ended.
+/// A batch behind another, each step a job of the engine's thread behind
+/// every other test's — the binary's tests share one engine —, so the
+/// whole of a rest is several of the waits one telling is given
+/// (`told_within`, 120 s).
+/// 🔬2026-11-21, a land's release gate beside two wide test runs: every
+/// test of the binary ran past a minute (1,716 s the run), and two rests
+/// of 15 tiles passed 120 s — both green in debug an hour before.
+pub(crate) const A_REST_S_FOLDS: Duration = Duration::from_secs(600);
+
 /// The hand rests on `engine`, its fold's kernels compiled: `pictures`'
 /// tiles folded a batch behind another till none is next, the last told
 /// and settled.
 pub(crate) fn rested_on(engine: &Engine, pictures: &Pictures) {
     engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
     pictures.rests(engine);
-    assert!(pictures.rested_within(Duration::from_secs(120)), "the rest's folds never ended");
+    assert!(pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
 }
