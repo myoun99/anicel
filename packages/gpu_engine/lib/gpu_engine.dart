@@ -323,8 +323,10 @@ class GpuEngine {
   /// [GpuScreen]'s canvas lies in slots of one pool of the engine's, as a
   /// cel's tiles do in a [GpuPool]'s, and a page of it stays made for the
   /// next picture: its slots nobody holds are these —
-  /// and the composite's work buffer, kept from one run to the next. Till
-  /// they are given back ([givePicturesBackPast]).
+  /// and the composite's work buffer, kept from one run to the next, and
+  /// the buffers the last compose made for the rows it ran first, kept
+  /// for the next that runs any. Till they are given back
+  /// ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
 
   /// The bytes of the tiles the engine's pictures hold that none of them
@@ -337,8 +339,9 @@ class GpuEngine {
 
   /// Gives back what the engine keeps for pictures nobody holds till it is
   /// [mostIdle] bytes: the pages of their pool with every slot free, the
-  /// last first, and then the composite's work buffer — what only makes
-  /// the next picture cheaper, as a [GpuPool]'s free pages are
+  /// last first, then the buffers a compose's rows run first are made in
+  /// and then the composite's work buffer — what only makes the next
+  /// picture cheaper, as a [GpuPool]'s free pages are
   /// ([GpuPool.giveBackPast]). A page a picture is on stays.
   void givePicturesBackPast(int mostIdle) =>
       rust.picturesGiveBack(_engine, mostIdle);

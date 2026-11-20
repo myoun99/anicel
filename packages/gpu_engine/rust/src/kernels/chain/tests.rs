@@ -11,7 +11,7 @@ use crate::kernels::composite::tests::{
     spotted, texel,
 };
 use crate::device::Engine;
-use crate::kernels::composite::{KeyChain, TILE, TILE_TEXELS, TileAt};
+use crate::kernels::composite::{KeyChain, Lent, TILE, TILE_TEXELS, TileAt};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::{Focus, Iris};
@@ -56,7 +56,8 @@ fn chained(tiles: wgpu::Buffer, ops: &[Op]) -> Option<wgpu::Buffer> {
 /// [`chained`], the ops reading `stored` beside the tiles.
 fn chained_over(tiles: wgpu::Buffer, stored: Stored, ops: &[Op]) -> Option<wgpu::Buffer> {
     let rig = composite_rig();
-    chain().run(rig.engine, &rig.composite, stored, tiles, RECT, ops)
+    let put = chain().run(rig.engine, &rig.composite, stored, Lent::alone(tiles), RECT, ops)?;
+    Some(put.buffer().clone())
 }
 
 /// The tiles over `rect` holding `pixels` at `picture`, clear elsewhere:

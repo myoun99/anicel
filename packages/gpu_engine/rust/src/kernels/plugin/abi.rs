@@ -272,7 +272,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_render_read(
                 let Kept { tiles, rect, rows } = read.kept()?;
                 let frame = asked.frame(picture, share, &[], &[]);
                 let rows: Vec<Tiled> = rows.iter().map(|tiles| Tiled { tiles, rect }).collect();
-                match plugin.render_tiled(engine, &frame, at, Tiled { tiles: &tiles, rect }, &rows)? {
+                match plugin.render_tiled(engine, &frame, at, Tiled { tiles: tiles.buffer(), rect }, &rows)? {
                     Ok(tiles) => Some(PluginMade { rect, tiles }),
                     Err(Cut) => fail(format!("the plugin spent each pixel's share of {share} and was cut")),
                 }

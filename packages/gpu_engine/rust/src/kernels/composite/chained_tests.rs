@@ -10,6 +10,7 @@ use super::tests::{
     Pool, chained, contrast, keyed, masked_row, matrixed, mixed, pose, rig, row, texel, with_map,
 };
 use super::held::HeldChains;
+use super::spares::Lent;
 use super::{Budget, NO_EDGE, Over, Plan, Step, TILE_BYTES, TileSet, WHOLE, check_depth};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
 use crate::kernels::chain::tests::lens;
@@ -22,15 +23,16 @@ use crate::kernels::effects::{MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::Mask;
 use crate::kernels::mask::tests::masked;
 use crate::kernels::shared::ResampleMap;
+use crate::device::Engine;
 use crate::testing::read_buffer;
 
 /// The output: two by two tiles from the origin.
-const TILES: [(i32, i32); 4] = [(0, 0), (1, 0), (0, 1), (1, 1)];
+pub(super) const TILES: [(i32, i32); 4] = [(0, 0), (1, 0), (0, 1), (1, 1)];
 
 /// Where a chain runs: wider than the output and left of it, so a chain
 /// run over the output's tiles, or counted from the wrong corner, puts
 /// elsewhere.
-const RECT: TileRect = TileRect {
+pub(super) const RECT: TileRect = TileRect {
     x0: -1,
     y0: 0,
     columns: 3,
@@ -87,7 +89,7 @@ fn down() -> Vec<Op<'static>> {
 }
 
 /// A buffer's close at `opacity` in `mode`, through matrix `matrix` if any.
-fn close(opacity: u32, mode: u32, matrix: Option<usize>) -> Step {
+pub(super) fn close(opacity: u32, mode: u32, matrix: Option<usize>) -> Step {
     Step::Close {
         opacity,
         mode,
@@ -98,15 +100,20 @@ fn close(opacity: u32, mode: u32, matrix: Option<usize>) -> Step {
 
 /// The pages and tile sets the plans here lay, and the sets a chain run by
 /// hand adds.
-struct Laying {
+pub(super) struct Laying {
     pages: Vec<wgpu::Buffer>,
     sets: Vec<TileSet>,
 }
 
 impl Laying {
     /// Row n of `rows` — its origin and size in tiles — on page n, its
-    /// pixels [`texel`]'s of seed 81 + n.
+    /// pixels [`texel`]'s of seed 81 + n, on the tests' engine.
     fn new(rows: &[((i32, i32), (u32, u32))]) -> Self {
+        Self::on(rig().engine, rows)
+    }
+
+    /// [`Laying::new`], its pages on `engine`.
+    pub(super) fn on(engine: &Engine, rows: &[((i32, i32), (u32, u32))]) -> Self {
         let mut pool = Pool::default();
         let sets = (0..rows.len())
             .map(|n| {
@@ -116,13 +123,13 @@ impl Laying {
             })
             .collect();
         Self {
-            pages: pool.upload(rig().engine),
+            pages: pool.upload(engine),
             sets,
         }
     }
 
     /// The plan laying `steps` through `chains`, under `mask` if any.
-    fn plan<'a>(
+    pub(super) fn plan<'a>(
         &'a self,
         chains: &'a [Chained<'a>],
         steps: &'a [Step],
@@ -175,7 +182,7 @@ impl Laying {
 
     /// `tiles` over `rect` laid as a tile set of their own on a page of
     /// their own: that set.
-    fn laid(&mut self, tiles: wgpu::Buffer, rect: TileRect) -> usize {
+    pub(super) fn laid(&mut self, tiles: wgpu::Buffer, rect: TileRect) -> usize {
         self.sets.push(laid_as(rect, self.pages.len() as u16));
         self.pages.push(tiles);
         self.sets.len() - 1
@@ -185,8 +192,9 @@ impl Laying {
     fn through(&mut self, tiles: wgpu::Buffer, rect: TileRect, ops: &[Op]) -> usize {
         let rig = rig();
         let stored = Stored { pages: &self.pages, sets: &self.sets };
+        let tiles = Lent::alone(tiles);
         let put = chain().run(rig.engine, &rig.composite, stored, tiles, rect, ops).expect("chain");
-        self.laid(put, rect)
+        self.laid(put.buffer().clone(), rect)
     }
 
     /// `steps` composited alone over `rect`, with no edge: the tiles.
@@ -476,7 +484,7 @@ fn a_buffer_opened_on_the_one_under_it_runs_no_chain() {
 
 /// A buffer closed as the row its picture is, over `over`, posed by `map`,
 /// through matrix 0, at 45000 in screen.
-fn closed_as_a_row(over: Over, map: ResampleMap) -> Step {
+pub(super) fn closed_as_a_row(over: Over, map: ResampleMap) -> Step {
     Step::CloseRow {
         over,
         map,
@@ -489,7 +497,7 @@ fn closed_as_a_row(over: Over, map: ResampleMap) -> Step {
 /// A row's own tiles: a column of two from the origin. Its picture is
 /// wider — a tile past it each way, but right of it two — so what lies
 /// outside them is there to be left out, on every side a turn reads past.
-const OWN: TileRect = TileRect {
+pub(super) const OWN: TileRect = TileRect {
     x0: 0,
     y0: 0,
     columns: 1,
@@ -598,7 +606,7 @@ fn a_buffer_closed_as_a_row_is_checked_as_a_close() {
 
 /// [`blurred`] over [`RECT`] — or where `tall` [`down`] over [`TALL`] —
 /// held by `held` under the number it names, if any.
-fn held_chain<'a>(held: Option<(&'a HeldChains, u32)>, tall: bool) -> [Chained<'a>; 1] {
+pub(super) fn held_chain<'a>(held: Option<(&'a HeldChains, u32)>, tall: bool) -> [Chained<'a>; 1] {
     let (ops, rect) = if tall { (down(), TALL) } else { (blurred(), RECT) };
     [Chained { ops, rect, held }]
 }
@@ -678,7 +686,10 @@ fn a_held_buffer_at_a_mix_lays_what_its_hold_keeps_where_that_holds_its_tiles() 
     let crossfaded = laying.widest(&holding, &buffer(&rows, 20000), None);
     let unheld = held_chain(None, false);
     assert!(crossfaded == laying.widest(&unheld, &buffer(&rows, 20000), None), "it runs");
-    assert_eq!(held.bytes_of(5), 2 * 6 * TILE_BYTES);
+    // What its chain ran on is one of the engine's spares, of six tiles or
+    // of more where another test here left one (spares_tests has it to
+    // the byte, on an engine of its own).
+    assert!(held.bytes_of(5) >= 2 * 6 * TILE_BYTES);
     assert!(laying.widest(&holding, &buffer(&other, 20000), None) == crossfaded, "both laid");
     assert!(laying.widest(&unheld, &buffer(&other, 20000), None) != crossfaded);
 }

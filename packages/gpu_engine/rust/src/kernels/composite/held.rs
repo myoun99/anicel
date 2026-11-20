@@ -32,6 +32,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::shared::Counted;
 
+use super::spares::Lent;
+
 /// The bytes every hold keeps, kept and not let go.
 static HELD_BYTES: AtomicU64 = AtomicU64::new(0);
 
@@ -41,11 +43,13 @@ pub(crate) fn held_bytes() -> u64 {
 }
 
 /// What a chain put over its rectangle and, for a buffer crossfaded with it
-/// at a mix under whole, the buffer's own tiles it ran on.
+/// at a mix under whole, the buffer's own tiles it ran on — each its
+/// holders' for as long as one of them lives ([`Lent`]): a hold's, past
+/// the walk that made it.
 #[derive(Clone)]
 pub(crate) struct Made {
-    pub(crate) put: wgpu::Buffer,
-    pub(crate) under: Option<wgpu::Buffer>,
+    pub(crate) put: Lent,
+    pub(crate) under: Option<Lent>,
 }
 
 /// [`Made`] over the tiles of `rect`, counted while it is kept.
@@ -57,7 +61,8 @@ struct Held {
 
 impl Made {
     fn bytes(&self) -> u64 {
-        self.put.size() + self.under.as_ref().map_or(0, wgpu::Buffer::size)
+        let under = self.under.as_ref().map_or(0, |under| under.buffer().size());
+        self.put.buffer().size() + under
     }
 }
 

@@ -101,6 +101,9 @@ pub struct Engine {
     /// The composite's work buffer, kept from one run to the next
     /// (kernels/composite's `Work`).
     pub(crate) work: crate::kernels::composite::Work,
+    /// The buffers a walk made for itself, kept for the next
+    /// (kernels/composite's `Spares`).
+    pub(crate) spares: crate::kernels::composite::Spares,
     /// What the device refused that no wait has told yet, and whether it
     /// is gone ([`Refusals`]).
     refusals: Refusals,
@@ -558,6 +561,7 @@ impl Engine {
                     plugin_pace: OnceLock::new(),
                     pictures: Default::default(),
                     work: Default::default(),
+                    spares: Default::default(),
                     refusals,
                     ended: Ended::default(),
                     posted_refused: PostedRefused::default(),

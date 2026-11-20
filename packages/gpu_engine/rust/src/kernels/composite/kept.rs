@@ -210,7 +210,11 @@ impl Kept {
         self.place(tiles.iter().zip(&kept).filter_map(|(&tile, &at)| Some((tile, at?))));
         let left = run_for(&made_of, |tile| kept[tile].is_some());
         let (fresh, same): (Vec<_>, Vec<_>) = left.into_iter().partition(|&(tile, first)| tile == first);
-        // A run puts no more than a page of the pool takes.
+        // A run puts no more than a page of the pool takes. 🚨The runs
+        // are one compose: the buffers each made for itself are kept
+        // for the next compose, where a run alone would let go of
+        // those the run before it took (`spares`).
+        let _composing = engine.spares.composing(engine);
         for some in fresh.chunks(self.pictures.slots(engine)?) {
             let these: Vec<(i32, i32)> = some.iter().map(|&(tile, _)| tiles[tile]).collect();
             let (places, pages) = self.pictures.fresh(engine, self.cel, these.len())?;

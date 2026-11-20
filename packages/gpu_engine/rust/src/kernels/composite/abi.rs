@@ -1512,9 +1512,10 @@ pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
 
 /// The bytes `engine` keeps for pictures that are no picture's: the slots
 /// nobody holds on the pages of their pool (kernels/pool's `Pictures`) —
-/// they stay made for the next picture — and the composite's work buffer
-/// ([`super::Work`]). For the memory census, which weighs each picture by
-/// its own tiles (`gpu_engine_screen_bytes`).
+/// they stay made for the next picture — the composite's work buffer
+/// ([`super::Work`]) and the buffers the last walk made for itself
+/// ([`super::Spares`]). For the memory census, which weighs each picture
+/// by its own tiles (`gpu_engine_screen_bytes`).
 ///
 /// # Safety
 /// `engine` is live.
@@ -1522,7 +1523,7 @@ pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
 pub unsafe extern "C" fn gpu_engine_pictures_idle_bytes(engine: *const Engine) -> u64 {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.pictures.idle_bytes() + engine.work.bytes()
+    engine.pictures.idle_bytes() + engine.work.bytes() + engine.spares.bytes()
 }
 
 /// The bytes of the tiles `engine`'s pictures hold that none of them
@@ -1543,8 +1544,9 @@ pub unsafe extern "C" fn gpu_engine_pictures_unowned_bytes(engine: *const Engine
 /// Gives back what `engine` keeps for pictures nobody holds
 /// (`gpu_engine_pictures_idle_bytes`) till it is `most_idle` bytes: the
 /// pages of their pool with every slot free, the last first
-/// (`Pictures::give_back`), and then the composite's work buffer
-/// ([`super::Work`]) where what is left is still past it. All of it at a
+/// (`Pictures::give_back`), then the buffers the last walk made for
+/// itself ([`super::Spares`]) and then the composite's work buffer
+/// ([`super::Work`]), each where what is left is still past it. All of it at a
 /// memory warning; where a budget moved, what lies past the room the
 /// budget has left — as the cels' pool keeps within its own
 /// (`gpu_engine_pool_give_back`).
@@ -1557,7 +1559,11 @@ pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, mo
     let engine = unsafe { &*engine };
     engine.on_thread(|| {
         engine.pictures.give_back(engine, most_idle);
-        if engine.pictures.idle_bytes() + engine.work.bytes() > most_idle {
+        let kept = || engine.pictures.idle_bytes() + engine.work.bytes() + engine.spares.bytes();
+        if kept() > most_idle {
+            engine.spares.let_go();
+        }
+        if kept() > most_idle {
             engine.work.let_go();
         }
     })

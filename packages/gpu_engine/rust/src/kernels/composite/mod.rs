@@ -78,6 +78,9 @@ pub(crate) mod kept;
 mod made_of_tests;
 mod passes;
 pub(crate) mod screen;
+pub(crate) mod spares;
+#[cfg(test)]
+mod spares_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -102,6 +105,7 @@ use crate::kernels::shared::{
 use crate::platform::stores;
 
 use held::{HeldChains, Made};
+pub(crate) use spares::{Lent, Spares};
 use passes::{Fulls, Passes};
 
 /// A tile's side in pixels (1a ①).
@@ -1044,17 +1048,26 @@ impl Composite {
         extent: [i32; 4],
         budget: Budget,
     ) -> Option<Composited> {
-        let out = engine.device().create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite out"),
-            size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
+        let out = spares::out_of(engine, tiles.len());
         let target = Target::Tiles(&out);
         let passes = self.walk(engine, plan, tiles, extent, None, &target, budget)?;
         Some(Composited { out, passes })
+    }
+
+    /// [`Composite::run`] for a walk's own use, with no edge — what a
+    /// chained step's tiles, or its buffer's steps, are composited into
+    /// ([`Composite::made`]): the output one of the engine's spares, its
+    /// holders' till the last lets go ([`spares`]).
+    fn run_spare(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<Lent> {
+        let out = engine.spares.out(engine, tiles.len());
+        self.walk(engine, plan, tiles, NO_EDGE, None, &Target::Tiles(out.buffer()), budget)?;
+        Some(out)
     }
 
     /// [`Composite::run`], each output tile's pixels put at its place in
@@ -1113,30 +1126,40 @@ impl Composite {
         through: Through,
         budget: Budget,
     ) -> Option<Composited> {
-        let steps = [Step::Row {
-            set: 0,
-            keys: through.keys.map(|_| 0),
-            chain: None,
-            map: ResampleMap::moved(0, 0),
-            matrix: through.matrix.map(|_| 0),
-            // Whole. 65534 copies the same bytes — a stored byte's step is 257
-            // on this scale — so no test tells the two apart (mutant r04, 11-06).
-            opacity: 65535,
-            mode: NORMAL,
-            masked: false,
-        }];
-        let plan = Plan {
-            pages,
-            sets: std::slice::from_ref(set),
-            keys: through.keys.map_or(&[], std::slice::from_ref),
-            matrices: through.matrix.map_or(&[], std::slice::from_ref),
-            chains: &[],
-            steps: &steps,
-            mask: None,
-            stamps: None,
-        };
-        self.run(engine, &plan, tiles, NO_EDGE, budget)
+        copied_as(pages, set, through, |plan| self.run(engine, plan, tiles, NO_EDGE, budget))
     }
+}
+
+/// What `run` makes of the plan [`Composite::copied_through`] runs: `set`'s
+/// tiles on `pages` as a row copied whole over nothing, keyed and through
+/// `through`.
+fn copied_as<T>(pages: &[wgpu::Buffer], set: &TileSet, through: Through, run: impl FnOnce(&Plan) -> T) -> T {
+    let steps = [Step::Row {
+        set: 0,
+        keys: through.keys.map(|_| 0),
+        chain: None,
+        map: ResampleMap::moved(0, 0),
+        matrix: through.matrix.map(|_| 0),
+        // Whole. 65534 copies the same bytes — a stored byte's step is 257
+        // on this scale — so no test tells the two apart (mutant r04, 11-06).
+        opacity: 65535,
+        mode: NORMAL,
+        masked: false,
+    }];
+    let plan = Plan {
+        pages,
+        sets: std::slice::from_ref(set),
+        keys: through.keys.map_or(&[], std::slice::from_ref),
+        matrices: through.matrix.map_or(&[], std::slice::from_ref),
+        chains: &[],
+        steps: &steps,
+        mask: None,
+        stamps: None,
+    };
+    run(&plan)
+}
+
+impl Composite {
 
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
     /// right, bottom), the output's pixels being the surface's own — and
@@ -1299,6 +1322,8 @@ impl Composite {
         budget: Budget,
     ) -> Option<usize> {
         debug_assert!(engine.is_its_thread(), "a walk off the engine's thread");
+        // A walk in no picture's making is a compose of its own ([`spares`]).
+        let _composing = engine.spares.composing(engine);
         let pages_per_pass = budget.pages;
         if pages_per_pass == 0 || pages_per_pass > self.pages.per_pass() {
             return fail(format!(
@@ -1318,7 +1343,7 @@ impl Composite {
         )?;
         check_mask(plan)?;
         if plan.steps.iter().any(runs_first) {
-            let (pages, sets, steps) = self.chained(engine, plan, tiles, budget)?;
+            let (pages, sets, steps, lent) = self.chained(engine, plan, tiles, budget)?;
             let plan = Plan {
                 pages: &pages,
                 sets: &sets,
@@ -1326,7 +1351,14 @@ impl Composite {
                 steps: &steps,
                 ..*plan
             };
-            return self.walk(engine, &plan, tiles, extent, surface, target, budget);
+            let walked = self.walk(engine, &plan, tiles, extent, surface, target, budget);
+            // Held till the walk that reads them is through: a buffer is
+            // no spare while a walk has yet to read it ([`spares`]).
+            // ⚠️No test tells this from letting go before that walk —
+            // nothing takes one between the two; what the tests see is
+            // `chained` holding each while the steps after it run.
+            drop(lent);
+            return walked;
         }
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         if laid.iter().all(|each| each.pages.len() <= pages_per_pass) {
@@ -1426,8 +1458,13 @@ impl Composite {
         plan: &Plan,
         tiles: &[(i32, i32)],
         budget: Budget,
-    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
+    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>, Vec<Lent>)> {
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
+        // What holds each buffer laid on `pages` below for the walk that
+        // reads it ([`Lent`]): a page is the bare buffer. 🚨Each is held
+        // from where it is made: let go of there, the next step run
+        // would take it and write its own tiles over it.
+        let mut lent: Vec<Lent> = Vec::new();
         let mut steps: Vec<Step> = Vec::with_capacity(plan.steps.len());
         // Where in `steps` each buffer open there was opened, and whether
         // on nothing.
@@ -1479,7 +1516,8 @@ impl Composite {
                     made
                 }
             };
-            let put = laid_on(&mut pages, &mut sets, made.put, rect)?;
+            let put = laid_on(&mut pages, &mut sets, made.put.buffer().clone(), rect)?;
+            lent.push(made.put);
             match (*step, made.under) {
                 (
                     Step::Close {
@@ -1490,7 +1528,8 @@ impl Composite {
                     },
                     Some(under),
                 ) if mix < WHOLE => {
-                    let read = laid_on(&mut pages, &mut sets, under, rect)?;
+                    let read = laid_on(&mut pages, &mut sets, under.buffer().clone(), rect)?;
+                    lent.push(under);
                     let laid = |set, opacity, mode, matrix| Step::Row {
                         set,
                         keys: None,
@@ -1516,7 +1555,7 @@ impl Composite {
                 _ => steps.push(unchained(*step, put)),
             }
         }
-        Some((pages, sets, steps))
+        Some((pages, sets, steps, lent))
     }
 
     /// What step `index`, `step`, of `plan` puts over `rect`, run
@@ -1542,7 +1581,9 @@ impl Composite {
             return fail(format!("step {index} runs on {count} tiles; a page holds {page}"));
         }
         let under = match *step {
-            Step::Row { set, .. } => self.copied(engine, plan.pages, &plan.sets[set], &read, budget)?,
+            Step::Row { set, .. } => copied_as(plan.pages, &plan.sets[set], Through::default(), |plan| {
+                self.run_spare(engine, plan, &read, budget)
+            })?,
             _ => {
                 // A buffer opened on the one under it holds what is under
                 // it, which its steps alone do not lay.
@@ -1556,17 +1597,14 @@ impl Composite {
                     steps: &alone,
                     ..*plan
                 };
-                self.run(engine, &plan, &read, NO_EDGE, budget)?
+                self.run_spare(engine, &plan, &read, budget)?
             }
         };
         let put = match chain_of(step) {
-            Some(at) => {
-                let chained = &plan.chains[at];
-                self.through(engine, plan, chained, under.out.clone(), &read, budget)?
-            }
-            None => under.out.clone(),
+            Some(at) => self.through(engine, plan, &plan.chains[at], under.clone(), &read, budget)?,
+            None => under.clone(),
         };
-        let under = mixed(step).then_some(under.out);
+        let under = mixed(step).then_some(under);
         Some(Made { put, under })
     }
 
@@ -1579,10 +1617,10 @@ impl Composite {
         engine: &Engine,
         plan: &Plan,
         chained: &Chained,
-        under: wgpu::Buffer,
+        under: Lent,
         read: &[(i32, i32)],
         budget: Budget,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         let mut drawn = Vec::with_capacity(chained.ops.len());
         for op in &chained.ops {
             let Some(rows) = op.map_rows() else {
