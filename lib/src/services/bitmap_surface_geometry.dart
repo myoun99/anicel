@@ -45,25 +45,11 @@ import 'guide_geometry.dart' show GuideTransform;
 /// getter hands the field over.
 ({int left, int top, int rightExclusive, int bottomExclusive})?
 bitmapSurfaceContentBounds(BitmapSurface surface) {
+  rememberInkOf([surface]);
   final box = _InkBox();
   final tileSize = surface.tileSize;
-  // Tiles that already know their own box cost a lookup each; only the
-  // rest reach a pixel scan.
-  final unscanned = <MapEntry<TileCoord, BitmapTile>>[];
   for (final entry in surface.tiles.entries) {
-    if (!entry.value.inkBoundsKnown) {
-      unscanned.add(entry);
-      continue;
-    }
     _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
-  }
-  if (unscanned.isNotEmpty) {
-    EngineTileLedger.instance.rememberInk(BrushFrameKey.noCel, [
-      for (final entry in unscanned) entry.value,
-    ]);
-    for (final entry in unscanned) {
-      _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
-    }
   }
   if (box.maxX < box.minX) {
     return null;
@@ -74,6 +60,37 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     rightExclusive: box.maxX + 1,
     bottomExclusive: box.maxY + 1,
   );
+}
+
+/// Has the engine find the ink of every tile of [surfaces] that does not
+/// know its own box yet ([BitmapTile.inkBoundsKnown]) — in ONE scan,
+/// whichever cels they are of: [EngineTileLedger.rememberInk] lays the
+/// tiles side by side as a cel of those tiles alone. A tile that knows
+/// costs nothing; a tile two of them share is asked once.
+///
+/// 🗣️브러시/렌더링 2026-11-20 (card
+/// opening-a-transform-box-holds-the-ui-over-half-a-second): a walk that
+/// asks [bitmapSurfaceContentBounds] of many pictures asks this of them
+/// all first — the scan waits for the GPU, once a call. ↩️The box at rest
+/// over S5_BA cut 352 asked it a picture at a time: the UI thread waited
+/// for the GPU 58 times in Ctrl+T's one frame, 62 rows shown (공통
+/// 2026-11-20, 메인 PC 테스트 VM).
+void rememberInkOf(Iterable<BitmapSurface> surfaces) {
+  // ⛔Not a plain set: a tile is equal to any tile of its pixels, read.
+  final unknown = Set<BitmapTile>.identity();
+  for (final surface in surfaces) {
+    for (final tile in surface.tiles.values) {
+      if (!tile.inkBoundsKnown) {
+        unknown.add(tile);
+      }
+    }
+  }
+  if (unknown.isNotEmpty) {
+    EngineTileLedger.instance.rememberInk(
+      BrushFrameKey.noCel,
+      unknown.toList(),
+    );
+  }
 }
 
 /// Folds one tile's LOCAL box onto the canvas axis. A null box is an

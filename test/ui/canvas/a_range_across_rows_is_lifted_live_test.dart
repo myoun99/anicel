@@ -22,6 +22,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart'
+    show EngineTileLedger;
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import 'package:anicel/src/services/brush_preset_file_service.dart';
@@ -346,6 +348,32 @@ void main() {
       (true, false),
       reason: 'A grew from the middle of both rows, not from its own',
     );
+  });
+
+  /// 🗣️브러시/렌더링 2026-11-20 (card
+  /// opening-a-transform-box-holds-the-ui-over-half-a-second): the box over
+  /// S5_BA cut 352 asked the engine the ink of its 62 rows a row at a time,
+  /// the UI thread waiting for the GPU 58 times in one frame.
+  testWidgets('the box finds the ink of every row it frames in one scan of '
+      'the engine', (tester) async {
+    final session = await pump(tester);
+    final cut = session.requireActiveCut;
+    final store = session.renderCaches.brushFrameStore;
+    // Pictures no tile of which has had its ink found.
+    store.storeBakedSurface(
+      session.brushFrameKeyForCut(cut, a, FrameId('${a.value}-0')),
+      blockOn(session, left: 20, top: 20, right: 60, bottom: 40),
+    );
+    store.storeBakedSurface(
+      session.brushFrameKeyForCut(cut, b, FrameId('${b.value}-0')),
+      blockOn(session, left: 70, top: 70, right: 110, bottom: 90),
+    );
+    final ledger = EngineTileLedger.instance;
+    final scans = ledger.debugInkScans;
+
+    await openTheBox(tester);
+
+    expect(ledger.debugInkScans - scans, 1);
   });
 
   /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1 (유저

@@ -24,7 +24,7 @@ import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celSurfaceWithTextsLaid;
 import '../../services/bitmap_surface_geometry.dart'
-    show bitmapSurfaceContentBounds, celTextPlateSurface;
+    show bitmapSurfaceContentBounds, celTextPlateSurface, rememberInkOf;
 import '../../services/bitmap_surface_brush_commit.dart'
     show materializeBrushDabSequenceOnBitmapSurface;
 import '../../services/brush_stroke_blend.dart'
@@ -2631,10 +2631,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null) {
       return null;
     }
+    final rows = [
+      for (final under in _celsUnderfoot())
+        (surface: coordinator.currentSurfaceOf(under.key), under: under),
+    ];
+    // 🗣️브러시/렌더링 2026-11-20: the ink of every row not known yet is
+    // found in one scan — the scan waits for the GPU once a call.
+    rememberInkOf([
+      for (final row in rows)
+        if (!_inkMemo.containsKey(row.surface)) row.surface,
+    ]);
     ({int left, int top, int rightExclusive, int bottomExclusive})? held;
     final asked = Set<BitmapSurface>.identity();
-    for (final under in _celsUnderfoot()) {
-      final surface = coordinator.currentSurfaceOf(under.key);
+    for (final (:surface, :under) in rows) {
       asked.add(surface);
       final shown = _whereTheRowShows(_inkOf(surface), under.placement);
       if (shown == null) {

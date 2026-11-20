@@ -897,6 +897,7 @@ final GpuEngine _engine;
   /// ([BitmapTile.rememberInkBounds]) — the tiles laid side by side as a
   /// cel of those tiles alone, as the scan takes them. Waits for the GPU.
   void rememberInk(Object cel, List<BitmapTile> tiles) => held((hold) {
+    debugInkScans += 1;
     final slots = hold.slotsOf(cel, tiles);
     for (final walked in _ink.run(pool, 0, 0, tiles.length, 1, slots)) {
       final box = walked.box;
@@ -912,6 +913,11 @@ final GpuEngine _engine;
       );
     }
   });
+
+  /// The scans [rememberInk] asked of the engine — each a wait of the
+  /// GPU's: what a walk over many pictures asks once.
+  @visibleForTesting
+  int debugInkScans = 0;
 
   late final GpuInk _ink = GpuInk(_engine);
 

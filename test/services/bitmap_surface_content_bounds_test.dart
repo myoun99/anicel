@@ -246,5 +246,36 @@ void main() {
       expect(ledger.slotOf(other), isNotNull);
       expect(ledger.slotOf(known), isNull);
     });
+
+    /// 🗣️브러시/렌더링 2026-11-20 (card
+    /// opening-a-transform-box-holds-the-ui-over-half-a-second): the box
+    /// over 62 rows waited for the GPU 58 times, a picture at a time.
+    test('🚨the ink of many pictures is one scan of the engine — a tile two '
+        'share asked once, a tile of the same pixels as another not '
+        'mistaken for it', () {
+      final shared = tileWithInk(TileCoord(x: 0, y: 0), [(x: 2, y: 1)]).tile;
+      final (twin, itsTwin) = (
+        tileWithInk(TileCoord(x: 1, y: 0), [(x: 3, y: 2)]).tile,
+        tileWithInk(TileCoord(x: 1, y: 0), [(x: 3, y: 2)]).tile,
+      );
+      expect(twin, itsTwin, reason: '⛔premise: two tiles of one picture');
+      BitmapSurface picture(BitmapTile second) => BitmapSurface(
+        canvasSize: const CanvasSize(width: 3 * tileSize, height: tileSize),
+        tileSize: tileSize,
+        tiles: {TileCoord(x: 0, y: 0): shared, TileCoord(x: 1, y: 0): second},
+      );
+      final ledger = EngineTileLedger.instance;
+      final (scans, asked) = (ledger.debugInkScans, ledger.debugSlotsAsked);
+
+      rememberInkOf([picture(twin), picture(itsTwin)]);
+
+      expect(
+        (ledger.debugInkScans - scans, ledger.debugSlotsAsked - asked),
+        (1, 3),
+      );
+      for (final tile in [shared, twin, itsTwin]) {
+        expect(tile.inkBoundsKnown, isTrue);
+      }
+    });
   });
 }
