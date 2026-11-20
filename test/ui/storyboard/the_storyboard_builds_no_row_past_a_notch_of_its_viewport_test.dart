@@ -48,21 +48,40 @@ void main() {
 
   /// The S rows the rail and the strips build, by slot: each label's rect
   /// and its strip's.
-  Map<int, ({Rect label, Rect? strip})> builtSeRows(WidgetTester tester) => {
-    for (var slot = 1; slot <= _seRows; slot += 1)
-      if (label(slot).evaluate().isNotEmpty)
-        slot: (
-          label: tester.getRect(label(slot)),
-          strip: switch (find.byKey(
-            ValueKey<String>('storyboard-se-row-0-$slot'),
-          )) {
-            final strip when strip.evaluate().isNotEmpty => tester.getRect(
-              strip,
-            ),
-            _ => null,
-          },
-        ),
-  };
+  ///
+  /// ONE walk of the tree: a find a slot walked the whole home page some
+  /// ninety times a scroll step — 93 s for one test alone (11-20).
+  Map<int, ({Rect label, Rect? strip})> builtSeRows(WidgetTester tester) {
+    final labelKey = 'storyboard-se-label-$track-';
+    const stripKey = 'storyboard-se-row-0-';
+    final labels = <int, Rect>{};
+    final strips = <int, Rect>{};
+    for (final element in find
+        .byWidgetPredicate((widget) => widget.key is ValueKey<String>)
+        .evaluate()) {
+      final key = (element.widget.key! as ValueKey<String>).value;
+      final (into, slot) = key.startsWith(labelKey)
+          ? (labels, int.tryParse(key.substring(labelKey.length)))
+          : key.startsWith(stripKey)
+          ? (strips, int.tryParse(key.substring(stripKey.length)))
+          : (null, null);
+      if (into == null || slot == null || slot < 1 || slot > _seRows) {
+        continue;
+      }
+      if (into.containsKey(slot)) {
+        throw StateError('two widgets keyed $key');
+      }
+      final box = element.renderObject! as RenderBox;
+      into[slot] = Rect.fromPoints(
+        box.localToGlobal(Offset.zero),
+        box.localToGlobal(box.size.bottomRight(Offset.zero)),
+      );
+    }
+    return {
+      for (final slot in labels.keys.toList()..sort())
+        slot: (label: labels[slot]!, strip: strips[slot]),
+    };
+  }
 
   Future<void> pumpManyRows(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
