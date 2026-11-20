@@ -140,6 +140,7 @@ void main() {
       bool loaded = true,
       bool ended = true,
       String suite = entry,
+      bool tornDownRed = false,
     }) {
       final lines = <Object>[];
       var time = 0;
@@ -204,6 +205,26 @@ void main() {
           }
         }
       }
+      if (tornDownRed) {
+        lines
+          ..add({
+            'test': {
+              'id': 9,
+              'name': '(tearDownAll)',
+              'suiteID': 0,
+              'groupIDs': [2],
+            },
+            'type': 'testStart',
+            'time': time,
+          })
+          ..add({
+            'testID': 9,
+            'result': 'failure',
+            'hidden': true,
+            'type': 'testDone',
+            'time': time + 10,
+          });
+      }
       if (ended) lines.add({'success': true, 'type': 'done', 'time': time});
       return lines.map(jsonEncode).join('\n');
     }
@@ -265,6 +286,28 @@ void main() {
         ('test/a_test.dart', null),
         ('test/b_test.dart', null),
       ]);
+    });
+
+    test("an entry whose own test went red — the config's after its "
+        'files — makes every file of it red, its green ones too', () {
+      // Which file left what the config's last check found is not said:
+      // each runs again alone, where the check is its own.
+      expect(
+        runsOfFiles(
+          suiteRuns(
+            reportOf([
+              ('test/a_test.dart', ['success']),
+            ], tornDownRed: true),
+            root: 'C:/r',
+          ),
+          const {
+            '.dart_tool/test_bundles/batch0/bundle000_test.dart': [
+              'test/a_test.dart',
+            ],
+          },
+        ).map((run) => (run.path, run.green)),
+        [('test/a_test.dart', false)],
+      );
     });
 
     test('a green entry stands for a file that declared no test', () {
