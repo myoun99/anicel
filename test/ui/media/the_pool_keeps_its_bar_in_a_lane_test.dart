@@ -115,4 +115,50 @@ void main() {
     expect(lane.right, 190);
     expect(lane.width, AppScrollbarLane.thin);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  // 검증 (2026-11-20): 「풀 패널이 좁아 목록의 크기 칸 숫자가 레인 앞에서
+  // 잘려 보인다(「3」 · 「220」)」 — the lane came out of the lines and not
+  // out of the sideways scroll.
+  testWidgets('🚨scrolled sideways to its end, the list\'s last column ends '
+      'where the lane begins — none of it left under the lane', (
+    tester,
+  ) async {
+    for (final width in [190.0, 260.0]) {
+      // A list of its own at each width: one widened while scrolled to its
+      // end is another question (card
+      // a-widened-pool-list-leaves-its-window-behind).
+      await tester.pumpWidget(const SizedBox());
+      await pump(tester, view: const MediaPoolView(), width: width);
+      final across = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(MediaPoolList),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.right,
+          ),
+        ),
+      );
+      final end = across.position.maxScrollExtent;
+      expect(end, greaterThan(0), reason: 'LIVENESS: $width overflows');
+      across.position.jumpTo(end);
+      await tester.pump();
+
+      // The head's columns — its line is the list's first.
+      final columns = find
+          .descendant(
+            of: find.descendant(
+              of: find.byType(MediaPoolList),
+              matching: find.byType(OverflowBox),
+            ).first,
+            matching: find.byType(Row),
+          )
+          .first;
+      expect(
+        tester.getRect(columns).right,
+        moreOrLessEquals(laneOf(tester).left),
+        reason: 'at $width',
+      );
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 }

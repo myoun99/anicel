@@ -143,10 +143,16 @@ class _MediaPoolListState extends State<MediaPoolList> {
     final columnsWidth = widths.fold(0.0, (sum, width) => sum + width);
     return LayoutBuilder(
       builder: (context, room) {
-        // The lines stand left of their bar's lane ([_window]).
+        // The lines stand left of their bar's lane ([_window]) — and so
+        // does the sideways scroll's end: the last column, scrolled to,
+        // ends where the lane begins. ↩️The lane came out of the lines and
+        // not out of the scroll (H62, d631c9def), so the last column's last
+        // lane-width stayed under it for good (검증 2026-11-20: 「크기 칸
+        // 숫자가 레인 앞에서 잘려 보인다(「3」 · 「220」)」).
+        final lane = ContentScrollbar.laneIn(context);
         final nameWidth = math.min(
           MediaPoolList.nameWidth,
-          math.max(0.0, room.maxWidth - ContentScrollbar.laneIn(context)),
+          math.max(0.0, room.maxWidth - lane),
         );
         // 🚨THE COLUMNS SCROLL, THE VIEW DOES NOT: a window as wide as the
         // view rides the sideways scroll's offset, and only the columns in
@@ -159,7 +165,7 @@ class _MediaPoolListState extends State<MediaPoolList> {
           controller: _across,
           scrollDirection: Axis.horizontal,
           child: SizedBox(
-            width: math.max(room.maxWidth, nameWidth + columnsWidth),
+            width: math.max(room.maxWidth, nameWidth + columnsWidth + lane),
             height: room.maxHeight,
             child: ListenableBuilder(
               listenable: _across,
