@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -69,7 +70,7 @@ void main() {
       repository: repository,
       cutId: cutId,
       canvasSize: const CanvasSize(width: 1024, height: 512),
-      contentOffset: (dx: 256, dy: 128),
+      place: const PictureMovedBy((dx: 256, dy: 128)),
     ).execute();
 
     final track = repository.requireProject().tracks.single;
