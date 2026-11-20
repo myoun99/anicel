@@ -86,6 +86,11 @@ typedef LiftedFloat = ({
   BitmapSurface? surface,
 });
 
+/// What [CanvasSelectionLayer.contentBoundsProvider] answers, asked.
+typedef _InkOf =
+    ({int left, int top, int rightExclusive, int bottomExclusive})?
+    Function();
+
 /// [dab] laid on a surface of its own on [pasteboard] — the floating copy
 /// of a lift's pixels the box draws, made at the lift or ahead of it
 /// (🗣️opening-a-transform-box-holds-the-ui-over-half-a-second-Q1, 「상자가
@@ -717,10 +722,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ([CanvasSelectionShape.wholePicture], from the host's ink bounds).
   /// Lifting it lifts the whole picture (the tool guard upstream already
   /// refuses the MOVE tool when the cel has no picture at all).
-  CanvasSelectionShape _wholeCanvasShape() => CanvasSelectionShape.wholePicture(
-    widget.pasteboard,
-    widget.contentBoundsProvider?.call(),
-  );
+  ///
+  /// [ink] is the host's ink bounds as a build asked them once — else they
+  /// are asked here.
+  CanvasSelectionShape _wholeCanvasShape({_InkOf? ink}) =>
+      CanvasSelectionShape.wholePicture(
+        widget.pasteboard,
+        (ink ?? widget.contentBoundsProvider)?.call(),
+      );
 
   /// Installs [shape] as the live implicit whole-picture selection.
   /// Callers wrap in setState.
@@ -1647,7 +1656,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// cels it reads them from — every row a range names, since F-329 — are
   /// walked a row at a time (`PixelVerbs.transformCelsUnderfoot`).
   /// ↩️「costs a comparison」 was true of the one cel you stood on.
-  bool _canEditTransform() {
+  ///
+  /// [ink] as at [_wholeCanvasShape].
+  bool _canEditTransform({_InkOf? ink}) {
     if (widget.onLiftRequested == null) {
       return false;
     }
@@ -1657,7 +1668,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_transform != null) {
       return true;
     }
-    final content = widget.contentBoundsProvider?.call();
+    final content = (ink ?? widget.contentBoundsProvider)?.call();
     return content != null &&
         content.rightExclusive > content.left &&
         content.bottomExclusive > content.top;
@@ -2158,12 +2169,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ↩️The Move tool was asked for twice — here, and by a flag the host set
   /// to that very answer (`alwaysShowTransformBox: tool == move`, since
   /// R17-U) — so either could be dropped and nothing told.
-  ({CanvasSelectionRegion region, _OpenBox box})? _restingBox() {
+  ///
+  /// [ink] as at [_wholeCanvasShape].
+  ({CanvasSelectionRegion region, _OpenBox box})? _restingBox({_InkOf? ink}) {
     if (_box != null || widget.tool != CanvasSelectionTool.move) {
       return null;
     }
     final region =
-        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
+        _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape(ink: ink));
     return (region: region, box: _boxOver(region));
   }
 
@@ -3780,7 +3793,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // chrome even before any session opens (the box at rest —
     // [_restingBox]; grabbing a handle opens the session at that moment).
     // R26 #13: no selection = the box frames the WHOLE picture.
-    final atRest = _restingBox();
+    //
+    // 🗣️관제 2026-11-20 (card opening-a-transform-box-holds-the-ui-over-
+    // half-a-second, ⓑ): the host's ink bounds asked ONCE a build, the box
+    // at rest and the pill handed what it answered — each walks every cel
+    // the box frames. ↩️Each asked its own.
+    late final ink = widget.contentBoundsProvider?.call();
+    final atRest = _restingBox(ink: () => ink);
     _tellTheBoxAtRest(atRest?.region);
     final chrome = _onScreen(
       _box ?? (_drag == null ? atRest?.box : null),
@@ -3867,7 +3886,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             //
             // ⚠️Its own [Positioned.fill]: the pill is laid out against
             // the layer's SIZE, and this is the only child that needs it.
-            Positioned.fill(child: _confirmPill(chrome)),
+            Positioned.fill(child: _confirmPill(chrome, ink: () => ink)),
           if (_selectionFinished && displayShape != null)
             Positioned.fill(child: _selectionPill(displayShape)),
         ],
@@ -4013,13 +4032,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// shape it carries, so a pill placed under the shape would sit on the
   /// box's lower corner. The handles stand on the outline and need no
   /// asking of their own.
-  Widget _confirmPill(SelectionTransformChrome chrome) {
+  Widget _confirmPill(SelectionTransformChrome chrome, {_InkOf? ink}) {
     final turn = widget.onTransformOptionsChanged;
     final options = widget.transformOptions;
     // Asked once for the pill's three — a box at rest answers it by
     // walking every cel it frames (🔬0.8 ms a walk, three a build: S5_BA
-    // cut 352, 62 rows, 공통 2026-11-20).
-    final canEdit = _canEditTransform();
+    // cut 352, 62 rows, 공통 2026-11-20) — so a build hands its own [ink].
+    final canEdit = _canEditTransform(ink: ink);
     return CanvasTargetPill(
       keyValue: 'selection-confirm-pill',
       target: pointsBounds(chrome.box),
