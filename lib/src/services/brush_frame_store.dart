@@ -2700,9 +2700,20 @@ class BrushFrameStore {
   /// How many cels are parked behind at once ([parkBehind]): each is a
   /// worker's, and the screen's isolate hands it its tiles a batch at a
   /// time ([compressCelOnAWorker]).
+  ///
+  /// 🔬TWO, measured 2026-11-21 (main PC, no window, nothing else in
+  /// the machine's line; a line-art .tvpp of 220 cels on 7751×4396,
+  /// each count twice or more): opened in 17.9 s with no parking behind
+  /// · one lane 18.8–19.1 s, its last cel parked 4.6 s after it opened
+  /// · two 19.8 s, every cel parked as it opened · three 20.2–20.4 s ·
+  /// four 20.4–20.6 s · eight 20.6 s. Past two a lane only takes turns
+  /// the import's own workers would have had. What it buys: 1,543 MiB
+  /// of cels here as it opened → 173 MiB (the 15 its canvas stood on),
+  /// 98 MiB in the room.
+  /// ⚠️One file, one machine: a tablet's count is not measured.
   static int parksAtOnce = workersFor(
     Platform.numberOfProcessors,
-    ceiling: 4,
+    ceiling: 2,
   );
 
   /// The lanes of the parking behind under way, [parksAtOnce] at the
