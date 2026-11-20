@@ -514,13 +514,30 @@ cmd_drop() {
   # it standing. A landing emptied that folder so, under another checkout's
   # build (the-hook-folder-lost-an-android-dep-file, 2026-11-08). rm takes
   # the link and not what it points at; prune then forgets the worktree.
+  # 🆕THE BRANCH THAT GOES IS THE ONE ITS WORKTREE HOLDS (관제 2026-11-20,
+  # card folders-still-appear-at-the-top-of-temp-on-the-main-pc). 공통
+  # dropped lane-measure-grid-on-the-engine, whose worktree held
+  # work/measure-grid-box — and the branch of the NAME went,
+  # work/measure-grid-on-the-engine, 31 commits on neither master nor a keep/
+  # branch (공통 set keep/ again from its sha; nothing was lost). A worktree
+  # that holds no branch (a check's, moved by commit) leaves the name's; one
+  # that holds a branch no lane's is refused, worktree and all.
+  local branch="work/$name" held=
+  if [ -e "$p/.git" ]; then
+    held="$(git -C "$p" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  fi
+  case "$held" in
+    '') ;;
+    work/*) branch="$held" ;;
+    *) die "lane-$name holds $held, which is no lane's branch — nothing dropped" ;;
+  esac
   rm -rf "$p"
   git -C "$ROOT" worktree prune
-  git -C "$ROOT" branch -D "work/$name" 2>/dev/null
+  git -C "$ROOT" branch -D "$branch" 2>/dev/null
   # Its stamp goes with it: a lane opened later under the same name is
   # another lane.
   git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
-  echo "dropped work/$name"
+  echo "dropped $branch"
 }
 
 # 🚨THE TRUNK LIVES ON ONE DISK UNTIL SOMETHING COPIES IT. origin is frozen
