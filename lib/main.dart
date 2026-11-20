@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
+import 'package:gpu_engine/gpu_engine.dart' show GpuEngine;
 
 import 'src/models/app_language.dart';
 import 'src/models/app_workspace_colors.dart';
@@ -267,6 +268,11 @@ Future<void> main(List<String> handedAtLaunch) async {
   // engine's tiles are folded a rest after they come, and after the
   // hand's last landing; the pages no tile lies on then go back.
   EngineTileLedger.foldsAtRest = true;
+  // 🗣️유저 2026-11-20 (a-transform-drag-over-folder-rows-draws-a-frame-in-
+  // a-third-of-a-second-Q1 = b): 「손을 떼면 바로 놓는다」 — the buffers the
+  // engine's composes run in are let go a rest after the last compose, the
+  // rest the hand's landings are taken to rest by.
+  GpuEngine.restsAfter = EngineTileLedger.rest;
   runApp(
     AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),
   );

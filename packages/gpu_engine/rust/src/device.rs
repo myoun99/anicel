@@ -544,6 +544,13 @@ impl Engine {
                 device.on_uncaptured_error(Arc::new(move |error: wgpu::Error| {
                     noting.note(error.to_string());
                 }));
+                // What the spares let go of with no one waiting for it is
+                // dropped on the thread for pages (kernels/composite/
+                // spares.rs has why).
+                let spares = {
+                    let pages = pages.clone();
+                    crate::kernels::composite::Spares::dropping_on(move |work| pages.post(work))
+                };
                 Some(Self {
                     queue: Queue {
                         queue,
@@ -561,7 +568,7 @@ impl Engine {
                     plugin_pace: OnceLock::new(),
                     pictures: Default::default(),
                     work: Default::default(),
-                    spares: Default::default(),
+                    spares,
                     refusals,
                     ended: Ended::default(),
                     posted_refused: PostedRefused::default(),

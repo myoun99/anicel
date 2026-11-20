@@ -1339,7 +1339,7 @@ impl Composite {
     ) -> Option<usize> {
         debug_assert!(engine.is_its_thread(), "a walk off the engine's thread");
         // A walk in no picture's making is a compose of its own ([`spares`]).
-        let _composing = engine.spares.composing(engine);
+        let _composing = engine.spares.composing();
         let pages_per_pass = budget.pages;
         if pages_per_pass == 0 || pages_per_pass > self.pages.per_pass() {
             return fail(format!(

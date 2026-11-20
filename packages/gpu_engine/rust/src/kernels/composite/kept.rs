@@ -214,7 +214,7 @@ impl Kept {
         // are one compose: the buffers each made for itself are kept
         // for the next compose, where a run alone would let go of
         // those the run before it took (`spares`).
-        let _composing = engine.spares.composing(engine);
+        let _composing = engine.spares.composing();
         for some in fresh.chunks(self.pictures.slots(engine)?) {
             let these: Vec<(i32, i32)> = some.iter().map(|&(tile, _)| tiles[tile]).collect();
             let (places, pages) = self.pictures.fresh(engine, self.cel, these.len())?;

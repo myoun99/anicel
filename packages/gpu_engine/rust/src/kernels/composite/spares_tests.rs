@@ -4,7 +4,9 @@
 //! as out of ones made new, on an engine of a test's own: the tests' one
 //! runs every test's walks, and its spares are all of theirs.
 
-use super::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
+use super::abi::{
+    gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes, gpu_engine_pictures_rest,
+};
 use super::chained_tests::{
     Laying, OWN, RECT, TILES, across, close, closed_as_a_row, held_chain, lensed,
 };
@@ -14,7 +16,7 @@ use super::screen::Screen;
 use super::spares::Spares;
 use super::tests::{chained, matrixed, mixed, row, with_map};
 use super::{Composite, NO_EDGE, Over, Step, TILE, TILE_BYTES, WHOLE};
-use crate::device::Engine;
+use crate::device::{Engine, Sent, gpu_engine_stand_still};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op, tiles_of};
 use crate::kernels::pool::Pictures;
@@ -101,7 +103,7 @@ fn a_take_in_no_compose_lets_the_next_compose_let_go_of_none() {
     let (engine, spares) = (first_engine(), Spares::default());
     drop(spares.out(engine, 2));
     let held = spares.out(engine, 3);
-    drop(spares.composing(engine));
+    drop(spares.composing());
     assert_eq!(spares.bytes(), 2 * TILE_BYTES, "a compose that took none lets go of none");
     drop(held);
 }
@@ -114,19 +116,19 @@ fn a_take_in_no_compose_lets_the_next_compose_let_go_of_none() {
 fn a_compose_that_took_any_lets_go_of_what_it_did_not_take() {
     let (engine, spares) = (first_engine(), Spares::default());
     let held = {
-        let _composing = spares.composing(engine);
+        let _composing = spares.composing();
         drop((spares.out(engine, 2), spares.out(engine, 3)));
         spares.out(engine, 4)
     };
     assert_eq!(spares.bytes(), 5 * TILE_BYTES, "what a compose took is kept past it");
-    drop(spares.composing(engine));
+    drop(spares.composing());
     assert_eq!(spares.bytes(), 5 * TILE_BYTES, "a compose that took none lets go of none");
     drop(held);
     assert_eq!(spares.bytes(), 9 * TILE_BYTES);
     {
-        let _composing = spares.composing(engine);
+        let _composing = spares.composing();
         {
-            let _within = spares.composing(engine);
+            let _within = spares.composing();
             drop(spares.out(engine, 3));
         }
         assert_eq!(spares.bytes(), 9 * TILE_BYTES, "one within another ends nothing");
@@ -135,6 +137,112 @@ fn a_compose_that_took_any_lets_go_of_what_it_did_not_take() {
     assert_eq!(spares.made(), 3, "and the one it took was no new one");
     spares.let_go();
     assert_eq!(spares.bytes(), 0);
+}
+
+// 🗣️유저 2026-11-20 (the folder drag card's Q1 = b): 「손을 떼면 바로
+// 놓는다」. The hand at rest keeps no spare: every one kept is let go of,
+// and one that comes home after — a hold's, let go of as a cache is
+// trimmed; within a compose that took none, too — is kept for no one. A
+// take is a hand at work again, and what it took is kept as ever.
+#[test]
+fn a_rest_keeps_no_spare_nor_one_that_comes_home_till_one_is_taken() {
+    let (engine, spares) = (first_engine(), Spares::default());
+    let held = spares.out(engine, 3);
+    drop(spares.out(engine, 2));
+    assert_eq!(spares.bytes(), 2 * TILE_BYTES, "the premise: one kept");
+    spares.rest();
+    assert_eq!(spares.bytes(), 0, "every one kept is let go of");
+    drop(held);
+    assert_eq!(spares.bytes(), 0, "one that comes home at rest is kept for no one");
+    let held = spares.out(engine, 3);
+    spares.rest();
+    {
+        let _composing = spares.composing();
+        drop(held);
+    }
+    assert_eq!(spares.bytes(), 0, "nor one that comes home within a compose that took none");
+    let made = spares.made();
+    drop(spares.out(engine, 2));
+    assert_eq!(spares.made(), made + 1, "the premise: made again after a rest");
+    assert_eq!(spares.bytes(), 2 * TILE_BYTES, "a take is a hand at work: what it took is kept");
+    drop(spares.out(engine, 2));
+    assert_eq!(spares.made(), made + 1, "and taken again");
+}
+
+// What is let go of with no one waiting for it is dropped in a job handed
+// to the thread the spares were made with — at a rest, coming home at
+// rest, and as a compose that took any ends —, and no job is handed where
+// there is nothing to let go.
+#[test]
+fn what_is_let_go_of_unwaited_is_dropped_on_the_thread_the_spares_were_made_with() {
+    let engine = first_engine();
+    let handed = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let counted = std::sync::Arc::clone(&handed);
+    let spares = Spares::dropping_on(move |work| {
+        counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        work();
+    });
+    let jobs = || handed.load(std::sync::atomic::Ordering::Relaxed);
+    let held = spares.out(engine, 3);
+    spares.rest();
+    assert_eq!(jobs(), 0, "nothing kept, nothing to drop");
+    drop(held);
+    assert_eq!((jobs(), spares.bytes()), (1, 0), "one that comes home at rest");
+    drop(spares.out(engine, 2));
+    spares.rest();
+    assert_eq!((jobs(), spares.bytes()), (2, 0), "those kept, at a rest");
+    drop(spares.out(engine, 2));
+    {
+        let _composing = spares.composing();
+        drop(spares.out(engine, 4));
+    }
+    assert_eq!((jobs(), spares.bytes()), (3, 4 * TILE_BYTES), "what a compose did not take");
+    drop(spares.composing());
+    assert_eq!(jobs(), 3, "a compose with nothing to let go hands none");
+}
+
+// An engine's spares drop on its thread for pages: the driver's letting go
+// of a buffer stands in no body's way there (spares.rs has what it took on
+// the engine's thread).
+#[test]
+fn an_engines_spares_drop_on_its_thread_for_pages() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let (tell, told) = std::sync::mpsc::channel();
+    engine.spares.unwaited(move || {
+        let _ = tell.send(std::thread::current().id());
+    });
+    let pages = engine.on_pages_thread(|| std::thread::current().id());
+    assert_eq!(told.recv_timeout(std::time::Duration::from_secs(20)), Ok(pages));
+    assert_ne!(pages, engine.on_thread(|| std::thread::current().id()), "the premise: not the bodies' thread");
+}
+
+// A rest is taken on the engine's thread in turn: a compose handed over
+// before it and not yet run takes its spares first, and the rest lets go
+// of what that brought home — taken ahead of the turn, those would lie
+// there through the rest.
+#[test]
+fn a_rest_is_taken_behind_the_composes_handed_over_before_it() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let handed = Sent(&raw const engine);
+    // The engine's thread stands still: what is handed over now runs once
+    // it goes on, in the order handed.
+    // SAFETY: the engine is live through every call, and till what is
+    // handed over has run — waited for below.
+    unsafe { gpu_engine_stand_still(&engine, 300) };
+    engine.posted(move || {
+        // SAFETY: as above.
+        let engine = unsafe { &*handed.taken() };
+        let _composing = engine.spares.composing();
+        drop(engine.spares.out(engine, 2));
+        Some(())
+    });
+    // SAFETY: as above.
+    unsafe { gpu_engine_pictures_rest(&engine) };
+    engine.on_thread(|| ());
+    assert_eq!(engine.spares.made(), 1, "the premise: the compose ran, and took one");
+    assert_eq!(engine.spares.bytes(), 0, "what it brought home is let go of at the rest behind it");
 }
 
 /// A base, and two rows each with what a hand holds over it: a picture

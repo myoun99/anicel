@@ -76,30 +76,52 @@
 //! first use; its planes are read only where the pass before put them,
 //! as one band's go to the next band uncleaned (`blur::bands`).
 //!
-//! 🚨NO MORE THAN ONE COMPOSE'S WORTH IS KEPT, TILL THE NEXT THAT TAKES
-//! ANY: as a compose that took a spare ends — a kept picture's making,
-//! all the walks its pool's pages cut it into (`Kept::make`), or a walk
-//! in none —, the spares it did not take are let go: sizes move
-//! with a view and a chain's reach, and one of a size no longer asked
-//! for would be kept for nothing. ⛔A compose that takes none lets go of
-//! none: each kept frame picture is a screen of its own
-//! (`EngineFramePicture`), and a band's frame or a shot composed between
-//! two steps of a drag is no sign the next step will not take them —
-//! nor is the hand's rest that the next drag will not: let go of there,
-//! each gesture's first compose would make them again, the frame a drag
-//! stops on (card a-blur-drag-stops-once-on-its-first-frame). So what
-//! lies here is what the last compose that took any made for itself. It
-//! is counted among the bytes the engine keeps for no picture
-//! (`gpu_engine_pictures_idle_bytes`) and given back with them
-//! (`gpu_engine_pictures_give_back` — a memory warning, a closed
-//! project collected, an allowance moved): as the pages no picture
-//! holds are kept for the next picture and not given back at every trim
-//! (H57, `EditorSessionManager._applyCacheBudgets`). ⏳브러시/렌더링
-//! 2026-11-20, the user away, by H57's reason — theirs to overturn: let
-//! go of as the hand rests, memory at rest would be less by one
-//! compose's buffers (🔬of S5_BA cut 352, the main PC: 171 MiB once the
-//! cut's own chains have run, 222 after a blur scrubbed on a row, 496
-//! after a box over 29 rows).
+//! 🚨THEY ARE KEPT WHILE A HAND IS AT WORK, AND NONE AT REST
+//! ([`Spares::rest`]). 🗣️유저 2026-11-20 23:20 (a-transform-drag-over-
+//! folder-rows-draws-a-frame-in-a-third-of-a-second-Q1 = b 「손을 떼면
+//! 바로 놓는다」): 「들고있는게 너무 비효율적인거같은데. 첫프레임이멈추는걸
+//! 고치려면 이게아니라 근본적으로 안무겁게 작동하게 하는게 맞지않을까?」
+//! — and the words of the option chosen: 「끌기가 끝나 손이 쉬면 임시
+//! 버퍼를 전부 놓습니다. 끄는 동안에는 … 다시 씁니다.」 So from one
+//! compose to the next they are taken again, and once no compose has
+//! been handed to the engine for a rest (`GpuEngine.restsAfter`, the
+//! app's `EngineTileLedger.rest`) every one kept is let go
+//! (`gpu_engine_pictures_rest`) — and from then till a compose takes one
+//! again, one that comes home is kept for no one: what a hold kept, let
+//! go of as a cache is trimmed, or a read freed. ⛔Not a list of the
+//! doors a spare comes home by, each to arm a rest of its own: that a
+//! rest keeps none is said in one place ([`Spares::given`]), by the one
+//! flag a take ends.
+//!
+//! ↩️Kept through the hand's rest for some hours of 2026-11-20 (master
+//! 9e0bcfe3f), one compose's worth, for the first compose of the next
+//! gesture not to make them again — 🔬of S5_BA cut 352, the main PC: 171
+//! MiB once the cut's own chains had run (22 with none kept), 222 after
+//! a blur scrubbed on a row, 496 after a box over 29 rows. The user's
+//! word is above: what a gesture's first compose costs is to be made
+//! light where it is heavy, not bought with memory held at rest. ⚠️So
+//! each gesture's first compose makes its buffers again — 🔬1 to 14 ms
+//! on the main PC; on the Surface the composes that made 29 of them
+//! stood 94 to 207 ms (the head of this file).
+//!
+//! 🚨WITHIN A HAND'S WORK, NO MORE THAN ONE COMPOSE'S WORTH: as a compose
+//! that took a spare ends — a kept picture's making, all the walks its
+//! pool's pages cut it into (`Kept::make`), or a walk in none —, the
+//! spares it did not take are let go: sizes move with a view and a
+//! chain's reach, and one of a size no longer asked for would be kept
+//! for nothing. ⛔A compose that takes none lets go of none: each kept
+//! frame picture is a screen of its own (`EngineFramePicture`), and a
+//! band's frame or a shot composed between two steps of a drag is no
+//! sign the next step will not take them. What lies here is counted
+//! among the bytes the engine keeps for no picture
+//! (`gpu_engine_pictures_idle_bytes`) and given back with them at once
+//! where memory is asked for (`gpu_engine_pictures_give_back` — a memory
+//! warning, a closed project collected, an allowance moved).
+//!
+//! 🚨WHAT IS LET GO OF WITH NO ONE WAITING FOR IT IS DROPPED ON THE
+//! ENGINE'S THREAD FOR PAGES ([`Spares::dropping_on`]): the
+//! driver's letting go of one buffer stood 48 to 62 ms on the Surface
+//! (above), and stands in no body's way there.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -121,10 +143,20 @@ struct Idle {
     composing: u32,
     /// Whether the compose under way took one.
     took: bool,
+    /// Whether the hand rests ([`Spares::rest`]), till one is taken
+    /// again: what comes home meanwhile is kept for no one.
+    resting: bool,
+    /// Where what is let go of with no one waiting for it is dropped
+    /// ([`Spares::dropping_on`]) — where it is let go, with none.
+    drops_on: Option<Unwaited>,
     /// The buffers made, for the tests of what is made again.
     #[cfg(test)]
     made: u64,
 }
+
+/// What runs a job handed to it on a thread, its caller waiting for none
+/// of it ([`Spares::dropping_on`]).
+type Unwaited = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
 /// A buffer, and the spares it goes back to once no one holds it — none
 /// for one that is no spare (`Lent::alone`, a test's).
@@ -192,6 +224,15 @@ fn out_bytes(tiles: usize) -> u64 {
 }
 
 impl Spares {
+    /// Spares whose buffers, let go of with no one waiting for it, are
+    /// dropped in a job handed to `thread` — an engine's, its thread for
+    /// pages (`Engine::pages_posted`; the head of this file).
+    pub(crate) fn dropping_on(thread: impl Fn(Box<dyn FnOnce() + Send>) + Send + Sync + 'static) -> Self {
+        let spares = Self::default();
+        spares.idle().drops_on = Some(Arc::new(thread));
+        spares
+    }
+
     /// A buffer for `tiles` output tiles of a walk's own ([`Spares::of`]).
     pub(crate) fn out(&self, engine: &Engine, tiles: usize) -> Lent {
         self.of(engine, out_bytes(tiles))
@@ -213,6 +254,8 @@ impl Spares {
             // A take in no compose is no compose's: the next to end, having
             // taken none itself, lets go of none for it.
             idle.took |= idle.composing > 0;
+            // A hand is at work again ([`Spares::rest`]).
+            idle.resting = false;
             // Just the size asked, or more that a binding takes whole.
             let serves = |size: u64| size == bytes || (size > bytes && size <= room);
             let holds = |&(_, (_, kept)): &(usize, &(bool, wgpu::Buffer))| serves(kept.size());
@@ -230,20 +273,57 @@ impl Spares {
         Lent(Arc::new(Spare { buffer, home: Some(self.clone()) }))
     }
 
+    /// `buffer` is no one's again: kept for the next take while a hand is
+    /// at work, and for no one where it rests ([`Spares::rest`]).
     fn given(&self, buffer: wgpu::Buffer) {
-        let mut idle = self.idle();
-        let within = idle.composing > 0;
-        idle.kept.push((within, buffer));
+        {
+            let mut idle = self.idle();
+            if !idle.resting {
+                let within = idle.composing > 0;
+                idle.kept.push((within, buffer));
+                return;
+            }
+        }
+        self.lets_go_of(vec![buffer]);
     }
 
     /// A compose is under way till what this answers is let go of — a
     /// picture's making, or a walk in none: as the outermost ends, having taken
     /// any, the spares that did not come back within it are let go (the
-    /// head of this file), on `engine`'s thread for pages — the driver's
-    /// letting go of them stands in no body's way.
-    pub(crate) fn composing<'a>(&'a self, engine: &'a Engine) -> Composing<'a> {
+    /// head of this file).
+    pub(crate) fn composing(&self) -> Composing<'_> {
         self.idle().composing += 1;
-        Composing { spares: self, engine }
+        Composing { spares: self }
+    }
+
+    /// The hand rests: every spare kept is let go of, and one that comes
+    /// home from here on is kept for no one — till one is taken again
+    /// ([`Spares::of`]), a hand at work (the head of this file).
+    pub(crate) fn rest(&self) {
+        let kept = {
+            let mut idle = self.idle();
+            idle.resting = true;
+            std::mem::take(&mut idle.kept)
+        };
+        self.lets_go_of(kept.into_iter().map(|(_, buffer)| buffer).collect());
+    }
+
+    /// Lets go of `buffers`, no one waiting for it — past the lock.
+    fn lets_go_of(&self, buffers: Vec<wgpu::Buffer>) {
+        if !buffers.is_empty() {
+            self.unwaited(move || drop(buffers));
+        }
+    }
+
+    /// `work`, run where these spares drop what they let go of
+    /// ([`Spares::dropping_on`]) — here, where they were made with no
+    /// thread for it.
+    pub(super) fn unwaited(&self, work: impl FnOnce() + Send + 'static) {
+        let on = self.idle().drops_on.clone();
+        match on {
+            Some(thread) => thread(Box::new(work)),
+            None => work(),
+        }
     }
 
     /// The bytes kept here, held by no one.
@@ -252,7 +332,8 @@ impl Spares {
     }
 
     /// Lets go of every spare kept — on the thread it is asked on, past
-    /// the lock.
+    /// the lock: its caller waits for the bytes to be gone
+    /// (`gpu_engine_pictures_give_back`).
     pub(crate) fn let_go(&self) {
         let kept = std::mem::take(&mut self.idle().kept);
         drop(kept);
@@ -280,7 +361,6 @@ impl Spares {
 /// A compose under way ([`Spares::composing`]).
 pub(crate) struct Composing<'a> {
     spares: &'a Spares,
-    engine: &'a Engine,
 }
 
 impl Drop for Composing<'_> {
@@ -302,8 +382,6 @@ impl Drop for Composing<'_> {
             }
             aged
         };
-        if !aged.is_empty() {
-            self.engine.pages_posted(move || drop(aged));
-        }
+        self.spares.lets_go_of(aged);
     }
 }

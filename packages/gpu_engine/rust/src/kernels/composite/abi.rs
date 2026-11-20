@@ -1513,7 +1513,8 @@ pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
 /// The bytes `engine` keeps for pictures that are no picture's: the slots
 /// nobody holds on the pages of their pool (kernels/pool's `Pictures`) —
 /// they stay made for the next picture — the composite's work buffer
-/// ([`super::Work`]) and the buffers the last walk made for itself
+/// ([`super::Work`]) and the buffers its composes run in, kept from one
+/// to the next while a hand is at work and none at rest
 /// ([`super::Spares`]). For the memory census, which weighs each picture
 /// by its own tiles (`gpu_engine_screen_bytes`).
 ///
@@ -1567,6 +1568,35 @@ pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, mo
             engine.work.let_go();
         }
     })
+}
+
+/// The hand rests: lets go of every buffer `engine`'s composes ran in and
+/// kept for the next ([`super::Spares`]), and keeps none that comes home
+/// from then till a compose takes one again (`Spares::rest`) — on the
+/// engine's thread, in turn behind what was handed to it before
+/// ([`Engine::posted`]), its caller waiting for none of it. ⛔Not ahead of
+/// that turn: a compose handed over and not yet run takes a spare as it
+/// runs, a hand at work by the engine's books, and what it brought home
+/// would lie there through the rest. The driver's letting go is the
+/// thread for pages' (`Spares::dropping_on`).
+///
+/// 🗣️유저 2026-11-20 23:20 (a-transform-drag-over-folder-rows-draws-a-
+/// frame-in-a-third-of-a-second-Q1 = b): 「손을 떼면 바로 놓는다」 — the
+/// law and its words are at the head of spares.rs. When a hand rests is
+/// its caller's to say (`GpuEngine.restsAfter`).
+///
+/// # Safety
+/// `engine` is live, and till what is handed here has run — as what a
+/// compose is handed is ([`gpu_engine_screen_compose`]).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_rest(engine: *const Engine) {
+    let handed = Sent(engine);
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        // SAFETY: live till this has run (the function's contract).
+        unsafe { &*handed.taken() }.spares.rest();
+        Some(())
+    });
 }
 
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the

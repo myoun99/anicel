@@ -324,9 +324,9 @@ class GpuEngine {
   /// cel's tiles do in a [GpuPool]'s, and a page of it stays made for the
   /// next picture: its slots nobody holds are these —
   /// and the composite's work buffer, kept from one run to the next, and
-  /// the buffers the last compose made for the rows it ran first, kept
-  /// for the next that runs any. Till they are given back
-  /// ([givePicturesBackPast]).
+  /// the buffers its composes run in, kept from one compose to the next
+  /// while a hand is at work and none at rest ([restsAfter]). Till they
+  /// are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
 
   /// The bytes of the tiles the engine's pictures hold that none of them
@@ -345,6 +345,40 @@ class GpuEngine {
   /// ([GpuPool.giveBackPast]). A page a picture is on stays.
   void givePicturesBackPast(int mostIdle) =>
       rust.picturesGiveBack(_engine, mostIdle);
+
+  /// How long after the last compose handed to an engine the hand is
+  /// taken to rest: the engine then lets go of the buffers its composes
+  /// ran in and kept for the next (rust/src/kernels/composite/spares.rs,
+  /// `gpu_engine_pictures_rest`). Null where no launch said so — a
+  /// test's engine arms no timer, which a widget test's clock would not
+  /// end (as the app's `EngineTileLedger.copiesAtRest`).
+  ///
+  /// 🗣️유저 2026-11-20 23:20 (a-transform-drag-over-folder-rows-draws-a-
+  /// frame-in-a-third-of-a-second-Q1 = b): 「손을 떼면 바로 놓는다」 —
+  /// 「들고있는게 너무 비효율적인거같은데」. What a drag takes again from
+  /// one compose to the next is kept through no rest.
+  static Duration? restsAfter;
+
+  /// What lets go once the hand rests ([_composed]).
+  Timer? _atRest;
+
+  /// A compose was handed over — [GpuComposite.run], [GpuComposite.show],
+  /// [GpuScreen.compose], [GpuScreen.composeOver] —: a hand is at work,
+  /// and rests once none is for [restsAfter]. The engine takes the rest
+  /// in turn behind what it was handed before, this isolate waiting for
+  /// none of it.
+  void _composed() {
+    final rest = restsAfter;
+    if (rest == null) {
+      return;
+    }
+    _atRest?.cancel();
+    _atRest = Timer(rest, () => rust.picturesRest(_engine));
+  }
+
+  /// Test seam: whether a rest is on its way ([_composed]).
+  @visibleForTesting
+  bool get debugRestOnItsWay => _atRest?.isActive ?? false;
 
   /// Whether the device is gone — the driver took it away (a reset, an
   /// update, a wake from sleep), or the engine's thread ended under it
@@ -561,6 +595,8 @@ class GpuEngine {
   /// Frees the device; every surface must be freed first.
   void close() {
     _closed = true;
+    // A rest on its way would be taken on an engine freed.
+    _atRest?.cancel();
     final fill = _fill;
     if (fill != null) {
       rust.fillFree(fill);
@@ -3130,6 +3166,7 @@ class GpuComposite implements _OfAnEngine {
         _rect(arena, extent),
       );
     });
+    _engine._composed();
     if (out == nullptr) {
       throw GpuRefused(_lastError());
     }
@@ -3145,8 +3182,8 @@ class GpuComposite implements _OfAnEngine {
     GpuPlan plan,
     GpuTarget target,
     (int, int, int, int) rect,
-  ) => _checked(
-    using(
+  ) {
+    final passes = using(
       (arena) => rust.compositeShow(
         _composite,
         _engine._engine,
@@ -3155,8 +3192,10 @@ class GpuComposite implements _OfAnEngine {
         _engine._its(target)._texture,
         _edges(arena, rect),
       ),
-    ),
-  );
+    );
+    _engine._composed();
+    return _checked(passes);
+  }
 
   /// Lays [picture] — [pool]'s tiles over a box of canvas tiles as
   /// [GpuPlan.set] takes a set: its top-left column [x0] and row [y0], how
@@ -3273,6 +3312,7 @@ class GpuScreen implements _OfAnEngine {
         _rect(arena, changed),
       ),
     );
+    _engine._composed();
     return _engine.done();
   }
 
@@ -3297,6 +3337,7 @@ class GpuScreen implements _OfAnEngine {
         _rect(arena, fresh),
       ),
     );
+    _engine._composed();
     return _engine.done();
   }
 
