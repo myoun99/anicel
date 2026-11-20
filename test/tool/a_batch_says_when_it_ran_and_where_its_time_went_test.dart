@@ -222,27 +222,30 @@ void main() {
           Duration(microseconds: (mine() - before) ~/ 10);
       final before = mine();
       if (!Platform.isWindows) return; // `ps` gives no CPU here: 0.
-      // Arithmetic and nothing else, till the table says a third of a
-      // second of it was spent: user time, which the kernel's share of a
-      // table read could never make up.
-      // ↩️It was a second and a half of the wall clock, and the run's tests
-      // stand at Idle: on the Surface under a land's gate that second and
-      // a half was handed less than a third of a second of the CPU, and the
-      // pin went red then green on the same inputs (11-20, flaky card).
-      // How long the machine takes to hand it over is not what this pins.
+      // Arithmetic and nothing else, three seconds of the wall between two
+      // reads of the table, till it says half a second was spent: user
+      // time, which the kernel's share of six table reads (a few tens of
+      // milliseconds each, measured 11-20) could never make up.
+      // ↩️It was one stretch of a second and a half, and the run's tests
+      // stand at Idle: on the Surface under a land's gate that stretch was
+      // handed less than a third of a second of the CPU, and the pin went
+      // red then green on the same inputs (11-20, flaky card). How long the
+      // machine takes to hand it over is not what this pins — but the
+      // reads stay few, or their own kernel time would fill the bar alone.
       final busy = Stopwatch()..start();
       var x = 1;
       var spent = Duration.zero;
-      while (spent < const Duration(milliseconds: 300) &&
-          busy.elapsed < const Duration(minutes: 1)) {
+      for (var read = 0;
+          read < 6 && spent < const Duration(milliseconds: 500);
+          read++) {
         final step = Stopwatch()..start();
-        while (step.elapsedMilliseconds < 100) {
+        while (step.elapsedMilliseconds < 3000) {
           x = (x * 31 + 7) & 0xffff;
         }
         spent = since(before);
       }
       expect(x, isNot(-1));
-      expect(spent, greaterThanOrEqualTo(const Duration(milliseconds: 300)));
+      expect(spent, greaterThanOrEqualTo(const Duration(milliseconds: 500)));
       // One thread cannot spend more of the CPU than the wall it ran — the
       // table's ticks are a hundred nanoseconds, and read as anything else
       // they would be many times this.
