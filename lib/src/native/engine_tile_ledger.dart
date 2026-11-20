@@ -14,6 +14,7 @@ import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
 import '../services/cel_shells.dart';
 import 'app_gpu_engine.dart';
+import 'tiles_stood_on.dart';
 
 /// The engine's copy of each tile asked for — a slot of a pool of its own
 /// ([pool]) — found FROM the tile object and let go WITH it, as the tile's
@@ -42,7 +43,8 @@ import 'app_gpu_engine.dart';
 ///
 /// ⛔THE SLOTS A CALL IS HANDED STAY TILL IT RETURNS ([held], ⓓ). Only a
 /// store the pool is full at lets slots go, only the ones no open hold
-/// has, and the ones stored longest ago first — as many as it is short, a
+/// has and no canvas stands on ([TilesStoodOn]), and the ones stored
+/// longest ago first — as many as it is short, a
 /// page's worth at the least ([_shortAsRoomIsMade]): a tile whose bytes
 /// are here is stored again when asked, never read back
 /// (screen-on-the-engine c4, 관제 2026-11-07). The tiles a hold has are
@@ -110,6 +112,8 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// page's worth where null. Its tiles are folded by what [foldKernels]
   /// answers — the fold's kernels on [engine] once they are compiled,
   /// null till then — and by nothing where it is null ([foldABatch]).
+  /// The tiles [stoodOn] answers keep their slots where it makes room
+  /// ([_shortAsRoomIsMade]); none do where it is null.
   /// A page of its pool holds [debugTilesAPage] tiles where a test says
   /// so ([GpuPool.new]).
   EngineTileLedger(
@@ -117,6 +121,7 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
     int? byteBudget,
     int? roomBatch,
     GpuFold? Function()? foldKernels,
+    TilesStoodOn? stoodOn,
     int? debugTilesAPage,
   }) : _engine = engine,
        pool = GpuPool(
@@ -126,7 +131,8 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
        ),
        _byteBudget = byteBudget,
        _roomBatch = roomBatch ?? EngineTileLedger.roomBatch,
-       _foldKernels = foldKernels {
+       _foldKernels = foldKernels,
+       _stoodOn = stoodOn {
     pool.onUnwritten = _letGoUnwritten;
   }
 
@@ -144,6 +150,7 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
         appGpuEngine,
         byteBudget: _appByteBudget,
         foldKernels: () => appGpuFoldKernels.compiled,
+        stoodOn: TilesStoodOn.app,
       ),
     );
   }
@@ -917,6 +924,15 @@ final GpuEngine _engine;
 
   final int _roomBatch;
 
+  /// What the canvases that stand say they stand on, whose slots a full
+  /// pool leaves ([_shortAsRoomIsMade]); null for a ledger nothing
+  /// stands on.
+  final TilesStoodOn? _stoodOn;
+
+  /// Whether this ledger asks [stoodOn] as it makes room.
+  @visibleForTesting
+  bool debugAsks(TilesStoodOn stoodOn) => identical(_stoodOn, stoodOn);
+
   /// The slot [tile] has, or null — nothing is stored here. A probe: a
   /// call that runs over slots asks [held].
   GpuTile? slotOf(BitmapTile tile) => _slotNow(tile)?.at;
@@ -1103,7 +1119,8 @@ final GpuEngine _engine;
   /// How many of the [short] tiles a store had no slot for are still
   /// without one once room is made for them: [placeRest] places what is
   /// left and answers how many still are, asked again after each step —
-  /// the slots no hold has, of tiles whose bytes are here, let go, the
+  /// the slots no hold has and no canvas stands on ([TilesStoodOn],
+  /// asked once a call), of tiles whose bytes are here, let go, the
   /// ones stored longest ago first, as many as the store is short and
   /// [roomBatch] at the least, and [byteBudget] lifted; the bytes of tiles
   /// the engine alone holds moved here ([_moveBytesHere]); a page past the
@@ -1122,14 +1139,13 @@ final GpuEngine _engine;
   /// own cost at every store; a page's worth at the least, 35 times a
   /// pass, 1.2 ms a time (6.6 once) and 18 to 29 ms a pass.
   int _shortAsRoomIsMade(int short, int Function() placeRest) {
-    _letGoWhere(
-      (key, _) => _noHoldHas(key),
-      most: math.max(short, _roomBatch),
-    );
+    final stoodOn = _stoodOn?.keysNow() ?? const <Object>{};
+    bool mayGo(Object? key) => _noHoldHas(key) && !stoodOn.contains(key);
+    _letGoWhere((key, _) => mayGo(key), most: math.max(short, _roomBatch));
     pool.makeNoPagePast(_unbounded);
     try {
       short = placeRest();
-      if (short > 0 && _moveBytesHere(short)) {
+      if (short > 0 && _moveBytesHere(short, mayGo)) {
         short = placeRest();
       }
       if (short > 0) {
@@ -1146,15 +1162,15 @@ final GpuEngine _engine;
     }
   }
 
-  /// Moves here the bytes of the oldest tiles the engine alone holds and no
-  /// hold has — [short] of them, a read's batch at the least: one wait of
-  /// the GPU's frees as many slots as it reads — and lets their slots go;
-  /// whether there was one.
-  bool _moveBytesHere(int short) {
+  /// Moves here the bytes of the oldest tiles the engine alone holds that
+  /// [mayGo] — [short] of them, a read's batch at the least: one wait of
+  /// the GPU's frees as many slots as it reads — and lets go the slots
+  /// that may; whether there was one.
+  bool _moveBytesHere(int short, bool Function(Object? key) mayGo) {
     final going = [
       for (final (:tile, slot: _)
           in _engineAlone
-              .where((held) => _noHoldHas(held.tile))
+              .where((held) => mayGo(held.tile))
               .take(math.max(short, readBatch)))
         tile,
     ];
@@ -1162,7 +1178,7 @@ final GpuEngine _engine;
       return false;
     }
     _copyHere(going);
-    _letGoWhere((key, _) => _noHoldHas(key));
+    _letGoWhere((key, _) => mayGo(key));
     return true;
   }
 

@@ -1557,9 +1557,9 @@ class BrushFrameStore {
   ///
   /// ⚠️Not asked where a cel is read with no door before it
   /// ([bakedSurfaceOrNull]): every read would walk its tiles. A step of
-  /// a stroke is composed so, its frame asked nothing first — the slots
-  /// of a frame a canvas stands on are to be the engine's to keep while
-  /// it stands, which this does not do.
+  /// a stroke is composed so, its frame asked nothing first — so a full
+  /// pool leaves the hot cels of the frame an editor stands on their
+  /// slots (`TilesStoodOn`), and this door is every other cel's.
   void coolWhereTheEngineLetGo(BrushFrameKey key) {
     final hot = _bakedSurfaces[key];
     if (hot != null &&

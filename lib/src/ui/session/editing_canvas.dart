@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
@@ -124,6 +126,33 @@ class EditingCanvas {
   /// the cut through.
   final List<ResolvedLayerEffect> Function(CutId cutId, int frameIndex)
   _cutEffectsAt;
+
+  /// The tiles of the hot cels the frame at the playhead shows — each
+  /// row's cel as the cut exposes it there ([resolveExposedFrameAt]),
+  /// where [hotOf] answers it (`BrushFrameStore.hotBakedSurfaceOrNull`):
+  /// what this canvas stands on, for a full pool to leave their slots
+  /// (`TilesStoodOn`, which has why).
+  ///
+  /// ⚠️The cut's own rows: a track's SE rows are shown as clones no pen
+  /// draws on ([_trackSeDisplayNodes]).
+  Iterable<BitmapTile> hotTilesAtThePlayhead(
+    BitmapSurface? Function(BrushFrameKey key) hotOf,
+  ) sync* {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final frameIndex = _controllers.timelineController.currentFrameIndex;
+    for (final layer in cut.layers) {
+      final frame = resolveExposedFrameAt(layer, frameIndex);
+      final hot = frame == null
+          ? null
+          : hotOf(_project.brushFrameKeyForCut(cut, layer.id, frame.id));
+      if (hot != null) {
+        yield* hot.tiles.values;
+      }
+    }
+  }
 
   /// The editing canvas's composite TREE at the playhead — the same tree
   /// playback and export composite, with the ACTIVE layer standing in it

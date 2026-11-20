@@ -98,6 +98,7 @@ import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
 import '../native/tile_blocks.dart';
+import '../native/tiles_stood_on.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
 import 'session/cache_budgets.dart';
@@ -316,6 +317,15 @@ class EditorSessionManager extends ChangeNotifier
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
     AppMemory.settings.addListener(_applyCacheBudgets);
+    // The hot cels of the frame this project's canvas stands on keep
+    // their slots where a full pool makes room ([TilesStoodOn]) — read
+    // then, of where the playhead is then.
+    TilesStoodOn.app.standsOn(
+      editingCanvas,
+      () => editingCanvas.hotTilesAtThePlayhead(
+        renderCaches.brushFrameStore.hotBakedSurfaceOrNull,
+      ),
+    );
     // A plugin installed or taken off greys or ungreys the effects of it
     // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
     // 걸린다」) — the app's one list, so every open project hears it.
@@ -1939,6 +1949,8 @@ class EditorSessionManager extends ChangeNotifier
     TimelineGridTileStore.instance.clear,
     // So do the rows' kept pictures, by what each was drawn from.
     RepaintOnWordBakes.clearKeptPictures,
+    // Its canvas stands on no tile any more ([TilesStoodOn]).
+    () => TilesStoodOn.app.standDown(editingCanvas),
     canvasStroke.dispose,
     historyManager.dispose,
   ];
