@@ -20,8 +20,12 @@ void main() {
         ),
       ),
     );
+    // The arc is the SDK's painter's own (private class, public fields).
     final painter = paint.painter! as dynamic;
-    return (painter.arcStart as double, painter.arcSweep as double);
+    // ignore: avoid_dynamic_calls
+    final start = painter.arcStart as double;
+    // ignore: avoid_dynamic_calls
+    return (start, painter.arcSweep as double);
   }
 
   testWidgets('🚨a spinner put up late stands where one put up early is — '
