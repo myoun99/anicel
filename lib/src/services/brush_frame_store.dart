@@ -99,6 +99,18 @@ class BrushFrameStore {
   Iterable<BitmapSurface> get shells =>
       _shells.values.map((kept) => kept.shell);
 
+  /// What a look was handed of a cel's kept bytes, thawed for it
+  /// ([lookAhead], or read under [CelRead.look]) — under the very ref
+  /// it was read from, from that read till the looks let go of it
+  /// ([keepShellOf]): what another look at those bytes is handed
+  /// ([_lookedInHand]), and what a use of the cel takes as that cel,
+  /// hot ([_usedAsLooked]). Weak, and the ref's: this store holds no
+  /// byte for it — a look that goes without a word leaves nothing
+  /// here — and bytes kept anew are another ref's, with none.
+  final Expando<WeakReference<BitmapSurface>> _lookedOf = Expando(
+    'looked at',
+  );
+
   /// The tiles a use took kept in the file and not here
   /// ([_usedAsItsShell]), by their cel, each where it lies. Whoever
   /// holds one — the cel, a step back over it, what was copied of it —
@@ -1139,21 +1151,85 @@ class BrushFrameStore {
       }
       return hot;
     }
-    if (read == CelRead.use) {
-      final shell = _usedAsItsShell(key);
-      if (shell != null) {
-        return shell;
-      }
+    final inHand = switch (read) {
+      CelRead.use => _usedAsInHand(key),
+      // ⛔Not a shell: one read with no door before it is read on the
+      // CPU by who asked — a sheet's ink for a file, a row's cels moved
+      // — and a shell's tile holds no byte here ([lookAhead] hands
+      // one to a frame, which lays it).
+      CelRead.look => _lookedInHand(key),
+    };
+    if (inHand != null) {
+      return inHand;
     }
     final blob = _keptBlobOrNull(key);
     if (blob == null) {
       return null;
     }
     final surface = _behind(blob.toSurface());
-    if (read == CelRead.use) {
-      _keepThawed(key, surface);
+    switch (read) {
+      case CelRead.use:
+        _keepThawed(key, surface);
+      case CelRead.look:
+        _lookedOf[_kept(key)!.ref] = WeakReference(surface);
     }
     return surface;
+  }
+
+  /// What a use of [key] takes in place of a thaw: the shell the looks
+  /// let go of ([_usedAsItsShell]), else what a look holds
+  /// ([_usedAsLooked]) — the shell first, which the engine holds whole
+  /// and no byte here weighs.
+  BitmapSurface? _usedAsInHand(BrushFrameKey key) =>
+      _usedAsItsShell(key) ?? _usedAsLooked(key);
+
+  /// 🚨A USE OF A KEPT CEL A LOOK HAS IN HAND TAKES WHAT THE LOOK WAS
+  /// HANDED ([_lookedOf]) — hot from here on as that surface, its bytes
+  /// here as a thaw's are, nothing read and nothing thawed again; null
+  /// where no look holds what its kept bytes are now.
+  ///
+  /// ONE THAW OF A CEL'S KEPT BYTES, WHOEVER ASKS FIRST. A look waits
+  /// for the use thawing it and is handed a hot cel as it is
+  /// ([lookAhead], 저장 2026-11-15); a use waits for the look thawing
+  /// it ([thawAhead]) and takes what a look holds, here; a look is
+  /// handed what another holds ([_lookedInHand]). The other half of
+  /// [_usedAsItsShell], which takes what the looks LET GO.
+  ///
+  /// 🔢브러시/렌더링's (2026-11-20, card
+  /// the-first-stroke-after-a-file-opens-comes-late — no rule of the
+  /// user's; the nearest is F-610-Q2, 「같은 타일은 한 벌만」). ↩️Till
+  /// then a use thawed its own whatever a look held. A frame stood on
+  /// as its file opens is looked at by the band's walk and used by the
+  /// canvas at once; the walk drew every frame after from the tiles
+  /// it had read first (`CelLooks` reads a cel held from the frame
+  /// before no more), and the cel's own never came to the engine till
+  /// a screen laid the rows live — at the first stroke. 🔬Main PC,
+  /// S5_BA cut 352 with every eye on, opened from its file, no window
+  /// (five runs, with [_usedAsItsShell] and without): of the 2,380
+  /// tiles of the 55 cels hot there, 182 to 1,866 had a slot once the
+  /// band was full, and the first stroke's first frame stored the
+  /// rest — 291 to 2,199 tiles, 300 to 1,110 ms of the UI thread in
+  /// the test VM; the strokes after it none, 10 to 40 ms. Taken from the
+  /// look, each of the 2,380 had its slot by the band's first frames and
+  /// the first stroke stored none (two runs). ⚠️That stroke's first
+  /// frame is 230 to 280 ms there still, and its pen going down 130:
+  /// no tile stored is in those.
+  BitmapSurface? _usedAsLooked(BrushFrameKey key) {
+    final looked = _lookedInHand(key);
+    if (looked == null) {
+      return null;
+    }
+    _keepThawed(key, looked);
+    return _bakedSurfaces[key];
+  }
+
+  /// What a look holds of [key]'s kept bytes as they are now
+  /// ([_lookedOf]), behind this store's wall; null where none does, or
+  /// the cel is kept nowhere.
+  BitmapSurface? _lookedInHand(BrushFrameKey key) {
+    final kept = _kept(key);
+    final looked = kept == null ? null : _lookedOf[kept.ref]?.target;
+    return looked == null ? null : _behind(looked);
   }
 
   /// 🚨A USE OF A CEL KEPT IN THE SAVED FILE TAKES THE SHELL A LOOK LEFT
@@ -1433,16 +1509,31 @@ class BrushFrameStore {
   }) {
     key = _canonicalize(key);
     coolWhereTheEngineLetGo(key);
-    if (!_thawsAt(key, canvasSize) || _usedAsItsShell(key) != null) {
+    if (!_thawsAt(key, canvasSize) || _usedAsInHand(key) != null) {
       return Future<void>.value();
     }
-    return _thawing.join(
-      key,
-      () => _thawOnAWorker(key, () => _keptAt(key, canvasSize), _layThawed),
-    );
+    return _thawing.join(key, () async {
+      // A look thawing it thaws it for this use too: the use takes what
+      // the look was handed ([_usedAsLooked]), where both at once
+      // thawed it twice and each kept its own.
+      while (_looking.isRunning(key)) {
+        await _looking.runOf(key);
+      }
+      if (_thawsAt(key, canvasSize) && _usedAsInHand(key) == null) {
+        await _thawOnAWorker(
+          key,
+          () => _keptAt(key, canvasSize),
+          _layThawed,
+        );
+      }
+    });
   }
 
   final InFlight<BrushFrameKey, void> _thawing = InFlight();
+
+  /// The looks' thaws under way ([lookAhead]): another look at the cel
+  /// joins the one, and a use waits for it ([thawAhead]).
+  final InFlight<BrushFrameKey, BitmapSurface?> _looking = InFlight();
 
   /// 🚨A HOT SHELL THE ENGINE HOLDS NO MORE WHOLE IS HOT NO MORE: let go
   /// as the file's own ([_coolTheFilesOwn]) before an ahead door answers
@@ -1501,19 +1592,31 @@ class BrushFrameStore {
     // A use thawing it ahead ([thawAhead]) thaws it for this look too: the
     // cel is read hot once that lands, where both at once thawed it twice
     // and let one go (저장 2026-11-15 20:12). That thaw never throws.
-    await _thawing.runOf(key);
+    // ⛔No turn given up where no use thaws it: a use that came in that
+    // turn would find no look to wait for ([thawAhead]) and thaw beside
+    // this one — ↩️a turn was given up either way till 2026-11-20. Asked
+    // each time round: the use waited for may have failed, and another
+    // begun.
+    while (_thawing.isRunning(key)) {
+      await _thawing.runOf(key);
+    }
     coolWhereTheEngineLetGo(key);
     final shell = _shellAt(key, canvasSize);
     if (shell != null) {
       return shell;
     }
+    // What another look holds, or is thawing, is this one's too.
     final thawed = _thawsAt(key, canvasSize)
-        ? await _thawOnAWorker(
-            key,
-            () => _keptAt(key, canvasSize),
-            _layThawed,
-            read: CelRead.look,
-          )
+        ? _lookedInHand(key) ??
+              await _looking.join(
+                key,
+                () => _thawOnAWorker(
+                  key,
+                  () => _keptAt(key, canvasSize),
+                  _layThawed,
+                  read: CelRead.look,
+                ),
+              )
         : null;
     return thawed ??
         currentSurfaceWithoutReplay(
@@ -1538,6 +1641,11 @@ class BrushFrameStore {
   }) {
     key = _canonicalize(key);
     final ref = _keptAt(key, canvasSize);
+    // In no look's hand from here ([_lookedOf]): what is kept of it is
+    // its shell.
+    if (ref != null && identical(_lookedOf[ref]?.target, looked)) {
+      _lookedOf[ref] = null;
+    }
     if (ref == null ||
         _bakedSurfaces.containsKey(key) ||
         sourceRevisionOf(key) != revision) {
@@ -1618,8 +1726,11 @@ class BrushFrameStore {
       if (movedOn()) {
         return null;
       }
-      if (read == CelRead.use) {
-        _keepThawed(key, surface);
+      switch (read) {
+        case CelRead.use:
+          _keepThawed(key, surface);
+        case CelRead.look:
+          _lookedOf[kept] = WeakReference(surface);
       }
       return surface;
     } on Object {
