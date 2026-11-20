@@ -300,14 +300,17 @@ void main() {
       start,
       kind: PointerDeviceKind.mouse,
     );
-    final to = find.named('storyboard-attach-twirl-above-a-conte');
+    await tester.pump(const Duration(milliseconds: 16));
+    // The conte's row where the press left it, read once: its own fold
+    // lifts it off the pointer, and drawing back after it takes the fold
+    // back — a walk that chased it went back and forth 400 times (11-20).
+    final conteRow = tester.getRect(label('conte'));
     var at = start;
-    for (var step = 0; step < 400; step += 1) {
-      final gap = tester.getCenter(to).dy - at.dy;
-      if (gap.abs() < 1) {
-        break;
-      }
-      at = Offset(start.dx, at.dy + gap.clamp(-8.0, 8.0));
+    while (at.dy < conteRow.top || at.dy >= conteRow.bottom) {
+      at = Offset(
+        start.dx,
+        at.dy + (conteRow.center.dy - at.dy).clamp(-8.0, 8.0),
+      );
       await gesture.moveTo(at);
       await tester.pump(const Duration(milliseconds: 16));
     }
