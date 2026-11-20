@@ -107,6 +107,40 @@ impl Write {
         self.changed_by(engine, pool, put, places, (self.pages.per_pass(), most))
     }
 
+    /// [`Self::changed`], the body that asks waiting for no GPU: `then` is
+    /// told what each tile is on a thread of the engine's once the GPU
+    /// has said ([`Engine::map_then`]) — or nothing where the test
+    /// failed, and at once, here, where it submitted nothing.
+    ///
+    /// 🚨WHY (card opening-a-transform-box-holds-the-ui-over-half-a-second,
+    /// 2026-11-20): a stamp's landing is a finished landing's question,
+    /// and its answer was waited for where it was asked — the UI's
+    /// thread, 🔬4 to 18 ms a cel cut by a box at rest and 31 to 63 with
+    /// the GPU's queue full (공통, S5_BA cut 352, 메인 PC 테스트 VM). As a
+    /// fold's sizes are told (`Fold::folded_then`): the engine's thread
+    /// goes on to the job behind this one.
+    pub(crate) fn changed_then(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        put: &wgpu::Buffer,
+        places: &[Option<TileAt>],
+        then: impl FnOnce(Option<Vec<Change>>) + Send + 'static,
+    ) {
+        let cut = tiles_a_pass(engine, TILE_BYTES, 0).map(|most| (self.pages.per_pass(), most));
+        match cut.and_then(|cut| self.submitted_by(engine, pool, put, places, cut)) {
+            None => then(None),
+            Some(None) => then(Some(Vec::new())),
+            Some(Some(changed)) => {
+                let bytes = changed.size();
+                engine.map_then(engine.staged(&changed, bytes), move |mapped| {
+                    let read = |words: wgpu::Buffer| Some(changes_of(&words.get_mapped_range(..).ok()?));
+                    then(mapped.ok().and_then(read));
+                });
+            }
+        }
+    }
+
     /// `changed`, its passes binding `per_pass` pages and taking `most`
     /// tiles at most — a smaller device's passes, which the tests take.
     fn changed_by(
@@ -115,8 +149,26 @@ impl Write {
         pool: &[wgpu::Buffer],
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
-        (per_pass, most): (usize, usize),
+        cut: (usize, usize),
     ) -> Option<Vec<Change>> {
+        match self.submitted_by(engine, pool, put, places, cut)? {
+            None => Some(Vec::new()),
+            Some(changed) => Some(changes_of(&engine.read_buffer(&changed)?)),
+        }
+    }
+
+    /// The test of `put`'s tiles beside `places` submitted, its passes
+    /// binding `per_pass` pages and taking `most` tiles at most: the
+    /// buffer the GPU writes each tile's word to — none where no tile
+    /// is asked, and nothing is submitted.
+    fn submitted_by(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        put: &wgpu::Buffer,
+        places: &[Option<TileAt>],
+        (per_pass, most): (usize, usize),
+    ) -> Option<Option<wgpu::Buffer>> {
         cut_by(&self.pages, (per_pass, most))?;
         holds(put, places.len())?;
         for at in places.iter().flatten() {
@@ -126,7 +178,7 @@ impl Write {
         // makes, copies and maps a buffer of nothing and answers the same, so
         // no test tells the two apart (mutant m13, 11-06).
         if places.is_empty() {
-            return Some(Vec::new());
+            return Some(None);
         }
         let changed_bytes = places.len() as u64 * 4;
         fits(engine, &[changed_bytes], std::iter::empty())?;
@@ -161,9 +213,7 @@ impl Write {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let words = engine.read_buffer(&changed)?;
-        let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
-        Some(words.chunks_exact(4).map(|four| Change::of(word(four))).collect())
+        Some(Some(changed))
     }
 
     /// Copies each of `put`'s tiles that `writes` names — by its place
@@ -200,6 +250,12 @@ impl Write {
         engine.queue.submit([encoder.finish()]);
         Some(())
     }
+}
+
+/// What each tile is, by its word of the changed buffer's `bytes`.
+fn changes_of(bytes: &[u8]) -> Vec<Change> {
+    let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
+    bytes.chunks_exact(4).map(|four| Change::of(word(four))).collect()
 }
 
 /// Fails unless `put` holds `tiles` tiles.

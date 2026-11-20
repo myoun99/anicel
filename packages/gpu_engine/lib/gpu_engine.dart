@@ -87,6 +87,13 @@ base class GpuRefused extends StateError {
 /// ([GpuRefused.ofAGoneDevice]).
 const _aGoneDevice = 'the graphics device is gone';
 
+/// A refusal a thread of the engine's told this isolate with no word of
+/// its own — a body handed over unwaited tells only whether it worked —:
+/// [what], and that the device is gone where [engine]'s is, in the
+/// engine's words ([GpuRefused.ofAGoneDevice] reads them).
+GpuRefused _toldRefused(GpuEngine engine, String what) =>
+    GpuRefused(engine.isGone ? '$what: $_aGoneDevice' : what);
+
 /// WHY A DEVICE WENT, as far as its engine can tell ([GpuEngine.wentBy]):
 /// what the app says of it to the person once it stands on another.
 ///
@@ -1133,16 +1140,9 @@ List<GpuLanded> _landed(
   call,
 ) => using((arena) {
   final count = asks.length;
-  final coordinates = arena<Int32>(_held(2 * count));
-  final under = arena<Uint32>(_held(count));
+  final (:coordinates, :under) = _asked(arena, asks);
   final places = arena<Uint32>(_held(count));
   final changes = arena<Uint8>(_held(count));
-  for (var at = 0; at < count; at++) {
-    final (:column, :row, under: tile) = asks[at];
-    coordinates[2 * at] = column;
-    coordinates[2 * at + 1] = row;
-    under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
-  }
   final landed = call(arena, coordinates, under, places, changes);
   if (landed < 0) {
     throw GpuRefused(_lastError());
@@ -1157,6 +1157,152 @@ List<GpuLanded> _landed(
       ),
   ];
 });
+
+/// [asks] as a landing's call takes them, in [arena]'s: each one's
+/// column and row, and the word of the cel's tile under it.
+({Pointer<Int32> coordinates, Pointer<Uint32> under}) _asked(
+  Arena arena,
+  List<GpuTileAsk> asks,
+) {
+  final count = asks.length;
+  final coordinates = arena<Int32>(_held(2 * count));
+  final under = arena<Uint32>(_held(count));
+  for (var at = 0; at < count; at++) {
+    final (:column, :row, under: tile) = asks[at];
+    coordinates[2 * at] = column;
+    coordinates[2 * at + 1] = row;
+    under[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+  }
+  return (coordinates: coordinates, under: under);
+}
+
+/// A LANDING FINISHED AND YET TO LAND ([GpuStampLanding.finished],
+/// [GpuStampLanding.finishedMask]): what each tile asked is beside the
+/// one under it, and the tiles made, kept on the GPU till it is freed —
+/// its maker's to land ([landOnItsWay]) and to free.
+///
+/// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second (브러시/렌더링
+/// 2026-11-20): TWO STEPS, the slots taken at the second. A landing
+/// compared gives a slot to the inked alone, and which are inked is the
+/// GPU's word, told later; the pool's books are this isolate's, so they
+/// are written here once it is told. ⛔Not every tile asked given a slot
+/// ahead and the others let go once told: a box of tiles mostly the
+/// same would take a page of the pool's for a moment, and a full pool
+/// would let go of tiles to make room for slots nothing keeps.
+final class GpuFinished {
+  GpuFinished._(this._engine, this._finished, this.changes) {
+    debugKept += 1;
+  }
+
+  /// How many are kept on the GPU, finished and not freed: a test's
+  /// count of what a landing leaves behind it.
+  static int debugKept = 0;
+
+  final GpuEngine _engine;
+  final Pointer<rust.Finished> _finished;
+
+  /// What each tile asked is, in the order they were asked.
+  final List<GpuChange> changes;
+
+  /// How many of its tiles take a slot: the inked.
+  int get inked => changes.where((one) => one == GpuChange.inked).length;
+
+  /// Gives each inked tile from the [first] inked on a fresh slot of
+  /// [cel] of [pool], and hands their putting there to the engine's
+  /// thread, this isolate waiting for none of it: the places, in the
+  /// inked's order — all, or the first few where [pool] is full at the
+  /// next. [unput] is called where they were not put.
+  List<GpuTile> landOnItsWay(
+    GpuPool pool,
+    int cel, {
+    int first = 0,
+    required void Function() unput,
+  }) => using((arena) {
+    final places = arena<Uint32>(_held(inked - first));
+    final landed = _putsOnTheirWay.handing(
+      unput,
+      (number) => rust.finishedLandUnwaited(
+        _finished,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        cel,
+        first,
+        places,
+        _putsOnTheirWay.told,
+        number,
+      ),
+    );
+    return [
+      for (var at = 0; at < landed; at++)
+        (page: places[at] >> 16, slot: places[at] & 0xFFFF),
+    ];
+  });
+
+  void free() {
+    debugKept -= 1;
+    rust.finishedFree(_finished);
+  }
+
+  /// The finishes on their way, each told by its number once the GPU has
+  /// said what its tiles are — or that it failed —, what it finished
+  /// written to [out] first.
+  static final _told =
+      _Told<
+        ({
+          Completer<GpuFinished> told,
+          GpuEngine engine,
+          Pointer<Pointer<rust.Finished>> out,
+        })
+      >((_, finish, finished) {
+        final made = finish.out.value;
+        malloc.free(finish.out);
+        if (!finished) {
+          finish.told.completeError(
+            _toldRefused(finish.engine, 'a landing was not finished'),
+          );
+          return;
+        }
+        finish.told.complete(
+          GpuFinished._(finish.engine, made, _changesOf(made)),
+        );
+      });
+
+  static List<GpuChange> _changesOf(Pointer<rust.Finished> finished) =>
+      using((arena) {
+        final count = rust.finishedChanges(finished, nullptr);
+        final changes = arena<Uint8>(_held(count));
+        rust.finishedChanges(finished, changes);
+        return [
+          for (var at = 0; at < count; at++) GpuChange.values[changes[at]],
+        ];
+      });
+
+  /// What [handOver] hands the engine's thread — given where to write
+  /// what it finished, by what it is told and under what number; false
+  /// where it handed nothing over —, finished: told on this isolate,
+  /// which waits for none of it.
+  static Future<GpuFinished> _of(
+    GpuEngine engine,
+    bool Function(
+      Pointer<Pointer<rust.Finished>> out,
+      Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+      int number,
+    )
+    handOver,
+  ) {
+    final told = Completer<GpuFinished>();
+    final out = malloc<Pointer<rust.Finished>>()..value = nullptr;
+    final handed = _told.handing(
+      (told: told, engine: engine, out: out),
+      (number) => handOver(out, _told.told, number) ? 1 : 0,
+    );
+    if (handed == 0) {
+      malloc.free(out);
+      throw GpuRefused(_lastError());
+    }
+    return told.future;
+  }
+}
 
 /// The blur brush's kernels (rust/src/kernels/dab/blur.rs): one set for
 /// every stroke — what a stroke cannot go without; the kernels a dab goes
@@ -1989,6 +2135,95 @@ class GpuStampLanding {
       places,
       changes,
     ),
+  );
+
+  /// [land] as far as it asks the GPU, with no wait and no slot taken:
+  /// [picture] laid on the tiles [asks] — one at least — over the cel's
+  /// as [pool] holds them now, handed to the engine's thread, and what
+  /// each is beside the tile under it told once the GPU has said
+  /// (rust/src/kernels/dab/abi.rs, `gpu_engine_stamp_finish_unwaited`,
+  /// has why): the landing finished, its caller's to land
+  /// ([GpuFinished.landOnItsWay]) and to free. Fails as [GpuRefused]
+  /// where it was not finished.
+  Future<GpuFinished> finished(
+    GpuComposite composite,
+    GpuPool pool,
+    GpuStampPicture picture, {
+    required int left,
+    required int top,
+    required (int, int, int, int) within,
+    required List<GpuTileAsk> asks,
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => GpuFinished._of(
+    _engine,
+    (out, told, number) => using((arena) {
+      final (l, t, r, b) = within;
+      final box = arena<Int32>(4);
+      box[0] = l;
+      box[1] = t;
+      box[2] = r;
+      box[3] = b;
+      final (:coordinates, :under) = _asked(arena, asks);
+      rust.stampFinishUnwaited(
+        _landing,
+        _engine._engine,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        _engine._its(picture)._picture,
+        left,
+        top,
+        box,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        out,
+        told,
+        number,
+      );
+      return true;
+    }),
+  );
+
+  /// [finished] of [coverage] under [paint], as [landMask] lays one: a
+  /// selection's erase, its own mask laid by the eraser.
+  Future<GpuFinished> finishedMask(
+    GpuComposite composite,
+    GpuPool pool,
+    GpuMask coverage, {
+    required GpuPaint paint,
+    required bool whole,
+    required List<GpuTileAsk> asks,
+    int opacity = 65535,
+    required int mode,
+    GpuMask? mask,
+  }) => GpuFinished._of(
+    _engine,
+    (out, told, number) => using((arena) {
+      final (:coordinates, :under) = _asked(arena, asks);
+      return rust.stampFinishMaskUnwaited(
+        _landing,
+        _engine._engine,
+        _engine._its(composite)._composite,
+        _engine._its(pool)._pool,
+        _engine._its(coverage)._mask,
+        _doubles(arena, paint._numbers),
+        whole,
+        coordinates,
+        under,
+        asks.length,
+        opacity,
+        mode,
+        mask == null ? nullptr : _engine._its(mask)._mask,
+        out,
+        told,
+        number,
+      );
+    }),
   );
 
   /// Frees it; before its engine is closed.
@@ -3966,6 +4201,83 @@ final class GpuCelPixels {
     }
     return GpuStampPicture._kept(_engine, out.value, width, height);
   }, malloc);
+
+  /// [liftPicture] with no wait: the cel's tiles read where [pool] holds
+  /// them now, the lift handed to the engine's thread, and its picture
+  /// told once the GPU has said whether it took any — null where it
+  /// took nothing (rust/src/kernels/cel_pixel/abi.rs,
+  /// `gpu_engine_cel_pixels_lift_picture_unwaited`). Fails as
+  /// [GpuRefused] where the lift failed.
+  Future<GpuStampPicture?> lifted(
+    GpuPool pool,
+    int x0,
+    int y0,
+    int columns,
+    int rows,
+    List<GpuTile?> tiles, {
+    required GpuMask mask,
+    required bool whole,
+    required int width,
+    required int height,
+  }) {
+    final told = Completer<GpuStampPicture?>();
+    final out = malloc<Pointer<rust.StampPicture>>()..value = nullptr;
+    _lifts.handing(
+      (told: told, engine: _engine, out: out, width: width, height: height),
+      (number) => using((arena) {
+        rust.celPixelsLiftPictureUnwaited(
+          _pixels,
+          _engine._engine,
+          _engine._its(pool)._pool,
+          x0,
+          y0,
+          columns,
+          rows,
+          _tileWords(arena, columns, rows, tiles),
+          _engine._its(mask)._mask,
+          whole,
+          out,
+          _lifts.told,
+          number,
+        );
+        return 1;
+      }),
+    );
+    return told.future;
+  }
+
+  /// The lifts on their way ([lifted]), each told by its number once the
+  /// GPU has said whether it took any — or that it failed —, its picture
+  /// written to [out] first.
+  static final _lifts =
+      _Told<
+        ({
+          Completer<GpuStampPicture?> told,
+          GpuEngine engine,
+          Pointer<Pointer<rust.StampPicture>> out,
+          int width,
+          int height,
+        })
+      >((_, lift, lifted) {
+        final made = lift.out.value;
+        malloc.free(lift.out);
+        if (!lifted) {
+          lift.told.completeError(
+            _toldRefused(lift.engine, 'a lift failed'),
+          );
+          return;
+        }
+        lift.told.complete(
+          made == nullptr
+              ? null
+              : GpuStampPicture._kept(
+                  lift.engine,
+                  made,
+                  lift.width,
+                  lift.height,
+                ),
+        );
+      });
 
   void free() => rust.celPixelsFree(_pixels);
 }

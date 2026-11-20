@@ -128,6 +128,63 @@ pub(crate) fn put(
     placed(engine, (pool, cel), out, changes.into_iter().enumerate())
 }
 
+/// A landing finished and yet to be put: its tiles made — tile after tile
+/// in the order they were asked — and what each is beside the tile under
+/// it. What takes a slot of it is its caller's to book
+/// (`gpu_engine_finished_land_unwaited`): the pool's books are the
+/// thread's that asks, and the answer comes on another.
+pub struct Finished {
+    out: wgpu::Buffer,
+    changes: Vec<Change>,
+}
+
+impl Finished {
+    /// What each tile is, in the order they were asked.
+    pub(crate) fn changes(&self) -> &[Change] {
+        &self.changes
+    }
+
+    /// The tiles made, tile after tile in the order they were asked.
+    pub(crate) fn out(&self) -> &wgpu::Buffer {
+        &self.out
+    }
+
+    /// The tiles that take a slot — the inked —, each by its place among
+    /// those asked: as [`placed`] gives one to no other.
+    pub(crate) fn inked(&self) -> impl Iterator<Item = usize> + '_ {
+        let inked = |(at, change): (usize, &Change)| (*change == Change::Inked).then_some(at);
+        self.changes.iter().enumerate().filter_map(inked)
+    }
+}
+
+/// [`put`]'s question of `out` — the tiles `made` of `asked` —, asked with
+/// no wait and no slot taken: `then` is told the landing finished on a
+/// thread of the engine's once the GPU has said what each tile is
+/// ([`Write::changed_then`]) — or nothing, where nothing was made or the
+/// test failed.
+///
+/// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second (브러시/렌더링
+/// 2026-11-20): a box at rest cuts its cels ahead of the press, and each
+/// cut waited for this answer on the UI's thread — where a cut ahead
+/// waits for nothing, so it is told.
+pub(crate) fn finished_then(
+    engine: &Engine,
+    pool: &[wgpu::Buffer],
+    out: Option<wgpu::Buffer>,
+    asked: &[Asked],
+    write: &Write,
+    then: impl FnOnce(Option<Finished>) + Send + 'static,
+) {
+    let Some(out) = out else {
+        return then(None);
+    };
+    let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
+    let made = out.clone();
+    write.changed_then(engine, pool, &out, &under, move |changes| {
+        then(changes.map(|changes| Finished { out: made, changes }));
+    });
+}
+
 /// Puts each of `out`'s tiles that `changes` — every one by its index among
 /// `out`'s — says is inked in a fresh slot of `cel`, the rest taking none:
 /// where a landing that knows what it made ends.

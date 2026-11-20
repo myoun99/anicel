@@ -13,11 +13,15 @@ mod tiles_land_tests;
 #[path = "on_its_way_tests.rs"]
 mod on_its_way_tests;
 
+#[cfg(test)]
+#[path = "finished_tests.rs"]
+mod finished_tests;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
-use super::landing::{self, Asked, Laid, Over};
+use super::landing::{self, Asked, Finished, Laid, Over};
 use super::mix::{Ground, Step, ground_of};
 use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::{Stroke, ground_of_rubs};
@@ -1020,14 +1024,19 @@ pub(crate) unsafe fn reported(
         // SAFETY: see the function's contract.
         unsafe {
             *places.add(at) = place.map_or(NO_TILE, TileAt::word);
-            *changes.add(at) = match change {
-                Change::Same => 0,
-                Change::Inked => 1,
-                Change::Cleared => 2,
-            };
+            *changes.add(at) = byte_of(*change);
         }
     }
     landed.len() as isize
+}
+
+/// A change as the app reads one: 0 the same, 1 inked, 2 cleared.
+fn byte_of(change: Change) -> u8 {
+    match change {
+        Change::Same => 0,
+        Change::Inked => 1,
+        Change::Cleared => 2,
+    }
 }
 
 /// A stamp's picture kept on the GPU: a selection moved lands the same one
@@ -1298,6 +1307,231 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
         // SAFETY: see the function's contract.
         unsafe { reported(landed, places, changes) }
     })
+}
+
+/// What a finish is told by: its landing finished, or nothing.
+type Then = Box<dyn FnOnce(Option<Finished>) + Send>;
+
+/// The body a finish hands the engine's thread: `finish` run there on
+/// `pool`'s pages as they stand now — where the cel's tiles lay as it was
+/// asked, whatever a store or a fold makes of the pool meanwhile —, and
+/// what it is told handed out by `engine` to `out`, then `told` called
+/// with `number` and whether there is one.
+///
+/// ⛔Not a body that failed, whatever it finished: its caller's next done
+/// would fail by it (`Engine::posted`) — a screen's frame, for a cut
+/// ahead that landed nothing. `told` says it.
+///
+/// # Safety
+/// What `finish` holds is alive, and in no other thread's hands, till it
+/// has run; `out` is live till `told` is called, and `told` is one any
+/// thread may call.
+unsafe fn finishing<Finish>(
+    engine: &Engine,
+    pool: &Pool,
+    (out, told, number): (*mut *mut Finished, extern "C" fn(u64, bool), u64),
+    finish: Finish,
+) -> impl FnOnce() -> Option<()> + Send + 'static + use<Finish>
+where
+    Finish: FnOnce(&Engine, &[wgpu::Buffer], Then) + 'static,
+{
+    let handed = Sent((engine.clone(), pool.pages().to_vec(), out, finish));
+    move || {
+        let (engine, pages, out, finish) = handed.taken();
+        let (hands, out) = (engine.clone(), Sent(out));
+        let then = move |finished: Option<Finished>| {
+            let finished = finished.map(|finished| hands.hands(finished));
+            // SAFETY: live till `told` is called (the function's contract).
+            unsafe { *out.taken() = finished.unwrap_or(std::ptr::null_mut()) };
+            told(number, finished.is_some());
+        };
+        finish(&engine, &pages, Box::new(then));
+        Some(())
+    }
+}
+
+/// [`gpu_engine_stamp_land`] as far as it asks the GPU, with no wait for
+/// its caller and no slot taken: `picture` laid on the `count` tiles asked
+/// over the cel's as `pool` holds them now, and what each result is beside
+/// the tile under it asked on the engine's thread, which waits for none of
+/// it either (`StampLanding::finished_then`). `told` is called with
+/// `number` from a thread of the engine's once the GPU has said, `out`
+/// written first: the landing finished — its caller's to land
+/// ([`gpu_engine_finished_land_unwaited`]) and to free — or null, and
+/// `told` false, where it failed or no tile was asked.
+///
+/// 🚨WHY UNWAITED (card opening-a-transform-box-holds-the-ui-over-half-a-
+/// second, 2026-11-20): a box at rest cuts the cels it frames ahead of the
+/// press, a cel a turn of the UI's thread — and each turn stood for the
+/// GPU: the lift's word, the hole's compare and the float's, 🔬4 to 18 ms
+/// a turn and 31 to 63 with the GPU's queue full (공통, S5_BA cut 352,
+/// 메인 PC 테스트 VM). A cut ahead waits for nothing: it is told.
+///
+/// # Safety
+/// As [`gpu_engine_stamp_land`]'s, `landing`, `composite`, `picture` and
+/// `mask` let go of after this; `out` is live till `told` is called, and
+/// `told` is one any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stamp_finish_unwaited(
+    landing: *const StampLanding,
+    engine: *const Engine,
+    composite: *const Composite,
+    pool: *const Pool,
+    picture: *const StampPicture,
+    left: i32,
+    top: i32,
+    within: *const i32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mode: u32,
+    mask: *const MaskPlane,
+    out: *mut *mut Finished,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, pool, within) = unsafe { (&*engine, &*pool, *within.cast::<[i32; 4]>()) };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count, pool) };
+    let finish = move |engine: &Engine, pages: &[wgpu::Buffer], then: Then| {
+        // SAFETY: each is let go of on this thread, after this (the
+        // function's contract).
+        let (landing, composite, picture, mask) = unsafe { (&*landing, &*composite, &*picture, mask.as_ref()) };
+        let mask = mask.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        let boxed = Boxed { pixels: &picture.pixels, size: picture.size };
+        let source = Source::Picture { picture: &boxed, at: (left, top), within };
+        landing.finished_then(engine, (composite, pages), &source, &asked, &laid, then);
+    };
+    // SAFETY: what `finish` holds is let go of on the engine's thread,
+    // after it; `out` and `told` are the function's contract.
+    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+}
+
+/// [`gpu_engine_stamp_finish_unwaited`] of `coverage` under `paint`, as
+/// [`gpu_engine_stamp_land_mask`] lays one: a selection's erase, its own
+/// mask laid by the eraser. False where the paint is none the host knows
+/// (the last error says): nothing is handed over, and `told` is not
+/// called.
+///
+/// # Safety
+/// As [`gpu_engine_stamp_land_mask`]'s, `landing`, `composite`, `coverage`
+/// and `mask` let go of after this; `out` is live till `told` is called,
+/// and `told` is one any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stamp_finish_mask_unwaited(
+    landing: *const StampLanding,
+    engine: *const Engine,
+    composite: *const Composite,
+    pool: *const Pool,
+    coverage: *const MaskPlane,
+    paint: *const f64,
+    whole: bool,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    opacity: u32,
+    mode: u32,
+    mask: *const MaskPlane,
+    out: *mut *mut Finished,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &*pool) };
+    // SAFETY: see the function's contract.
+    let Some(painted) = (unsafe { PaintOf::read(paint) }) else {
+        return false;
+    };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count, pool) };
+    let finish = move |engine: &Engine, pages: &[wgpu::Buffer], then: Then| {
+        // SAFETY: each is let go of on this thread, after this (the
+        // function's contract).
+        let (landing, composite, coverage, mask) = unsafe { (&*landing, &*composite, &*coverage, mask.as_ref()) };
+        let coverage = coverage.mask();
+        let mask = mask.map(MaskPlane::mask);
+        let laid = Laid { opacity, mode, mask: mask.as_ref() };
+        let paint = painted.paint();
+        let source = Source::Mask { mask: &coverage, paint: &paint, whole };
+        landing.finished_then(engine, (composite, pages), &source, &asked, &laid, then);
+    };
+    // SAFETY: what `finish` holds is let go of on the engine's thread,
+    // after it; `out` and `told` are the function's contract.
+    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+    true
+}
+
+/// Writes what each tile of `finished` is to `changes` — a byte each, in
+/// the order they were asked ([`byte_of`]) — and returns how many.
+///
+/// # Safety
+/// `finished` is live, and `changes` holds as many as were asked; a null
+/// `changes` holds none, which a caller that only counts hands.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_finished_changes(finished: *const Finished, changes: *mut u8) -> usize {
+    // SAFETY: see the function's contract.
+    let said = unsafe { &*finished }.changes();
+    if !changes.is_null() {
+        for (at, &change) in said.iter().enumerate() {
+            // SAFETY: see the function's contract.
+            unsafe { *changes.add(at) = byte_of(change) };
+        }
+    }
+    said.len()
+}
+
+/// Gives each inked tile of `finished` from its `first` on — the inked
+/// alone take a slot, as a landing compared gives one to no other
+/// (`landing::placed`) — a fresh slot of `cel`, writes each one's place to
+/// `places`, and hands their putting there to the engine's thread, its
+/// caller waiting for none of it ([`Pool::lands_unwaited`], which says how
+/// `told` is called with `number`). Returns how many it gave a slot, the
+/// first of them: all, or fewer where the pool is full at the next — the
+/// rest landed by a call from where this one ended.
+///
+/// # Safety
+/// Every pointer is live, on `engine`, and the pool its caller's alone;
+/// `places` holds as many as `finished` has inked past `first`, and `told`
+/// is one any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_finished_land_unwaited(
+    finished: *const Finished,
+    engine: *const Engine,
+    pool: *mut Pool,
+    cel: u32,
+    first: usize,
+    places: *mut u32,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let (finished, engine, pool) = unsafe { (&*finished, &*engine, &mut *pool) };
+    let inked: Vec<usize> = finished.inked().skip(first).collect();
+    let (out, count) = (finished.out().clone(), inked.len());
+    let put = move |engine: &Engine, writing: &Writing| writing.put_from(engine, &out, inked);
+    // SAFETY: `put` holds what is its own; `told` is one any thread may
+    // call (the function's contract).
+    let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
+    for (at, place) in given.iter().enumerate() {
+        // SAFETY: see the function's contract.
+        unsafe { *places.add(at) = place.word() };
+    }
+    given.len()
+}
+
+/// # Safety
+/// `finished` came from a finish told ([`gpu_engine_stamp_finish_unwaited`],
+/// [`gpu_engine_stamp_finish_mask_unwaited`]).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_finished_free(finished: *mut Finished) {
+    // SAFETY: see the function's contract.
+    unsafe { let_go_unwaited(finished) };
 }
 
 /// What a mask is laid under, as the app hands it: a run of numbers whose

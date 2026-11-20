@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, Sent, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::{Named, TileSet};
@@ -24,7 +24,7 @@ use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
 use super::ink::Ink;
-use super::lift::Lift;
+use super::lift::{Lift, Lifted};
 use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 
 /// The words a walked tile's answer takes: its column and row, then its
@@ -183,6 +183,66 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture(
         unsafe { *out = picture };
         1
     })
+}
+
+/// [`gpu_engine_cel_pixels_lift_picture`] with no wait for its caller: the
+/// cel's tiles read where `pool` holds them now, the lift handed to the
+/// engine's thread — which waits for no GPU either (`Lift::lifted_then`) —
+/// and `told` called with `number` from a thread of the engine's once the
+/// GPU has said whether it took any, `out` written first: the picture it
+/// took, its caller's to free, or null where it took nothing — and null
+/// with `told` false where the lift failed.
+///
+/// 🚨WHY UNWAITED: `gpu_engine_stamp_finish_unwaited` has it — a box at
+/// rest cuts its cels ahead of the press, and waits for nothing.
+///
+/// # Safety
+/// As [`gpu_engine_cel_pixels_lift_picture`]'s, `kernels` and `mask` let
+/// go of after this; `out` is live till `told` is called, and `told` is
+/// one any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture_unwaited(
+    kernels: *const CelKernels,
+    engine: *const Engine,
+    pool: *const Pool,
+    x0: i32,
+    y0: i32,
+    columns: u32,
+    rows: u32,
+    tiles: *const u32,
+    mask: *const MaskPlane,
+    whole: bool,
+    out: *mut *mut StampPicture,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &*pool) };
+    // SAFETY: see the function's contract.
+    let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
+    let handed = Sent((engine.clone(), pool.pages().to_vec(), kernels, mask, out, cel));
+    engine.posted(move || {
+        let (engine, pages, kernels, mask, out, cel) = handed.taken();
+        // SAFETY: each is let go of on this thread, after this (the
+        // function's contract).
+        let (kernels, mask) = unsafe { (&*kernels, (*mask).mask()) };
+        let (hands, out, size) = (engine.clone(), Sent(out), (mask.size.width, mask.size.height));
+        let then = move |lifted: Option<Lifted>| {
+            let ran = lifted.is_some();
+            let picture = match lifted {
+                Some(Lifted { rgba, anything: true }) => kept(&hands, Some(rgba), size),
+                _ => std::ptr::null_mut(),
+            };
+            // SAFETY: live till `told` is called (the function's contract).
+            unsafe { *out.taken() = picture };
+            told(number, ran);
+        };
+        kernels.lift.lifted_then(&engine, &pages, &cel, &mask, whole, then);
+        // ⛔Not a body that failed, whatever it lifted: its caller's next
+        // done would fail by it (`Engine::posted`). `told` says it.
+        Some(())
+    });
 }
 
 /// Runs the verb `spec` states over the cel of `columns` × `rows` tiles

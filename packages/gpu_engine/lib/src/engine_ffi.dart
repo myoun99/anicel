@@ -72,6 +72,8 @@ final class StampPicture extends Opaque {}
 
 final class StampLanding extends Opaque {}
 
+final class Finished extends Opaque {}
+
 final class Floods extends Opaque {}
 
 final class SelectionMasks extends Opaque {}
@@ -1764,6 +1766,39 @@ external int celPixelsLiftPicture(
   Pointer<Pointer<StampPicture>> out,
 );
 
+@Native<
+  Void Function(
+    Pointer<CelPixels>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Pointer<Uint32>,
+    Pointer<MaskPlane>,
+    Bool,
+    Pointer<Pointer<StampPicture>>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_cel_pixels_lift_picture_unwaited')
+external void celPixelsLiftPictureUnwaited(
+  Pointer<CelPixels> pixels,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  Pointer<Uint32> tiles,
+  Pointer<MaskPlane> mask,
+  bool whole,
+  Pointer<Pointer<StampPicture>> out,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
 @Native<Void Function(Pointer<CelPassed>)>(
   symbol: 'gpu_engine_cel_passed_free',
 )
@@ -2852,6 +2887,120 @@ external int stampLand(
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
 );
+
+@Native<
+  Void Function(
+    Pointer<StampLanding>,
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Pointer<StampPicture>,
+    Int32,
+    Int32,
+    Pointer<Int32>,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    UintPtr,
+    Uint32,
+    Uint32,
+    Pointer<MaskPlane>,
+    Pointer<Pointer<Finished>>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_stamp_finish_unwaited')
+external void stampFinishUnwaited(
+  Pointer<StampLanding> landing,
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  Pointer<StampPicture> picture,
+  int left,
+  int top,
+  Pointer<Int32> within,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  int mode,
+  Pointer<MaskPlane> mask,
+  Pointer<Pointer<Finished>> out,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<
+  Bool Function(
+    Pointer<StampLanding>,
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Pool>,
+    Pointer<MaskPlane>,
+    Pointer<Double>,
+    Bool,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    UintPtr,
+    Uint32,
+    Uint32,
+    Pointer<MaskPlane>,
+    Pointer<Pointer<Finished>>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_stamp_finish_mask_unwaited')
+external bool stampFinishMaskUnwaited(
+  Pointer<StampLanding> landing,
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Pool> pool,
+  Pointer<MaskPlane> coverage,
+  Pointer<Double> paint,
+  bool whole,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  int opacity,
+  int mode,
+  Pointer<MaskPlane> mask,
+  Pointer<Pointer<Finished>> out,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<UintPtr Function(Pointer<Finished>, Pointer<Uint8>)>(
+  symbol: 'gpu_engine_finished_changes',
+)
+external int finishedChanges(
+  Pointer<Finished> finished,
+  Pointer<Uint8> changes,
+);
+
+@Native<
+  UintPtr Function(
+    Pointer<Finished>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Uint32,
+    UintPtr,
+    Pointer<Uint32>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_finished_land_unwaited')
+external int finishedLandUnwaited(
+  Pointer<Finished> finished,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  int cel,
+  int first,
+  Pointer<Uint32> places,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<Void Function(Pointer<Finished>)>(symbol: 'gpu_engine_finished_free')
+external void finishedFree(Pointer<Finished> finished);
 
 @Native<
   IntPtr Function(

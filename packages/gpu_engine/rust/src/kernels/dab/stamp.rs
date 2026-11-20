@@ -33,7 +33,7 @@ pub(crate) mod tests;
 
 use std::ops::Range;
 
-use super::landing::{self, Asked, Laid, Over};
+use super::landing::{self, Asked, Finished, Laid, Over};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt, TileSet};
@@ -412,6 +412,27 @@ impl StampLanding {
         let Stamped { pages, set } = self.stamps.stamp(engine, source, pool.pages().len() as u16)?;
         let over = Over { pages: &pages, set };
         landing::land(engine, (composite, pool, cel), over, asked, laid, Some(&self.write))
+    }
+
+    /// [`Self::land`] as far as it asks the GPU, with no wait and no slot
+    /// taken: `source` laid on the tiles `asked` over the cel's on
+    /// `pool` — its pages as they stood where this was asked —, and
+    /// `then` told the landing finished ([`landing::finished_then`]),
+    /// or nothing where it failed, or no tile was asked.
+    pub(crate) fn finished_then(
+        &self,
+        engine: &Engine,
+        (composite, pool): (&Composite, &[wgpu::Buffer]),
+        source: &Source,
+        asked: &[Asked],
+        laid: &Laid,
+        then: impl FnOnce(Option<Finished>) + Send + 'static,
+    ) {
+        let made = self.stamps.stamp(engine, source, pool.len() as u16).and_then(|Stamped { pages, set }| {
+            let over = Over { pages: &pages, set };
+            landing::made(engine, composite, pool, over, asked, laid)
+        });
+        landing::finished_then(engine, pool, made.map(|made| made.out), asked, &self.write, then);
     }
 }
 
