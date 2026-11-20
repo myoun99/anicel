@@ -553,9 +553,12 @@ fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
         ran
     };
     let first = ran_from(0);
+    // What the chain put is one of the engine's spares: of its three
+    // tiles, or of more where another test here left one.
     // SAFETY: `held` is live.
-    assert_eq!(unsafe { gpu_engine_held_bytes_of(held, 11) }, 3 * TILE_BYTES);
-    assert!(gpu_engine_held_bytes() >= 3 * TILE_BYTES);
+    let kept = unsafe { gpu_engine_held_bytes_of(held, 11) };
+    assert!(kept >= 3 * TILE_BYTES);
+    assert!(gpu_engine_held_bytes() >= kept);
     assert_eq!(ran_from(3), first, "what it put laid");
     // 🚨Let go of on the engine's thread in turn, its caller waiting for
     // none of it (`device::posted_of` has why): still kept while a body
@@ -575,7 +578,7 @@ fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
         // SAFETY: `held` is live.
         let so_far = unsafe { gpu_engine_held_bytes_of(held, 11) };
         let _ = lets.send(());
-        assert_eq!(so_far, 3 * TILE_BYTES, "waited for, or let go of ahead of its turn");
+        assert_eq!(so_far, kept, "waited for, or let go of ahead of its turn");
     });
     assert_eq!(done_here(first_engine()), Ok(()));
     // SAFETY: `held` is live.

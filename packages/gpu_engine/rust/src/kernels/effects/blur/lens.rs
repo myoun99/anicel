@@ -19,12 +19,12 @@ mod gather_tests;
 
 use super::iris::{Focus, Iris, IrisTable};
 use super::{
-    Encoded, GROUP, Held, TileRect, bands, checked, compile, encode, fits, flat, held_words,
-    plane, whole, words_buffer,
+    Encoded, GROUP, Held, TileRect, bands, checked, compile, encode, encode_cleared, fits, flat,
+    held_words, plane, whole, words_buffer,
 };
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::TILE_TEXELS;
+use crate::kernels::composite::{Lent, TILE_TEXELS};
 use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, q, room, sixteen_bit};
 
 /// The most gain a light takes — the app's Highlight Gain's.
@@ -109,7 +109,8 @@ impl LensSums {
         light: Light,
     ) -> Option<wgpu::Buffer> {
         let laid = self.lay(engine, tiles, (rect, room(engine)), picture, light)?;
-        let [sums, totals] = sums_planes(engine, laid.bytes);
+        let sums = plane(engine, "lens sums", laid.bytes[0]);
+        let totals = plane(engine, "lens run totals", laid.bytes[1]);
         encode(engine, &self.passes(tiles, &laid, [&sums, &totals]));
         Some(sums)
     }
@@ -194,11 +195,6 @@ fn summed(rect: TileRect, picture: [i32; 4], light: Light) -> Option<[u32; 4]> {
     Some(words)
 }
 
-/// A plane of sums and one of totals, of `bytes` each.
-fn sums_planes(engine: &Engine, bytes: [u64; 2]) -> [wgpu::Buffer; 2] {
-    [plane(engine, "lens sums", bytes[0]), plane(engine, "lens run totals", bytes[1])]
-}
-
 /// A picture's width and rows.
 fn sums_rows(picture: [i32; 4]) -> (u32, u32) {
     let [left, top, right, bottom] = picture;
@@ -273,7 +269,9 @@ impl LensBlur {
     /// `picture`, [left, top, right, bottom) inside them, each pixel at the
     /// level `map` names where there is one. Returns the blurred tiles over
     /// the same rectangle, nothing outside the picture — or the paper, where
-    /// the lens repeats it. Submits the work; the caller waits.
+    /// the lens repeats it. Submits the work; the caller waits. The sums and
+    /// the tiles put are the engine's spares, as a Gaussian's planes and
+    /// tiles are ([`super::run`]).
     pub(crate) fn run(
         &self,
         engine: &Engine,
@@ -282,7 +280,7 @@ impl LensBlur {
         picture: [i32; 4],
         lens: &Lens,
         map: Option<BlurMap<&wgpu::Buffer>>,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         self.run_in(engine, tiles, rect, picture, (lens, map), room(engine))
     }
 
@@ -298,7 +296,7 @@ impl LensBlur {
         picture: [i32; 4],
         (lens, map): (&Lens, Option<BlurMap<&wgpu::Buffer>>),
         room: u64,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         let in_range = (0.0..=MOST_FRINGE).contains(&lens.fringe);
         let fringe = in_range.then(|| q(lens.fringe / MOST_FRINGE, 16, f64::MAX));
         let Some(fringe) = fringe.flatten() else {
@@ -339,7 +337,7 @@ impl LensBlur {
             .map(|&band| self.sums.lay(engine, tiles, (rect, room), sums_over(band), lens.light))
             .collect::<Option<_>>()?;
         let most = [0, 1].map(|k| sums.iter().map(|laid| laid.bytes[k]).max().unwrap_or(0));
-        let planes = sums_planes(engine, most);
+        let planes = most.map(|bytes| engine.spares.of(engine, bytes));
         let mut own = light.to_vec();
         own.extend(picture.iter().chain(&paper).map(|&edge| edge as u32));
         own.extend([u32::from(lens.paper.is_some()), fringe as u32, laid.reach, laid.rows]);
@@ -356,8 +354,9 @@ impl LensBlur {
             .collect();
         let held = held_words(Held::Tiles, Held::Tiles, rect);
         let held = words_buffer(engine, "lens held", &held, uniform);
-        // Nothing outside the pixels the gather puts.
-        let out = plane(engine, "lens blur out", rect.tiles() * TILE_TEXELS * 4);
+        // Nothing outside the pixels the gather puts: zeroed with the passes.
+        let put_bytes = rect.tiles() * TILE_TEXELS * 4;
+        let out = engine.spares.of(engine, put_bytes);
         let map_tiles = map.map_or(tiles, |map| map.tiles);
         // A band's sums, then its gather out of them — the next band's sums
         // go in the same plane after it.
@@ -369,9 +368,9 @@ impl LensBlur {
                 let bound = [
                     (0, &held),
                     (1, tiles),
-                    (2, &out),
+                    (2, out.buffer()),
                     (3, own),
-                    (4, &planes[0]),
+                    (4, planes[0].buffer()),
                     (5, &laid.table),
                     (6, map_tiles),
                 ];
@@ -380,11 +379,12 @@ impl LensBlur {
                     bound: whole(&bound),
                     groups: flat(groups(band)),
                 };
-                let [runs, carry] = self.sums.passes(tiles, laid_sums, [&planes[0], &planes[1]]);
+                let both = [planes[0].buffer(), planes[1].buffer()];
+                let [runs, carry] = self.sums.passes(tiles, laid_sums, both);
                 [runs, carry, gather]
             })
             .collect();
-        encode(engine, &encoded);
+        encode_cleared(engine, &[(out.buffer(), put_bytes)], &encoded);
         Some(out)
     }
 }

@@ -5,7 +5,9 @@
 //! runs every test's walks, and its spares are all of theirs.
 
 use super::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
-use super::chained_tests::{Laying, OWN, RECT, TILES, close, closed_as_a_row, held_chain};
+use super::chained_tests::{
+    Laying, OWN, RECT, TILES, across, close, closed_as_a_row, held_chain, lensed,
+};
 use super::held::HeldChains;
 use super::kept::Kept;
 use super::screen::Screen;
@@ -14,7 +16,7 @@ use super::tests::{chained, matrixed, mixed, row, with_map};
 use super::{Composite, NO_EDGE, Over, Step, TILE, TILE_BYTES, WHOLE};
 use crate::device::Engine;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
-use crate::kernels::chain::{ChainRead, Chained, Op, tiles_of};
+use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op, tiles_of};
 use crate::kernels::pool::Pictures;
 use crate::kernels::shared::ResampleMap;
 use crate::testing::{a_device_of_its_own, first_engine};
@@ -54,18 +56,54 @@ fn a_spare_is_its_holders_and_the_next_taken_of_its_size_once_let_go() {
 fn a_spare_past_a_binding_serves_only_an_ask_of_just_its_size() {
     let (engine, spares) = (first_engine(), Spares::default());
     let room = 3 * TILE_BYTES;
-    let past = spares.out_in(engine, 4, room);
+    let past = spares.of_in(engine, 4 * TILE_BYTES, room);
     let buffer = past.buffer().clone();
     drop(past);
-    let less = spares.out_in(engine, 2, room);
+    let less = spares.of_in(engine, 2 * TILE_BYTES, room);
     assert!(*less.buffer() != buffer, "asked less, it is not handed the one past a binding");
     assert_eq!(less.buffer().size(), 2 * TILE_BYTES);
     assert_eq!(spares.made(), 2);
-    assert!(*spares.out_in(engine, 4, room).buffer() == buffer, "of just its size, it is taken");
+    assert!(*spares.of_in(engine, 4 * TILE_BYTES, room).buffer() == buffer, "of just its size, it is taken");
     assert_eq!(spares.made(), 2);
     drop(less);
-    assert_eq!(spares.out_in(engine, 1, room).buffer().size(), 2 * TILE_BYTES);
+    assert_eq!(spares.of_in(engine, TILE_BYTES, room).buffer().size(), 2 * TILE_BYTES);
     assert_eq!(spares.made(), 2, "within a binding, the smallest that holds");
+}
+
+// A new spare is made a step up from the bytes asked — an eighth of the
+// power of two under them —, so one asked a little more is the same one
+// taken again; of just the bytes asked where they are a step themselves
+// or a binding takes no more, and never under a word.
+#[test]
+fn a_new_spare_is_made_a_step_up_within_what_a_binding_takes() {
+    let engine = first_engine();
+    let room = 64 * TILE_BYTES;
+    let made = |bytes: u64, room: u64| Spares::default().of_in(engine, bytes, room).buffer().size();
+    assert_eq!(made(17 * TILE_BYTES, room), 18 * TILE_BYTES, "an eighth of sixteen tiles up");
+    assert_eq!(made(33 * TILE_BYTES, room), 36 * TILE_BYTES, "of thirty-two");
+    assert_eq!(made(16 * TILE_BYTES, room), 16 * TILE_BYTES, "a step itself");
+    assert_eq!(made(100, room), 104);
+    assert_eq!(made(4, room), 4, "a word");
+    assert_eq!(made(17 * TILE_BYTES, 18 * TILE_BYTES), 18 * TILE_BYTES, "all a binding takes");
+    assert_eq!(made(17 * TILE_BYTES, 18 * TILE_BYTES - 4), 17 * TILE_BYTES, "no more than it takes");
+    let spares = Spares::default();
+    let first = spares.of_in(engine, 17 * TILE_BYTES, room);
+    let buffer = first.buffer().clone();
+    drop(first);
+    assert!(*spares.of_in(engine, 17 * TILE_BYTES + 4096, room).buffer() == buffer, "asked a little more");
+    assert_eq!(spares.made(), 1);
+}
+
+// A take in no compose is no compose's: the next compose to end, having
+// taken none itself, lets go of none for it.
+#[test]
+fn a_take_in_no_compose_lets_the_next_compose_let_go_of_none() {
+    let (engine, spares) = (first_engine(), Spares::default());
+    drop(spares.out(engine, 2));
+    let held = spares.out(engine, 3);
+    drop(spares.composing(engine));
+    assert_eq!(spares.bytes(), 2 * TILE_BYTES, "a compose that took none lets go of none");
+    drop(held);
 }
 
 // As a compose that took any ends, the spares that did not come back
@@ -213,7 +251,13 @@ fn two_buffers_at_a_mix_are_each_crossfaded_with_their_own_tiles() {
         crossfaded(1),
     ];
     let unheld = own.run(&laying, &two_chains(None), &steps);
-    assert_eq!(engine.spares.made(), 2, "the premise: each ran on a buffer of its own");
+    // Three of six tiles — what the first ran on, what its blur put, which
+    // the second then ran on, and what the second's blur put — and three
+    // planes of twelve: the blur's two, and one more for the second's
+    // while what the first's matrix put is in one, the smallest idle that
+    // held its tiles.
+    assert_eq!(engine.spares.made(), 3 + 3, "the premise: each ran on a buffer of its own");
+    assert_eq!(engine.spares.bytes(), (3 * 6 + 3 * 12) * TILE_BYTES);
     assert!(unheld == own.run(&laying, &two_chains(Some(&held)), &steps));
     assert_eq!(held.bytes_of(5), 2 * 6 * TILE_BYTES, "the premise: a hold keeps each one's");
 }
@@ -243,11 +287,13 @@ fn a_read_holds_the_buffer_it_keeps_from_the_walks_after_it() {
     assert!(kept.iter().any(|&byte| byte != 0), "the premise: the row's pixels");
     // Another row, through a chain over the same rectangle.
     own.run(&laying, &held_chain(None, false), &over(2));
-    assert_eq!(engine.spares.made(), 2, "the walk after makes its own");
+    // What it runs on, its blur's two planes and the tiles the blur puts.
+    assert_eq!(engine.spares.made(), 1 + 4, "the walk after makes its own");
     assert!(read.pixels(&engine, picture, None).expect("kept still") == kept);
+    let beside = engine.spares.bytes();
     drop(read);
     drop(reading);
-    assert_eq!(engine.spares.bytes(), 2 * 6 * TILE_BYTES, "let go of, it is a spare");
+    assert_eq!(engine.spares.bytes(), beside + 6 * TILE_BYTES, "let go of, it is a spare");
 }
 
 // A hold of a chain that ends at a read keeps the buffer the read handed
@@ -274,10 +320,12 @@ fn a_hold_keeps_the_buffer_a_read_handed_on_once_the_read_is_gone() {
     // Another row, through a chain over the same rectangle.
     let other = own.run(&laying, &held_chain(None, false), &over(2));
     assert!(other != first, "the premise: row 2 shows otherwise");
-    assert_eq!(engine.spares.made(), 2, "the walk after makes its own");
+    // What it runs on, its blur's two planes and the tiles the blur puts.
+    assert_eq!(engine.spares.made(), 1 + 4, "the walk after makes its own");
     assert!(own.run(&laying, &reading(), &over(2)) == first, "and the hold lays as it did");
+    let beside = engine.spares.bytes();
     held.let_go(5);
-    assert_eq!(engine.spares.bytes(), 2 * 6 * TILE_BYTES, "let go, it is a spare");
+    assert_eq!(engine.spares.bytes(), beside + 6 * TILE_BYTES, "let go, it is a spare");
 }
 
 // A screen's compose keeps its buffers for its next, which makes none; a
@@ -351,6 +399,70 @@ fn a_picture_made_in_several_walks_keeps_the_buffers_of_each() {
     assert_eq!(engine.spares.bytes(), 3 * TILE_BYTES);
 }
 
+// A hold of a buffer closed at the whole mix keeps what its chain put
+// alone — its matrix's, in a plane its blur had made, of twelve tiles:
+// the smallest idle that held the six —, and what the chain ran on is a
+// spare again as the walk ends: the next walk's.
+#[test]
+fn a_hold_at_the_whole_mix_keeps_what_its_chain_put_alone() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let own = Own { engine: &engine, composite: &composite };
+    let laying = Laying::on(&engine, &[((0, 0), (2, 2)), ((0, 0), (2, 1))]);
+    let held = HeldChains::default();
+    let whole = mixed(close(45000, SCREEN, Some(0)), 0, WHOLE);
+    let buffer = [row(0, (0, 0), WHOLE, NORMAL), Step::Open, row(1, (3, -2), 50000, NORMAL), whole];
+    own.run(&laying, &held_chain(Some((&held, 5)), false), &buffer);
+    assert_eq!(held.bytes_of(5), 12 * TILE_BYTES, "what its chain put, and no more");
+    let (made, kept) = (engine.spares.made(), engine.spares.bytes());
+    // What it ran on, the tiles its blur put, and the other plane.
+    assert_eq!(kept, (6 + 6 + 12) * TILE_BYTES, "what it ran on is a spare again");
+    held.let_go(5);
+    assert_eq!(engine.spares.bytes(), kept + 12 * TILE_BYTES, "let go, what it put is one too");
+    own.run(&laying, &held_chain(None, false), &buffer);
+    assert_eq!(engine.spares.made(), made, "and the walk after makes none");
+}
+
+// A plan of chains walked again makes no buffer — what its ops put, a
+// blur's planes and a lens blur's map drawn from rows are all the
+// engine's spares — and shows out of spares that hold another walk's
+// leavings, scribbled over here, as out of ones made new.
+#[test]
+fn a_plan_of_chains_walked_again_makes_no_buffer_and_shows_the_same() {
+    fn reading(rows: &[Step]) -> [Chained<'_>; 2] {
+        [
+            Chained { ops: lensed(MapTiles::Drawn(rows)), rect: RECT, held: None },
+            Chained { ops: across(), rect: RECT, held: None },
+        ]
+    }
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("its executor");
+    let own = Own { engine: &engine, composite: &composite };
+    let laying = Laying::on(&engine, &[((0, 0), (2, 2)), ((-1, 0), (3, 1)), ((-1, 0), (3, 2))]);
+    let steps = [row(0, (0, 0), WHOLE, NORMAL), chained(row(1, (0, 0), WHOLE, NORMAL), 0)];
+    // A map of a chained row, and one of no rows: a walk of no steps, which
+    // puts nothing over every tile all the same. Five buffers each, every
+    // one a spare: what the reader runs on, its map and the lens blur's
+    // sums — and what the map's row runs on and what its blur puts, which
+    // the lens blur's totals and tiles then go in; or, of no rows, the
+    // totals and the tiles themselves.
+    let maps: [&[Step]; 2] = [&[chained(row(2, (4, -3), 50000, NORMAL), 1)], &[]];
+    let shown = maps.map(|rows| {
+        engine.spares.let_go();
+        let before = engine.spares.made();
+        let new = own.run(&laying, &reading(rows), &steps);
+        let made = engine.spares.made();
+        assert_eq!(made - before, 5, "each buffer the walk made is a spare");
+        engine.spares.scribble(&engine);
+        assert!(own.run(&laying, &reading(rows), &steps) == new, "nothing left in them shows");
+        assert_eq!(engine.spares.made(), made, "walked again, none made");
+        new
+    });
+    assert!(shown[0] != shown[1], "the premise: the map shows");
+}
+
 // A hold keeps the buffer its chain ran under for as long as it keeps what
 // the chain put: no walk takes it meanwhile, and it is a spare once the
 // hold lets go.
@@ -367,14 +479,17 @@ fn a_hold_keeps_the_buffer_its_chain_ran_under_from_the_spares() {
     let crossfaded = mixed(close(45000, SCREEN, Some(0)), 0, 20000);
     let buffer = [base, Step::Open, row(1, (3, -2), 50000, NORMAL), crossfaded];
     let first = own.run(&laying, &holding, &buffer);
-    // The chain's rectangle is six tiles: what it put, and what it ran on.
-    assert_eq!(held.bytes_of(5), 2 * 6 * TILE_BYTES, "the premise: it holds what its chain ran on");
-    assert_eq!(engine.spares.made(), 1);
-    assert_eq!(engine.spares.bytes(), 0, "which is the hold's, and no spare");
+    // The chain's rectangle is six tiles: what it ran on, and what its
+    // matrix put — in a plane its blur had made, of twelve: the smallest
+    // idle that held the tiles.
+    assert_eq!(held.bytes_of(5), (6 + 12) * TILE_BYTES, "the premise: it holds what its chain ran on");
+    // The other plane and the tiles the blur put: the hold's are no spares.
+    assert_eq!(engine.spares.made(), 4);
+    assert_eq!(engine.spares.bytes(), (12 + 6) * TILE_BYTES, "which are the hold's, and no spares");
     assert!(own.run(&laying, &held_chain(None, false), &buffer) == first);
-    assert_eq!(engine.spares.made(), 2, "a walk beside it makes its own");
-    assert_eq!(engine.spares.bytes(), 6 * TILE_BYTES);
+    assert_eq!(engine.spares.made(), 4 + 2, "a walk beside it makes its own: a plane, and tiles");
     assert!(own.run(&laying, &holding, &buffer) == first, "and the hold lays as it did");
+    let beside = engine.spares.bytes();
     held.let_go(5);
-    assert_eq!(engine.spares.bytes(), 2 * 6 * TILE_BYTES, "let go, it is a spare");
+    assert_eq!(engine.spares.bytes(), beside + (6 + 12) * TILE_BYTES, "let go, they are spares");
 }

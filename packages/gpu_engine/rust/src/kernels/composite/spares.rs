@@ -43,12 +43,38 @@
 //! its refusal to the next (브러시/렌더링 2026-11-20, found reading,
 //! before the spares landed; no device has made one).
 //!
+//! 🚨WHAT A CHAIN'S OPS PUT ARE SPARES TOO, AND WHAT A BLUR KEEPS BETWEEN
+//! ITS PASSES (`kernels/chain`, `effects::blur`; card a-blur-run-makes-
+//! its-planes-anew-every-time, 2026-11-20) — a colour step's tiles, a
+//! row kept for a plug-in and what it made, a map drawn from rows
+//! ([`Composite::copied_spare`](super::Composite)), a blur's tiles and
+//! its planes: each run made them anew, and let the planes go as it
+//! ended. 🔬A Gaussian on one row of S5_BA cut 352, its blurriness
+//! scrubbed 1 to 60 pixels: three buffers a step, 79 to 90 MiB — 5.0
+//! GiB over the sixty —, and taken again, three in the sixty (the main
+//! PC, counted in the engine); on the Surface the process stood near
+//! 11 GB while such a scrub lasted (서피스11 캔버스 베이스). What a
+//! blur puts is its holder's — the walk it is laid in, a hold that
+//! keeps it — and comes back as that lets go, where the driver's
+//! letting go of one stood 48 to 62 ms on the engine's thread (the
+//! Surface, the same day).
+//!
+//! 🚨A NEW ONE IS MADE A STEP UP ([`stepped`]): a blur's planes hold the
+//! rows its passes read, more with each pixel of reach, so a value
+//! scrubbed up asks a larger plane every step — 88 KiB to 3.6 MiB more
+//! (🔬the same run) — and no kept one would hold it. 🔢The step is
+//! 브러시/렌더링's (2026-11-20; no rule of the user's): an eighth of
+//! the power of two under the size, so an eighth more at most.
+//!
 //! 🚨NOTHING OF WHAT AN EARLIER WALK LEFT IN ONE IS READ: a walk puts every
 //! output tile whole — a word for each texel, nothing where it lies
 //! outside (to_tiles.wgsl) — and copies each to its place in the output
 //! (`Composite::walk_laid`), so a spare is written over whole before
-//! anything reads it. A buffer some pass leaves in part untouched is no
-//! spare of these: a blur's planes are made new still.
+//! anything reads it. A blur puts the pixels of its picture alone, so
+//! the tiles it puts are zeroed first, in the encoder its passes are in
+//! (`encode_cleared`) — what wgpu did for a buffer made new, at its
+//! first use; its planes are read only where the pass before put them,
+//! as one band's go to the next band uncleaned (`blur::bands`).
 //!
 //! 🚨NO MORE THAN ONE COMPOSE'S WORTH IS KEPT, TILL THE NEXT THAT TAKES
 //! ANY: as a compose that took a spare ends — a kept picture's making,
@@ -71,8 +97,9 @@
 //! (H57, `EditorSessionManager._applyCacheBudgets`). ⏳브러시/렌더링
 //! 2026-11-20, the user away, by H57's reason — theirs to overturn: let
 //! go of as the hand rests, memory at rest would be less by one
-//! compose's buffers (🔬363 MiB after a box over 29 rows of S5_BA cut
-//! 352, the main PC).
+//! compose's buffers (🔬of S5_BA cut 352, the main PC: 171 MiB once the
+//! cut's own chains have run, 222 after a blur scrubbed on a row, 496
+//! after a box over 29 rows).
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -100,7 +127,7 @@ struct Idle {
 }
 
 /// A buffer, and the spares it goes back to once no one holds it — none
-/// for one that is no spare ([`Lent::alone`]).
+/// for one that is no spare (`Lent::alone`, a test's).
 struct Spare {
     buffer: wgpu::Buffer,
     home: Option<Spares>,
@@ -122,7 +149,8 @@ pub(crate) struct Lent(Arc<Spare>);
 
 impl Lent {
     /// `buffer` held as a [`Lent`] is, and no spare: let go of where its
-    /// last holder is — what a chain put, made by its kernels.
+    /// last holder is — the tiles a test hands a chain, made by hand.
+    #[cfg(test)]
     pub(crate) fn alone(buffer: wgpu::Buffer) -> Self {
         Self(Arc::new(Spare { buffer, home: None }))
     }
@@ -136,12 +164,26 @@ impl Lent {
 /// A buffer for `tiles` output tiles of a composite, new: nothing in it
 /// (wgpu zeroes a new buffer).
 pub(crate) fn out_of(engine: &Engine, tiles: usize) -> wgpu::Buffer {
+    made_new(engine, "composite out", out_bytes(tiles))
+}
+
+/// A buffer of `bytes` a pass puts, another reads and a copy takes, new.
+fn made_new(engine: &Engine, label: &str, bytes: u64) -> wgpu::Buffer {
     engine.device().create_buffer(&wgpu::BufferDescriptor {
-        label: Some("composite out"),
-        size: out_bytes(tiles),
+        label: Some(label),
+        size: bytes,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     })
+}
+
+/// The bytes a spare asked `bytes` is made of: `bytes` up to the next
+/// eighth of the power of two under them (the head of this file) — just
+/// `bytes` where a binding of `room` bytes takes no more.
+fn stepped(bytes: u64, room: u64) -> u64 {
+    let step = (bytes.next_power_of_two() / 16).max(4);
+    let up = bytes.div_ceil(step) * step;
+    if up <= room { up } else { bytes }
 }
 
 /// The bytes `tiles` output tiles take — one tile's where there is none.
@@ -150,20 +192,27 @@ fn out_bytes(tiles: usize) -> u64 {
 }
 
 impl Spares {
-    /// A buffer for `tiles` output tiles of a walk's own: the smallest
-    /// kept that holds them and a binding takes whole, else a new one of
-    /// just that size — its holder's till let go of ([`Lent`]). What it
-    /// holds is whatever a walk left there (the head of this file).
+    /// A buffer for `tiles` output tiles of a walk's own ([`Spares::of`]).
     pub(crate) fn out(&self, engine: &Engine, tiles: usize) -> Lent {
-        self.out_in(engine, tiles, room(engine))
+        self.of(engine, out_bytes(tiles))
     }
 
-    /// [`Spares::out`], a binding taking `room` bytes.
-    pub(super) fn out_in(&self, engine: &Engine, tiles: usize, room: u64) -> Lent {
-        let bytes = out_bytes(tiles);
+    /// A buffer of no fewer than `bytes`, a walk's own or a kernel's of
+    /// its: the smallest kept that holds them and a binding takes whole,
+    /// else a new one, a step up ([`stepped`]) — its holder's till let go
+    /// of ([`Lent`]). What it holds is whatever its last holder left
+    /// there (the head of this file).
+    pub(crate) fn of(&self, engine: &Engine, bytes: u64) -> Lent {
+        self.of_in(engine, bytes, room(engine))
+    }
+
+    /// [`Spares::of`], a binding taking `room` bytes.
+    pub(super) fn of_in(&self, engine: &Engine, bytes: u64, room: u64) -> Lent {
         let kept = {
             let mut idle = self.idle();
-            idle.took = true;
+            // A take in no compose is no compose's: the next to end, having
+            // taken none itself, lets go of none for it.
+            idle.took |= idle.composing > 0;
             // Just the size asked, or more that a binding takes whole.
             let serves = |size: u64| size == bytes || (size > bytes && size <= room);
             let holds = |&(_, (_, kept)): &(usize, &(bool, wgpu::Buffer))| serves(kept.size());
@@ -176,7 +225,7 @@ impl Spares {
             {
                 self.idle().made += 1;
             }
-            out_of(engine, tiles)
+            made_new(engine, "spare", stepped(bytes, room))
         });
         Lent(Arc::new(Spare { buffer, home: Some(self.clone()) }))
     }
@@ -213,6 +262,14 @@ impl Spares {
     #[cfg(test)]
     pub(crate) fn made(&self) -> u64 {
         self.idle().made
+    }
+
+    /// Writes over every spare kept, as holding what some run left there.
+    #[cfg(test)]
+    pub(crate) fn scribble(&self, engine: &Engine) {
+        for (_, kept) in &self.idle().kept {
+            engine.queue.write_buffer(kept, 0, &vec![0xa5; kept.size() as usize]);
+        }
     }
 
     fn idle(&self) -> MutexGuard<'_, Idle> {

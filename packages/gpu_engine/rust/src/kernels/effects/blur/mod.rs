@@ -25,10 +25,10 @@ mod pictures;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
+use crate::kernels::composite::{Lent, TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, TILE_WGSL, encode, fits, flat, pipeline, pipeline_unzeroed, plane, whole,
-    words_buffer,
+    Encoded, ISQRT_WGSL, TILE_WGSL, encode, encode_cleared, fits, flat, pipeline, pipeline_unzeroed,
+    plane, whole, words_buffer,
 };
 
 /// The workgroup's side in both passes' shaders.
@@ -223,6 +223,10 @@ fn held_words(from: Held, to: Held, rect: TileRect) -> Vec<u32> {
 /// waits. The dispatches may be a picture's bands one after another
 /// ([`bands`]), each reading the tiles first and putting them last: the
 /// planes go to each in turn.
+///
+/// The planes and the tiles put are the engine's spares
+/// (`composite/spares.rs`): the planes come back as this returns, the
+/// tiles as their holder lets go.
 fn run(
     engine: &Engine,
     pipeline: &wgpu::ComputePipeline,
@@ -230,16 +234,17 @@ fn run(
     (plane_bytes, room): (u64, u64),
     dispatches: &[Dispatch],
     taps: Option<&wgpu::Buffer>,
-) -> Option<wgpu::Buffer> {
+) -> Option<Lent> {
     let groups = dispatches.iter().map(|d| d.groups);
     checked(engine, tiles, (rect, room), &[plane_bytes], groups)?;
     // A pass between two others reads one plane and puts the other — and a
     // pass alone holds none, so its blur goes whole, in one dispatch.
-    let planes: Vec<wgpu::Buffer> = (0..if dispatches.len() > 1 { 2 } else { 0 })
-        .map(|_| plane(engine, "blur plane", plane_bytes))
+    let planes: Vec<Lent> = (0..if dispatches.len() > 1 { 2 } else { 0 })
+        .map(|_| engine.spares.of(engine, plane_bytes))
         .collect();
-    // Nothing outside the pixels a blur puts.
-    let out = plane(engine, "blur out", rect.tiles() * TILE_TEXELS * 4);
+    // Nothing outside the pixels a blur puts: zeroed with the passes.
+    let put_bytes = rect.tiles() * TILE_TEXELS * 4;
+    let out = engine.spares.of(engine, put_bytes);
     let uniforms: Vec<[wgpu::Buffer; 2]> = dispatches
         .iter()
         .map(|dispatch| {
@@ -257,11 +262,11 @@ fn run(
         .map(|(index, (dispatch, [held, own]))| {
             let from = match dispatch.from {
                 Held::Tiles => tiles,
-                Held::Plane { .. } => &planes[(index + 1) % 2],
+                Held::Plane { .. } => planes[(index + 1) % 2].buffer(),
             };
             let to = match dispatch.to {
-                Held::Tiles => &out,
-                Held::Plane { .. } => &planes[index % 2],
+                Held::Tiles => out.buffer(),
+                Held::Plane { .. } => planes[index % 2].buffer(),
             };
             let mut bound = vec![(0, held), (1, from), (2, to), (3, own)];
             bound.extend(taps.map(|taps| (4, taps)));
@@ -272,6 +277,6 @@ fn run(
             }
         })
         .collect();
-    encode(engine, &encoded);
+    encode_cleared(engine, &[(out.buffer(), put_bytes)], &encoded);
     Some(out)
 }

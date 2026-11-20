@@ -1128,6 +1128,22 @@ impl Composite {
     ) -> Option<Composited> {
         copied_as(pages, set, through, |plan| self.run(engine, plan, tiles, NO_EDGE, budget))
     }
+
+    /// [`Composite::copied_through`] for a walk's own use — a chained
+    /// row's tiles as they are stored, a chain's colour steps and the rows
+    /// it reads beside its tiles (kernels/chain): the output one of the
+    /// engine's spares ([`Composite::run_spare`]).
+    pub(crate) fn copied_spare(
+        &self,
+        engine: &Engine,
+        pages: &[wgpu::Buffer],
+        set: &TileSet,
+        tiles: &[(i32, i32)],
+        through: Through,
+        budget: Budget,
+    ) -> Option<Lent> {
+        copied_as(pages, set, through, |plan| self.run_spare(engine, plan, tiles, budget))
+    }
 }
 
 /// What `run` makes of the plan [`Composite::copied_through`] runs: `set`'s
@@ -1581,9 +1597,10 @@ impl Composite {
             return fail(format!("step {index} runs on {count} tiles; a page holds {page}"));
         }
         let under = match *step {
-            Step::Row { set, .. } => copied_as(plan.pages, &plan.sets[set], Through::default(), |plan| {
-                self.run_spare(engine, plan, &read, budget)
-            })?,
+            Step::Row { set, .. } => {
+                let (set, stored) = (&plan.sets[set], Through::default());
+                self.copied_spare(engine, plan.pages, set, &read, stored, budget)?
+            }
             _ => {
                 // A buffer opened on the one under it holds what is under
                 // it, which its steps alone do not lay.
@@ -1631,7 +1648,7 @@ impl Composite {
                 return fail("a chain reads a map whose rows read a map");
             }
             let plan = Plan { steps: rows, ..*plan };
-            drawn.push(Some(self.run(engine, &plan, read, NO_EDGE, budget)?.out));
+            drawn.push(Some(self.run_spare(engine, &plan, read, budget)?));
         }
         let ops = with_drawn(&chained.ops, &drawn);
         // A chain reads its tiles and puts others: what it read stays.

@@ -79,7 +79,7 @@ fn blurred() -> Vec<Op<'static>> {
 }
 
 /// A blur along the rows alone.
-fn across() -> Vec<Op<'static>> {
+pub(super) fn across() -> Vec<Op<'static>> {
     vec![gaussian(RECT, (1.7, 0.0), (5, 0))]
 }
 
@@ -103,6 +103,9 @@ pub(super) fn close(opacity: u32, mode: u32, matrix: Option<usize>) -> Step {
 pub(super) struct Laying {
     pages: Vec<wgpu::Buffer>,
     sets: Vec<TileSet>,
+    /// What the chains run by hand put, laid as pages: held, as a spare
+    /// let go of is the next run's to write over (spares.rs).
+    held: Vec<Lent>,
 }
 
 impl Laying {
@@ -125,6 +128,7 @@ impl Laying {
         Self {
             pages: pool.upload(engine),
             sets,
+            held: Vec::new(),
         }
     }
 
@@ -194,6 +198,7 @@ impl Laying {
         let stored = Stored { pages: &self.pages, sets: &self.sets };
         let tiles = Lent::alone(tiles);
         let put = chain().run(rig.engine, &rig.composite, stored, tiles, rect, ops).expect("chain");
+        self.held.push(put.clone());
         self.laid(put.buffer().clone(), rect)
     }
 
@@ -209,7 +214,7 @@ impl Laying {
     /// Set `set`'s tiles over `rect`, as they are stored, through `ops`, by
     /// hand: the set they are laid as.
     fn row_by_hand(&mut self, set: usize, rect: TileRect, ops: &[Op]) -> usize {
-        let Self { pages, sets } = &*self;
+        let Self { pages, sets, .. } = &*self;
         let (rig, read) = (rig(), tiles_of(rect));
         let widest = rig.composite.widest();
         let copied = rig.composite.copied(rig.engine, pages, &sets[set], &read, widest);
@@ -299,7 +304,7 @@ fn a_buffer_chained_at_a_mix_crossfades_its_rows_with_what_its_chain_puts() {
 }
 
 /// A lens blur over [`RECT`] whose map, read by its luma, is `tiles`.
-fn lensed(tiles: MapTiles<'_>) -> Vec<Op<'_>> {
+pub(super) fn lensed(tiles: MapTiles<'_>) -> Vec<Op<'_>> {
     let map = BlurMap {
         tiles,
         channel: MapChannel::Luminance,
@@ -623,7 +628,10 @@ fn a_held_row_lays_what_its_chain_put_while_its_hold_keeps_it() {
     let over = |set| [base, chained(row(set, (3, -2), 50000, MULTIPLY), 0)];
     let first = laying.widest(&holding(false), &over(1), None);
     assert!(first == laying.widest(&held_chain(None, false), &over(1), None), "a miss runs it");
-    assert_eq!(held.bytes_of(7), 6 * TILE_BYTES);
+    // What its chain put is one of the engine's spares, of six tiles or of
+    // more where another test here left one (spares_tests has it to the
+    // byte, on an engine of its own).
+    assert!(held.bytes_of(7) >= 6 * TILE_BYTES);
     assert!(laying.widest(&holding(false), &over(2), None) == first, "what it put laid");
     let other = laying.widest(&held_chain(None, false), &over(2), None);
     assert!(other != first, "row 2 shows otherwise");
@@ -682,13 +690,13 @@ fn a_held_buffer_at_a_mix_lays_what_its_hold_keeps_where_that_holds_its_tiles() 
     let other = [row(2, (1, 0), WHOLE, NORMAL)];
     let holding = held_chain(Some((&held, 5)), false);
     laying.widest(&holding, &buffer(&rows, WHOLE), None);
-    assert_eq!(held.bytes_of(5), 6 * TILE_BYTES);
+    assert!(held.bytes_of(5) >= 6 * TILE_BYTES);
     let crossfaded = laying.widest(&holding, &buffer(&rows, 20000), None);
     let unheld = held_chain(None, false);
     assert!(crossfaded == laying.widest(&unheld, &buffer(&rows, 20000), None), "it runs");
-    // What its chain ran on is one of the engine's spares, of six tiles or
-    // of more where another test here left one (spares_tests has it to
-    // the byte, on an engine of its own).
+    // What its chain put and ran on are the engine's spares, of six tiles
+    // each or of more where another test here left one (spares_tests has
+    // both to the byte, and the one alone, on an engine of its own).
     assert!(held.bytes_of(5) >= 2 * 6 * TILE_BYTES);
     assert!(laying.widest(&holding, &buffer(&other, 20000), None) == crossfaded, "both laid");
     assert!(laying.widest(&unheld, &buffer(&other, 20000), None) != crossfaded);

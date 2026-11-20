@@ -292,9 +292,25 @@ pub(crate) fn encode_on(
 /// noted where the caller asked ([`crate::submits`]).
 #[track_caller]
 pub(crate) fn encode(engine: &Engine, dispatches: &[Encoded]) {
+    encode_cleared(engine, &[], dispatches);
+}
+
+/// [`encode`], the first bytes of each of `cleared` zeroed before the
+/// dispatches: a buffer taken again holds what its last holder left
+/// (`composite/spares.rs`), and a pass that puts a part of one leaves
+/// the rest as it was.
+#[track_caller]
+pub(crate) fn encode_cleared(
+    engine: &Engine,
+    cleared: &[(&wgpu::Buffer, u64)],
+    dispatches: &[Encoded],
+) {
     let mut encoder = engine
         .device()
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    for &(buffer, bytes) in cleared {
+        encoder.clear_buffer(buffer, 0, Some(bytes));
+    }
     encode_on(engine, &mut encoder, dispatches);
     engine.queue.submit([encoder.finish()]);
 }

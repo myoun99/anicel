@@ -133,7 +133,8 @@ impl Opened {
         let Some(tiles) = laid(&pictures[0]) else {
             return Err(last_error());
         };
-        let rows = pictures[1..].iter().map(laid).collect::<Option<Vec<_>>>().ok_or_else(last_error)?;
+        let rows = pictures[1..].iter().map(|row| laid(row).map(Lent::alone));
+        let rows = rows.collect::<Option<Vec<_>>>().ok_or_else(last_error)?;
         let [left, top, width, height] = pictures[0].0;
         let told = [left - at[0], top - at[1], width, height];
         let read = ChainRead::kept_as(Kept { tiles: Lent::alone(tiles), rect, rows });

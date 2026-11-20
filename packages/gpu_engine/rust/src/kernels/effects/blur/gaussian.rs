@@ -30,6 +30,7 @@ mod tests;
 use super::{Dispatch, Held, TileRect, bands, compile_unzeroed, run, words_buffer};
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::Lent;
 use crate::kernels::shared::room;
 
 /// The farthest a way's weights reach: the picture's coordinates are i32s,
@@ -266,7 +267,7 @@ impl Gaussian {
         tiles: &wgpu::Buffer,
         rect: TileRect,
         blur: &Blur,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         self.run_in(engine, tiles, rect, blur, room(engine))
     }
 
@@ -279,7 +280,7 @@ impl Gaussian {
         rect: TileRect,
         blur: &Blur,
         room: u64,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<Lent> {
         let ways = [blur.across, blur.down];
         if ways.iter().all(|way| way.reach == 0) {
             return fail("a blur of no reach changes no pixel — a plan leaves it out");
