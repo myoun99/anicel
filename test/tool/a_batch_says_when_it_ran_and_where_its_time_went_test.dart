@@ -218,19 +218,35 @@ void main() {
     test('the table is read with what each process spent, its own work '
         'and the system\'s for it alike', () {
       int mine() => readProcessTable().singleWhere((r) => r.pid == pid).cpu;
+      Duration since(int before) =>
+          Duration(microseconds: (mine() - before) ~/ 10);
       final before = mine();
       if (!Platform.isWindows) return; // `ps` gives no CPU here: 0.
-      // A second and a half of arithmetic and nothing else: user time, which
-      // the kernel's share of a table read could never make up.
+      // Arithmetic and nothing else, till the table says a third of a
+      // second of it was spent: user time, which the kernel's share of a
+      // table read could never make up.
+      // ↩️It was a second and a half of the wall clock, and the run's tests
+      // stand at Idle: on the Surface under a land's gate that second and
+      // a half was handed less than a third of a second of the CPU, and the
+      // pin went red then green on the same inputs (11-20, flaky card).
+      // How long the machine takes to hand it over is not what this pins.
       final busy = Stopwatch()..start();
       var x = 1;
-      while (busy.elapsedMilliseconds < 1500) {
-        x = (x * 31 + 7) & 0xffff;
+      var spent = Duration.zero;
+      while (spent < const Duration(milliseconds: 300) &&
+          busy.elapsed < const Duration(minutes: 1)) {
+        final step = Stopwatch()..start();
+        while (step.elapsedMilliseconds < 100) {
+          x = (x * 31 + 7) & 0xffff;
+        }
+        spent = since(before);
       }
-      final spent = Duration(microseconds: (mine() - before) ~/ 10);
       expect(x, isNot(-1));
-      expect(spent, greaterThan(const Duration(milliseconds: 300)));
-      expect(spent, lessThan(const Duration(minutes: 1)));
+      expect(spent, greaterThanOrEqualTo(const Duration(milliseconds: 300)));
+      // One thread cannot spend more of the CPU than the wall it ran — the
+      // table's ticks are a hundred nanoseconds, and read as anything else
+      // they would be many times this.
+      expect(spent, lessThan(busy.elapsed + const Duration(seconds: 1)));
     });
   });
 
