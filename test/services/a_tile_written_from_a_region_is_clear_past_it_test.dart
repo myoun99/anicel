@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:anicel/src/models/dirty_region.dart';
@@ -21,6 +22,9 @@ void main() {
     // Every block asked for comes full of 0xab.
     TileBlocks.debugComesFullOf = 0xab;
     addTearDown(() => TileBlocks.debugComesFullOf = null);
+    final fresh = TileBlocks.alloc(8);
+    addTearDown(() => TileBlocks.free(fresh));
+    expect(fresh.asTypedList(8), everyElement(0xab), reason: '⛔premise');
 
     final region = DirtyRegion.fromXYWH(x: 3, y: 2, width: 4, height: 5);
     final straight = Uint8List(region.width * region.height * 4);
