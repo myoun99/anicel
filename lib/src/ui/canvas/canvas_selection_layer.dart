@@ -1457,8 +1457,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// What 적용 would do now, or null when it has nothing to do — the ONE
   /// answer both the press and the buttons' enablement read.
-  VoidCallback? _applyAction() {
-    if (!_canEditTransform()) {
+  VoidCallback? _applyAction() => _applyActionWhere(_canEditTransform());
+
+  /// [_applyAction] where [canEdit] is what [_canEditTransform] answered —
+  /// asked once by a build that reads it more than once ([_confirmPill]).
+  VoidCallback? _applyActionWhere(bool canEdit) {
+    if (!canEdit) {
       return null;
     }
     if (_sessionHasChanges) {
@@ -3957,25 +3961,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   );
 
   /// 좌우반전 / 상하반전 on the box's pill — the transform settings' two
-  /// (F-527), pressed the same: [_flipTransform], under their keys.
-  Widget _flipButton({required bool horizontal}) => AppIconButton(
-    keyValue: horizontal
-        ? 'selection-move-flip-horizontal'
-        : 'selection-move-flip-vertical',
-    shortcuts: [
-      if (horizontal)
-        EditorActionIds.transformFlipHorizontal
-      else
-        EditorActionIds.transformFlipVertical,
-    ],
-    tooltip: horizontal
-        ? AppText.strings.trFlipHorizontal
-        : AppText.strings.trFlipVertical,
-    icon: flipGlyph(horizontal: horizontal),
-    onPressed: _canEditTransform()
-        ? () => _flipTransform(horizontal: horizontal)
-        : null,
-  );
+  /// (F-527), pressed the same: [_flipTransform], under their keys; lit
+  /// where [canEdit] — [_canEditTransform], asked once for the pill.
+  Widget _flipButton({required bool horizontal, required bool canEdit}) =>
+      AppIconButton(
+        keyValue: horizontal
+            ? 'selection-move-flip-horizontal'
+            : 'selection-move-flip-vertical',
+        shortcuts: [
+          if (horizontal)
+            EditorActionIds.transformFlipHorizontal
+          else
+            EditorActionIds.transformFlipVertical,
+        ],
+        tooltip: horizontal
+            ? AppText.strings.trFlipHorizontal
+            : AppText.strings.trFlipVertical,
+        icon: flipGlyph(horizontal: horizontal),
+        onPressed: canEdit
+            ? () => _flipTransform(horizontal: horizontal)
+            : null,
+      );
 
   /// 확정 and 취소, side by side in the pill under the box.
   ///
@@ -4010,6 +4016,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   Widget _confirmPill(SelectionTransformChrome chrome) {
     final turn = widget.onTransformOptionsChanged;
     final options = widget.transformOptions;
+    // Asked once for the pill's three — a box at rest answers it by
+    // walking every cel it frames (🔬0.8 ms a walk, three a build: S5_BA
+    // cut 352, 62 rows, 공통 2026-11-20).
+    final canEdit = _canEditTransform();
     return CanvasTargetPill(
       keyValue: 'selection-confirm-pill',
       target: pointsBounds(chrome.box),
@@ -4023,11 +4033,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               ? null
               : (on) => turn(options.withAntiAlias(on)),
         ),
-        _flipButton(horizontal: true),
-        _flipButton(horizontal: false),
+        _flipButton(horizontal: true, canEdit: canEdit),
+        _flipButton(horizontal: false, canEdit: canEdit),
         ...targetPillVerbs(
           'selection-move',
-          onConfirm: _applyAction() == null ? null : _applyTransform,
+          onConfirm: _applyActionWhere(canEdit) == null
+              ? null
+              : _applyTransform,
           onCancel: _sessionHasChanges ? _cancelTransform : null,
           changed: _sessionHasChanges,
         ),
