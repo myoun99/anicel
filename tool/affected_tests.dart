@@ -39,6 +39,8 @@
 //   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
 //   bash tool/run.sh affected_tests --first-in-line   # the wide check's own
 //   bash tool/run.sh affected_tests --twin <checkout>  # a second compiler there
+//   bash tool/run.sh affected_tests --bundle          # ten files a compile
+//   bash tool/run.sh affected_tests --bundle-reversed # each bundle backwards
 //   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
 //   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
@@ -60,6 +62,7 @@ import 'master_check.dart';
 import 'process_tree.dart';
 import 'test_queue.dart';
 import 'test_results.dart';
+import 'test_bundles.dart';
 import 'test_seconds.dart';
 
 /// Changing one of these means the graph cannot answer, so we do not ask it:
@@ -418,6 +421,10 @@ Future<void> main(List<String> args) async {
   }
   final useCache = !args.contains('--no-cache');
   final twinAsked = _flagValue(args, '--twin');
+  final reversed = args.contains('--bundle-reversed');
+  final bundle = reversed || args.contains('--bundle')
+      ? (reversed: reversed)
+      : null;
   final turn = lineFor(args);
   if (turn.refusal != null) {
     stderr.writeln('${turn.refusal}.');
@@ -447,6 +454,7 @@ Future<void> main(List<String> args) async {
       inTheLine: turn.inTheLine,
       firstInLine: turn.first,
       twin: twin,
+      bundle: bundle,
     ),
   );
 
@@ -565,6 +573,109 @@ ResultCache? _cacheOr(
   );
   if (cache == null) say(unread.join(', '));
   return cache;
+}
+
+/// [batch] written as bundles in the checkout at [root] ([bundlesOf]):
+/// what to hand `flutter test` in its place, the files each entry runs, how
+/// many files run alone, and the end that takes the batch's folder away.
+({
+  List<String> args,
+  Map<String, List<String>> entries,
+  int alone,
+  void Function() end,
+})
+_writeBundles(List<String> batch, int i, String root, {required bool reversed}) {
+  String read(String path) => File('$root/$path').readAsStringSync();
+  final cut = bundlesOf(batch, read: read, reversed: reversed);
+  final folder = Directory('$root/$kBundleFolder/batch$i');
+  if (folder.existsSync()) folder.deleteSync(recursive: true);
+  folder.createSync(recursive: true);
+  const toRoot = '../../..';
+  File('${folder.path}/flutter_test_config.dart')
+      .writeAsStringSync(bundleConfigSource(toRoot));
+  final entries = <String, List<String>>{};
+  for (var b = 0; b < cut.bundles.length; b++) {
+    final entry =
+        '$kBundleFolder/batch$i/bundle${'$b'.padLeft(3, '0')}_test.dart';
+    File('$root/$entry').writeAsStringSync(
+      entrySource(cut.bundles[b], read, toRoot: toRoot),
+    );
+    entries[entry] = cut.bundles[b];
+  }
+  return (
+    args: [...entries.keys, ...cut.alone],
+    entries: entries,
+    alone: cut.alone.length,
+    end: () {
+      try {
+        folder.deleteSync(recursive: true);
+      } on FileSystemException {
+        // The next batch of this number in this checkout empties it.
+      }
+    },
+  );
+}
+
+/// What each file of a bundled batch did ([runsOfFiles]).
+///
+/// ⏸️KEPT NOWHERE — no green and no time — till the census has measured
+/// whether a bundle gives a green its file alone would not (관제 11-20, the
+/// fake green): kept, one would skip that file's next run.
+List<SuiteRun> _bundledRuns(
+  File report,
+  Map<String, List<String>> entries, {
+  required String root,
+}) {
+  if (!report.existsSync()) return const [];
+  try {
+    return runsOfFiles(
+      suiteRuns(report.readAsStringSync(), root: root),
+      entries,
+    );
+  } on FileSystemException catch (e) {
+    _report('the report of this batch could not be read: ${e.message}');
+    return const [];
+  }
+}
+
+/// The tests [report] says ended red ([redTests]), by their paths from
+/// [root].
+List<({String path, String name})> _redTestsIn(
+  File report, {
+  required String root,
+}) {
+  try {
+    return redTests(report.readAsStringSync(), root: root);
+  } on FileSystemException {
+    return const [];
+  }
+}
+
+/// Says each file of [lost] — red in a bundle, green alone — with the
+/// tests that were red there ([reds]), and each bundle that went red as a
+/// whole: what the census reads.
+void _sayLostIsolation(
+  Set<String> lost,
+  List<({String path, String name})> reds,
+) {
+  if (lost.isNotEmpty) {
+    _report('⚠️${lost.length} file(s) LOST THEIR ISOLATION in a bundle — '
+        'red there, green alone, so the verdict is the run alone. What went '
+        'red in the bundle:');
+  }
+  for (final file in lost.toList()..sort()) {
+    final tests = [
+      for (final red in reds)
+        if (red.path == file) red.name,
+    ];
+    _report('  $file — ${tests.isEmpty ? 'nothing of its own: its bundle '
+        'went red as a whole' : tests.join(' · ')}');
+  }
+  for (final red in reds) {
+    if (isBundleEntry(red.path)) {
+      _report('⚠️a bundle went red as a whole: ${red.path} — ${red.name}');
+    }
+  }
 }
 
 /// What a batch's [report] says of each file ([suiteRuns]), with its times
@@ -1062,6 +1173,7 @@ Future<int> _runTests(
   bool inTheLine = true,
   bool firstInLine = false,
   String? twin,
+  ({bool reversed})? bundle,
 }) async {
   final selected = useCache && cache != null
       ? _withoutStillGreen(files, cache)
@@ -1114,6 +1226,11 @@ Future<int> _runTests(
   final flaky = <String>{};
   final moved = <String>{};
   final unkeyed = <String>{};
+  // 🆕Bundled ([bundlesOf]): the files red in a bundle, the tests that were
+  // red there, and those of the files that were green alone after.
+  final redInBundle = <String>{};
+  final bundledReds = <({String path, String name})>[];
+  final lostIsolation = <String>{};
   final unrun = <String>[];
   final slow = <SlowTest>[];
   final reports = takeReportsFolder();
@@ -1132,9 +1249,16 @@ Future<int> _runTests(
     // in.
     Future<void> runAll(
       List<String> files,
-      void Function(int i, File report, _BatchResult result, String root)
-      record,
-    ) {
+      void Function(
+        int i,
+        File report,
+        _BatchResult result,
+        String root,
+        Map<String, List<String>>? entries,
+      )
+      record, {
+      bool bundled = false,
+    }) {
       Future<void> launch(
         List<String> batch,
         int suites,
@@ -1144,6 +1268,10 @@ Future<int> _runTests(
         final i = launched++;
         final began = DateTime.now();
         final inLine = began.difference(asked);
+        final where = checkout ?? Directory.current.path;
+        final made = bundle != null && bundled && kind == BatchKind.crowd
+            ? _writeBundles(batch, i, where, reversed: bundle.reversed)
+            : null;
         _report('batch ${i + 1}: ${batch.length} file(s) at $suites '
             'suite(s)${switch (kind) {
               BatchKind.crowd => '',
@@ -1151,13 +1279,16 @@ Future<int> _runTests(
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
               BatchKind.impeller => ' — on Impeller',
               BatchKind.realtime => ' — a real-time pin, alone',
-            }}${checkout == null ? '' : ' — in the twin checkout'}'
+            }}${made == null ? '' : ' — as ${made.entries.length} '
+                  'bundle(s)${made.alone == 0 ? '' : ' and ${made.alone} '
+                        'file(s) alone'}'}'
+            '${checkout == null ? '' : ' — in the twin checkout'}'
             ' — at ${clockAt(began)}, ${spanOf(inLine)} in line');
         final report = File('${reports.folder.path}/batch$i.json');
         _BatchResult? ran;
         try {
           final result = ran = await _flutterTest(
-            batch,
+            made?.args ?? batch,
             concurrency: suites,
             report: report.path,
             kind: kind,
@@ -1174,9 +1305,10 @@ Future<int> _runTests(
                 'asks for ($kNoTesterContext). Its files are neither red '
                 'nor green.');
           } else {
-            record(i, report, result, checkout ?? Directory.current.path);
+            record(i, report, result, where, made?.entries);
           }
         } finally {
+          made?.end();
           final wall = DateTime.now().difference(began);
           final own = ran?.ownClock;
           times.add(inLine: inLine, wall: wall, own: own);
@@ -1209,8 +1341,23 @@ Future<int> _runTests(
       );
     }
 
-    await runAll(selected, (i, report, result, root) {
-      runsOf[i] = _recordBatch(report, cache, root: root);
+    await runAll(selected, bundled: true, (
+      i,
+      report,
+      result,
+      root,
+      entries,
+    ) {
+      if (entries == null) {
+        runsOf[i] = _recordBatch(report, cache, root: root);
+      } else {
+        final runs = runsOf[i] = _bundledRuns(report, entries, root: root);
+        redInBundle.addAll([
+          for (final run in runs)
+            if (run.green == false) run.path,
+        ]);
+        bundledReds.addAll(_redTestsIn(report, root: root));
+      }
       slow.addAll(_slowIn(report, root: root));
       skipped += result.skipped;
       if (result.exitCode != 0) {
@@ -1230,7 +1377,7 @@ Future<int> _runTests(
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
     final again = <SuiteRun>[];
-    await runAll(reds.toList()..sort(), (i, report, result, root) {
+    await runAll(reds.toList()..sort(), (i, report, result, root, _) {
       again.addAll(_recordBatch(report, null, root: root));
     });
     // ⚠️「The same inputs」 is measured after the second run, not assumed
@@ -1245,7 +1392,11 @@ Future<int> _runTests(
       before: cache?.keyFor,
       after: greenAgain.isEmpty ? null : _keysNow(),
     );
-    flaky.addAll(split.flaky);
+    // 🆕Red in a bundle and green alone is no flake: it is what the file
+    // leans on, or leaves, that the bundle shared ([bundlesOf]) — its verdict
+    // is the run alone, and it is named for the census.
+    flaky.addAll(split.flaky.where((file) => !redInBundle.contains(file)));
+    lostIsolation.addAll(split.flaky.where(redInBundle.contains));
     moved.addAll(split.moved);
     unkeyed.addAll(split.unkeyed);
     _keep(cache, [
@@ -1298,7 +1449,7 @@ Future<int> _runTests(
   final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};
   final fromMaster = <String, Landing>{};
   bool forgiven(String file) {
-    if (flaky.contains(file)) return true;
+    if (flaky.contains(file) || lostIsolation.contains(file)) return true;
     if (cache?.isQuarantined(file) ?? false) {
       held.add(file);
       return true;
@@ -1334,13 +1485,16 @@ Future<int> _runTests(
         runsOf,
         exits.keys,
         (file) =>
-            flaky.contains(file) || (cache?.isQuarantined(file) ?? false),
+            flaky.contains(file) ||
+            lostIsolation.contains(file) ||
+            (cache?.isQuarantined(file) ?? false),
       )
       case final reds?) {
     _sayReds(redsTo, reds);
   }
 
   _warnSlow(slow, onGitHub: Platform.environment['GITHUB_ACTIONS'] == 'true');
+  _sayLostIsolation(lostIsolation, bundledReds);
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
   // and reading it as one costs an hour. It happened on this tool's first

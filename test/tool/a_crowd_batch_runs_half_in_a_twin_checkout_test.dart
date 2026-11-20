@@ -219,9 +219,9 @@ void main() {
     expect(source, contains('workingDirectory: checkout,'));
     expect(
       source,
-      contains('record(i, report, result, checkout ?? '
-          'Directory.current.path)'),
+      contains('final where = checkout ?? Directory.current.path;'),
     );
+    expect(source, contains('record(i, report, result, where, '));
     expect(
       source,
       contains('runsOf[i] = _recordBatch(report, cache, root: root);'),

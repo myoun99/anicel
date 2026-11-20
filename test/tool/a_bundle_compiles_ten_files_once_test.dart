@@ -1,0 +1,350 @@
+@TestOn('vm')
+library;
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../tool/test_bundles.dart';
+import '../../tool/test_seconds.dart';
+
+/// 🗣️유저 2026-11-20, card the-wide-check-takes-five-hours-Q3 「a 묶는다 —
+/// 혼자 서야 하는 파일만 따로」: a crowd batch's files run as entries of up
+/// to ten, each file a group named by its path — one compile for ten files.
+void main() {
+  group('a file stands alone', () {
+    test('when it starts a binding of its own — an isolate holds one', () {
+      expect(
+        whyAlone('class _Paced extends AutomatedTestWidgetsFlutterBinding {}\n'
+            'void main() {}'),
+        contains('binding of its own'),
+      );
+      expect(
+        whyAlone('void main() {\n  LookTestBinding.ensureInitialized();\n}'),
+        contains('LookTestBinding'),
+      );
+    });
+
+    test('when its main is async, or there is none a group can call', () {
+      expect(whyAlone('Future<void> main() async {}'), contains('async'));
+      expect(whyAlone('void main() async {}'), contains('async'));
+      expect(whyAlone('void helper() {}'), contains('no main'));
+    });
+
+    test("and not for flutter_test's own binding, nor what a comment says",
+        () {
+      expect(
+        whyAlone('void main() {\n'
+            '  TestWidgetsFlutterBinding.ensureInitialized();\n'
+            '  // LookTestBinding.ensureInitialized() is not this file.\n'
+            '}'),
+        isNull,
+      );
+      expect(whyAlone('void main() => guideShots(AppLanguage.en);'), isNull);
+    });
+  });
+
+  group("a file's library annotations go with its group", () {
+    test('its time limit, its skip, its tags and where it runs', () {
+      const source = "@TestOn('vm')\n"
+          '@Timeout(Duration(minutes: 3))\n'
+          "@Tags(['benchmark'])\n"
+          "@Skip('guide screenshots, not a check')\n"
+          'library;\n'
+          '\n'
+          '@Timeout(Duration(minutes: 9))\n'
+          'void main() {}\n';
+      expect(
+        groupArguments(source),
+        "testOn: 'vm', timeout: Timeout(Duration(minutes: 3)), "
+        "tags: ['benchmark'], skip: 'guide screenshots, not a check'",
+      );
+    });
+
+    test('a bare skip skips, and a factor or none is a timeout too', () {
+      expect(groupArguments('@Skip()\nlibrary;'), 'skip: true');
+      expect(
+        groupArguments('@Timeout.factor(2)\nlibrary;'),
+        'timeout: Timeout.factor(2)',
+      );
+      expect(
+        groupArguments('@Timeout.none\nlibrary;'),
+        'timeout: Timeout.none',
+      );
+      expect(groupArguments('// a comment\nvoid main() {}'), isEmpty);
+    });
+  });
+
+  group('a batch is cut into bundles', () {
+    String sourceOf(String path) => path.contains('own')
+        ? 'void main() { ScaledTestBinding.ensureInitialized(); }'
+        : 'void main() {}';
+    List<String> named(int count) => [
+      for (var i = 0; i < count; i++) 'test/f${'$i'.padLeft(2, '0')}_test.dart',
+    ];
+
+    test('of ten at most, dealt in turn from the longest, the files that '
+        'cannot share left as they are', () {
+      final files = [...named(23), 'test/own_test.dart'];
+      final cut = bundlesOf(files, read: sourceOf);
+      expect(cut.alone, ['test/own_test.dart']);
+      expect(cut.bundles.map((bundle) => bundle.length), [8, 8, 7]);
+      expect(cut.bundles.first.take(3), [
+        'test/f00_test.dart',
+        'test/f03_test.dart',
+        'test/f06_test.dart',
+      ]);
+      expect(cut.bundles.expand((bundle) => bundle).toSet(), {...named(23)});
+    });
+
+    test('the census reverses each bundle, and no more', () {
+      final forward = bundlesOf(named(12), read: sourceOf);
+      final back = bundlesOf(named(12), read: sourceOf, reversed: true);
+      expect(back.bundles, [
+        for (final bundle in forward.bundles) bundle.reversed.toList(),
+      ]);
+    });
+
+    test('an entry imports its files and runs each as a group named by its '
+        'path, with what its annotations say', () {
+      final source = entrySource(
+        ['test/a_test.dart', 'test/b_test.dart'],
+        (path) => path.startsWith('test/b')
+            ? '@Timeout(Duration(minutes: 5))\nlibrary;\nvoid main() {}'
+            : 'void main() {}',
+        toRoot: '../../..',
+      );
+      expect(source, contains("import '../../../test/a_test.dart' as f0;"));
+      expect(source, contains("  group('test/a_test.dart', f0.main);"));
+      expect(
+        source,
+        contains("  group('test/b_test.dart', f1.main, "
+            'timeout: Timeout(Duration(minutes: 5)));'),
+      );
+      expect(
+        bundleConfigSource('../../..'),
+        "export '../../../test/flutter_test_config.dart';\n",
+      );
+    });
+  });
+
+  group("a bundle's report is read file by file", () {
+    const entry = 'C:/r/.dart_tool/test_bundles/batch0/bundle000_test.dart';
+
+    /// A json report of one entry that ran [files] — each `(path, results)`,
+    /// a result a test of it — loading in [load] ms, every test 100 ms.
+    String reportOf(
+      List<(String, List<String>)> files, {
+      int load = 1000,
+      bool loaded = true,
+      bool ended = true,
+      String suite = entry,
+    }) {
+      final lines = <Object>[];
+      var time = 0;
+      var id = 10;
+      lines
+        ..add({
+          'suite': {'id': 0, 'platform': 'vm', 'path': suite},
+          'type': 'suite',
+          'time': time,
+        })
+        ..add({
+          'test': {
+            'id': 1,
+            'name': 'loading $suite',
+            'suiteID': 0,
+            'groupIDs': <int>[],
+          },
+          'type': 'testStart',
+          'time': time,
+        });
+      time += load;
+      lines.add({
+        'testID': 1,
+        'result': loaded ? 'success' : 'error',
+        'hidden': true,
+        'type': 'testDone',
+        'time': time,
+      });
+      if (loaded) {
+        lines.add({
+          'group': {'id': 2, 'suiteID': 0, 'parentID': null, 'name': ''},
+          'type': 'group',
+          'time': time,
+        });
+        for (final (path, results) in files) {
+          final group = id++;
+          lines.add({
+            'group': {'id': group, 'suiteID': 0, 'parentID': 2, 'name': path},
+            'type': 'group',
+            'time': time,
+          });
+          for (final result in results) {
+            final test = id++;
+            lines.add({
+              'test': {
+                'id': test,
+                'name': '$path a test',
+                'suiteID': 0,
+                'groupIDs': [2, group],
+              },
+              'type': 'testStart',
+              'time': time,
+            });
+            time += 100;
+            lines.add({
+              'testID': test,
+              'result': result,
+              'hidden': false,
+              'type': 'testDone',
+              'time': time,
+            });
+          }
+        }
+      }
+      if (ended) lines.add({'success': true, 'type': 'done', 'time': time});
+      return lines.map(jsonEncode).join('\n');
+    }
+
+    test('each file by its group, with an even share of the one load', () {
+      final runs = suiteRuns(
+        reportOf([
+          ('test/a_test.dart', ['success', 'success']),
+          ('test/b_test.dart', ['success', 'failure']),
+        ]),
+        root: 'C:/r',
+      );
+      expect(runs, containsAll([
+        (path: 'test/a_test.dart', ms: 200 + 500, green: true),
+        (path: 'test/b_test.dart', ms: 200 + 500, green: false),
+        (
+          path: '.dart_tool/test_bundles/batch0/bundle000_test.dart',
+          ms: 1000,
+          green: true,
+        ),
+      ]));
+      expect(
+        redTests(reportOf([
+          ('test/b_test.dart', ['success', 'failure']),
+        ]), root: 'C:/r'),
+        [(path: 'test/b_test.dart', name: 'test/b_test.dart a test')],
+      );
+    });
+
+    test('an entry that failed to load makes each of its files red; one '
+        'that never ended leaves them unknown', () {
+      const entries = {
+        '.dart_tool/test_bundles/batch0/bundle000_test.dart': [
+          'test/a_test.dart',
+          'test/b_test.dart',
+        ],
+      };
+      expect(
+        runsOfFiles(
+          suiteRuns(reportOf(const [], loaded: false), root: 'C:/r'),
+          entries,
+        ),
+        [
+          (path: 'test/a_test.dart', ms: null, green: false),
+          (path: 'test/b_test.dart', ms: null, green: false),
+        ],
+      );
+      final cut = runsOfFiles(
+        suiteRuns(
+          reportOf([
+            ('test/a_test.dart', ['success']),
+            ('test/b_test.dart', ['failure']),
+          ], ended: false),
+          root: 'C:/r',
+        ),
+        entries,
+      );
+      expect(cut.map((run) => (run.path, run.green)), [
+        ('test/a_test.dart', null),
+        ('test/b_test.dart', null),
+      ]);
+    });
+
+    test('a green entry stands for a file that declared no test', () {
+      expect(
+        runsOfFiles(
+          suiteRuns(reportOf([
+            ('test/a_test.dart', ['success']),
+          ]), root: 'C:/r'),
+          const {
+            '.dart_tool/test_bundles/batch0/bundle000_test.dart': [
+              'test/a_test.dart',
+              'test/empty_test.dart',
+            ],
+          },
+        ).map((run) => (run.path, run.green)),
+        [('test/a_test.dart', true), ('test/empty_test.dart', true)],
+      );
+    });
+
+    test('a file of its own is read as ever — its groups are its own', () {
+      expect(
+        suiteRuns(
+          reportOf([
+            ('a group of it', ['success', 'failure']),
+          ], suite: 'C:/r/test/a_test.dart'),
+          root: 'C:/r',
+        ),
+        [(path: 'test/a_test.dart', ms: 1200, green: false)],
+      );
+      expect(isBundleEntry('C:/r/test/a_test.dart'), isFalse);
+      expect(isBundleEntry(entry), isTrue);
+      expect(isBundleEntry(r'.dart_tool\test_bundles\batch1\b_test.dart'),
+          isTrue);
+    });
+  });
+
+  test('a bundled run says what its bundles did where they are read — and '
+      'keeps none of it till the census', () {
+    final source = File('tool/affected_tests.dart').readAsStringSync()
+        .replaceAll('\r\n', '\n');
+    // Only the first pass bundles, only the crowd; the reds run alone.
+    expect(
+      source,
+      contains('final made = bundle != null && bundled && kind == '
+          'BatchKind.crowd'),
+    );
+    expect(source, contains('await runAll(selected, bundled: true, ('));
+    expect(
+      source,
+      contains('await runAll(reds.toList()..sort(), (i, report, result, '
+          'root, _) {'),
+    );
+    expect(
+      source,
+      contains('final runs = runsOf[i] = _bundledRuns(report, entries, '
+          'root: root);'),
+    );
+    // Red in a bundle, green alone: no flake, and forgiven.
+    expect(
+      source,
+      contains('flaky.addAll(split.flaky.where((file) => '
+          '!redInBundle.contains(file)));'),
+    );
+    expect(
+      source,
+      contains('lostIsolation.addAll(split.flaky.where(redInBundle.contains));'),
+    );
+    expect(
+      source,
+      contains('if (flaky.contains(file) || lostIsolation.contains(file)) '
+          'return true;'),
+    );
+    // Its entries are handed over in the batch's place, and taken away.
+    expect(source, contains('made?.args ?? batch,'));
+    expect(source, contains('made?.end();'));
+    final bundledRuns = source.substring(
+      source.indexOf('List<SuiteRun> _bundledRuns('),
+      source.indexOf('List<({String path, String name})> _redTestsIn('),
+    );
+    expect(bundledRuns, isNot(contains('_keep(')));
+    expect(bundledRuns, isNot(contains('updatePairs(')));
+  });
+}

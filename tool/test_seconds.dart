@@ -97,6 +97,13 @@ typedef SuiteRun = ({String path, int? ms, bool? green});
 /// finished tests all passed, and those are not green. A test skipped
 /// counts as passed; a file that failed to load is a hidden test that
 /// ends in `error`, and red.
+///
+/// A bundle's entry ([isBundleEntry]) is no test file: each file it ran is
+/// read from its group ([Report.filesOf]), and given an even share of the
+/// entry's load — the one compile all of them were part of. The entry's own
+/// run stays, red when it failed to load or its own tests did: what its
+/// files did is then the caller's to tell (test_bundles.dart's
+/// `runsOfFiles`).
 List<SuiteRun> suiteRuns(String report, {required String root}) {
   final read = readReport(report);
   final prefix = _prefixOf(root);
@@ -119,10 +126,28 @@ List<SuiteRun> suiteRuns(String report, {required String root}) {
     );
   }
 
-  return [
+  final runs = {
     for (final MapEntry(key: suite, value: path) in read.paths.entries)
-      runOf(suite, path),
-  ];
+      suite: runOf(suite, path),
+  };
+  for (final MapEntry(key: entry, value: files) in read.filesOf.entries) {
+    final loading = (testsOf[entry] ?? const <ReportedTest>[])
+        .where((test) => test.isLoading && test.end != null);
+    final load = loading.isEmpty
+        ? 0
+        : loading.first.end! - loading.first.start;
+    for (final file in files) {
+      final run = runs[file]!;
+      if (run.ms case final ms?) {
+        runs[file] = (
+          path: run.path,
+          ms: ms + load ~/ files.length,
+          green: run.green,
+        );
+      }
+    }
+  }
+  return runs.values.toList();
 }
 
 /// One test as a `json` file report tells it ([readReport]).
@@ -154,6 +179,10 @@ final class Report {
   /// Every test, in the order it started.
   final tests = <ReportedTest>[];
 
+  /// Each bundle entry's files, by the ids [paths] names them by: a file's
+  /// group, under the entry's root group, named by its path.
+  final filesOf = <int, List<int>>{};
+
   /// Whether the run reached its `done`.
   bool ended = false;
 }
@@ -170,6 +199,8 @@ final class Report {
 Report readReport(String text) {
   final report = Report();
   final byId = <int, ReportedTest>{};
+  final rootOf = <int, int>{};
+  final fileOfGroup = <int, int>{};
   for (final line in const LineSplitter().convert(text)) {
     final Object? event;
     try {
@@ -185,10 +216,25 @@ Report readReport(String text) {
         final suite = event['suite'] as Map<String, dynamic>;
         final path = (suite['path'] as String?)?.replaceAll('\\', '/');
         if (path != null) report.paths[suite['id'] as int] = path;
+      case 'group':
+        final group = event['group'] as Map<String, dynamic>;
+        final suite = group['suiteID'] as int;
+        final id = group['id'] as int;
+        if (group['parentID'] == null) {
+          rootOf[suite] = id;
+        } else if (group['parentID'] == rootOf[suite] &&
+            isBundleEntry(report.paths[suite] ?? '')) {
+          final file = -1 - id;
+          report.paths[file] = group['name'] as String? ?? '';
+          (report.filesOf[suite] ??= []).add(file);
+          fileOfGroup[id] = file;
+        }
       case 'testStart':
         final test = event['test'] as Map<String, dynamic>;
+        final groups = test['groupIDs'] as List<dynamic>? ?? const [];
         final started = ReportedTest(
-          test['suiteID'] as int,
+          groups.map((id) => fileOfGroup[id]).nonNulls.firstOrNull ??
+              test['suiteID'] as int,
           test['name'] as String? ?? '',
           time,
         );
@@ -205,6 +251,38 @@ Report readReport(String text) {
     }
   }
   return report;
+}
+
+/// Where a batch writes its bundle entries, from the checkout's root
+/// (test_bundles.dart).
+///
+/// ⛔NOT UNDER `test/`: twenty scans walk that folder from disk
+/// (`dartFilesUnder('test')`), and one running in a batch would read the
+/// entries another batch had written there.
+const kBundleFolder = '.dart_tool/test_bundles';
+
+/// Whether [path] — from the root or whole, with either slash — is an entry
+/// a batch wrote ([kBundleFolder]).
+bool isBundleEntry(String path) {
+  final forward = path.replaceAll(r'\', '/');
+  return forward.startsWith('$kBundleFolder/') ||
+      forward.contains('/$kBundleFolder/');
+}
+
+/// The tests [report] says ended red, each by its file's path from [root]
+/// and its name — a bundle's file by its own path ([Report.filesOf]), a
+/// file's load by `loading <path>`.
+List<({String path, String name})> redTests(
+  String report, {
+  required String root,
+}) {
+  final read = readReport(report);
+  final prefix = _prefixOf(root);
+  return [
+    for (final test in read.tests)
+      if (test.red)
+        (path: _fromRoot(read.paths[test.suite] ?? '?', prefix), name: test.name),
+  ];
 }
 
 /// How [root] begins a path the report spells, compared with no regard to
