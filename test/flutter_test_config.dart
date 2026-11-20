@@ -7,7 +7,11 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart'
-    show AppKernels, debugAppShaderFolder, debugTakeAppGpuEngineNoted;
+    show
+        AppKernels,
+        debugAppShaderFolder,
+        debugOpenAppGpuEngineHere,
+        debugTakeAppGpuEngineNoted;
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
@@ -294,9 +298,16 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // test's pumped clock lends a compile on another isolate no real time to
   // finish in. The pins of the app's own route ask for it back.
   AppKernels.debugCompileHere = true;
-  // The same clock once more: it opens no engine either, so a canvas a test
-  // stands would mark its place for as long as the test settles
-  // (`pumpAndSettle`) — the mark turns. The pins of the mark stand it.
+  // And the engine they are compiled on (🗣️a-process-first-test-never-
+  // sees-the-canvas-stand-Q1 = 「시험에서는 엔진을 그 자리에서 연다」, 유저
+  // 2026-11-20): opened on another isolate, a file's first test asked for
+  // it and never had it — 🔬269 of 393 first tests (서피스 11-20) showed no
+  // canvas — and a later one had it once real time had passed.
+  debugOpenAppGpuEngineHere = true;
+  // The same clock once more: a canvas a test stands marks its place while
+  // its frame waits for its tools or kernels, for as long as the test
+  // settles (`pumpAndSettle`) — the mark turns. The pins of the mark stand
+  // it.
   FrameWaitMark.debugStands = false;
   debugLayerOfScreen = screenDrawnAsAPicture;
   // A zoom's stop rasters what it stretched, on the engine a session's

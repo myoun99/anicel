@@ -584,7 +584,7 @@ String? debugAppShaderFolder;
 Future<GpuEngine> openAppGpuEngine() {
   final its = _its;
   return its.opening ??= () async {
-    final opened = its.engine ?? await GpuEngine.opening(_opener());
+    final opened = its.engine ?? await _opening();
     // Asked the other way while this one opened: the app keeps one.
     final engine = its.engine ??= opened;
     if (!identical(engine, opened)) {
@@ -597,3 +597,23 @@ Future<GpuEngine> openAppGpuEngine() {
     return engine;
   }();
 }
+
+/// An engine opened off this isolate — or on it, where a test asks
+/// ([debugOpenAppGpuEngineHere]), told a microtask later all the same: what
+/// hears it is never told inside the build or paint that asked.
+Future<GpuEngine> _opening() async {
+  if (debugOpenAppGpuEngineHere) {
+    return _opener()();
+  }
+  return GpuEngine.opening(_opener());
+}
+
+/// Test seam: [openAppGpuEngine] opens the engine on this isolate, as
+/// [AppKernels.debugCompileHere] compiles its kernels. A widget test's
+/// clock is pumped, and lends an opening on another isolate no real time to
+/// finish in: the first test of a file asked for the engine and never had
+/// it, and the canvas it showed never stood (🗣️a-process-first-test-never-
+/// sees-the-canvas-stand-Q1 = 「시험에서는 엔진을 그 자리에서 연다」, 유저
+/// 2026-11-20).
+@visibleForTesting
+bool debugOpenAppGpuEngineHere = false;
