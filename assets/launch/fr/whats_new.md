@@ -15,8 +15,10 @@
 
 ## Améliorations
 
-- **Une application plus légère** — moins d'à-coups pendant le précalcul des images de lecture (pendant que la bande verte se remplit), une molette et des bascules d'œil de calque plus légères sur la timeline, et plus d'attente du moteur graphique à chaque trait. Les plans avec un fx de numéro de cellulo, le glissement d'une valeur de fx, l'arrêt à la fin de l'ouverture d'un gros .anicel et l'ouverture d'un .tvpp sont aussi plus légers.
+- **Une application plus légère** — moins d'à-coups pendant le précalcul des images de lecture (pendant que la bande verte se remplit), une molette et des bascules d'œil de calque plus légères sur la timeline, et plus d'attente du moteur graphique à chaque trait. Les plans avec un fx de numéro de cellulo, le glissement d'une valeur de fx, l'arrêt à la fin de l'ouverture d'un gros .anicel et l'ouverture d'un .tvpp sont aussi plus légers. Le premier choix d'image après l'ouverture d'un projet ne redessine plus toute la timeline.
 - **Glisser une valeur de flou** — l'écran se fige moins quand on commence à faire glisser une valeur de flou, et moins pendant le glissement.
+- **Mémoire temporaire** — pendant le glissement d'une valeur d'effet comme le flou, et pendant le glissement de plusieurs lignes d'un dossier avec la boîte de transformation, le moteur graphique réutilise sa mémoire temporaire au lieu de la recréer à chaque pas, et la rend entièrement dès que la main se repose.
+- **Ouvrir la boîte de transformation** — ouvrir la boîte de transformation avec Ctrl+T attend moins souvent le moteur graphique et parcourt moins de fois les cellules.
 - **Pendant le choix d'une couleur** — tourner la roue chromatique d'une piste, ou celle du papier, de l'arrière-plan ou du Fond, montre la couleur à mesure et ne l'enregistre qu'une fois, à la fermeture de la fenêtre, en une seule annulation.
 - **Tampons par glissement** — une rangée de tampons posée d'un seul glissement s'annule d'un seul Ctrl+Z. Les tampons sur plusieurs cellulos se posent derrière la fenêtre d'attente.
 - **Remplissage continu et tampons par glissement** — même si l'écran se fige un instant, chaque zone traversée entre-temps est remplie, et la rangée de tampons suit le chemin tel qu'il a été tracé.

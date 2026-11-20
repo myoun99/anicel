@@ -15,8 +15,10 @@
 
 ## Improved
 
-- **A lighter app** — less hitching while playback pictures are baked ahead (while the green band fills), lighter mouse-wheel scrolling and layer eye toggles on the timeline, and no more waiting on the graphics engine at every stroke. Cuts with a cel number fx, dragging an fx value, the stall at the end of opening a large .anicel, and opening a .tvpp are lighter too.
+- **A lighter app** — less hitching while playback pictures are baked ahead (while the green band fills), lighter mouse-wheel scrolling and layer eye toggles on the timeline, and no more waiting on the graphics engine at every stroke. Cuts with a cel number fx, dragging an fx value, the stall at the end of opening a large .anicel, and opening a .tvpp are lighter too. The first frame pick after opening a project no longer redraws the whole timeline.
 - **Dragging a blur value** — the screen hitches less as a blur value starts to be dragged, and less while it is dragged.
+- **Temporary memory** — while an effect value such as blur is dragged, and while several rows inside a folder are dragged with the transform box, the graphics engine reuses its temporary memory instead of making it anew at every step, and gives all of it back once your hand rests.
+- **Opening the transform box** — opening the transform box with Ctrl+T waits on the graphics engine fewer times and walks the cells fewer times.
 - **While picking a color** — turning the color wheel of a lane, or of the paper, the backdrop or the pasteboard, shows the color as it goes and records it once, when the window closes, as one undo step.
 - **Stamp drags** — a row of stamps laid by one drag goes back with a single Ctrl+Z. Stamps across several cels are laid behind the wait window.
 - **Continuous fill and stamp drags** — even if the screen stalls for a moment, every region passed meanwhile is filled, and a row of stamps follows the path as drawn.
