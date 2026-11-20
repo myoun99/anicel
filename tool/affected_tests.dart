@@ -720,15 +720,94 @@ List<String> _wholeSuite() =>
 ///
 /// 6000 keeps 2k of daylight below the real ceiling. Elsewhere ARG_MAX is
 /// megabytes and one batch is always enough.
-const _argBudget = 6000;
+/// ↩️Since 2026-11-20 that is the ceiling only when the tool is reached
+/// through the .bat ([flutterLaunch]); past it the line is
+/// [kDirectArgBudget].
+const kBatArgBudget = 6000;
 
-/// Whether [batch] fits one invocation's budget — off Windows any batch
-/// does. A file that is somehow longer than the whole budget still goes out
-/// alone ([timedBatches] ends at one file a batch) rather than being dropped
-/// — failing loudly beats running less than we said we would.
+/// How many characters of arguments one invocation may carry when the tool
+/// is started without the .bat ([flutterLaunch]): CreateProcess takes
+/// 32,767 for the whole line, and the dart.exe and the two words before
+/// the arguments are a few hundred of them.
+const kDirectArgBudget = 30000;
+
+/// Whether [batch] fits one invocation's budget ([FlutterLaunch.argBudget])
+/// — off Windows any batch does. A file that is somehow longer than the
+/// whole budget still goes out alone ([timedBatches] ends at one file a
+/// batch) rather than being dropped — failing loudly beats running less
+/// than we said we would.
 bool _fitsTheCommandLine(List<String> batch) =>
     !Platform.isWindows ||
-    batch.fold(0, (length, file) => length + file.length + 1) <= _argBudget;
+    batch.fold(0, (length, file) => length + file.length + 1) <=
+        _launch.argBudget;
+
+/// How a batch starts `flutter test` here: the program, the words before
+/// the tool's own, what to add to its environment, whether it goes through
+/// the shell, and how long its arguments may be.
+typedef FlutterLaunch = ({
+  String executable,
+  List<String> leading,
+  Map<String, String> environment,
+  bool shell,
+  int argBudget,
+});
+
+/// 🆕PAST THE .BAT (2026-11-20, card the-wide-check-takes-five-hours). On
+/// Windows `flutter` is a .bat, and every call of it takes one lock for the
+/// whole machine (bin/cache/flutter.bat.lock) and runs git and PowerShell
+/// inside it before the tool starts — and goes through cmd.exe, whose 8191
+/// characters cut the wide check of 11-20 into 39 batches of about a
+/// hundred files, each paying its own start ([kBatArgBudget]). The .bat
+/// ends by calling the SDK's dart on the tool's snapshot; that call is
+/// made here directly when the SDK [environment] reaches
+/// ([flutterRootsIn]) has the three files it needs — `tool/run.sh` reaches
+/// the SDK's dart past the same lock for the same reason (10-18).
+///
+/// ⚖️What the .bat would have done first is not done: rebuilding the
+/// snapshot after Flutter itself changed. Every lane opens with a
+/// `flutter pub get` and every land runs `flutter analyze`, both through
+/// the .bat, so the snapshot is rebuilt the first time either runs after
+/// an upgrade — a batch started before that runs the tool it finds.
+/// ⛔Copying the .bat's checks here would be a second copy of Flutter's
+/// own rule.
+FlutterLaunch flutterLaunch(
+  Map<String, String> environment, {
+  required bool windows,
+  bool Function(String path) exists = _exists,
+}) {
+  if (windows) {
+    for (final root in flutterRootsIn(environment)) {
+      final dart = '$root\\bin\\cache\\dart-sdk\\bin\\dart.exe';
+      final snapshot = '$root\\bin\\cache\\flutter_tools.snapshot';
+      final packages =
+          '$root\\packages\\flutter_tools\\.dart_tool\\package_config.json';
+      if ([dart, snapshot, packages].every(exists)) {
+        return (
+          executable: dart,
+          leading: ['--packages=$packages', snapshot],
+          environment: {'FLUTTER_ROOT': root},
+          shell: false,
+          argBudget: kDirectArgBudget,
+        );
+      }
+    }
+  }
+  return (
+    executable: windows ? 'flutter.bat' : 'flutter',
+    leading: const [],
+    environment: const {},
+    shell: true,
+    argBudget: kBatArgBudget,
+  );
+}
+
+bool _exists(String path) => File(path).existsSync();
+
+/// This machine's [flutterLaunch], read once a run.
+final FlutterLaunch _launch = flutterLaunch(
+  Platform.environment,
+  windows: Platform.isWindows,
+);
 
 /// How long a batch should run at the suites the line gave it, in seconds
 /// — what [nextBatch] cuts to.
@@ -1595,16 +1674,20 @@ Future<_BatchResult> _flutterTestIn(
   required String report,
   required BatchKind kind,
 }) async {
+  final launch = _launch;
   final process = await Process.start(
-    Platform.isWindows ? 'flutter.bat' : 'flutter',
-    flutterTestArguments(
-      files,
-      concurrency: concurrency,
-      report: report,
-      kind: kind,
-    ),
-    environment: temp.environment,
-    runInShell: true,
+    launch.executable,
+    [
+      ...launch.leading,
+      ...flutterTestArguments(
+        files,
+        concurrency: concurrency,
+        report: report,
+        kind: kind,
+      ),
+    ],
+    environment: {...temp.environment, ...launch.environment},
+    runInShell: launch.shell,
   );
   var ranTests = false;
   var skipped = 0;
