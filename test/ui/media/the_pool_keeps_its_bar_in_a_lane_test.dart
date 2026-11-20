@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/media/media_pool_list.dart';
@@ -199,5 +200,46 @@ void main() {
       moreOrLessEquals(unscrolledName),
       reason: 'the names stay at the view\'s left',
     );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  // The columns ride the scroll where they are painted, and a file's line
+  // is a picture of its own — so a scroll must paint it again, or the
+  // screen keeps the columns where they were while every rect (read at
+  // the paint transform, now) says they moved.
+  testWidgets('scrolled sideways, a file\'s columns are SEEN where they '
+      'went', (tester) async {
+    // The screen read in the list's own pixels.
+    tester.view
+      ..devicePixelRatio = 1
+      ..physicalSize = const Size(800, 600);
+    addTearDown(tester.view.reset);
+    // At 190 the names take all but the lane: no column is in view.
+    await pump(tester, view: const MediaPoolView());
+    final columns = tester.getRect(
+      find
+          .descendant(
+            of: find.byType(MediaPoolList),
+            matching: find.byType(OverflowBox),
+          )
+          .at(1),
+    );
+    Future<List<int>> seen() async {
+      final screen = tester.layers.first as OffsetLayer;
+      final bytes = await tester.runAsync(() async {
+        final image = await screen.toImage(columns);
+        try {
+          return (await image.toByteData())!;
+        } finally {
+          image.dispose();
+        }
+      });
+      return bytes!.buffer.asUint8List().toList();
+    }
+
+    final before = await seen();
+    acrossOf(tester).jumpTo(acrossOf(tester).maxScrollExtent);
+    await tester.pump();
+
+    expect(await seen(), isNot(before));
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 }
