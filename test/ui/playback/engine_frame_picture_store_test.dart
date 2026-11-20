@@ -238,6 +238,36 @@ void main() {
     expect(await left, same(await stays));
   });
 
+  // 🔬F-620 (S5_BA cut 352, Surface Pro 11, 2026-11-20): a lay the screen
+  // asked for went past the one on its way and was laid beside it — a
+  // blur's value dragged laid the frame at each value, about six at once,
+  // none given up.
+  test('🚨a lay the screen asks for while one is on its way waits for it '
+      '— and is given up there, where its asker left it meanwhile', () async {
+    final store = storeOf();
+    final ahead = store.lay('ahead', frameOf(cel(5)));
+    await store.tools;
+    var left = false;
+    final passed = store.lay(
+      'passed',
+      frameOf(cel(6)),
+      shownNow: true,
+      gone: () => left,
+    );
+    for (var hop = 0; hop < 8; hop += 1) {
+      await Future<void>.value();
+    }
+    expect(store.holds('ahead'), isFalse, reason: '⛔premise: on its way');
+
+    left = true;
+    final latest = store.lay('latest', frameOf(cel(7)), shownNow: true);
+
+    expect(await passed, isNull);
+    expect(store.holds('passed'), isFalse);
+    expect(shownBy((await latest)!), laidBy(cel(7)));
+    expect(await ahead, isNotNull);
+  });
+
   test('a frame the engine refuses is answered with its reason, and the lays '
       'after it are laid', () async {
     final store = storeOf();

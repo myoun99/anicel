@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show ChangeNotifier, Listenable;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/once_a_microtask.dart';
+import '../../core/one_pass_at_a_time.dart';
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
@@ -336,8 +337,8 @@ class EngineFramePictureStore<K extends Object> {
     } else {
       _lays.add(lay);
     }
-    // A turn for each lay: one asked for the screen meanwhile goes to the
-    // front.
+    // Its turn, where none is on its way: asked while one is, it waits in
+    // the line, at the front where the screen asked for it ([_turns]).
     _aTurn();
     return lay.done.future;
   }
@@ -658,10 +659,6 @@ class EngineFramePictureStore<K extends Object> {
     _lays.clear();
   }
 
-  /// Lays the lay at the front, if any is left — [dispose] answers them.
-  /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
-  /// meanwhile waits on it, not laid a second time over it. A key a
-  /// picture moved to meanwhile ([move]) answers with it: one picture a key.
   /// A turn of the lays once the tools are open, in no one's zone as
   /// [tools] is: a lay asked from under a test's fake clock would stand at
   /// the front, its awaits never run, and every lay behind it wait for ever.
@@ -670,7 +667,7 @@ class EngineFramePictureStore<K extends Object> {
     Zone.root.run(
       () => unawaited(
         tools.then(
-          (_) => _layFirst(),
+          (_) => _turns.ask(),
           onError: (Object error, StackTrace stack) {
             // Why tools let go of since would not open is no word on the
             // next ones ([letGoWithItsTools]).
@@ -683,38 +680,53 @@ class EngineFramePictureStore<K extends Object> {
     );
   }
 
-  void _layFirst() {
-    if (_lays.isEmpty) {
-      return;
-    }
+  /// The lays, ONE AT A TIME: one asked for while another is on its way
+  /// waits for it, at the front of the line where the screen asked for it
+  /// ([lay]), and is given up there where its askers left it meanwhile.
+  ///
+  /// 🔬F-620 (S5_BA cut 352, Surface Pro 11, 2026-11-20): kept by hand with
+  /// a flag on the lay, a lay the screen asked for went to the front past
+  /// the one on its way and was laid beside it. A blur's value dragged on
+  /// the timeline laid the frame at each value, about six at once on the
+  /// engine (37 lays' 27.7 s from ask to laid, in a drag of 4.8 s), none
+  /// given up, each value on the canvas 0.5–0.9 s late.
+  late final _turns = OnePassAtATime(
+    due: () => _lays.isNotEmpty,
+    pass: _layTheFirst,
+  );
+
+  /// One turn: the lay at the front laid, answered with what is there, or
+  /// given up — [dispose] answers them all. Where the tools it was asked
+  /// with were let go of since ([letGoWithItsTools]), the turn waits for the
+  /// ones asked for anew; why they would not open, every lay asked of them
+  /// hears ([_aTurn]), and the turns end.
+  ///
+  /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
+  /// meanwhile waits on it, not laid a second time over it. A key a
+  /// picture moved to meanwhile ([move]) answers with it: one picture a key.
+  Future<bool> _layTheFirst() async {
     if (toolsOpen == null) {
-      // A turn of the tools let go of since ([letGoWithItsTools]): the
-      // next ones' comes.
-      _aTurn();
-      return;
+      try {
+        await tools;
+      } on Object {
+        return false;
+      }
+      return true;
     }
     final lay = _lays.first;
-    if (lay.running) {
-      _turnsOwed += 1;
-      return;
-    }
     final there = lay.unwanted ? null : peek(lay.key);
     if (there != null || lay.unwanted) {
       lay.done.complete(there);
       _lays.remove(lay);
-      return;
+      return true;
     }
-    unawaited(_lay(lay));
+    await _lay(lay);
+    return true;
   }
 
-  /// Turns that came with a lay on its way at the front: each lay's own,
-  /// given back once it is done.
-  int _turnsOwed = 0;
-
-  /// Lays [lay]'s picture, its plug-ins' steps run first: a turn comes
-  /// back for the lays behind it.
+  /// Lays [lay]'s picture, its plug-ins' steps run first: the turn of the
+  /// lays behind it comes once it is done.
   Future<void> _lay(_Lay<K> lay) async {
-    lay.running = true;
     final its = _its;
     final picture = _aPicture();
     try {
@@ -752,11 +764,6 @@ class EngineFramePictureStore<K extends Object> {
       }
     } finally {
       _lays.remove(lay);
-      final owed = _turnsOwed;
-      _turnsOwed = 0;
-      for (var turn = 0; turn < owed; turn += 1) {
-        _aTurn();
-      }
     }
   }
 
@@ -814,10 +821,6 @@ final class _Lay<K> {
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];
   final _LayAnswer done = _LayAnswer();
-
-  /// Whether it is being laid: its turn has come, and its plug-ins' steps
-  /// are on their way.
-  bool running = false;
 
   /// Whether every one who asked for it is gone.
   bool get unwanted => askers.every((gone) => gone());
