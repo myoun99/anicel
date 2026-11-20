@@ -23,10 +23,12 @@ use crate::kernels::cel_pixel::abi::{
 use crate::kernels::cel_pixel::Passed;
 use crate::kernels::fold::{gpu_engine_fold_free, gpu_engine_fold_new};
 use crate::kernels::dab::abi::{
-    gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_stamp_landing_free,
+    gpu_engine_dab_texture_free, gpu_engine_dab_texture_new, gpu_engine_finished_free,
+    gpu_engine_stamp_landing_free,
     gpu_engine_stamp_landing_new, gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new,
     gpu_engine_blurs_free, gpu_engine_blurs_new, gpu_engine_stroke_free, gpu_engine_stroke_new,
 };
+use crate::kernels::dab::landing::Finished;
 use crate::kernels::composite::abi::{
     gpu_engine_chain_read_free, gpu_engine_chain_read_new, gpu_engine_composite_free, gpu_engine_composite_new,
     gpu_engine_composited_free, gpu_engine_held_free,
@@ -107,7 +109,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 40] {
+fn frees() -> [(&'static str, fn(&'static str)); 41] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, first_engine().clone().boxed(), gpu_engine_close)
@@ -154,6 +156,10 @@ fn frees() -> [(&'static str, fn(&'static str)); 40] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_stamp_landing_new(first_engine()) };
             gives_back(name, made, gpu_engine_stamp_landing_free)
+        }),
+        ("gpu_engine_finished_free", |name| {
+            let made = first_engine().hands(Finished::of_none_inked(composited().out));
+            gives_back_unwaited(name, made, gpu_engine_finished_free)
         }),
         ("gpu_engine_stamp_picture_free", |name| {
             // SAFETY: the engine is live, and the bytes hold the picture's one pixel.

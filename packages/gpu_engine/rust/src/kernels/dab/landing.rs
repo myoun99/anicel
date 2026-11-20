@@ -149,6 +149,13 @@ impl Finished {
         &self.out
     }
 
+    /// One of `out` alone, none of it inked: what the test of its free
+    /// makes (`kernels::shared::every_free`).
+    #[cfg(test)]
+    pub(crate) fn of_none_inked(out: wgpu::Buffer) -> Self {
+        Self { out, changes: Vec::new() }
+    }
+
     /// The tiles that take a slot — the inked —, each by its place among
     /// those asked: as [`placed`] gives one to no other.
     pub(crate) fn inked(&self) -> impl Iterator<Item = usize> + '_ {
