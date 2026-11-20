@@ -195,9 +195,33 @@ void main() {
 
     test('leaves its batch neither red nor green — but only a batch that '
         'failed', () {
-      expect(ranNowhere(exitCode: 1, noContext: true), isTrue);
-      expect(ranNowhere(exitCode: 1, noContext: false), isFalse);
-      expect(ranNowhere(exitCode: 0, noContext: true), isFalse);
+      for (final kind in [BatchKind.impeller, BatchKind.gpu]) {
+        expect(
+          ranNowhere(kind: kind, exitCode: 1, noContext: true),
+          isTrue,
+          reason: '$kind',
+        );
+        expect(ranNowhere(kind: kind, exitCode: 1, noContext: false), isFalse);
+        expect(ranNowhere(kind: kind, exitCode: 0, noContext: true), isFalse);
+      }
+    });
+
+    test('🚨and only a batch that asked for an engine — in any other the '
+        'words are a test saying them, and its red is a red', () {
+      // 11-20: a pin on affected_tests.dart failed and printed the source,
+      // this constant in it; its crowd batch was told DID NOT RUN and the
+      // run PASSED.
+      for (final kind in [
+        BatchKind.crowd,
+        BatchKind.collector,
+        BatchKind.realtime,
+      ]) {
+        expect(
+          ranNowhere(kind: kind, exitCode: 1, noContext: true),
+          isFalse,
+          reason: '$kind',
+        );
+      }
     });
   });
 

@@ -1164,6 +1164,7 @@ Future<int> _runTests(
             checkout: checkout,
           );
           if (ranNowhere(
+            kind: kind,
             exitCode: result.exitCode,
             noContext: result.noContext,
           )) {
@@ -1654,8 +1655,19 @@ class NoContextWatch {
 /// SwiftShader's Vulkan, so they may have one), and a desk machine that
 /// has none is told the same way. ⚠️If the engine ever words it otherwise
 /// the batch comes back red, never green.
-bool ranNowhere({required int exitCode, required bool noContext}) =>
-    exitCode != 0 && noContext;
+///
+/// 🚨ONLY A BATCH THAT ASKS FOR AN ENGINE ([BatchKind.engineFlags]) can
+/// be refused one. ↩️Any batch was read so till 11-20: a pin on this
+/// tool's source that failed printed the source whole — this constant in
+/// it — and its crowd batch was told DID NOT RUN, its reds neither red nor
+/// green, the run PASSED with exit 0. It happened twice that day (a
+/// lane's first run on its own change, 57 and 37 files), and the wide
+/// check would have read a red tool pin as no red at all.
+bool ranNowhere({
+  required BatchKind kind,
+  required int exitCode,
+  required bool noContext,
+}) => kind.engineFlags.isNotEmpty && exitCode != 0 && noContext;
 
 /// The skip count in `flutter test` output, or null if it says none.
 ///
