@@ -33,7 +33,14 @@ String bundleConfigSource(String toRoot) =>
 /// alone — each with what it leans on. They run as files of their own.
 /// 🧭The census fills it (전 파일을 묶어 정순 · 역순 두 번 + 파일별 대조,
 /// 관제 11-20); a file leaves it when its test stops leaning.
-const Map<String, String> kRunsAlone = {};
+const Map<String, String> kRunsAlone = {
+  'test/ui/text/a_vertical_column_is_one_box_test.dart':
+      "its settle waits for BakedWords' waiting words to drain, and in a "
+      'bundle (census 11-20, after confirm_is_one_verb_test) they never did: '
+      'every settle ran out its 60 s patience — 2 min a test, 37 s the file '
+      'alone. Card a-vertical-column-test-compares-letters-that-never-'
+      'settled.',
+};
 
 /// The test bindings flutter_test starts itself; any other is a file's own.
 const _sharedBindings = {
