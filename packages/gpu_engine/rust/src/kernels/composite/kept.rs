@@ -16,13 +16,26 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::pool::{Cel, Pictures};
 
-use super::{Budget, Composite, MadeOf, Placed, Plan, Step, TILE_BYTES, TileAt, TileSet};
+use super::{Budget, Composite, MadeOf, Named, Placed, Plan, Step, TILE_BYTES, TileAt, TileSet};
 
 /// Tiles to lay as a row: the pages and the tile set on them.
 #[derive(Clone, Copy)]
 pub(crate) struct Tiles<'a> {
     pub(crate) pages: &'a [wgpu::Buffer],
     pub(crate) set: &'a TileSet,
+}
+
+/// A kept picture's tiles as a plan is laid on them ([`Kept::laid`]):
+/// each where it lies as this was taken, and the pages those lie on.
+pub(crate) struct Laid {
+    pages: Vec<wgpu::Buffer>,
+    set: TileSet,
+}
+
+impl Laid {
+    pub(crate) fn as_tiles(&self) -> Tiles<'_> {
+        Tiles { pages: &self.pages, set: &self.set }
+    }
 }
 
 /// A picture kept in the pictures' pool (`pool::Pictures`): its tiles over
@@ -47,9 +60,8 @@ pub(crate) struct Kept {
     pictures: Pictures,
     /// What names the pages its tiles go to first, as a cel's does.
     cel: Cel,
-    /// The pool's pages its tiles are on, as a plan takes them
-    /// (`Pictures::pages_of`): as its tiles were last placed.
-    pages: Vec<wgpu::Buffer>,
+    /// Its tiles, each named by the slot it is held in — what a tile
+    /// lies as since is the pool's to say ([`Kept::laid`]).
     set: TileSet,
     extent: [i32; 4],
     /// The tiles it made, of those it holds — what it weighs
@@ -156,8 +168,8 @@ impl Kept {
         let cel = pictures.cel(engine)?;
         // Dropped where it is not made after all, it lets go the slots it
         // holds by then.
-        let (pictures, pages, own) = (pictures.clone(), Vec::new(), HashMap::new());
-        let mut kept = Self { pictures, cel, pages, set, extent, own };
+        let (pictures, own) = (pictures.clone(), HashMap::new());
+        let mut kept = Self { pictures, cel, set, extent, own };
         // The film's tile a tile is, where it is not made.
         let shared = |(column, row): (i32, i32)| {
             let (film, fresh) = over?;
@@ -179,9 +191,7 @@ impl Kept {
         let held: Vec<TileAt> = theirs.iter().map(|&(_, at)| at).collect();
         kept.pictures.hold(engine, &held)?;
         kept.place(theirs.into_iter());
-        let made = kept.make(engine, composite, plan, &made, budget);
-        kept.pages = kept.pictures.pages_of(kept.places());
-        made.map(|()| kept)
+        kept.make(engine, composite, plan, &made, budget).map(|()| kept)
     }
 
     /// `tiles` — each one `plan` lays something on — made of it and held
@@ -277,6 +287,12 @@ impl Kept {
         self.set.tiles.iter().flatten().copied()
     }
 
+    /// Test seam: its tiles, each named by the slot it is held in.
+    #[cfg(test)]
+    pub(crate) fn named(&self) -> &TileSet {
+        &self.set
+    }
+
     /// `plan` composited again over its tiles `stale` names: each the plan
     /// lays anything on made of it as a new picture's is ([`Self::make`]) —
     /// one made of what it was made of holds the slot it had, and nothing
@@ -306,9 +322,7 @@ impl Kept {
             self.set.unplace(tile);
         }
         self.let_go(emptied.iter().map(|&(_, at)| at).collect());
-        let made = self.make(engine, composite, plan, &laid, budget);
-        self.pages = self.pictures.pages_of(self.places());
-        made
+        self.make(engine, composite, plan, &laid, budget)
     }
 
     /// The bytes of the tiles it made, of those it holds: what keeping it
@@ -327,8 +341,17 @@ impl Kept {
         self.own.len() as u64 * TILE_BYTES
     }
 
-    pub(crate) fn as_tiles(&self) -> Tiles<'_> {
-        Tiles { pages: &self.pages, set: &self.set }
+    /// Its tiles as a plan is laid on them: each where it lies now —
+    /// in its slot, or folded on another page of the pool since a rest
+    /// (`Pictures::rests`) — and the pages those lie on
+    /// ([`Pictures::laid`]). 🚨TAKEN AT EVERY LAYING, and kept by no
+    /// picture: a tile's bytes move while its picture stands, and the
+    /// page a name is on is given back once every tile of it lies
+    /// elsewhere — a pass laid on names would read a page that is the
+    /// tile's no more (`Named`, composite/mod.rs).
+    pub(crate) fn laid(&self) -> Option<Laid> {
+        let (pages, lying) = self.pictures.laid(self.places())?;
+        Some(Laid { pages, set: Named::laid(&self.set, &lying) })
     }
 }
 

@@ -9,7 +9,7 @@ use crate::kernels::blend::mode::{MULTIPLY, NORMAL};
 use crate::kernels::chain::{Chained, Op};
 use crate::kernels::composite::held::HeldChains;
 use crate::kernels::composite::kept::Kept;
-use crate::kernels::composite::kept::tests::kept_bytes;
+use crate::kernels::composite::kept::tests::{kept_bytes, moved, rested_on};
 use crate::kernels::composite::tests::{Rig, contrast, rig, texel};
 use crate::kernels::composite::{
     BufferChain, KeyChain, MadeOf, Over, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet, WHOLE,
@@ -129,7 +129,7 @@ impl Frame {
 
 /// Where `kept` holds each tile of the page, row after row.
 fn slots(kept: &Kept) -> Vec<TileAt> {
-    kept.as_tiles().set.tiles.iter().map(|at| at.expect("the paper lies on every tile")).collect()
+    kept.named().tiles.iter().map(|at| at.expect("the paper lies on every tile")).collect()
 }
 
 /// The slots of `pictures` its pictures hold.
@@ -161,6 +161,26 @@ fn pictures_made_of_the_same_hold_one_tile() {
     assert_eq!(pictures.unowned_bytes(), 0, "each tile's maker holds it");
     assert!(kept_bytes(&first) == one.whole(&pool), "the first, against it made whole");
     assert!(kept_bytes(&second) == other.whole(&pool), "the second, against it made whole");
+}
+
+// A rest folds the tiles a picture holds and moves them off their slots;
+// their names stay (F-610 F1). The next picture made of the same is
+// weighed as no tile, holds every one by the name the first holds it by,
+// and both read as the first did before the rest. (Pages of two here: a
+// page with a slot free is the pool's room, and its tiles fold for none.)
+#[test]
+fn a_picture_made_of_the_same_holds_the_tiles_a_rest_folded_by_their_names() {
+    let (pool, at) = stored(&[tile(1), tile(2), tile(3)]);
+    let frame = Frame::of([at[0], at[1]], at[2]);
+    let pictures = Pictures::sized(2).expect("a pool");
+    let first = frame.kept(&pool, &pictures, true);
+    let (names, read) = (slots(&first), kept_bytes(&first));
+    rested_on(rig().engine, &pictures);
+    assert_eq!(moved(&pictures, &names[..4]), 4, "premise: the paper, the row and its own lie off their slots");
+    assert_eq!(frame.ahead(&pool, &pictures, true), 0, "kept already, wherever its tiles lie");
+    let second = frame.kept(&pool, &pictures, true);
+    assert_eq!(slots(&second), names, "held by the names the first holds them by");
+    assert!(kept_bytes(&first) == read && kept_bytes(&second) == read, "and read as before the rest");
 }
 
 // Weighed before it is made, a picture is the tiles its making runs for —

@@ -89,7 +89,7 @@ fn kernels() -> *const Fold {
 fn handed(pool: &mut Pool, places: &[TileAt], number: u64) -> usize {
     // SAFETY: the kernels are never let go, and `told` is any thread's to
     // call.
-    unsafe { pool.folds_unwaited(rig().engine, kernels(), places, (told, number)) }
+    unsafe { pool.folds_unwaited(rig().engine, kernels(), places, crate::kernels::pool::told_by(told, number)) }
 }
 
 /// Hands over a fold of the tiles named at `places` and waits till it is

@@ -1770,7 +1770,7 @@ fn a_page_made_ahead_is_taken_though_the_pool_s_bytes_moved_since() {
     let number = numbered();
     // SAFETY: the kernels are let go after the fold is told, and `told`
     // is any thread's to call.
-    assert_eq!(unsafe { pool.folds_unwaited(&engine, &fold, &places, (told, number)) }, 2);
+    assert_eq!(unsafe { pool.folds_unwaited(&engine, &fold, &places, crate::kernels::pool::told_by(told, number)) }, 2);
     assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
     assert_eq!(pool.settles_unwaited(&engine), 2);
     assert_ne!(pool.bytes(), asked_at, "premise: a page of folded tiles taken since");

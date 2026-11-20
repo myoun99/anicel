@@ -1572,7 +1572,9 @@ pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, mo
 
 /// The hand rests: lets go of every buffer `engine`'s composes ran in and
 /// kept for the next ([`super::Spares`]), and keeps none that comes home
-/// from then till a compose takes one again (`Spares::rest`) — on the
+/// from then till a compose takes one again (`Spares::rest`); and folds
+/// the tiles of the pictures it keeps, till a picture is made again
+/// (`Pictures::rests`) — on the
 /// engine's thread, in turn behind what was handed to it before
 /// ([`Engine::posted`]), its caller waiting for none of it. ⛔Not ahead of
 /// that turn: a compose handed over and not yet run takes a spare as it
@@ -1594,7 +1596,9 @@ pub unsafe extern "C" fn gpu_engine_pictures_rest(engine: *const Engine) {
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
         // SAFETY: live till this has run (the function's contract).
-        unsafe { &*handed.taken() }.spares.rest();
+        let engine = unsafe { &*handed.taken() };
+        engine.spares.rest();
+        engine.pictures.rests(engine);
         Some(())
     });
 }

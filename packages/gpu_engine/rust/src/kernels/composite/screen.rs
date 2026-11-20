@@ -183,7 +183,10 @@ impl Screen {
         let Some(map) = ResampleMap::new(affine(camera.inverse), self.floor, camera.mode, 1, 1) else {
             return fail("the camera lands nothing on the screen");
         };
+        let Some(laid) = canvas.laid() else {
+            return fail("a screen's canvas is kept in no pool");
+        };
         let steps = [row(map)];
-        composite.show(engine, &plan(canvas.as_tiles(), &steps), target, rect, budget)
+        composite.show(engine, &plan(laid.as_tiles(), &steps), target, rect, budget)
     }
 }

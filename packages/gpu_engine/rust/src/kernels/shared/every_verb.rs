@@ -227,9 +227,15 @@ fn on_the_engines_thread(body: &str) -> bool {
     // (`gpu_engine_close`); `lands_unwaited` hands its put over by
     // `Engine::posted`, its books the caller's (`Pool::lands_unwaited`),
     // and so a fold and its settle hand over theirs
-    // (`Pool::folds_unwaited`, `Pool::settles_unwaited`).
-    const DOORS: [&str; 6] =
-        [".on_thread(", ".run_lent(", ".posted(", ".lands_unwaited(", ".folds_unwaited(", ".settles_unwaited("];
+    // (`Pool::folds_next_unwaited`, `Pool::settles_unwaited`).
+    const DOORS: [&str; 6] = [
+        ".on_thread(",
+        ".run_lent(",
+        ".posted(",
+        ".lands_unwaited(",
+        ".folds_next_unwaited(",
+        ".settles_unwaited(",
+    ];
     DOORS.iter().any(|door| body.contains(door))
 }
 
