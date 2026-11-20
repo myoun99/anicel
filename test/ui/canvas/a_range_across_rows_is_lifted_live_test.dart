@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show debugWaitsHere;
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -49,6 +50,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import '../../helpers/wait_window.dart' show watchTheBar, windowBehind;
+import '../../helpers/poll_until.dart' show waitPatience;
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/surface_rgba_in_place.dart';
@@ -361,6 +363,21 @@ void main() {
       reason: '⛔premise: the box at rest cut every cel it frames',
     );
 
+    /// [untilCutAhead] drawing no frame on the way: real time for what is
+    /// told, the pumped clock for the turns ([turnThePumpedClock]).
+    Future<void> untilCutAheadUnframed(WidgetTester tester, int runs) async {
+      final deadline = DateTime.now().add(waitPatience);
+      while (debugCutsAheadThrough <= runs) {
+        if (!DateTime.now().isBefore(deadline)) {
+          fail('⛔premise: the box at rest cut every cel it frames');
+        }
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        turnThePumpedClock(tester);
+      }
+    }
+
     /// Ctrl+T — the box at rest — and its cuts ([untilCutAhead]).
     Future<CanvasSelectionCommands> restTheBox(WidgetTester tester) async {
       final runs = debugCutsAheadThrough;
@@ -407,10 +424,11 @@ void main() {
     /// the GPU on the UI's thread, and for all the GPU had queued with it.
     /// So the turns alone ask; what is told comes on the machine's clock.
     ///
-    /// ⚠️Not counted by the UI thread's waits (`debugWaitsHere`): with the
-    /// box at rest every frame of this test waits once, the run's or not
-    /// (공통 2026-11-20 — not the doors', the screen's read-back's nor the
-    /// ink bounds'), so the count says nothing of the doors.
+    /// ⚠️The UI thread's waits (`debugWaitsHere`) are counted with no frame
+    /// drawn ([untilCutAheadUnframed]): with the box at rest every frame of
+    /// this test waits once, the run's or not (공통 2026-11-20 — not the
+    /// doors', the screen's read-back's nor the ink bounds'), so a count
+    /// across frames says nothing of the doors.
     testWidgets('🎯a box at rest asks its cuts of the engine and is told — '
         'its turns wait for none of them', (tester) async {
       await pump(tester);
@@ -437,11 +455,17 @@ void main() {
         reason: 'a cut answered on the pumped clock — waited for, not told',
       );
 
-      await untilCutAhead(tester, runs);
+      final waits = debugWaitsHere;
+      await untilCutAheadUnframed(tester, runs);
       expect(
         (debugSelectionLiftsBuilt - lifts, debugFloatSurfacesMade - floats),
         (2, 2),
         reason: 'LIVENESS: both cels cut and laid ahead, once told',
+      );
+      expect(
+        debugWaitsHere - waits,
+        0,
+        reason: 'a step of the run waited for the GPU on the UI thread',
       );
     });
 

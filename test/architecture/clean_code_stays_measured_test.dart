@@ -1182,7 +1182,19 @@ void main() {
   /// gone. ⛔The fit did not ride beside the offset down the resize's
   /// verbs: one `CanvasPicturePlace` says where the picture goes, so a fit
   /// cannot carry an offset.
-  const wideSignatures = 456;
+  ///
+  /// ⚠️456 → 457 on 2026-11-20, one named as the rule above asks (card
+  /// opening-a-transform-box-holds-the-ui-over-half-a-second ④ —
+  /// 브러시/렌더링's told doors, b7aba1ce1): `_CanvasPanelSelection._cutOneAhead` (five — the
+  /// coordinator, the run, the region, the cel and its lift's name) is one
+  /// cel's cut of a box at rest by the told doors, apart from the run's
+  /// walk over the cels (`_cutAheadOf`), as the press's `_cut` (six) is one
+  /// cel's cut by the waited ones. 🔬`clean_code_diff` against master
+  /// (`0c3159396`) names that one added and nothing gone. ⛔Not read off
+  /// `_CutsAhead` to fit: past a told answer its run and region are
+  /// whichever run stands then — the run handed in is how the cut knows
+  /// its answer is still its own.
+  const wideSignatures = 457;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
