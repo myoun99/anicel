@@ -74,7 +74,21 @@ pub(crate) struct Kept {
     /// ⚠️Counted, not asked of the set each time a tile is let go: a pen's
     /// stroke makes a tile or two again a hundred times a second, and each
     /// would walk every tile of the canvas for it.
-    own: HashMap<TileAt, usize>,
+    own: HashMap<TileAt, Made>,
+    /// What its own tiles weigh together ([`Made::bytes`]), summed as
+    /// they come and go — counted, as they are (⚠️ above).
+    bytes: u64,
+}
+
+/// A tile a picture made, of those it holds ([`Kept::own`]).
+struct Made {
+    /// How many of the picture's tiles it is.
+    tiles: usize,
+    /// What it weighs, as it was last weighed: a tile's bytes as it is
+    /// made, in a fresh slot of a page made, and what the pool keeps made
+    /// for it since the last rest's folds were through
+    /// ([`Kept::weighed_again`]).
+    bytes: u64,
 }
 
 /// A picture another is laid over, and which of its tiles are fresh on it:
@@ -169,7 +183,7 @@ impl Kept {
         // Dropped where it is not made after all, it lets go the slots it
         // holds by then.
         let (pictures, own) = (pictures.clone(), HashMap::new());
-        let mut kept = Self { pictures, cel, set, extent, own };
+        let mut kept = Self { pictures, cel, set, extent, own, bytes: 0 };
         // The film's tile a tile is, where it is not made.
         let shared = |(column, row): (i32, i32)| {
             let (film, fresh) = over?;
@@ -235,7 +249,8 @@ impl Kept {
             }
             // Its own from here on: none of its tiles yet, each one's as
             // it is placed.
-            self.own.extend(places.iter().map(|&at| (at, 0)));
+            self.own.extend(places.iter().map(|&at| (at, Made { tiles: 0, bytes: TILE_BYTES })));
+            self.bytes += places.len() as u64 * TILE_BYTES;
             self.place(these.into_iter().zip(places.iter().copied()));
             let told = some.iter().zip(&places);
             self.pictures.kept_as(told.filter_map(|(&(tile, _), &at)| Some((made_of[tile].clone()?, at))));
@@ -259,8 +274,8 @@ impl Kept {
         for ((column, row), at) in placed {
             had.extend(self.set.at(column, row));
             self.set.place((column, row), at);
-            if let Some(tiles) = self.own.get_mut(&at) {
-                *tiles += 1;
+            if let Some(made) = self.own.get_mut(&at) {
+                made.tiles += 1;
             }
         }
         self.let_go(had);
@@ -270,13 +285,18 @@ impl Kept {
     /// more: one it made is its own no more once none of its tiles is it
     /// ([`Pictures::release`]).
     fn let_go(&mut self, had: Vec<TileAt>) {
-        let own = &mut self.own;
+        let (own, bytes) = (&mut self.own, &mut self.bytes);
         let last_of_its_own = |at: &TileAt| {
-            let Some(tiles) = own.get_mut(at) else {
+            let Some(made) = own.get_mut(at) else {
                 return false;
             };
-            *tiles -= 1;
-            *tiles == 0 && own.remove(at).is_some()
+            made.tiles -= 1;
+            if made.tiles > 0 {
+                return false;
+            }
+            // Weighed no more, by what it was weighed at.
+            *bytes -= made.bytes;
+            own.remove(at).is_some()
         };
         let left: Vec<TileAt> = had.iter().copied().filter(last_of_its_own).collect();
         self.pictures.release(had.into_iter(), left.into_iter());
@@ -326,7 +346,13 @@ impl Kept {
     }
 
     /// The bytes of the tiles it made, of those it holds: what keeping it
-    /// costs past what the other pictures cost.
+    /// costs past what the other pictures cost — each as it was last
+    /// weighed ([`Made::bytes`]).
+    ///
+    /// ↩️A tile's bytes whole for each till 2026-11-21 (F-610): its tiles
+    /// folded at a rest and the pages of their slots given back, a picture
+    /// weighed what it took as it was made still, several times what the
+    /// GPU kept for it (pool/mod.rs, `Weighs`).
     ///
     /// ↩️Every tile it held till 2026-11-18 — one shared with the film it
     /// was laid over ([`Kept::made_over`]) counted in both, 「as it did
@@ -338,7 +364,19 @@ impl Kept {
     /// let go while others hold it is weighed by none of them, and counted
     /// beside them (`Pictures::unowned_bytes`).
     pub(crate) fn bytes(&self) -> u64 {
-        self.own.len() as u64 * TILE_BYTES
+        self.bytes
+    }
+
+    /// Its own tiles weighed again, each by what the pool keeps made for
+    /// it now ([`Pictures::bytes_of`]): a rest's folds have moved them
+    /// (pool/mod.rs, `Weighs`).
+    pub(crate) fn weighed_again(&mut self) {
+        let made: Vec<TileAt> = self.own.keys().copied().collect();
+        let weighed = self.pictures.bytes_of(&made);
+        for (at, bytes) in made.iter().zip(weighed) {
+            self.own.get_mut(at).expect("its own, named above").bytes = bytes;
+        }
+        self.bytes = self.own.values().map(|made| made.bytes).sum();
     }
 
     /// Its tiles as a plan is laid on them: each where it lies now —

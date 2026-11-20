@@ -333,8 +333,9 @@ class GpuEngine {
   /// weighs. Screens composed of the same hold one tile for it, weighed by
   /// the screen that made it ([GpuScreen.bytes]); that one let go while
   /// others hold the tile, none of them weighs it — these, till the last
-  /// of them lets it go. What a budget and the memory census count beside
-  /// the screens' own bytes; read off no lock, on any thread.
+  /// of them lets it go, each as it lies ([GpuScreen.bytes]). What a
+  /// budget and the memory census count beside the screens' own bytes;
+  /// read off no lock, on any thread.
   int get unownedPictureBytes => rust.picturesUnownedBytes(_engine);
 
   /// Gives back what the engine keeps for pictures nobody holds till it is
@@ -3380,6 +3381,15 @@ class GpuScreen implements _OfAnEngine {
   /// and the memory census weigh it by. As of the last of its verbs the
   /// engine has run: one handed over is counted by the time its done is
   /// told ([compose]).
+  ///
+  /// EACH TILE AS IT LIES (F-610, 2026-11-21): folded at a rest of the
+  /// engine's ([GpuEngine.restsAfter]), a tile weighs what the engine
+  /// keeps made for it from there on, and the screen is told so by the
+  /// engine once that rest's folds are through — with no verb of its own:
+  /// a playback's picture nobody composes again reads lighter after the
+  /// rest. ↩️A tile's bytes whole for each till then, whatever it lay as:
+  /// the memory tab's 「프레임 이미지」 row and the playback's line read
+  /// several times what the GPU kept.
   ///
   /// The tiles it MADE, of those it holds (F-610, 유저 2026-11-18 「같은
   /// 타일은 한 벌만」): a tile another screen made of the same input — a

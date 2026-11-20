@@ -58,9 +58,9 @@ pub(crate) mod folded_tests;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
 use crate::device::{Engine, Sent, let_go};
 use crate::fail;
@@ -1301,6 +1301,27 @@ struct Shelf {
     /// How many rests' folds are under way: each from its rest till a
     /// step of it hands no batch over ([`Pictures::folds_on`]).
     folding: AtomicU64,
+    /// What weighs itself by the pool's tiles, each till it is dropped
+    /// ([`Pictures::weighed_by`]).
+    weighing: Mutex<Vec<Weak<dyn Weighs>>>,
+}
+
+/// What weighs itself by the pictures' tiles ([`Pictures::bytes_of`]) and
+/// tells the bytes where the budgets read them: told to weigh again once
+/// a rest's folds are through ([`Pictures::rests`]) — a screen
+/// (composite/abi.rs, `ScreenAndBytes`).
+///
+/// A TILE WEIGHS WHAT IT KEEPS MADE (F-610, 2026-11-21): a picture's
+/// tiles are folded at a rest and the pages of their slots given back,
+/// and each weighed a tile's bytes whole still — the memory tab's
+/// 「프레임 이미지」 row and the playback's budget read what the GPU held
+/// no more (🔬F1's landing, the main PC: the GPU's bytes in use fell
+/// 1,382 → 742 MiB at a rest on a copy of the user's line art, the row
+/// as it was).
+pub(crate) trait Weighs: Send + Sync {
+    /// Weighs its tiles again, each as the pool keeps it now, and tells
+    /// what they come to. On the engine's thread.
+    fn weighs_again(&self);
 }
 
 /// What the pictures' pool keeps: its pages, and which of the tiles on
@@ -1337,7 +1358,42 @@ struct Told {
     /// The tiles their maker let go while another picture holds them:
     /// weighed by no picture (kept.rs, `Kept::bytes` — a picture weighs
     /// the tiles it made), and kept all the same.
-    unowned: HashSet<TileAt>,
+    unowned: Unowned,
+}
+
+/// The tiles no picture weighs ([`Told::unowned`]), each with the bytes
+/// it was last weighed at ([`Pool::bytes_of`]), and those summed as the
+/// tiles come and go: a release reads the sum and walks no tile — a
+/// pen's stroke lets a tile or two go a hundred times a second.
+#[derive(Default)]
+struct Unowned {
+    tiles: HashMap<TileAt, u64>,
+    bytes: u64,
+}
+
+impl Unowned {
+    /// The tile at `at` is one of them from here on, weighing `bytes`.
+    fn put(&mut self, at: TileAt, bytes: u64) {
+        self.take(at);
+        self.tiles.insert(at, bytes);
+        self.bytes += bytes;
+    }
+
+    /// The tile at `at` is none of them.
+    fn take(&mut self, at: TileAt) {
+        if let Some(had) = self.tiles.remove(&at) {
+            self.bytes -= had;
+        }
+    }
+
+    /// Each weighed again, as `pool` keeps it now.
+    fn weighed_again(&mut self, pool: &Pool) {
+        self.bytes = 0;
+        for (&at, bytes) in &mut self.tiles {
+            *bytes = pool.bytes_of(at);
+            self.bytes += *bytes;
+        }
+    }
 }
 
 impl Told {
@@ -1346,7 +1402,7 @@ impl Told {
         if let Some(of) = self.of.remove(&at) {
             self.made.remove(&of);
         }
-        self.unowned.remove(&at);
+        self.unowned.take(at);
     }
 }
 
@@ -1517,14 +1573,62 @@ impl Pictures {
                 told.forget(at);
             }
         }
-        told.unowned.extend(left.filter(|&at| pool.holds(at) > 0));
-        self.0.unowned.store(told.unowned.len() as u64 * TILE_BYTES, Ordering::Relaxed);
+        for at in left.filter(|&at| pool.holds(at) > 0) {
+            told.unowned.put(at, pool.bytes_of(at));
+        }
+        self.0.unowned.store(told.unowned.bytes, Ordering::Relaxed);
+    }
+
+    /// What each of the tiles named at `places`, held, weighs as the pool
+    /// keeps it now ([`Pool::bytes_of`]), in their order: what a picture
+    /// weighs its own by (kept.rs, `Kept::weighed_again`). Nothing each
+    /// before any picture was kept.
+    pub(crate) fn bytes_of(&self, places: &[TileAt]) -> Vec<u64> {
+        let kept = self.kept();
+        let of = |&at: &TileAt| kept.pool.as_ref().map_or(0, |pool| pool.bytes_of(at));
+        places.iter().map(of).collect()
+    }
+
+    /// `picture` is told to weigh again whenever a rest's folds are
+    /// through ([`Self::weighs_again`]), till it is dropped.
+    pub(crate) fn weighed_by(&self, picture: Weak<dyn Weighs>) {
+        let mut weighing = self.0.weighing.lock().unwrap_or_else(PoisonError::into_inner);
+        // Those dropped since go where the list would grow for one more:
+        // a playback's pictures come and go by the hundred between two
+        // rests.
+        if weighing.len() == weighing.capacity() {
+            weighing.retain(|picture| picture.strong_count() > 0);
+        }
+        weighing.push(picture);
+    }
+
+    /// Every tile weighed again as the pool keeps it now: those no
+    /// picture weighs, here, and each picture told to weigh its own
+    /// ([`Weighs`]). On the engine's thread, the books let go before a
+    /// picture is told — it asks them itself ([`Self::bytes_of`]).
+    fn weighs_again(&self) {
+        {
+            let mut kept = self.kept();
+            let Books { pool: Some(pool), told } = &mut *kept else {
+                return;
+            };
+            told.unowned.weighed_again(pool);
+            self.0.unowned.store(told.unowned.bytes, Ordering::Relaxed);
+        }
+        let weighing: Vec<Arc<dyn Weighs>> = {
+            let weighing = self.0.weighing.lock().unwrap_or_else(PoisonError::into_inner);
+            weighing.iter().filter_map(Weak::upgrade).collect()
+        };
+        for picture in weighing {
+            picture.weighs_again();
+        }
     }
 
     /// The bytes of the tiles pictures hold that none of them weighs — their
-    /// maker gone ([`Told::unowned`]) —, as the last release left them:
-    /// what the budgets and the census weigh beside each picture's own
-    /// (`gpu_engine_pictures_unowned_bytes`). ⚠️Read off no book: the
+    /// maker gone ([`Told::unowned`]) —, each as it was last weighed
+    /// ([`Pool::bytes_of`]), as the last release and the last rest left
+    /// them: what the budgets and the census weigh beside each picture's
+    /// own (`gpu_engine_pictures_unowned_bytes`). ⚠️Read off no book: the
     /// thread a frame is built on asks it, and a book may be held while a
     /// page is made ([`Self::with`]).
     pub(crate) fn unowned_bytes(&self) -> u64 {
@@ -1656,7 +1760,19 @@ impl Pictures {
             let asked = Arc::new(AtomicU8::new(FoldAsk::ASKING));
             if self.folded_on(engine, fold, turn, &asked) == 0 {
                 // No batch is out, and none tells: this rest's folds
-                // are through.
+                // are through, and what they moved is weighed as it
+                // lies ([`Weighs`]) — before the folds read as
+                // through, so what waits for them reads the weights
+                // told.
+                //
+                // 🔢Not where a hand at work ended them (브러시/렌더링
+                // 2026-11-21, said on F-610; no rule of the user's): the
+                // walk is every picture's own tiles on this thread, where
+                // the dab of the stroke that ended them waits — and the
+                // next rest's folds, through, weigh all the same.
+                if self.0.turn.load(Ordering::Relaxed) == turn {
+                    self.weighs_again();
+                }
                 self.0.folding.fetch_sub(1, Ordering::Relaxed);
                 return;
             }
@@ -1746,6 +1862,32 @@ impl Pictures {
     #[cfg(test)]
     pub(crate) fn pages(&self) -> Vec<wgpu::Buffer> {
         self.kept().pool.as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
+    }
+
+    /// Test seam: the bytes the pool keeps made for the tiles pictures
+    /// hold — its pages less what is idle on them ([`Pool::bytes`],
+    /// [`Pool::idle_bytes`]): what the pictures' weights come to, with the
+    /// tiles none of them weighs.
+    #[cfg(test)]
+    pub(crate) fn held_bytes(&self) -> u64 {
+        self.kept().pool.as_ref().map_or(0, |pool| pool.bytes() - pool.idle_bytes())
+    }
+
+    /// Test seam: pages of `slots` tiles for these pictures, none kept
+    /// yet — an engine's own, for a test to fill a page with a picture of
+    /// a few tiles.
+    #[cfg(test)]
+    pub(crate) fn paged_by(&self, slots: usize) {
+        let mut kept = self.kept();
+        assert!(kept.pool.is_none(), "a picture is kept already");
+        kept.pool = Pool::sized(slots, MOST_NAMED, u64::MAX).map(Self::unbounded);
+    }
+
+    /// Test seam: how many are told to weigh again, those dropped and
+    /// not yet struck off among them ([`Self::weighed_by`]).
+    #[cfg(test)]
+    pub(crate) fn told_to_weigh(&self) -> usize {
+        self.0.weighing.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
     /// Gives back the pages no picture is on, the last first — the page made

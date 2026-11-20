@@ -17,7 +17,7 @@
 mod tests;
 
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use crate::device::{Engine, Sent, let_go, let_go_unwaited, posted_of};
 use crate::fail;
@@ -29,7 +29,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::kernels::pool::{Lying, Pool, Stamps, Taken};
+use crate::kernels::pool::{Lying, Pool, Stamps, Taken, Weighs};
 use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
@@ -1387,12 +1387,19 @@ pub unsafe extern "C" fn gpu_engine_screen_new(
     engine: *const Engine,
     extent: *const i32,
     floor: f64,
-) -> *mut ScreenAndBytes {
+) -> *mut Arc<ScreenAndBytes> {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     // SAFETY: see the function's contract.
     let extent = unsafe { *extent.cast::<[i32; 4]>() };
-    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| engine.hands(ScreenAndBytes::new(screen)))
+    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| {
+        let screen = Arc::new(ScreenAndBytes::new(screen));
+        // Its canvas is kept in the engine's pictures (`Kept::made`),
+        // whose rest tells it to weigh again ([`Weighs`]).
+        let weighs: Weak<ScreenAndBytes> = Arc::downgrade(&screen);
+        engine.pictures.weighed_by(weighs);
+        engine.hands(screen)
+    })
 }
 
 /// Lets go of `screen` on the engine's thread, its caller waiting for none
@@ -1408,7 +1415,7 @@ pub unsafe extern "C" fn gpu_engine_screen_new(
 /// # Safety
 /// `screen` came from `gpu_engine_screen_new`, and is let go of once.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut ScreenAndBytes) {
+pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut Arc<ScreenAndBytes>) {
     // SAFETY: see the function's contract.
     if let Some(kept) = unsafe { screen.as_ref() } {
         kept.counted_off();
@@ -1419,12 +1426,13 @@ pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut ScreenAndBytes) {
 
 /// The bytes `screen` keeps — its canvas's tiles: what the budgets and
 /// the memory census weigh it by, as its last body handed
-/// over left them ([`ScreenAndBytes`]).
+/// over left them, and as the last rest's folds, through, left them
+/// since ([`ScreenAndBytes`]).
 ///
 /// # Safety
 /// `screen` came from `gpu_engine_screen_new`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const ScreenAndBytes) -> u64 {
+pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const Arc<ScreenAndBytes>) -> u64 {
     // SAFETY: see the function's contract.
     unsafe { &*screen }.bytes.load(Ordering::Relaxed)
 }
@@ -1435,6 +1443,11 @@ pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const ScreenAndBytes) 
 /// change: what the budgets and the census read on their own thread
 /// ([`gpu_engine_screen_bytes`]) while such a body is under way, and its
 /// part of [`KEPT_BYTES`] till its free.
+///
+/// Handed out in an `Arc`: the pictures' pool keeps a hand on it too,
+/// weak, to tell it to weigh again once a rest's folds are through
+/// ([`Weighs`]) — a picture no body comes to after the rest, a
+/// playback's, would tell what it weighed before the folds for good.
 pub(crate) struct ScreenAndBytes {
     screen: Mutex<Screen>,
     bytes: AtomicU64,
@@ -1486,6 +1499,12 @@ impl ScreenAndBytes {
         let mut counted = self.counted.lock().unwrap_or_else(PoisonError::into_inner);
         *counted = false;
         KEPT_BYTES.fetch_sub(self.bytes.load(Ordering::Relaxed), Ordering::Relaxed);
+    }
+}
+
+impl Weighs for ScreenAndBytes {
+    fn weighs_again(&self) {
+        self.with(Screen::weighed_again);
     }
 }
 
@@ -1623,7 +1642,7 @@ pub unsafe extern "C" fn gpu_engine_pictures_rest(engine: *const Engine) {
 /// this in turn.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_screen_compose(
-    screen: *const ScreenAndBytes,
+    screen: *const Arc<ScreenAndBytes>,
     composite: *const Composite,
     engine: *const Engine,
     pool: *const Pool,
@@ -1655,8 +1674,8 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
 /// holds four words.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_screen_compose_over(
-    screen: *const ScreenAndBytes,
-    film: *const ScreenAndBytes,
+    screen: *const Arc<ScreenAndBytes>,
+    film: *const Arc<ScreenAndBytes>,
     composite: *const Composite,
     engine: *const Engine,
     pool: *const Pool,
@@ -1698,7 +1717,7 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_screen_show(
-    screen: *const ScreenAndBytes,
+    screen: *const Arc<ScreenAndBytes>,
     composite: *const Composite,
     engine: *const Engine,
     inverse: *const f64,

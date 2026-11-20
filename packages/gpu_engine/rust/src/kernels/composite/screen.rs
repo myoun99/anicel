@@ -142,6 +142,14 @@ impl Screen {
         self.canvas.as_ref().map_or(0, Kept::bytes)
     }
 
+    /// Its canvas's tiles weighed again, as the pool keeps them now
+    /// ([`Kept::weighed_again`]).
+    pub(crate) fn weighed_again(&mut self) {
+        if let Some(canvas) = &mut self.canvas {
+            canvas.weighed_again();
+        }
+    }
+
     /// The kept canvas through `camera` onto the pixels `rect` of `target`
     /// — [left, top, right, bottom) —, the rest of it left as it was;
     /// submits the work and waits for none of it ([`Composite::show`]), and

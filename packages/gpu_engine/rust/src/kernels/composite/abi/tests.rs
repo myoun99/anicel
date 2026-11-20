@@ -7,7 +7,9 @@
 use super::*;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
 use crate::kernels::composite::tests::{mix, pixel_at, rig, surface, surface_on};
+use crate::kernels::composite::kept::tests::A_REST_S_FOLDS;
 use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
+use crate::kernels::fold::Fold;
 use crate::kernels::mask::tests::masked;
 use crate::kernels::pool::folded_tests::{self, scrubbed, settled};
 use crate::kernels::pool::{Pool, gpu_engine_pool_release, gpu_engine_pool_store};
@@ -952,7 +954,7 @@ impl Shown<'_> {
 
     /// # Safety
     /// `screen` is live, made on the engine.
-    unsafe fn by_the_abi(&self, screen: *const ScreenAndBytes) -> Vec<u8> {
+    unsafe fn by_the_abi(&self, screen: *const Arc<ScreenAndBytes>) -> Vec<u8> {
         let (texture, rect) = (self.surface(), self.rect());
         // SAFETY: every pointer is live; each array holds what its call reads.
         unsafe {
@@ -1017,6 +1019,51 @@ fn screens_composed_of_the_same_hold_one_tile_weighed_once() {
         done_here(&engine).expect("let go");
         assert_eq!(gpu_engine_pictures_unowned_bytes(&engine), 0, "nobody holds them");
         gpu_engine_plan_free(plan);
+    }
+}
+
+// A screen no body comes to after a rest weighs its picture as it lies
+// all the same (F-610): of two composed of the same, the one that made
+// the tiles tells what the pool keeps made for them once the rest's folds
+// are through — by the C ABI alone, as the app's budgets read it —, and
+// let go, they are nobody's own as they lie. On an engine of its own, its
+// pictures on pages of two tiles: the picture fills a page, and a rest
+// folds every tile of it.
+#[test]
+fn a_screen_is_weighed_as_its_tiles_lie_once_a_rest_s_folds_are_through() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    engine.pictures.paged_by(2);
+    let composite = Composite::new(&engine).expect("its executor");
+    let mut pool = Pool::new(&engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let (a, b) = (folded_tests::tile(21, 1), folded_tests::tile(22, 2));
+    let at = pool.store(&engine, cel, &[&a, &b]).expect("store");
+    engine.on_thread(|| Fold::new(&engine)).expect("the fold's kernels");
+    // SAFETY: the engine is live through every call, and what is made on
+    // it is let go of once.
+    unsafe {
+        let (plan, extent) = side_by_side(&engine, &at);
+        let screens = [(); 2].map(|()| gpu_engine_screen_new(&engine, extent.as_ptr(), 1.0));
+        for screen in screens {
+            gpu_engine_screen_compose(screen, &composite, &engine, &pool, plan, extent.as_ptr());
+        }
+        done_here(&engine).expect("composed");
+        let weighed = || screens.map(|screen| gpu_engine_screen_bytes(screen));
+        assert_eq!(weighed(), [2 * TILE_BYTES, 0], "the premise: as they were made");
+        gpu_engine_pictures_rest(&engine);
+        done_here(&engine).expect("the rest is asked");
+        assert!(engine.pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
+        let folded = engine.pictures.held_bytes();
+        assert!(folded < TILE_BYTES, "the premise: both fold small, their page away — {folded}");
+        assert_eq!(weighed(), [folded, 0], "told by the rest, no body come to it");
+        gpu_engine_screen_free(screens[0]);
+        done_here(&engine).expect("let go");
+        let nobody_s = gpu_engine_pictures_unowned_bytes(&engine);
+        assert_eq!((gpu_engine_screen_bytes(screens[1]), nobody_s), (0, folded), "nobody's own, as they lie");
+        gpu_engine_screen_free(screens[1]);
+        gpu_engine_plan_free(plan);
+        done_here(&engine).expect("let go");
     }
 }
 

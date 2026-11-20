@@ -658,6 +658,40 @@ fn the_idle_bytes_are_the_free_slots_and_the_granules_no_tile_lies_in() {
     assert!(pool.stamps().of(folded_at(1, 0)).is_some());
 }
 
+// A held tile weighs what the pool keeps made for it: its slot's bytes
+// as it is; its slot's and its granules' where it lies folded while its
+// page stands for another tile; its granules' alone once that page is
+// away — a tile whole a tile's bytes where it lies, and twice that while
+// its page stands —; nothing once it is let go, and nothing for a name
+// of no slot. And through each of these every held tile's bytes together
+// are the pages made less what is idle on them.
+#[test]
+fn a_held_tile_weighs_its_slot_while_its_page_stands_and_where_it_lies_folded() {
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let (a, b, c, whole) = (tile(1, 1), tile(2, 2), tile(3, 16), tile(4, 64));
+    let places = stored(&mut pool, &[&a, &b, &c, &whole]);
+    let granules = |count: u16| u64::from(count) * GRANULE_BYTES;
+    let weighed = |pool: &Pool, held: &[TileAt]| {
+        let bytes: Vec<u64> = held.iter().map(|&at| pool.bytes_of(at)).collect();
+        assert_eq!(bytes.iter().sum::<u64>(), pool.bytes() - pool.idle_bytes(), "the pages made, less the idle");
+        bytes
+    };
+    assert_eq!(weighed(&pool, &places), [TILE_BYTES; 4], "each as it is, in its slot");
+    assert_eq!(settled(&mut pool, &places[..1]), 1);
+    let both = TILE_BYTES + granules(ONE);
+    assert_eq!(weighed(&pool, &places), [both, TILE_BYTES, TILE_BYTES, TILE_BYTES], "its page stands for the other");
+    assert_eq!(settled(&mut pool, &places[1..2]), 1);
+    let folded = [granules(ONE), granules(TWO)];
+    assert_eq!(weighed(&pool, &places), [folded[0], folded[1], TILE_BYTES, TILE_BYTES], "their page away");
+    assert_eq!(settled(&mut pool, &places[3..]), 1);
+    assert_eq!(weighed(&pool, &places)[2..], [TILE_BYTES, 2 * TILE_BYTES], "a tile whole, its page standing");
+    assert_eq!(settled(&mut pool, &places[2..3]), 1);
+    assert_eq!(weighed(&pool, &places)[2..], [granules(SIXTEEN), TILE_BYTES], "and its page away");
+    pool.release(places[0]).expect("release");
+    assert_eq!(weighed(&pool, &places[1..]).len(), 3);
+    assert_eq!((pool.bytes_of(places[0]), pool.bytes_of(at(9, 0))), (0, 0), "one let go, and a name of no slot");
+}
+
 // What is taken of where the tiles lie says a number of its own after
 // every move of a tile — one folded and settled, one let go where it lay
 // folded — and the same where none moved: a tile stored, held, let go as it

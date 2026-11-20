@@ -119,6 +119,12 @@ impl Arena {
     pub(super) fn held_bytes(&self) -> u64 {
         self.held.values().map(|&granules| u64::from(granules) * GRANULE_BYTES).sum()
     }
+
+    /// The bytes of the granules the tile lying from `first` lies in —
+    /// none where no tile lies from there.
+    fn bytes_from(&self, first: u32) -> u64 {
+        self.held.get(&first).map_or(0, |&granules| u64::from(granules) * GRANULE_BYTES)
+    }
 }
 
 /// The granules of a tile's bytes as it is.
@@ -389,6 +395,31 @@ impl Pool {
     pub(crate) fn lies(&self, at: TileAt) -> TileAt {
         let lies = self.slots_at(at).and_then(|slots| slots.lying.get(usize::from(at.slot))).copied();
         lies.and_then(TileAt::of_word).unwrap_or(at)
+    }
+
+    /// The bytes the tile named `at`, held, keeps made: its slot's while
+    /// the page it is named on stands — away, a slot is bytes no more
+    /// ([`Slots::away`]) —, and those of the granules it lies in on a
+    /// page of folded tiles. One that lies folded while its page stands
+    /// keeps both, till the page goes
+    /// ([`Pool::gives_back_where_no_tile_lies`]). Nothing for a name of no
+    /// slot.
+    ///
+    /// EVERY HELD TILE'S, TOGETHER, ARE THE PAGES MADE LESS WHAT IS IDLE
+    /// ON THEM ([`Pool::bytes`], [`Pool::idle_bytes`]): what the pictures
+    /// weigh by (F-610, 2026-11-21 — `Pictures::bytes_of`), so the weights
+    /// and the idle bytes come to what the GPU holds for them.
+    pub(crate) fn bytes_of(&self, at: TileAt) -> u64 {
+        let Some(slots) = self.slots_at(at) else {
+            return 0;
+        };
+        let in_its_slot = if slots.away { 0 } else { TILE_BYTES };
+        let lies = self.lies(at);
+        let folded = match self.pages.get(usize::from(lies.page)) {
+            Some(Some(Page::Folded(arena))) if lies != at => arena.bytes_from(lies_from(lies)),
+            _ => 0,
+        };
+        in_its_slot + folded
     }
 
     /// Where each tile it holds lies now ([`Lying`]): taken with the

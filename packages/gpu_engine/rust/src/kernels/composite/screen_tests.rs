@@ -13,12 +13,12 @@ use crate::kernels::composite::kept::{Film, Kept, Tiles, plan};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on, texel};
 use crate::kernels::composite::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::kernels::fold::{Fold, SUBMITS_NOTHING};
-use crate::kernels::pool::Pictures;
+use crate::kernels::pool::{Pictures, Weighs};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{a_device_of_its_own, assert_pinned, last_error, read_buffer};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Weak};
 use std::time::Duration;
 
 /// The canvas: odd both ways, its last column and row of tiles part full.
@@ -1024,6 +1024,118 @@ fn a_hand_at_work_stops_a_rest_s_folds_behind_their_batch() {
     rested_on(engine, &pictures);
     assert_eq!(moved(&pictures, &names), 15, "the next rest folds the rest");
     assert!(canvas_bytes(&screen) == bytes);
+}
+
+/// What a test has told to weigh by the pictures' tiles, and how many
+/// times it was told to weigh again.
+#[derive(Default)]
+struct ToldToWeigh(AtomicU64);
+
+impl Weighs for ToldToWeigh {
+    fn weighs_again(&self) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// One more told to weigh by `pictures`' tiles.
+fn told_to_weigh_by(pictures: &Pictures) -> Arc<ToldToWeigh> {
+    let told = Arc::new(ToldToWeigh::default());
+    let weighs: Weak<ToldToWeigh> = Arc::downgrade(&told);
+    pictures.weighed_by(weighs);
+    told
+}
+
+// What weighs by the pictures' tiles is told to weigh again once a rest's
+// folds are through with the hand at rest still — at every rest's, for
+// as long as it lives —, and not where a hand at work ended them, tiles
+// moved though they are: the walk is the engine's thread's, a stroke's
+// dab behind it, and the next rest's folds tell all the same. Those
+// dropped are struck off as the list would grow, and told nothing.
+#[test]
+fn a_rest_s_folds_through_tell_what_weighs_by_the_pictures_to_weigh_again() {
+    let engine = rig().engine;
+    let pictures = Pictures::sized(4).expect("a pool");
+    let (pages, set, _) = composite_of(checker, CANVAS);
+    let screen = screen_of(kept_in(&pictures, &laid(&pages, &set)));
+    let names = named(&screen);
+    let told = told_to_weigh_by(&pictures);
+    let times = || told.0.load(Ordering::Relaxed);
+    engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
+    engine.on_thread(|| {
+        pictures.rests(engine);
+        pictures.hand_at_work();
+    });
+    assert!(pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
+    assert_eq!((moved(&pictures, &names), times()), (4, 0), "a hand at work ended them: tiles moved, none told");
+    rested_on(engine, &pictures);
+    assert_eq!((moved(&pictures, &names), times()), (15, 1), "through, the hand at rest");
+    for _ in 0..64 {
+        drop(told_to_weigh_by(&pictures));
+    }
+    assert!(pictures.told_to_weigh() < 16, "those dropped stay listed: {}", pictures.told_to_weigh());
+    rested_on(engine, &pictures);
+    assert_eq!(times(), 2, "and at every rest's since, those dropped beside it told nothing");
+}
+
+// A picture weighs each tile it made by what the pool keeps made for it,
+// as it was last weighed: a tile's bytes as it is made, and — weighed
+// again once a rest has folded it — its granules, every tile's together
+// the pool's pages less what is idle on them. A tile made again since
+// weighs a tile's bytes beside those, the one let go for it weighed no
+// more by what it weighed; and a tile its maker lets go while another
+// picture holds it is nobody's own as it lies.
+#[test]
+fn a_picture_weighed_again_weighs_its_tiles_as_they_lie() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let pictures = Pictures::sized(4).expect("a pool");
+    let (pages, set, _) = composite_of(checker, CANVAS);
+    let mut kept = kept_in(&pictures, &laid(&pages, &set));
+    let whole = 15 * TILE_BYTES;
+    assert_eq!((kept.bytes(), pictures.held_bytes()), (whole, whole), "the premise: 15 tiles, each as it is made");
+    rested_on(engine, &pictures);
+    assert_eq!(kept.bytes(), whole, "told by nothing, it weighs what it was weighed at");
+    kept.weighed_again();
+    let folded = kept.bytes();
+    assert!(folded < whole / 2, "the premise: a checker folds small — {folded} of {whole}");
+    assert_eq!(folded, pictures.held_bytes(), "each as it lies");
+    let (pages, set, _) = composite_of(noise(31), CANVAS);
+    let other = laid(&pages, &set);
+    kept.made_again(engine, composite, &other, |tile| tile == (1, 0), budget).expect("made again");
+    assert!(kept.bytes() > folded, "the tile made again weighs a tile's bytes");
+    assert_eq!(kept.bytes(), pictures.held_bytes(), "the one let go for it weighed no more, by what it weighed");
+    let fresh = |tile| tile == (0, 0);
+    let over: Film = (&kept, &fresh);
+    let late = Kept::made_in(engine, composite, &other, PAGE, Some(over), &pictures, budget).expect("over");
+    drop(kept);
+    assert_eq!(late.bytes(), TILE_BYTES, "the premise: its one fresh tile");
+    assert_eq!(late.bytes() + pictures.unowned_bytes(), pictures.held_bytes(), "let go by their maker, as they lie");
+}
+
+// The tiles no picture weighs are weighed again once a rest's folds are
+// through, as the pictures are: a tile's bytes each as their maker let
+// them go unfolded, their granules after the rest — with the picture
+// that holds them, the pool's pages less what is idle on them.
+#[test]
+fn the_tiles_no_picture_weighs_are_weighed_again_once_a_rest_s_folds_are_through() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let pictures = Pictures::sized(4).expect("a pool");
+    let (pages, set, _) = composite_of(checker, CANVAS);
+    let film = kept_in(&pictures, &laid(&pages, &set));
+    let (pages, set, _) = composite_of(noise(71), CANVAS);
+    let frame = laid(&pages, &set);
+    let fresh = |tile| tile == (0, 0);
+    let over: Film = (&film, &fresh);
+    let mut kept = Kept::made_in(engine, composite, &frame, PAGE, Some(over), &pictures, budget).expect("over");
+    drop(film);
+    let made = (TILE_BYTES, 14 * TILE_BYTES);
+    assert_eq!((kept.bytes(), pictures.unowned_bytes()), made, "the premise: each as it was made");
+    rested_on(engine, &pictures);
+    kept.weighed_again();
+    let nobody_s = pictures.unowned_bytes();
+    assert!(nobody_s < 7 * TILE_BYTES, "the premise: a checker folds small — {nobody_s}");
+    assert_eq!(kept.bytes() + nobody_s, pictures.held_bytes(), "each as it lies");
 }
 
 // A rest folds nothing on an engine that has the fold's kernels compiled
