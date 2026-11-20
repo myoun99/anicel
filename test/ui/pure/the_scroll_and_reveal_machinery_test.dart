@@ -499,6 +499,72 @@ void main() {
         reason: '🚨its first read keeps the room it was built for',
       );
     });
+
+    // 🔬Card a-plain-frame-pick-stamps-the-whole-bottom-dock-again-once
+    // (11-20): the first scroll to come to rest grew 15 frames the fill
+    // papered already, and the timeline built its whole grid for them.
+    testWidgets('🚨a move or a rest where the fill papers the view grows no '
+        'room, and builds the host nothing', (tester) async {
+      // A 400px view of 20px cells over 4 frames, papered by 30 — 600px.
+      final controller = await pumpScrollable(tester);
+      final offset = ValueNotifier<double>(0);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(offset.dispose);
+      addTearDown(bucket.dispose);
+      var builds = 0;
+      final follower = TimelineFrameAxisFollower(
+        controller: controller,
+        frameAxisOffset: offset,
+        frameWindowBucket: bucket,
+        cellExtent: () => 20,
+        baseFrameCount: () => 4,
+        viewportFillFrames: () => 30,
+        rebuild: (fn) {
+          builds += 1;
+          fn();
+        },
+        isMounted: () => true,
+      );
+      addTearDown(follower.dispose);
+      follower.handleScroll();
+      expect(
+        (follower.trailingFrames, follower.renderedFrameCount),
+        (0, 30),
+        reason: '⛔premise: born at the start, the fill papers the view',
+      );
+
+      controller.jumpTo(10);
+      follower.handleScroll();
+      expect(offset.value, 10, reason: '⛔premise: the axis moved');
+      expect(
+        (follower.trailingFrames, builds),
+        (0, 0),
+        reason: 'a move the fill still papers',
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(ListView)),
+      );
+      await gesture.moveBy(const Offset(0, -60));
+      await tester.pump();
+      expect(
+        controller.position.isScrollingNotifier.value,
+        isTrue,
+        reason: '⛔premise: a live scroll',
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(
+        controller.position.isScrollingNotifier.value,
+        isFalse,
+        reason: '⛔premise: come to rest',
+      );
+      expect(
+        (follower.trailingFrames, follower.renderedFrameCount, builds),
+        (0, 30, 0),
+        reason: 'come to rest where the fill papers the view',
+      );
+    });
   });
 
   group('keepWhereShown — the one write both axes keep theirs through', () {
