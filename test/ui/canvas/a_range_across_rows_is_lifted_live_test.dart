@@ -50,7 +50,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import '../../helpers/wait_window.dart' show watchTheBar, windowBehind;
-import '../../helpers/poll_until.dart' show waitPatience;
+import '../../helpers/poll_until.dart' show pollUntil;
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/surface_rgba_in_place.dart';
@@ -365,18 +365,17 @@ void main() {
 
     /// [untilCutAhead] drawing no frame on the way: real time for what is
     /// told, the pumped clock for the turns ([turnThePumpedClock]).
-    Future<void> untilCutAheadUnframed(WidgetTester tester, int runs) async {
-      final deadline = DateTime.now().add(waitPatience);
-      while (debugCutsAheadThrough <= runs) {
-        if (!DateTime.now().isBefore(deadline)) {
-          fail('⛔premise: the box at rest cut every cel it frames');
-        }
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    Future<void> untilCutAheadUnframed(WidgetTester tester, int runs) async =>
+        expect(
+          await tester.runAsync(
+            () => pollUntil(() {
+              turnThePumpedClock(tester);
+              return debugCutsAheadThrough > runs;
+            }),
+          ),
+          isTrue,
+          reason: '⛔premise: the box at rest cut every cel it frames',
         );
-        turnThePumpedClock(tester);
-      }
-    }
 
     /// Ctrl+T — the box at rest — and its cuts ([untilCutAhead]).
     Future<CanvasSelectionCommands> restTheBox(WidgetTester tester) async {
