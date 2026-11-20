@@ -150,6 +150,13 @@ void main() {
       1,
       reason: '🪦two a sound — where its bytes are, and its conform',
     );
+    session.projectFile.carriedConformFor(file.sounds.first);
+    expect(
+      debugLayoutReadsOnThisIsolate,
+      2,
+      reason: 'the read is not held past its batch — offsets belong to one '
+          'layout',
+    );
     final layout = parseAnicelZipLayoutFile(file.path);
     int offsetOf(String? name) => layout.entryNamed(name!)!.dataOffset;
     expect(
