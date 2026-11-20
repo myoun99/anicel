@@ -181,16 +181,16 @@ void main() {
       expect(used.tiles[origin]!.pixels, pixelsOf(4));
     });
 
-    test('nor a parked cel\'s: its park is let go as it is made hot, and a '
-        'shell holds no bytes to let it go for', () async {
+    test('a parked cel\'s too — its park is its still '
+        '(a_cel_made_hot_keeps_its_park_test.dart)', () async {
       parkCold(store, {key('a'): ink(1)});
       final shell = await aShellOf('a');
 
       final used = store.bakedSurfaceOrNull(key('a'))!;
 
-      expect(used, isNot(same(shell)));
-      expect(used.tiles[origin]!.hasItsBytesHere, isTrue);
-      expect(store.isCelCold(key('a')), isFalse);
+      expect(used, same(shell));
+      expect(used.tiles[origin]!.hasItsBytesHere, isFalse);
+      expect(store.isCelCold(key('a')), isTrue);
     });
 
     test('🚨a tile of the cel\'s shell whose slot went reads the file — '
@@ -630,7 +630,7 @@ void main() {
       ).allMatches(source);
       final doors = [
         source.indexOf('AnicelCelFileRef? _letTheFileRefGo('),
-        source.indexOf('bool _fileRefMoves('),
+        source.indexOf('bool _keptMoves('),
         source.indexOf('BitmapSurface? _asKept('),
       ];
 

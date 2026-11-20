@@ -260,7 +260,7 @@ class TvppImportDoor {
     if (laid.tiles.isEmpty) {
       return null;
     }
-    bakeCelSurface(
+    landImportedCel(
       _renderCaches.brushFrameStore,
       _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       await layCut(lay, laid),

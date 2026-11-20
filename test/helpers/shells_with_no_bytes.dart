@@ -7,11 +7,13 @@ import 'package:anicel/src/services/cel_shells.dart';
 
 /// A keeper whose shells hold no bytes here: each tile of one reads what the
 /// engine holds of it while [slots] says it does, else its cel's kept bytes
-/// again — and says whether the engine holds a whole shell by [whole].
+/// again — and says whether the engine holds a whole shell by [whole]. It
+/// makes none of a cel while [holds] says the engine holds no tile of it.
 final class ShellsWithNoBytes implements CelShells {
   final made = <BitmapSurface>[];
   bool whole = true;
   bool slots = true;
+  bool holds = true;
   int readsOfASlot = 0;
   int readsOfTheKept = 0;
 
@@ -22,6 +24,9 @@ final class ShellsWithNoBytes implements CelShells {
     BitmapSurface surface, {
     required BitmapSurface Function() readAgain,
   }) {
+    if (!holds) {
+      return null;
+    }
     final shell = surface.copyWith(
       tiles: {
         for (final MapEntry(key: at, value: tile) in surface.tiles.entries)

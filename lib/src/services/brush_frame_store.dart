@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
@@ -6,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuReadFailed;
 
 import '../core/in_flight.dart';
 import '../core/one_pass_at_a_time.dart';
+import '../core/worker_count.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
@@ -111,18 +113,19 @@ class BrushFrameStore {
     'looked at',
   );
 
-  /// The tiles a use took kept in the file and not here
-  /// ([_usedAsItsShell]), by their cel, each where it lies. Whoever
-  /// holds one — the cel, a step back over it, what was copied of it —
-  /// holds no bytes of it, so they come here before the file's stop
-  /// being that cel's ([_letTheFileRefGo]). Weak: a tile nobody holds
+  /// The tiles a use took kept — in the saved file, or parked in the
+  /// run's room — and not here ([_usedAsItsShell]), by their cel, each
+  /// where it lies. Whoever holds one — the cel, a step back over it,
+  /// what was copied of it — holds no bytes of it, so they come here
+  /// before what keeps them stops being that cel's
+  /// ([_letTheFileRefGo], [_letTheKeptGo]). Weak: a tile nobody holds
   /// needs none.
-  final Map<BrushFrameKey, List<_TakenTile>> _takenKeptInTheFile = {};
+  final Map<BrushFrameKey, List<_TakenTile>> _takenKept = {};
 
   /// How many tiles are written down there — a probe: each once,
   /// however often its cel cools and is used again.
   @visibleForTesting
-  int get tilesWrittenDown => _takenKeptInTheFile.values.fold(
+  int get tilesWrittenDown => _takenKept.values.fold(
     0,
     (sum, each) => sum + each.length,
   );
@@ -1232,11 +1235,15 @@ class BrushFrameStore {
     return looked == null ? null : _behind(looked);
   }
 
-  /// 🚨A USE OF A CEL KEPT IN THE SAVED FILE TAKES THE SHELL A LOOK LEFT
-  /// OF IT ([keepShellOf]) — hot from here on as that shell, nothing
-  /// thawed and nothing put on the engine again; null where it has none
-  /// whole, or is parked (a park is let go as its cel is made hot, and a
-  /// shell holds no bytes to let it go for).
+  /// 🚨A USE OF A KEPT CEL TAKES THE SHELL A LOOK LEFT OF IT
+  /// ([keepShellOf]) — hot from here on as that shell, nothing thawed
+  /// and nothing put on the engine again; null where it has none whole.
+  /// Kept in the saved file or parked in the run's room alike: a park
+  /// is its cel's bytes for as long as no edit ends it
+  /// ([_letTheKeptGo]), as a stretch of the file is (유저 2026-11-21
+  /// on Q6, 「사본이나 ram에있는걸 최대한 없애고싶어서」). ↩️Till that
+  /// day a parked cel took none: its park was let go as it was made
+  /// hot, and a shell holds no bytes to let it go for.
   ///
   /// 🗣️Card cel-originals-are-held-twice-in-ram-and-on-the-gpu ②: 유저
   /// 2026-11-19 on Q1 「브러시가 맡고, 저장과 맞닿는 곳은 저장이 같이
@@ -1253,21 +1260,30 @@ class BrushFrameStore {
   /// and no byte, and the first stroke lands its own 4 tiles.
   ///
   /// What it takes holds no bytes, so its tiles are written down
-  /// ([_takenKeptInTheFile]): the bytes come before the file's stop
-  /// being this cel's ([_letTheFileRefGo]).
+  /// ([_takenKept]): the bytes come before what keeps them stops being
+  /// this cel's ([_letTheKeptGo]).
   BitmapSurface? _usedAsItsShell(BrushFrameKey key) {
     final kept = _kept(key);
-    if (kept == null || kept.parked) {
+    if (kept == null) {
       return null;
     }
     final shell = _shellAt(key, kept.ref.canvasSize);
     if (shell == null) {
       return null;
     }
-    // Each once: a shell cooled is the looks' again with its tiles
-    // still written down ([_coolLoop]), and the next use takes the
-    // same tiles.
-    final taken = _takenKeptInTheFile[key] ??= [];
+    _writeDownWhatWaits(key, shell);
+    _storeHot(key, shell);
+    storeRebuiltDisplayCache(key: key, previewSurface: shell);
+    return _bakedSurfaces[key];
+  }
+
+  /// The tiles of [shell] — [key]'s cel, kept — that hold no bytes
+  /// here are written down ([_takenKept]), each
+  /// once: a shell cooled is the looks' again with its tiles still
+  /// written down ([_coolLoop]), and the next use takes the same
+  /// tiles.
+  void _writeDownWhatWaits(BrushFrameKey key, BitmapSurface shell) {
+    final taken = _takenKept[key] ??= [];
     final written = Set<BitmapTile>.identity()
       ..addAll(taken.map((each) => each.tile.target).nonNulls);
     taken
@@ -1277,10 +1293,89 @@ class BrushFrameStore {
           if (!tile.hasItsBytesHere && written.add(tile))
             (tile: WeakReference(tile), at: at),
       ]);
-    _storeHot(key, shell);
-    storeRebuiltDisplayCache(key: key, previewSurface: shell);
-    return _bakedSurfaces[key];
   }
+
+  /// 🚨A HOT CEL THAT IS KEPT HOLDS NO BYTES HERE ONCE THE ENGINE HOLDS
+  /// ITS TILES — kept in the saved file, or parked in the run's room.
+  /// Asked as the engine's tiles come to rest (`TilesAtRest`): each
+  /// such cel with bytes here becomes its shell ([_becomesItsShell]) —
+  /// hot as it was and where it was in the line, a rest being no use
+  /// of it; the tiles the engine holds are the shell's from there on,
+  /// and one it holds none of yet stays as it is till a rest after it
+  /// comes there.
+  ///
+  /// 🗣️Card cel-originals-are-held-twice-in-ram-and-on-the-gpu: 유저
+  /// 2026-11-19 on Q3 「놓는다」, 2026-11-21 02:55 on Q4 「최대한
+  /// 사본안만드는게 중요」, and 04:28 on Q6 — a parked cel as one the
+  /// file keeps. ↩️Till 2026-11-21 a use took a shell only where a look
+  /// had left one ([_usedAsItsShell]); one that thawed its kept bytes —
+  /// a frame a screen stood on before any look made it — kept every
+  /// byte here beside the same tiles on the engine, for as long as it
+  /// was hot.
+  ///
+  /// ⛔Not the cels a canvas stands on ([setCelsStoodOn]) —
+  /// 🔢브러시/렌더링's, no rule of the user's: the tree that canvas drew
+  /// holds their tiles till it is drawn again, so their bytes would
+  /// stay here uncounted, and a pen that comes down on one waits for no
+  /// read (저장's draft on the card, ②(3): 「편집하는 셀만 지금처럼 두
+  /// 벌」). The frame a full pool leaves its slots, for the same canvas
+  /// (`TilesStoodOn`); a rest after the canvas has moved on takes them.
+  void letGoOfBytesTheEngineHolds() {
+    final stood = _stoodOn();
+    for (final key in _bakedSurfaces.keys.toList()) {
+      if (!stood.contains(key)) {
+        _becomesItsShell(key);
+      }
+    }
+  }
+
+  /// The hot cel [key] — kept, with bytes here — made its shell
+  /// ([CelShells.shellOf]) in its place in the line: true where the
+  /// engine holds a tile of it. As a shell a use took: its tiles are
+  /// written down ([_writeDownWhatWaits]), and their bytes come here
+  /// before an edit ends what keeps them ([_letTheKeptGo],
+  /// [bringBytesAhead]).
+  bool _becomesItsShell(BrushFrameKey key) {
+    final kept = _kept(key);
+    final hot = _bakedSurfaces[key];
+    if (kept == null || hot == null || hot.keptTileBytes == 0) {
+      return false;
+    }
+    final revision = sourceRevisionOf(key);
+    final shell = _celShells.shellOf(
+      hot,
+      readAgain: () => _readAgain(key, kept.ref.canvasSize, revision),
+    );
+    if (shell == null || identical(shell, hot)) {
+      return false;
+    }
+    final behind = _behind(shell);
+    _writeDownWhatWaits(key, behind);
+    // In its place in the line ([_storeHot] puts a cel last).
+    _bakedSurfaces[key] = behind;
+    _hotWeights.weigh(key, behind);
+    if (_displayCaches.containsKey(key)) {
+      storeRebuiltDisplayCache(key: key, previewSurface: behind);
+    }
+    return true;
+  }
+
+  /// Which cels a canvas of this store's project stands on, as its
+  /// session says ([setCelsStoodOn]) — none where none said.
+  Iterable<BrushFrameKey> Function()? _celsStoodOn;
+
+  /// Has [stoodOn] say which cels a canvas stands on — a session's
+  /// word: a store knows no playhead. Those keep their bytes here
+  /// through a rest ([letGoOfBytesTheEngineHolds]) and through the
+  /// parking behind ([parkBehind]).
+  void setCelsStoodOn(Iterable<BrushFrameKey> Function()? stoodOn) {
+    _celsStoodOn = stoodOn;
+  }
+
+  Set<BrushFrameKey> _stoodOn() => {
+    for (final key in _celsStoodOn?.call() ?? const <BrushFrameKey>[])
+      _canonicalize(key),
+  };
 
   /// 🚨A CEL'S FILE REF GOES THROUGH HERE, AND THE BYTES IT NAMED COME
   /// HERE FIRST — to every living tile a use took kept in them
@@ -1303,10 +1398,27 @@ class BrushFrameStore {
   /// as it is.
   AnicelCelFileRef? _letTheFileRefGo(BrushFrameKey key) {
     _hand(
-      _takenKeptInTheFile.remove(key) ?? const <_TakenTile>[],
+      _takenKept.remove(key) ?? const <_TakenTile>[],
       () => _asKeptOrNull(key),
     );
     return _fileCels.remove(key);
+  }
+
+  /// 🚨WHAT [key] IS KEPT AS STOPS BEING ITS CEL'S — its park in the
+  /// run's room with its stretch of the saved file ([_letTheFileRefGo]),
+  /// the bytes handed first from whichever kept them ([_kept]): every
+  /// door a HOT cel's pixels change by goes through here. A cel made
+  /// hot keeps its park (유저 2026-11-21 on Q6), so a hot cel's park
+  /// names what it shows exactly as its file ref does, and ends where
+  /// that ends. Answers the file's ref.
+  ///
+  /// ⛔[_letTheFileRefGo] alone only where the park is the cel's still,
+  /// or is replaced beside it: a copy's keep ([_keepCopy]), a file
+  /// lost with its cels ([forgetCelsLostWithTheirFile]).
+  AnicelCelFileRef? _letTheKeptGo(BrushFrameKey key) {
+    final inTheFile = _letTheFileRefGo(key);
+    _dropCold(key);
+    return inTheFile;
   }
 
   /// [taken]'s tile where it lives and holds no bytes here yet —
@@ -1349,8 +1461,8 @@ class BrushFrameStore {
   /// then hot with its bytes here, as one thawed is. Asked for as a
   /// hand goes down on the cel
   /// (`BrushFrameEditingCoordinator.aStrokeGoesUp`), so the stroke's
-  /// landing finds no tile waiting, where [_letTheFileRefGo] reads the
-  /// file on this thread — the thaw the card
+  /// landing finds no tile waiting, where [_letTheKeptGo] reads its
+  /// kept bytes on this thread — the thaw the card
   /// `cel-thaw-holds-the-ui-thread` took off it (13–32 ms a cel, 저장
   /// 2026-11-14). An edit no press comes before — a fill, a cut, a
   /// move — and a stroke shorter than the read still read there.
@@ -1363,14 +1475,14 @@ class BrushFrameStore {
   /// meanwhile, so nothing is asked of its name once they are read.
   Future<void> bringBytesAhead(BrushFrameKey key) {
     key = _canonicalize(key);
-    if (!(_takenKeptInTheFile[key]?.any(_waits) ?? false)) {
+    if (!(_takenKept[key]?.any(_waits) ?? false)) {
       return Future<void>.value();
     }
     return _bringing.join(
       key,
       () => celThawTurns.run(() async {
-        final ref = _fileCels[key];
-        final written = [...?_takenKeptInTheFile[key]];
+        final ref = _kept(key)?.ref;
+        final written = [...?_takenKept[key]];
         if (ref == null) {
           return;
         }
@@ -1392,30 +1504,37 @@ class BrushFrameStore {
 
   final InFlight<BrushFrameKey, void> _bringing = InFlight();
 
-  /// [from]'s file ref is [to]'s from here on, with the tiles taken kept
-  /// in it ([_takenKeptInTheFile]): a cel renamed is kept where it was.
-  /// What [to] was kept as goes first ([_letTheFileRefGo]).
-  bool _fileRefMoves(BrushFrameKey from, BrushFrameKey to) {
-    final ref = _fileCels.remove(from);
-    if (ref == null) {
+  /// What [from] is kept as — its park, its stretch of the file — is
+  /// [to]'s from here on, with the tiles taken kept in it
+  /// ([_takenKept]): a cel renamed is kept where it was. What [to] was
+  /// kept as goes first ([_letTheKeptGo]).
+  bool _keptMoves(BrushFrameKey from, BrushFrameKey to) {
+    final parked = _coldCels.remove(from);
+    final inTheFile = _fileCels.remove(from);
+    if (parked == null && inTheFile == null) {
       return false;
     }
-    _letTheFileRefGo(to);
-    _fileCels[to] = ref;
-    final taken = _takenKeptInTheFile.remove(from);
+    _letTheKeptGo(to);
+    if (parked != null) {
+      _coldCels[to] = parked;
+    }
+    if (inTheFile != null) {
+      _fileCels[to] = inTheFile;
+    }
+    final taken = _takenKept.remove(from);
     if (taken != null) {
-      _takenKeptInTheFile[to] = taken;
+      _takenKept[to] = taken;
     }
     return true;
   }
 
   /// [key]'s pixels read where they are kept, for that read alone — the
   /// hot ones where no kept bytes are the cel's (an edited cel's are
-  /// here). ⛔Never a hot cel the file still holds: that may be the
-  /// very shell whose tile asks ([_readAgain]).
+  /// here). ⛔Never a hot cel still kept: that may be the very shell
+  /// whose tile asks ([_readAgain]).
   BitmapSurface? _asKept(BrushFrameKey key) {
     final hot = _bakedSurfaces[key];
-    if (hot != null && !_fileCels.containsKey(key)) {
+    if (hot != null && _kept(key) == null) {
       return hot;
     }
     final blob = _keptBlobOrNull(key);
@@ -1474,12 +1593,18 @@ class BrushFrameStore {
 
   /// A thawed cel made the app's: hot, its display cache reseeded from the
   /// same object so first paint after a promotion is O(1) (mirroring what
-  /// open used to do eagerly), and its parking space let go.
+  /// open used to do eagerly) — and kept where it was, its park as its
+  /// stretch of the file: clean of those bytes till an edit ends them
+  /// ([_letTheKeptGo]), so a cooling of it is for nothing
+  /// ([_coolTheKept]) and its bytes here go once the engine holds its
+  /// tiles ([letGoOfBytesTheEngineHolds]).
+  ///
+  /// 🗣️유저 2026-11-21 on Q6 (card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu): 「사본이나
+  /// ram에있는걸 최대한 없애고싶어서」. ↩️Till then a park was let go as
+  /// its cel was made hot: every parked cel a screen stood on was the
+  /// RAM's alone again, and pressed and written anew to leave it.
   void _keepThawed(BrushFrameKey key, BitmapSurface surface) {
-    // The bytes are in hand, so the parking space is free. ⛔Dropped only
-    // AFTER the read, never before it — and after the decode, so a blob
-    // that will not decode keeps its only copy.
-    _dropCold(key);
     _storeHot(key, surface);
     storeRebuiltDisplayCache(key: key, previewSurface: surface);
     _scheduleCooling();
@@ -1538,7 +1663,7 @@ class BrushFrameStore {
   final InFlight<BrushFrameKey, BitmapSurface?> _looking = InFlight();
 
   /// 🚨A HOT SHELL THE ENGINE HOLDS NO MORE WHOLE IS HOT NO MORE: let go
-  /// as the file's own ([_coolTheFilesOwn]) before an ahead door answers
+  /// as the file's own ([_coolTheKept]) before an ahead door answers
   /// for it ([thawAhead], [lookAhead]) and where a screen asks whether
   /// the cel is in hand (`LayerFrameImageCache.storedSurfaceIsInHand`),
   /// which is then no: read in, it is thawed on a worker as any cel the
@@ -1562,10 +1687,8 @@ class BrushFrameStore {
   /// slots (`TilesStoodOn`), and this door is every other cel's.
   void coolWhereTheEngineLetGo(BrushFrameKey key) {
     final hot = _bakedSurfaces[key];
-    if (hot != null &&
-        _fileCels.containsKey(key) &&
-        !_celShells.isWhole(hot)) {
-      _coolTheFilesOwn(key);
+    if (hot != null && _kept(key) != null && !_celShells.isWhole(hot)) {
+      _coolTheKept(key);
     }
   }
 
@@ -1920,8 +2043,7 @@ class BrushFrameStore {
 
   void _removeBaked(BrushFrameKey key) {
     _bakedSurfaces.remove(key);
-    _dropCold(key);
-    _letTheFileRefGo(key);
+    _letTheKeptGo(key);
     _hotWeights.letGo(key);
     _markDirty(key);
     _noteCelContent(key);
@@ -1946,8 +2068,7 @@ class BrushFrameStore {
       _removeBaked(key);
       return;
     }
-    _dropCold(key);
-    _letTheFileRefGo(key);
+    _letTheKeptGo(key);
     _storeHot(key, surface);
     _markDirty(key);
     _noteCelContent(key);
@@ -1985,6 +2106,20 @@ class BrushFrameStore {
   /// with ZERO re-encode) and file refs (already IN the saved .anicel; a
   /// compaction reads them back, an incremental save skips them
   /// entirely).
+  ///
+  /// 🚨A HOT CEL WITH A PARK IS HANDED OVER AS ITS PARK ALONE. The park
+  /// is its bytes, pressed already — an edit ends it ([_letTheKeptGo]) —
+  /// so the save writes it through where it would read the cel's tiles
+  /// back and press them again, a shell's from the engine. Hot too only
+  /// where the park's file is gone from the room: the picture is here,
+  /// or on the engine, still (the save's own law for a clean cel whose
+  /// file went, F-72).
+  /// 🗣️유저 2026-11-21 on Q6 (card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu): a cel made hot
+  /// keeps its park. 🔢브러시/렌더링's reading of where that meets the
+  /// save (Q1: 「저장과 맞닿는 곳은 저장이 같이 정한다」 — said to 저장 on
+  /// the card, 11-21 04:30): the save's order, hot before cold, stands
+  /// as it is.
   ({
     Map<BrushFrameKey, BitmapSurface> hot,
     Map<BrushFrameKey, AnicelCelFileRef> cold,
@@ -1993,7 +2128,10 @@ class BrushFrameStore {
   })
   bakedSnapshotForSave() {
     return (
-      hot: {..._bakedSurfaces},
+      hot: {
+        for (final MapEntry(:key, value: surface) in _bakedSurfaces.entries)
+          if (!_parkIsThere(key)) key: surface,
+      },
       cold: {..._coldCels},
       fileRefs: {..._fileCels},
       // The dirty keys WITH their edit marks — what [adoptSavedFile] needs
@@ -2002,6 +2140,12 @@ class BrushFrameStore {
         ..._dirtySinceSave,
       },
     );
+  }
+
+  /// Whether [key] is parked and its park's file stands in the room.
+  bool _parkIsThere(BrushFrameKey key) {
+    final parked = _coldCels[key];
+    return parked != null && ScratchFile.holds(parked.filePath);
   }
 
   void _clearAllTiers() {
@@ -2066,7 +2210,7 @@ class BrushFrameStore {
     clearDisplayCaches();
     _bakedSurfaces.clear();
     _shells.clear();
-    _takenKeptInTheFile.clear();
+    _takenKept.clear();
     _coldCels.clear();
     _fileCels.clear();
     _hotWeights.clear();
@@ -2381,21 +2525,22 @@ class BrushFrameStore {
     }
   }
 
-  /// Lets go of the hot cel [key], one the saved file holds — clean, as
-  /// an edit ends the ref ([_letTheFileRefGo]) —, for nothing: the file
-  /// has its exact bytes. One a use took as its shell
-  /// ([_usedAsItsShell]) is the looks' shell again: what the engine
-  /// holds of it stays for the next of either.
-  void _coolTheFilesOwn(BrushFrameKey key) {
+  /// Lets go of the hot cel [key], one kept — in the saved file, or
+  /// parked in the run's room: clean of those bytes, as an edit ends
+  /// them ([_letTheKeptGo]) —, for nothing: what keeps it has its exact
+  /// bytes. One a use took as its shell ([_usedAsItsShell]) is the
+  /// looks' shell again: what the engine holds of it stays for the next
+  /// of either.
+  void _coolTheKept(BrushFrameKey key) {
     final cooled = _bakedSurfaces.remove(key);
     _hotWeights.letGo(key);
     _displayCaches.remove(key);
     // ⛔Not one its bytes came to since ([bringBytesAhead]): a shell is
     // kept outside every budget because it holds none.
     if (cooled != null &&
-        _takenKeptInTheFile.containsKey(key) &&
+        _takenKept.containsKey(key) &&
         cooled.keptTileBytes == 0) {
-      _shells[key] = (ref: _fileCels[key]!, shell: cooled);
+      _shells[key] = (ref: _kept(key)!.ref, shell: cooled);
     }
   }
 
@@ -2430,59 +2575,187 @@ class BrushFrameStore {
     while (_hotWeights.bytes > hotCelByteBudget &&
         _bakedSurfaces.length > 1) {
       final key = _bakedSurfaces.keys.first;
-      if (_fileCels.containsKey(key)) {
-        _coolTheFilesOwn(key);
-        continue;
-      }
-      final surface = _bakedSurfaces[key]!;
-      // 🎯The park path's shape, and DELIBERATELY the same one: these
-      // two were matched on purpose (fixing one alone would make it a
-      // copy of the other), so they moved together. One copy of the
-      // payload instead of four — see [compressCelOnAWorker].
-      final compressed = await _compressedToPark(key, surface);
-      if (compressed == null) {
-        _coolingStoodDown = true;
+      // 🚨★★★**PARK IT BEFORE LETTING GO OF IT.** These bytes are
+      // UNSAVED — the archive does not hold them — so the order here is
+      // the difference between over budget and a lost drawing. The old
+      // shape could not fail (the blob went into a map), and it dropped
+      // the hot surface first; a write can fail, so the drop happens
+      // only once the park has answered yes: the cel is KEPT from there,
+      // and let go as any kept cel is, for nothing.
+      // ⛔Park BEFORE letting go — see [_storeCold] for why a refusal
+      // ends the whole pass rather than skipping one cel.
+      if (_kept(key) == null && !await _park(key)) {
         return;
       }
-      final blob = AnicelCelBlob.fromCompressedBody(
-        key: key,
-        canvasSize: surface.canvasSize,
-        tileSize: surface.tileSize,
-        photoPaths: celPhotoPaths(surface.photos),
-        showsSomething: surface.showsSomething,
-        codec: compressed.codec,
-        body: compressed.bytes,
-      );
-      if (identical(_bakedSurfaces[key], surface)) {
-        // 🚨★★★**PARK IT BEFORE LETTING GO OF IT.** These bytes are
-        // UNSAVED — the archive does not hold them — so the order here is
-        // the difference between over budget and a lost drawing. The old
-        // shape could not fail (the blob went into a map), and it dropped
-        // the hot surface first; a write can fail, so the drop happens
-        // only once the park has answered yes.
-        // ⛔Park BEFORE letting go — see [_storeCold] for why a refusal
-        // ends the whole pass rather than skipping one cel.
-        if (!_storeCold(key, blob)) {
-          _coolingStoodDown = true;
-          return;
-        }
-        _bakedSurfaces.remove(key);
-        _hotWeights.letGo(key);
-        // Drop the derived alias too, or the surface stays resident.
-        _displayCaches.remove(key);
+      // Not one a donation came to while it was pressed: that one is
+      // hot, unkept, and last in the line.
+      if (_kept(key) != null) {
+        _coolTheKept(key);
       }
     }
   }
 
-  /// Completes when no background tiering pass is running (tests).
+  /// The hot cel [key] parked in the run's room as it is — hot still,
+  /// and kept from there ([_storeCold]): its stream pressed on a worker
+  /// ([compressCelOnAWorker]) and written ONLY if the cel's surface is
+  /// still the identical object, kept nowhere (a donation in between
+  /// wins, and a save's adoption, and the stale blob is dropped). One
+  /// park of a cel at a time, whoever asks — the cooling, the parking
+  /// behind ([parkBehind]) — joined by the other.
   ///
-  /// Cooling is the only background pass. 🪦This used to add 「the
-  /// scratch-disk spill is gone — the saved .anicel itself is the disk
-  /// tier」, which was true while an unsaved cel had nowhere to go but
-  /// RAM. Cooling IS a spill again, into the run's 이사대기 room; what
-  /// stays true is the half that reason rested on — ⛔nothing is ever
-  /// written beside the project file.
-  Future<void> drainTiering() => drainCooling();
+  /// False where it would not park — the engine would not give its
+  /// tiles back ([_compressedToPark]), the room refused ([_storeCold])
+  /// — and the passes stand down ([_coolingStoodDown]), the cel hot.
+  Future<bool> _park(BrushFrameKey key) => _parks.join(key, () async {
+    final surface = _bakedSurfaces[key]!;
+    // 🎯The park path's shape, and DELIBERATELY the same one: these
+    // two were matched on purpose (fixing one alone would make it a
+    // copy of the other), so they moved together. One copy of the
+    // payload instead of four — see [compressCelOnAWorker].
+    final compressed = await _compressedToPark(key, surface);
+    if (compressed == null) {
+      _coolingStoodDown = true;
+      return false;
+    }
+    final blob = AnicelCelBlob.fromCompressedBody(
+      key: key,
+      canvasSize: surface.canvasSize,
+      tileSize: surface.tileSize,
+      photoPaths: celPhotoPaths(surface.photos),
+      showsSomething: surface.showsSomething,
+      codec: compressed.codec,
+      body: compressed.bytes,
+    );
+    if (identical(_bakedSurfaces[key], surface) &&
+        _kept(key) == null &&
+        !_storeCold(key, blob)) {
+      _coolingStoodDown = true;
+      return false;
+    }
+    return true;
+  });
+
+  final InFlight<BrushFrameKey, bool> _parks = InFlight();
+
+  /// Whether [key]'s park is under way ([_park]) — a probe.
+  @visibleForTesting
+  bool isBeingParked(BrushFrameKey key) =>
+      _parks.isRunning(_canonicalize(key));
+
+  // --- Parking behind (an unsaved cel's home in the room, made ahead) ---
+
+  /// 🚨THE UNSAVED CELS NO CANVAS STANDS ON ARE PARKED BEHIND — pressed
+  /// and written to the run's room several at once ([parksAtOnce]), at
+  /// no budget's asking — and kept from there as a cel the saved file
+  /// keeps is: one the engine holds every tile of is its shell for the
+  /// looks, any other cold ([_coolTheKept]), and neither holds a byte
+  /// here. Asked as an import lands a cel (`landImportedCel`).
+  ///
+  /// 🗣️유저 2026-11-21 04:28 on Q6 (card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu), 「disk 임시
+  /// 방에 미리 내려 둔다 — 형식 불문」: 「아무튼 들여올때 바로가
+  /// 낫지않나싶은데. 들여오기 길어지는건 거기서 개선해서 줄인다던가.
+  /// 디스크없으면 vram, 없으면 ram인건 이해했어. 그 방식대로 문제없고.
+  /// 아무튼 사본이나 ram에있는걸 최대한 없애고싶어서」. ↩️Till then an
+  /// imported cel was the RAM's alone till a save, parked only past
+  /// the hot budget and one after another: 🔬a line-art .tvpp of 220
+  /// cels on a canvas of 7751×4396 held 1,543 MiB here once opened, and
+  /// 110 MiB parked (main PC, no window, 2026-11-21).
+  ///
+  /// The law of every park holds ([_park]): written before a byte is
+  /// let go, and a refusal stands the passes down with the cel hot — a
+  /// room with no place leaves its cels the RAM's.
+  ///
+  /// ⛔Not the cels a canvas stands on ([setCelsStoodOn]): the pen's.
+  /// Those are parked once the canvas has moved on and this is asked
+  /// again, or by the budget ([_coolLoop]).
+  void parkBehind() {
+    // ⛔Not passes one at a time ([OnePassAtATime]): cels come one by
+    // one, and a pass's lanes that found none waiting as it began would
+    // have ended — one lane left for all that came after. A lane is
+    // begun for each cel that waits while one is free.
+    while (_parkingLanes.length < parksAtOnce &&
+        !_coolingStoodDown &&
+        _nextToPark(_stoodOn()) != null) {
+      late final Future<void> lane;
+      lane = _parkALane().whenComplete(() {
+        _parkingLanes.remove(lane);
+      });
+      _parkingLanes.add(lane);
+    }
+  }
+
+  /// How many cels are parked behind at once ([parkBehind]): each is a
+  /// worker's, and the screen's isolate hands it its tiles a batch at a
+  /// time ([compressCelOnAWorker]).
+  static int parksAtOnce = workersFor(
+    Platform.numberOfProcessors,
+    ceiling: 4,
+  );
+
+  /// The lanes of the parking behind under way, [parksAtOnce] at the
+  /// most.
+  final Set<Future<void>> _parkingLanes = {};
+
+  /// Completes when no lane of the parking behind is under way — with
+  /// the error of one that threw, as the cooling's passes do.
+  Future<void> _parkingSettled() async {
+    while (_parkingLanes.isNotEmpty) {
+      await Future.wait([..._parkingLanes]);
+    }
+  }
+
+  /// One lane: a cel parked after another, till none waits. The first
+  /// is in its hand before this returns ([_park]), so the next lane
+  /// begun takes another.
+  Future<void> _parkALane() async {
+    try {
+      while (!_coolingStoodDown) {
+        final key = _nextToPark(_stoodOn());
+        if (key == null || !await _park(key)) {
+          return;
+        }
+        // Kept from here. A canvas that came to stand on it meanwhile
+        // keeps its bytes; else none stay: its shell where the engine
+        // holds its tiles, which the cooling leaves the looks.
+        if (_kept(key) != null && !_stoodOn().contains(key)) {
+          _becomesItsShell(key);
+          _coolTheKept(key);
+        }
+      }
+    } on Object {
+      // As a cooling pass that threw ([_coolAPass]): nothing about the
+      // next cel is more likely to go.
+      _coolingStoodDown = true;
+      rethrow;
+    }
+  }
+
+  /// The hot cel that waits longest to be parked behind: unsaved — kept
+  /// nowhere —, in no park's hand, and stood on by no canvas ([stood]).
+  BrushFrameKey? _nextToPark(Set<BrushFrameKey> stood) {
+    for (final key in _bakedSurfaces.keys) {
+      if (_kept(key) == null &&
+          !_parks.isRunning(key) &&
+          !stood.contains(key)) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  /// Completes when no background tiering pass is running (tests): the
+  /// cooling, and the parking behind ([parkBehind]).
+  ///
+  /// 🪦This used to add 「the scratch-disk spill is gone — the saved
+  /// .anicel itself is the disk tier」, which was true while an unsaved
+  /// cel had nowhere to go but RAM. Cooling IS a spill again, into the
+  /// run's 이사대기 room; what stays true is the half that reason rested
+  /// on — ⛔nothing is ever written beside the project file.
+  Future<void> drainTiering() async {
+    await drainCooling();
+    await _parkingSettled();
+  }
 
   /// [surface] stored under [key] as a COPY of the cel [source]
   /// ([storeBakedSurface]) — and when it is the very surface [source] holds,
@@ -2690,12 +2963,8 @@ class BrushFrameStore {
         _bakedSurfaces[to] = baked;
         _hotWeights.move(from, to);
       }
-      final cold = _coldCels.remove(from);
-      if (cold != null) {
-        _coldCels[to] = cold;
-      }
-      final inTheFile = _fileRefMoves(from, to);
-      if (baked != null || cold != null || inTheFile) {
+      final kept = _keptMoves(from, to);
+      if (baked != null || kept) {
         // The saved file still labels these bytes with the OLD key, so
         // both cels are save-relevant: [from]'s entry must vanish and
         // [to] must be rewritten under its own key (the saver re-keys
@@ -2804,7 +3073,7 @@ class BrushFrameStore {
       final from = bakedSurfaceOrNull(key)!;
       // Before the remake reads it: a shell's bytes come at once, not a
       // tile at a time from the engine.
-      _letTheFileRefGo(key);
+      _letTheKeptGo(key);
       _storeHot(key, remake(key, from));
       _markDirty(key);
       // Per-cel signature bump WITHOUT the per-cel global notify: the
@@ -3113,7 +3382,7 @@ class BrushFrameStore {
       if (surface.canvasSize == canvasSize) {
         continue;
       }
-      _letTheFileRefGo(key);
+      _letTheKeptGo(key);
       _storeHot(key, resizeBitmapSurfaceCanvas(surface, canvasSize));
       _markDirty(key);
       // A crop can take every line with it.
@@ -3302,7 +3571,7 @@ class BrushFrameStore {
       _removeBaked(key);
     }
     for (final entry in snapshot.entries) {
-      _letTheFileRefGo(entry.key);
+      _letTheKeptGo(entry.key);
       _storeHot(entry.key, entry.value);
       _markDirty(entry.key);
       // The display caches follow the restored truth.

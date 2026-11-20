@@ -638,7 +638,7 @@ class ProjectImportDoors {
     final bakedCut = _project.cutById(cutId);
     if (bakedCut != null) {
       for (final cel in expansion.cels) {
-        bakeCelSurface(
+        landImportedCel(
           _renderCaches.brushFrameStore,
           _project.brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
           cel.surface,
@@ -1862,7 +1862,7 @@ class ProjectImportDoors {
             standing(bake, picture.size, cut.canvasSize),
             cut.canvasSize,
           );
-          bakeCelSurface(
+          landImportedCel(
             _renderCaches.brushFrameStore,
             _project.brushFrameKeyForCut(
               cut,

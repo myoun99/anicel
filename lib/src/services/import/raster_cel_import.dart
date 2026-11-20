@@ -1176,7 +1176,7 @@ void bakeCelTiles(
   BrushFrameKey key,
   PasteboardWall wall,
   Map<TileCoord, BitmapTile> tiles,
-) => bakeCelSurface(
+) => landImportedCel(
   store,
   key,
   BitmapSurface(
@@ -1185,6 +1185,26 @@ void bakeCelTiles(
     tiles: tiles,
   ),
 );
+
+/// [surface] landed as [key]'s cel by an IMPORT ([bakeCelSurface]) — and
+/// its store asked to park behind what it holds unsaved
+/// ([BrushFrameStore.parkBehind]): an imported cel's home is the run's
+/// room as it comes, whatever file it came from, where it was the RAM's
+/// alone till a save.
+///
+/// 🗣️유저 2026-11-21 04:28 on Q6 (card
+/// cel-originals-are-held-twice-in-ram-and-on-the-gpu), 「disk 임시 방에
+/// 미리 내려 둔다 — 형식 불문」: 「아무튼 들여올때 바로가 낫지않나싶은데」.
+/// The one door every import's cels land by — a .tvpp's, a .clip's, a
+/// .psd's, a cut folder's, a row of pictures'.
+void landImportedCel(
+  BrushFrameStore store,
+  BrushFrameKey key,
+  BitmapSurface surface,
+) {
+  bakeCelSurface(store, key, surface);
+  store.parkBehind();
+}
 
 /// Bakes [surface] as [key]'s cel — the exact donation pair the drawing
 /// commit uses (display cache seeds the frame state, then the baked

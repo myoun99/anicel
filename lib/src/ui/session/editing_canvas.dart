@@ -138,6 +138,20 @@ class EditingCanvas {
   Iterable<BitmapTile> hotTilesAtThePlayhead(
     BitmapSurface? Function(BrushFrameKey key) hotOf,
   ) sync* {
+    for (final cel in celsAtThePlayhead()) {
+      final hot = hotOf(cel);
+      if (hot != null) {
+        yield* hot.tiles.values;
+      }
+    }
+  }
+
+  /// The cels the frame at the playhead shows — each row's as the cut
+  /// exposes it there ([resolveExposedFrameAt]): what this canvas
+  /// stands on, whose bytes its store keeps here through a rest and
+  /// through the parking behind (`BrushFrameStore.setCelsStoodOn`), and
+  /// whose tiles [hotTilesAtThePlayhead] answers.
+  Iterable<BrushFrameKey> celsAtThePlayhead() sync* {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return;
@@ -145,11 +159,8 @@ class EditingCanvas {
     final frameIndex = _controllers.timelineController.currentFrameIndex;
     for (final layer in cut.layers) {
       final frame = resolveExposedFrameAt(layer, frameIndex);
-      final hot = frame == null
-          ? null
-          : hotOf(_project.brushFrameKeyForCut(cut, layer.id, frame.id));
-      if (hot != null) {
-        yield* hot.tiles.values;
+      if (frame != null) {
+        yield _project.brushFrameKeyForCut(cut, layer.id, frame.id);
       }
     }
   }

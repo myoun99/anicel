@@ -39,7 +39,7 @@ import '../../services/import/clip_import_planner.dart';
 import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart'
-    show bakeCelSurface, bakeCelTiles;
+    show bakeCelTiles, landImportedCel;
 import '../../services/persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, freeLaidCel, laidCelSurface;
 import '../../services/persistence/folder_grant.dart'
@@ -701,7 +701,7 @@ final class ClipImportDoor {
     if (decoded.tiles.isEmpty) {
       return;
     }
-    bakeCelSurface(
+    landImportedCel(
       _renderCaches.brushFrameStore,
       _keyOf(item),
       laidCelSurface(decoded, standsBehind: item.wall.reach),
@@ -769,7 +769,7 @@ final class ClipImportDoor {
     if (texts.isEmpty) {
       return;
     }
-    bakeCelSurface(
+    landImportedCel(
       _renderCaches.brushFrameStore,
       _keyOf(item),
       BitmapSurface(

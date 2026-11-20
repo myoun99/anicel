@@ -14,6 +14,7 @@ import '../models/bitmap_tile.dart';
 import '../models/tile_coord.dart';
 import '../services/cel_shells.dart';
 import 'app_gpu_engine.dart';
+import 'tiles_at_rest.dart';
 import 'tiles_stood_on.dart';
 
 /// The engine's copy of each tile asked for — a slot of a pool of its own
@@ -113,7 +114,9 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// answers — the fold's kernels on [engine] once they are compiled,
   /// null till then — and by nothing where it is null ([foldABatch]).
   /// The tiles [stoodOn] answers keep their slots where it makes room
-  /// ([_shortAsRoomIsMade]); none do where it is null.
+  /// ([_shortAsRoomIsMade]); none do where it is null. [atRest] is told
+  /// as its tiles come to rest ([_foldFromHere]); nobody where it is
+  /// null.
   /// A page of its pool holds [debugTilesAPage] tiles where a test says
   /// so ([GpuPool.new]).
   EngineTileLedger(
@@ -122,6 +125,7 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
     int? roomBatch,
     GpuFold? Function()? foldKernels,
     TilesStoodOn? stoodOn,
+    TilesAtRest? atRest,
     int? debugTilesAPage,
   }) : _engine = engine,
        pool = GpuPool(
@@ -132,7 +136,8 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
        _byteBudget = byteBudget,
        _roomBatch = roomBatch ?? EngineTileLedger.roomBatch,
        _foldKernels = foldKernels,
-       _stoodOn = stoodOn {
+       _stoodOn = stoodOn,
+       _toldAtRest = atRest {
     pool.onUnwritten = _letGoUnwritten;
   }
 
@@ -151,6 +156,7 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
         byteBudget: _appByteBudget,
         foldKernels: () => appGpuFoldKernels.compiled,
         stoodOn: TilesStoodOn.app,
+        atRest: TilesAtRest.app,
       ),
     );
   }
@@ -935,6 +941,10 @@ final GpuEngine _engine;
   /// stands on.
   final TilesStoodOn? _stoodOn;
 
+  /// Who is told as the tiles here come to rest ([_foldFromHere]); null
+  /// for a ledger that tells nobody.
+  final TilesAtRest? _toldAtRest;
+
   /// Whether this ledger asks [stoodOn] as it makes room.
   @visibleForTesting
   bool debugAsks(TilesStoodOn stoodOn) => identical(_stoodOn, stoodOn);
@@ -1467,6 +1477,9 @@ final GpuEngine _engine;
   /// once their last batch was asked is no batch's of theirs.
   void _foldFromHere() {
     _foldRest = null;
+    // Before the folds: what a store lets go of here moves no tile on
+    // the engine — a slot is its shell's from there on ([shellOf]).
+    _toldAtRest?.rested();
     if (_folds == null) {
       unawaited(_foldAtRest());
     } else {

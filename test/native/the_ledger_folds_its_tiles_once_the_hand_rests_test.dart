@@ -6,6 +6,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/native/tiles_at_rest.dart';
 
 import '../helpers/poll_until.dart';
 import '../helpers/tiles_on_the_engine.dart';
@@ -352,6 +353,71 @@ void main() {
       expect(answered.asked, hasLength(2));
       await theRestsPass(tester);
     });
+
+    // Who a ledger tells of its rests ([TilesAtRest]) — a project's
+    // store, which lets go there of the bytes the engine holds
+    // (a_session_lets_go_of_bytes_as_the_engine_s_tiles_rest_test.dart).
+    testWidgets('🚨who a ledger tells hears of the rest its folds are '
+        'asked at, and of no beat before', (tester) async {
+      var heard = 0;
+      answered = _Answered(
+        engine,
+        debugTilesAPage: aPage,
+        atRest: TilesAtRest()..tells(engine, () => heard += 1),
+      );
+
+      aStore();
+      await tester.pump(beat * 4);
+      expect(heard, 0, reason: 'a rest is five beats');
+
+      await tester.pump(beat);
+
+      expect(heard, 1);
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
+    testWidgets('and of each rest after it, the folds under way or not',
+        (tester) async {
+      var heard = 0;
+      answered = _Answered(
+        engine,
+        debugTilesAPage: aPage,
+        atRest: TilesAtRest()..tells(engine, () => heard += 1),
+      );
+      aStore();
+      await tester.pump(EngineTileLedger.rest);
+      expect(heard, 1, reason: '⛔premise');
+      expect(answered.asked, hasLength(1), reason: '⛔premise: under way');
+
+      aStore();
+      await tester.pump(EngineTileLedger.rest);
+
+      expect(heard, 2);
+      expect(answered.asked, hasLength(1), reason: 'one loop at a time');
+      await theRestsPass(tester);
+    });
+
+    testWidgets('🚨the hand puts it off as it puts the folds off',
+        (tester) async {
+      var heard = 0;
+      answered = _Answered(
+        engine,
+        debugTilesAPage: aPage,
+        atRest: TilesAtRest()..tells(engine, () => heard += 1),
+      );
+
+      for (var landing = 0; landing < 6; landing++) {
+        aLanding();
+        await tester.pump(beat);
+      }
+      expect(heard, 0, reason: 'the hand landed a beat ago');
+
+      await tester.pump(beat * 4);
+
+      expect(heard, 1);
+      await theRestsPass(tester);
+    });
   });
 
   // WHO is a hand, read off the callers: the app's ledger is the one a
@@ -462,7 +528,7 @@ void main() {
 /// A ledger whose folds a test answers: each batch a rest asks for waits
 /// for its word, and folds nothing.
 class _Answered extends EngineTileLedger {
-  _Answered(super.engine, {super.debugTilesAPage});
+  _Answered(super.engine, {super.debugTilesAPage, super.atRest});
 
   final asked = <Completer<bool>>[];
 

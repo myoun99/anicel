@@ -97,6 +97,7 @@ import '../native/app_gpu_engine.dart' show EnginePictures;
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
+import '../native/tiles_at_rest.dart';
 import '../native/tiles_stood_on.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
@@ -324,6 +325,18 @@ class EditorSessionManager extends ChangeNotifier
       () => editingCanvas.hotTilesAtThePlayhead(
         renderCaches.brushFrameStore.hotBakedSurfaceOrNull,
       ),
+    );
+    // Its store hears from it which cels a canvas stands on: every other
+    // hot cel that is kept — in the saved file, in the run's room — lets
+    // go of its bytes here once the engine's tiles rest ([TilesAtRest]),
+    // and every other unsaved one is parked behind as an import lands
+    // it (`BrushFrameStore.parkBehind`).
+    renderCaches.brushFrameStore.setCelsStoodOn(
+      editingCanvas.celsAtThePlayhead,
+    );
+    TilesAtRest.app.tells(
+      editingCanvas,
+      renderCaches.brushFrameStore.letGoOfBytesTheEngineHolds,
     );
     // A plugin installed or taken off greys or ungreys the effects of it
     // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
@@ -1952,6 +1965,8 @@ class EditorSessionManager extends ChangeNotifier
     RepaintOnWordBakes.clearKeptPictures,
     // Its canvas stands on no tile any more ([TilesStoodOn]).
     () => TilesStoodOn.app.standDown(editingCanvas),
+    // …and its store is told of no rest ([TilesAtRest]).
+    () => TilesAtRest.app.forgets(editingCanvas),
     canvasStroke.dispose,
     historyManager.dispose,
   ];
