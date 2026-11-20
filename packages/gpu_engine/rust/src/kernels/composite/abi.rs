@@ -19,7 +19,7 @@ mod tests;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::device::{Engine, Sent, let_go, let_go_unwaited, on_thread_of};
+use crate::device::{Engine, Sent, let_go, let_go_unwaited, posted_of};
 use crate::fail;
 use crate::kernels::chain::{ChainRead, Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
@@ -964,14 +964,19 @@ pub unsafe extern "C" fn gpu_engine_held_free(held: *mut HeldChains) {
 }
 
 /// Lets go of what `held` keeps under `id`, if anything — buffers, so on
-/// its engine's thread ([`on_thread_of`]).
+/// its engine's thread: in turn behind the bodies handed there before
+/// it, its caller waiting for none of it ([`posted_of`] has why, and
+/// when the bytes read gone). What is handed over is the same hold
+/// ([`HeldChains`] — a clone is), so it outlives a free asked behind it.
 ///
 /// # Safety
 /// `held` is live.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_held_let_go(held: *const HeldChains, id: u32) {
     // SAFETY: see the function's contract.
-    unsafe { on_thread_of(held, || (*held).let_go(id)) };
+    let chains = unsafe { &*held }.clone();
+    // SAFETY: see the function's contract.
+    unsafe { posted_of(held, move || chains.let_go(id)) };
 }
 
 /// The bytes `held` keeps under `id` — none where it keeps nothing.

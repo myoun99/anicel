@@ -15,7 +15,8 @@
 //!   (`device::let_go`, `device::let_go_unwaited`), or the bytes'
 //!   (`device::let_go_bytes`: what holds nothing of a device);
 //! - neither: it reaches the engine's thread by the thing it is handed
-//!   (`device::on_thread_of`), or it makes a thing of bytes
+//!   (`device::on_thread_of`, or `device::posted_of`, its caller waiting
+//!   for none of it), or it makes a thing of bytes
 //!   (`device::hands_bytes`), or it is on the ledger with why it has no
 //!   hand on the device ([`NO_HAND_ON_THE_DEVICE`]).
 //!
@@ -265,7 +266,8 @@ fn through_the_door(verb: &Verb) -> bool {
     } else if verb.name.ends_with("_free") {
         lets_go_through_a_door(&verb.body)
     } else {
-        verb.body.contains("on_thread_of(") || hands_out_bytes(&verb.body)
+        const BY_ITS_THING: [&str; 2] = ["on_thread_of(", "posted_of("];
+        BY_ITS_THING.iter().any(|door| verb.body.contains(door)) || hands_out_bytes(&verb.body)
     }
 }
 
@@ -293,7 +295,8 @@ fn every_verb_does_what_it_does_of_the_device_on_the_engines_thread() {
     assert!(
         off.is_empty(),
         "a verb's hand on the device on its caller's thread — hand its body to `Engine::on_thread` \
-         (`device::on_thread_of`, handed no engine; a door of `device.rs`, a free), or read it and write \
+         (`device::on_thread_of` or `device::posted_of`, handed no engine; a door of `device.rs`, a \
+         free), or read it and write \
          it on its ledger with why it has none: {off:?}"
     );
     for (name, why, handed) in ledgers() {
@@ -332,6 +335,7 @@ fn a_verb_goes_through_the_door_by_what_it_is_handed() {
     let other = |body| verb("gpu_engine_thing_let_go", false, body);
     let on_thread = " {\n    engine.on_thread(|| thing.run(engine))";
     let by_its_thing = " {\n    unsafe { on_thread_of(thing, || (*thing).let_go()) };";
+    let handed_over_by_its_thing = " {\n    unsafe { posted_of(thing, move || kept.let_go()) };";
     let let_go = " {\n    unsafe { let_go(thing) };";
     let unwaited = " {\n    unsafe { let_go_unwaited(thing) };";
     let its_own = " {\n    unsafe { &mut *thing }.let_go();";
@@ -353,6 +357,9 @@ fn a_verb_goes_through_the_door_by_what_it_is_handed() {
     // Handed neither: by the thing's own engine's thread, or a maker of
     // bytes.
     assert!(through_the_door(&other(by_its_thing)));
+    assert!(through_the_door(&other(handed_over_by_its_thing)));
+    assert!(!through_the_door(&run(true, handed_over_by_its_thing)));
+    assert!(!through_the_door(&free(handed_over_by_its_thing)));
     assert!(through_the_door(&other(made_of_bytes)));
     assert!(through_the_door(&other(made_or_not)));
     assert!(!through_the_door(&other(its_own)));

@@ -557,8 +557,27 @@ fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
     assert_eq!(unsafe { gpu_engine_held_bytes_of(held, 11) }, 3 * TILE_BYTES);
     assert!(gpu_engine_held_bytes() >= 3 * TILE_BYTES);
     assert_eq!(ran_from(3), first, "what it put laid");
-    // SAFETY: `held` is live.
-    unsafe { gpu_engine_held_let_go(held, 11) };
+    // 🚨Let go of on the engine's thread in turn, its caller waiting for
+    // none of it (`device::posted_of` has why): still kept while a body
+    // ahead has that thread, and gone once the thread has come to it.
+    let (lets, released) = std::sync::mpsc::channel::<()>();
+    let (began, begun) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(move || {
+            first_engine().on_thread(|| {
+                let _ = began.send(());
+                let _ = released.recv_timeout(std::time::Duration::from_secs(20));
+            })
+        });
+        begun.recv().expect("the body ahead began");
+        // SAFETY: `held` is live.
+        unsafe { gpu_engine_held_let_go(held, 11) };
+        // SAFETY: `held` is live.
+        let so_far = unsafe { gpu_engine_held_bytes_of(held, 11) };
+        let _ = lets.send(());
+        assert_eq!(so_far, 3 * TILE_BYTES, "waited for, or let go of ahead of its turn");
+    });
+    assert_eq!(done_here(first_engine()), Ok(()));
     // SAFETY: `held` is live.
     assert_eq!(unsafe { gpu_engine_held_bytes_of(held, 11) }, 0);
     assert_ne!(ran_from(3), first, "let go, it runs");

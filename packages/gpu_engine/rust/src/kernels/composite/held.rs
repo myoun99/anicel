@@ -102,15 +102,27 @@ impl HeldChains {
         fits.then(|| held.made.clone())
     }
 
-    /// Keeps `made` over `rect` under `id`, letting go of what it kept.
+    /// Keeps `made` over `rect` under `id`, letting go of what it kept —
+    /// past the lock ([`Self::let_go`] has why).
     pub(crate) fn keep(&self, id: u32, rect: TileRect, made: Made) {
         let counted = Counted::among(&HELD_BYTES, made.bytes());
-        self.held().insert(id, Held { rect, made, _counted: counted });
+        let kept = self.held().insert(id, Held { rect, made, _counted: counted });
+        drop(kept);
     }
 
     /// Lets go of what `id` keeps, if anything.
+    ///
+    /// 🚨ITS BUFFERS GO PAST THE LOCK: a put of 18–23 MiB takes the driver
+    /// 48–63 ms to let go of (`device::posted_of` has the measure), on the
+    /// engine's thread, the UI's waiting for none of it — and the UI's
+    /// thread asks here what a number weighs ([`Self::bytes_of`]) as each
+    /// run of a drag is done. Dropped by the statement that took it out,
+    /// it went while the lock was still held, and that ask stood behind
+    /// it. ⚠️No test tells the two apart: a buffer's drop cannot be
+    /// watched from here (브러시/렌더링 2026-11-20).
     pub(crate) fn let_go(&self, id: u32) {
-        self.held().remove(&id);
+        let kept = self.held().remove(&id);
+        drop(kept);
     }
 
     /// The bytes `id` keeps — none where it keeps nothing.

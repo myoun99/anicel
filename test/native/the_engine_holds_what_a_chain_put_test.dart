@@ -21,6 +21,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_chain_holds.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
@@ -351,6 +352,9 @@ void main() {
     expect(holds.heldBytes, greaterThan(0));
     expect(GpuHeldChains.liveBytes - before, holds.heldBytes);
     holds.clear();
+    // Let go of on the engine's thread in turn, no one waiting
+    // ([GpuHeldChains.letGo]): counted off once it has come to it.
+    await appGpuEngine.done();
     expect(GpuHeldChains.liveBytes - before, 0);
   });
 
@@ -527,6 +531,7 @@ void main() {
       expect(holds.heldBytes, once, reason: 'the canvas\'s stays');
       holds.standDown(theCanvas);
       expect(holds.heldBytes, 0);
+      await appGpuEngine.done();
       expect(GpuHeldChains.liveBytes - before, 0, reason: 'the engine\'s');
     });
 

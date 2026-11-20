@@ -2907,7 +2907,8 @@ class GpuHeldChains implements _OfAnEngine {
   GpuHeldChains(this._engine) : _held = rust.heldNew(_engine._engine);
 
   /// The bytes every hold keeps, counted by the engine where a hold keeps
-  /// and lets go.
+  /// and lets go — on its thread, so one let go of ([letGo]) is counted
+  /// off once a [GpuEngine.done] asked after it is told.
   static int get liveBytes => rust.heldBytes();
 
   @override
@@ -2921,7 +2922,11 @@ class GpuHeldChains implements _OfAnEngine {
   /// The bytes it keeps under [id] — none where it keeps nothing.
   int bytesOf(int id) => rust.heldBytesOf(_held, id);
 
-  /// Lets go of what it keeps under [id], if anything.
+  /// Lets go of what it keeps under [id], if anything: on the engine's
+  /// thread, in turn behind every run handed there before it, this
+  /// isolate waiting for none of it (rust/src/device.rs, `posted_of` —
+  /// 🔬waited for, each value of a blur dragged held the UI 48–63 ms for
+  /// the driver to let one put go, the Surface, 2026-11-20).
   void letGo(int id) => rust.heldLetGo(_held, id);
 
   /// Frees it; a plan that names it keeps its own hold.
