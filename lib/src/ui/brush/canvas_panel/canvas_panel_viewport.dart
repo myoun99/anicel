@@ -306,7 +306,19 @@ class _CanvasPanelViewport {
   ///    shrinks — and sliding the picture out from under a panel the user
   ///    just opened, or shifting it on every frame of a splitter drag, is a
   ///    motion nobody asked for.
+  ///
+  /// 🗣️유저 2026-11-20 (card
+  /// a-canvas-panel-rebuilds-its-chrome-on-every-height-change, Q1): 「08-06
+  /// 대로 — 메인 캔버스(바닥)만 가운데를 따라가고, 붙은 패널은 그림이 왼쪽
+  /// 위에 가만히 있다」. ↩️The floor was told apart by `floorCover == null`
+  /// until 3ce44558f (08-07) made the cover a plain inset; every panel then
+  /// followed the centre, with no word of why, and a docked panel paid a pan
+  /// on every frame its height changed — a rail scrolled over it, a
+  /// splitter dragged.
   void _reanchorAfterBoxChange(Rect before, Rect after) {
+    if (!_state._onFloor) {
+      return;
+    }
     final dx = after.center.dx - before.center.dx;
     final dy = after.center.dy - before.center.dy;
     if (dx == 0 && dy == 0) {
