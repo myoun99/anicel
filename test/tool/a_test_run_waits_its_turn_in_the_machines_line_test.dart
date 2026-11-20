@@ -689,7 +689,7 @@ void main() {
         'tool/mutation_run.dart',
       ]) {
         final source = File(tool).readAsStringSync();
-        expect(source, contains('RunTemp.take()'), reason: tool);
+        expect(source, contains('RunTemp.take('), reason: tool);
         expect(source, contains('environment: temp.environment'), reason: tool);
         expect(source, contains('temp.end()'), reason: tool);
       }

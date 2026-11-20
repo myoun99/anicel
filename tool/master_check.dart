@@ -42,6 +42,12 @@ import 'test_seconds.dart';
 /// The lane the check runs in.
 const kCheckLane = 'master-check';
 
+/// The lane the wide run's second compiler runs in — moved to the same
+/// commit, and handed half of each crowd batch's suites (`affected_tests
+/// --twin`; its `runInBatches` has why). The walk back runs one compiler: its
+/// runs are a few files each.
+const kTwinLane = 'master-check-twin';
+
 /// What every `affected_tests` the check makes — the wide run and each one
 /// that walks a red back — says, to stand at the head of the machine's line.
 ///
@@ -255,11 +261,14 @@ Future<int> _check(String root, MasterRecords records) async {
       '${landings.skip(1).map((l) => l.name).join(', ')}.');
 
   final lane = await _laneAt(root, head);
+  final twin = await _laneAt(root, head, name: kTwinLane);
   final known = records.reds;
   final red = await _redsAt(root, lane, [
     '--wide',
     '--base',
     checked,
+    '--twin',
+    twin,
     ...known.keys.where((file) => File('$lane/$file').existsSync()),
   ]);
   final fresh = red.difference(known.keys.toSet());
@@ -353,10 +362,14 @@ Future<Set<String>> _redsAt(String root, String lane, List<String> args) async {
 /// its C engine, built there from that commit's C, till the C went
 /// (2026-11-13): a commit from before it runs its C pins against no
 /// engine, and they skip.
-Future<String> _laneAt(String root, String sha) async {
-  final lane = _lanePath(root);
+Future<String> _laneAt(
+  String root,
+  String sha, {
+  String name = kCheckLane,
+}) async {
+  final lane = _lanePath(root, name);
   if (!File('$lane/.git').existsSync()) {
-    await _bash(root, ['tool/lane.sh', 'open', kCheckLane]);
+    await _bash(root, ['tool/lane.sh', 'open', name]);
   }
   if (_git(lane, ['status', '--porcelain']).isNotEmpty) {
     throw _Unfinished('$lane holds changes nobody committed');
@@ -373,8 +386,8 @@ Future<String> _laneAt(String root, String sha) async {
   return lane;
 }
 
-String _lanePath(String root) =>
-    '$root/.claude/worktrees/lane-$kCheckLane';
+String _lanePath(String root, String name) =>
+    '$root/.claude/worktrees/lane-$name';
 
 Future<void> _bash(String root, List<String> args) =>
     _run(bashExecutable, args, root);

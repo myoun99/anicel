@@ -38,6 +38,7 @@
 //   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
 //   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
 //   bash tool/run.sh affected_tests --first-in-line   # the wide check's own
+//   bash tool/run.sh affected_tests --twin <checkout>  # a second compiler there
 //   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
 //   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
@@ -416,6 +417,7 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
   final useCache = !args.contains('--no-cache');
+  final twinAsked = _flagValue(args, '--twin');
   final turn = lineFor(args);
   if (turn.refusal != null) {
     stderr.writeln('${turn.refusal}.');
@@ -429,6 +431,7 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
   Directory.current = root;
+  final twin = twinAsked == null ? null : _twinAt(twinAsked);
 
   Future<Never> run(
     List<String> files, [
@@ -443,6 +446,7 @@ Future<void> main(List<String> args) async {
       redsTo: redsTo,
       inTheLine: turn.inTheLine,
       firstInLine: turn.first,
+      twin: twin,
     ),
   );
 
@@ -564,12 +568,16 @@ ResultCache? _cacheOr(
 }
 
 /// What a batch's [report] says of each file ([suiteRuns]), with its times
-/// and greens laid over the machine's records ([updatePairs]).
-List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
+/// and greens laid over the machine's records ([updatePairs]) — its paths
+/// read from [root], the checkout it ran in (this one unless named).
+List<SuiteRun> _recordBatch(File report, ResultCache? cache, {String? root}) {
   if (!report.existsSync()) return const [];
   final List<SuiteRun> runs;
   try {
-    runs = suiteRuns(report.readAsStringSync(), root: Directory.current.path);
+    runs = suiteRuns(
+      report.readAsStringSync(),
+      root: root ?? Directory.current.path,
+    );
   } on FileSystemException catch (e) {
     _report('the report of this batch could not be read: ${e.message}');
     return const [];
@@ -636,6 +644,56 @@ List<String> idleArguments(int processId) => [
   '-Command',
   "(Get-Process -Id $processId).PriorityClass = 'Idle'",
 ];
+
+/// Why the checkout at [there] cannot run half of this run's batches
+/// beside it ([runInBatches]) — or null when it can: another checkout, at
+/// the commit this one ([here]) is at, neither holding a change nobody
+/// committed. What it finds green is kept as this checkout's
+/// ([ResultCache]), so what it runs must be what this one holds.
+String? twinRefusal({
+  required String here,
+  required String? there,
+  required String? hereHead,
+  required String? thereHead,
+  required bool hereClean,
+  required bool thereClean,
+}) {
+  if (there == null) return 'it is not a git checkout';
+  if (there == here) return 'it is this checkout';
+  if (hereHead == null || hereHead != thereHead) {
+    return 'it is at ${thereHead ?? '(no commit)'}, this checkout at '
+        '${hereHead ?? '(no commit)'}';
+  }
+  if (!hereClean) return 'this checkout holds changes nobody committed';
+  if (!thereClean) return 'it holds changes nobody committed';
+  return null;
+}
+
+/// The checkout [asked] names, as this run's twin ([twinRefusal]) — or the
+/// run refused, as any flag asked wrongly is.
+String _twinAt(String asked) {
+  String? git(String where, List<String> args) {
+    final result = Process.runSync('git', ['-C', where, ...args]);
+    return result.exitCode == 0 ? (result.stdout as String).trim() : null;
+  }
+
+  final here = git('.', ['rev-parse', '--show-toplevel'])!;
+  final there = git(asked, ['rev-parse', '--show-toplevel']);
+  final refusal = twinRefusal(
+    here: here,
+    there: there,
+    hereHead: git(here, ['rev-parse', 'HEAD']),
+    thereHead: there == null ? null : git(there, ['rev-parse', 'HEAD']),
+    hereClean: git(here, ['status', '--porcelain'])?.isEmpty ?? false,
+    thereClean:
+        there != null && (git(there, ['status', '--porcelain'])?.isEmpty ?? false),
+  );
+  if (refusal != null) {
+    stderr.writeln('--twin $asked: $refusal.');
+    exit(2);
+  }
+  return there!;
+}
 
 Directory? _repoRoot() {
   final result = Process.runSync('git', ['rev-parse', '--show-toplevel']);
@@ -859,7 +917,20 @@ List<String> nextBatch(
 /// that wait for the collector as one batch of their own. [take] stands in
 /// the line for the files still to run and says
 /// how many suites the next batch has; [run] runs the batch at them, on the
-/// engine its [BatchKind] names.
+/// engine its [BatchKind] names. [putDown] hands each take's suites back
+/// once what they ran has ended.
+///
+/// 🆕A SECOND COMPILER (2026-11-20, card the-wide-check-takes-five-hours).
+/// `flutter test` compiles one file at a time (flutter_tools'
+/// TestCompiler, 「one compilation request at a time」), and the light
+/// files that are most of the wide check ran at that compiler's pace —
+/// eighteen suites mostly stood in its queue. Given [runInTwin], a take of
+/// the crowd is cut into two batches at half its suites each, and the
+/// second runs in another checkout of the same commit — its own
+/// `flutter test`, its own compiler — beside the first. Measured on 200
+/// light files at eight suites: 251 s as one run, 188 · 203 s as two.
+/// The batches that run apart (the collector's, the real-time pins, the
+/// engines' own) are never paired: what they are apart from is company.
 Future<void> runInBatches(
   List<String> files, {
   required Map<String, int> known,
@@ -872,33 +943,68 @@ Future<void> runInBatches(
     required BatchKind kind,
   })
   run,
+  Future<void> Function(
+    List<String> batch,
+    int suites, {
+    required BatchKind kind,
+  })?
+  runInTwin,
+  void Function()? putDown,
 }) async {
+  Future<void> held(Future<void> Function() round) async {
+    try {
+      await round();
+    } finally {
+      putDown?.call();
+    }
+  }
+
   final split = partitionByTag(files, read);
   for (final kind in kRunOrder) {
     var left = split[kind]!;
     if (kind == BatchKind.collector) {
-      if (left.isNotEmpty) await run(left, await take(left), kind: kind);
+      if (left.isNotEmpty) {
+        final suites = await take(left);
+        await held(() => run(left, suites, kind: kind));
+      }
       continue;
     }
     if (kind == BatchKind.realtime) {
       for (final file in left) {
-        await run([file], await take([file]), kind: kind);
+        final suites = await take([file]);
+        await held(() => run([file], suites, kind: kind));
       }
       continue;
     }
     while (left.isNotEmpty) {
       final suites = await take(left);
+      final twin = kind == BatchKind.crowd && suites >= 2 ? runInTwin : null;
+      final there = twin == null ? 0 : suites ~/ 2;
       final batch = nextBatch(
         left,
         known,
-        suites: suites,
+        suites: suites - there,
         inTheLine: inTheLine,
       );
-      await run(batch, suites, kind: kind);
-      final ran = batch.toSet();
-      left = [for (final file in left) if (!ran.contains(file)) file];
+      final rest = _without(left, batch);
+      final beside = twin == null || rest.isEmpty
+          ? const <String>[]
+          : nextBatch(rest, known, suites: there, inTheLine: inTheLine);
+      await held(
+        () => Future.wait([
+          run(batch, beside.isEmpty ? suites : suites - there, kind: kind),
+          if (beside.isNotEmpty) twin!(beside, there, kind: kind),
+        ]),
+      );
+      left = _without(rest, beside);
     }
   }
+}
+
+/// [left] but the files of [ran], in [left]'s order.
+List<String> _without(List<String> left, List<String> ran) {
+  final gone = ran.toSet();
+  return [for (final file in left) if (!gone.contains(file)) file];
 }
 
 /// The console reporter every batch asks for, whatever machine it runs on.
@@ -955,6 +1061,7 @@ Future<int> _runTests(
   String? redsTo,
   bool inTheLine = true,
   bool firstInLine = false,
+  String? twin,
 }) async {
   final selected = useCache && cache != null
       ? _withoutStillGreen(files, cache)
@@ -1021,20 +1128,19 @@ Future<int> _runTests(
   var asked = started;
   Future<void> runBatches(Turn turn) async {
     // Runs every file of [files] in batches ([runInBatches]) and hands
-    // [record] each batch's number, report and result.
+    // [record] each batch's number, report, result and the checkout it ran
+    // in.
     Future<void> runAll(
       List<String> files,
-      void Function(int i, File report, _BatchResult result) record,
-    ) => runInBatches(
-      files,
-      known: known,
-      inTheLine: inTheLine,
-      read: (path) => File(path).readAsStringSync(),
-      take: (left) {
-        asked = DateTime.now();
-        return turn.take(files: filesNamed(left), work: workOf(left, known));
-      },
-      run: (batch, suites, {required kind}) async {
+      void Function(int i, File report, _BatchResult result, String root)
+      record,
+    ) {
+      Future<void> launch(
+        List<String> batch,
+        int suites,
+        BatchKind kind, {
+        String? checkout,
+      }) async {
         final i = launched++;
         final began = DateTime.now();
         final inLine = began.difference(asked);
@@ -1045,7 +1151,8 @@ Future<int> _runTests(
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
               BatchKind.impeller => ' — on Impeller',
               BatchKind.realtime => ' — a real-time pin, alone',
-            }} — at ${clockAt(began)}, ${spanOf(inLine)} in line');
+            }}${checkout == null ? '' : ' — in the twin checkout'}'
+            ' — at ${clockAt(began)}, ${spanOf(inLine)} in line');
         final report = File('${reports.path}/batch$i.json');
         _BatchResult? ran;
         try {
@@ -1054,6 +1161,7 @@ Future<int> _runTests(
             concurrency: suites,
             report: report.path,
             kind: kind,
+            checkout: checkout,
           );
           if (ranNowhere(
             exitCode: result.exitCode,
@@ -1065,10 +1173,9 @@ Future<int> _runTests(
                 'asks for ($kNoTesterContext). Its files are neither red '
                 'nor green.');
           } else {
-            record(i, report, result);
+            record(i, report, result, checkout ?? Directory.current.path);
           }
         } finally {
-          turn.putDown();
           final wall = DateTime.now().difference(began);
           final own = ran?.ownClock;
           times.add(inLine: inLine, wall: wall, own: own);
@@ -1078,12 +1185,32 @@ Future<int> _runTests(
               '${ran == null ? '' : ' · '
                     '${cpuSaid(ran.spent, wall, Platform.numberOfProcessors)}'}');
         }
-      },
-    );
+      }
 
-    await runAll(selected, (i, report, result) {
-      runsOf[i] = _recordBatch(report, cache);
-      slow.addAll(_slowIn(report));
+      return runInBatches(
+        files,
+        known: known,
+        inTheLine: inTheLine,
+        read: (path) => File(path).readAsStringSync(),
+        take: (left) {
+          asked = DateTime.now();
+          return turn.take(
+            files: filesNamed(left),
+            work: workOf(left, known),
+          );
+        },
+        run: (batch, suites, {required kind}) => launch(batch, suites, kind),
+        runInTwin: twin == null
+            ? null
+            : (batch, suites, {required kind}) =>
+                  launch(batch, suites, kind, checkout: twin),
+        putDown: turn.putDown,
+      );
+    }
+
+    await runAll(selected, (i, report, result, root) {
+      runsOf[i] = _recordBatch(report, cache, root: root);
+      slow.addAll(_slowIn(report, root: root));
       skipped += result.skipped;
       if (result.exitCode != 0) {
         exits[i] = result.exitCode;
@@ -1102,8 +1229,8 @@ Future<int> _runTests(
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
     final again = <SuiteRun>[];
-    await runAll(reds.toList()..sort(), (i, report, result) {
-      again.addAll(_recordBatch(report, null));
+    await runAll(reds.toList()..sort(), (i, report, result, root) {
+      again.addAll(_recordBatch(report, null, root: root));
     });
     // ⚠️「The same inputs」 is measured after the second run, not assumed
     // from the keys taken when this run began ([splitGreenAgain]): a
@@ -1311,9 +1438,12 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
 
 /// The tests of [report] that took a minute ([slowTests]); none when it
 /// cannot be read — [_recordBatch] has said so.
-List<SlowTest> _slowIn(File report) {
+List<SlowTest> _slowIn(File report, {String? root}) {
   try {
-    return slowTests(report.readAsStringSync(), root: Directory.current.path);
+    return slowTests(
+      report.readAsStringSync(),
+      root: root ?? Directory.current.path,
+    );
   } on FileSystemException {
     return const [];
   }
@@ -1652,8 +1782,9 @@ Future<_BatchResult> _flutterTest(
   required int? concurrency,
   required String report,
   required BatchKind kind,
+  String? checkout,
 }) async {
-  final temp = RunTemp.take();
+  final temp = RunTemp.take(where: checkout);
   try {
     return await _flutterTestIn(
       temp,
@@ -1661,6 +1792,7 @@ Future<_BatchResult> _flutterTest(
       concurrency: concurrency,
       report: report,
       kind: kind,
+      checkout: checkout,
     );
   } finally {
     temp.end();
@@ -1673,6 +1805,7 @@ Future<_BatchResult> _flutterTestIn(
   required int? concurrency,
   required String report,
   required BatchKind kind,
+  String? checkout,
 }) async {
   final launch = _launch;
   final process = await Process.start(
@@ -1686,6 +1819,7 @@ Future<_BatchResult> _flutterTestIn(
         kind: kind,
       ),
     ],
+    workingDirectory: checkout,
     environment: temp.environment..addAll(launch.environment),
     runInShell: launch.shell,
   );
