@@ -1066,9 +1066,16 @@ class ProjectFileDoor {
   /// of the media pool) — what a project open warms so waveforms and
   /// playback PCM are ready before the first play.
   ///
+  /// 🚨ONE READ OF THE FILE FOR EVERY SOUND ([ProjectFile
+  /// .withOneReadOfTheFile]): each warm asks where its bytes are and whether
+  /// the file carries its conform, and the open stood still for a read of
+  /// the file's directory per question — two a sound (card
+  /// anicel-open-stands-still-while-it-settles).
   void warmAudioConforms() {
-    _audioConformStore.warmPaths(
-      projectAudioSourcePaths(_project.repository.requireProject()),
+    _file.withOneReadOfTheFile(
+      () => _audioConformStore.warmPaths(
+        projectAudioSourcePaths(_project.repository.requireProject()),
+      ),
     );
   }
 
