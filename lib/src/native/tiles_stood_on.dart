@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../models/bitmap_tile.dart';
 
 /// 🚨THE SLOTS OF THE HOT CELS OF THE FRAME AN EDITOR STANDS ON ARE NOT A
@@ -51,6 +53,11 @@ final class TilesStoodOn {
   /// [canvas] stands on no tile any more.
   void standDown(Object canvas) =>
       _standing.removeWhere((each) => identical(each.target, canvas));
+
+  /// Whether [canvas] is asked what it stands on.
+  @visibleForTesting
+  bool debugStands(Object canvas) =>
+      _standing.any((each) => identical(each.target, canvas));
 
   /// The key of every tile stood on now ([BitmapTile.pixelsKey]) — by
   /// identity, as `==` reads every pixel.

@@ -113,12 +113,17 @@ void main() {
     expect([stoodOn(a0), stoodOn(again)], [false, true]);
   });
 
-  test('🚨a project closed stands on nothing', () {
+  test('🚨a project closed stands on nothing, and is asked no more', () {
     final (:session, :a0, a3: _, b3: _) = threeHotCels();
+    final canvas = session.editingCanvas;
     expect(stoodOn(a0), isTrue, reason: '⛔premise');
+    expect(TilesStoodOn.app.debugStands(canvas), isTrue);
 
     session.dispose();
 
     expect(stoodOn(a0), isFalse);
+    // ⛔Not left to its emptied store to answer nothing: a full pool
+    // would ask a closed project where it stands at every store.
+    expect(TilesStoodOn.app.debugStands(canvas), isFalse);
   });
 }
