@@ -326,6 +326,31 @@ fn a_finish_and_its_landing_wait_for_no_turn_of_the_engine_s_thread() {
     }
 }
 
+// What was finished is let go of with no turn of the engine's thread
+// waited for, right behind the put it handed over — which lands its bytes
+// all the same: the put holds the tiles made as its own.
+#[test]
+fn what_was_finished_is_let_go_of_behind_its_put_with_no_wait() {
+    // SAFETY: as the first test's.
+    unsafe {
+        let own = open();
+        let under = [stored(&own, UNDER)];
+        let ink = picture(&own, INK, SIDE / 2, SIDE / 2);
+        let first = finished(&own, ink, &under);
+        gpu_engine_stand_still(own.engine, 2_000);
+        let (started, put) = (Instant::now(), numbered());
+        let given = land(&own, first, 0, 1, put);
+        gpu_engine_finished_free(first);
+        let took = started.elapsed();
+        assert!(took < Duration::from_millis(1_000), "waited {took:?} for the engine's thread");
+        assert_eq!(told_within(put, Duration::ZERO), None, "⛔premise: freed before its put was made");
+        assert_eq!(told_within(put, LONG), Some(true), "{}", last_error());
+        assert_eq!(pixel(&read(&own, given[0]), 10, 10), INK, "what was finished, put");
+        gpu_engine_stamp_picture_free(ink);
+        close(own);
+    }
+}
+
 // A finish reads the cel as it stood where it was asked: the tile under
 // it let go and its slot handed out again behind the asking, the finish
 // lays its picture over the tile that was.

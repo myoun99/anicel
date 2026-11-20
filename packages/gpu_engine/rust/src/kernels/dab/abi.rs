@@ -1528,6 +1528,14 @@ pub unsafe extern "C" fn gpu_engine_finished_land_unwaited(
 /// # Safety
 /// `finished` came from a finish told ([`gpu_engine_stamp_finish_unwaited`],
 /// [`gpu_engine_stamp_finish_mask_unwaited`]).
+///
+/// 🚨WAITS FOR NOTHING, THOUGH NO FINALIZER CALLS IT (2026-11-20): the
+/// turn that is told frees it right behind the put it handed over
+/// ([`gpu_engine_finished_land_unwaited`]), and waiting here would stand
+/// that turn behind the put and every body ahead of it — the wait this
+/// road is there to take off the caller's thread. It counts nothing, and
+/// the put holds the tiles made as its own. The app's scan names it
+/// (test/architecture/a_free_the_gc_calls_waits_for_nothing_test.dart).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_finished_free(finished: *mut Finished) {
     // SAFETY: see the function's contract.
