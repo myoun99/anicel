@@ -31,10 +31,13 @@ final class TilesStoodOn {
   /// The app's: what its ledger asks (`EngineTileLedger.instance`).
   static final TilesStoodOn app = TilesStoodOn();
 
+  /// What each canvas said it stands on, kept for as long as the canvas
+  /// lives: a list of these would hold every project that ever stood.
   final Expando<Iterable<BitmapTile> Function()> _tilesOf = Expando(
     'tiles stood on',
   );
 
+  /// The canvases that stand now, each asked where it still lives.
   final List<WeakReference<Object>> _standing = [];
 
   /// [canvas] stands on what [tiles] answers, whenever it is asked — and
@@ -46,13 +49,8 @@ final class TilesStoodOn {
   }
 
   /// [canvas] stands on no tile any more.
-  void standDown(Object canvas) {
-    _tilesOf[canvas] = null;
-    _standing.removeWhere((each) {
-      final standing = each.target;
-      return standing == null || identical(standing, canvas);
-    });
-  }
+  void standDown(Object canvas) =>
+      _standing.removeWhere((each) => identical(each.target, canvas));
 
   /// The key of every tile stood on now ([BitmapTile.pixelsKey]) — by
   /// identity, as `==` reads every pixel.
@@ -60,11 +58,10 @@ final class TilesStoodOn {
     final keys = Set<Object>.identity();
     for (final each in _standing) {
       final standing = each.target;
-      final tiles = standing == null ? null : _tilesOf[standing];
-      if (tiles == null) {
+      if (standing == null) {
         continue;
       }
-      for (final tile in tiles()) {
+      for (final tile in _tilesOf[standing]!()) {
         keys.add(tile.pixelsKey);
       }
     }
