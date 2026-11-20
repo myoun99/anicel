@@ -374,7 +374,10 @@ Future<ScreenTexture> _screenOnASurface(
   final surface = shownSurfaceOf(width, height);
   final id = shownScreens.length + 1;
   shownScreens[id] = surface;
-  return ScreenTexture.debugOnSurface(surface, id: id);
+  return shownScreenTextures[id] = ScreenTexture.debugOnSurface(
+    surface,
+    id: id,
+  );
 }
 
 void _freeScreenSurfaces() {
@@ -382,4 +385,6 @@ void _freeScreenSurfaces() {
     surface.free();
   }
   shownScreens.clear();
+  shownScreenTextures.clear();
+  forgetScreensReadBack();
 }

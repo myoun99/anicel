@@ -5,6 +5,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/screen_texture.dart' show ScreenTexture;
 
 /// Every screen open, by the texture id its layer names: what a test reads
 /// a screen back from ([screenDrawnAsAPicture]) — `flutter test` shows no
@@ -44,9 +45,32 @@ T shownOf<T>(T Function({required bool bgra}) make, String what) {
   }
 }
 
+/// The screens of [shownScreens] that count the frames drawn on them, by
+/// the same ids ([ScreenTexture.debugFramesDrawn]).
+final Map<int, ScreenTexture> shownScreenTextures = {};
+
+/// Each counting screen's pixels as last read back, and how many frames
+/// had been drawn on it then.
+final Map<int, ({ui.Image image, int drawn})> _readBack = {};
+
+/// Lets go of what the screens were read back as — with the screens.
+void forgetScreensReadBack() {
+  for (final read in _readBack.values) {
+    read.image.dispose();
+  }
+  _readBack.clear();
+}
+
 /// The layer showing [textureId]'s screen as it stands, one texel a device
 /// pixel, through every layer above it as a texture is: `flutter test` shows
 /// none, so its pixels are read back and drawn.
+///
+/// 🗣️READ BACK AGAIN ONLY ONCE A FRAME IS DRAWN ON IT (a-process-first-
+/// test-never-sees-the-canvas-stand-Q2 = 「안 바뀐 화면은 다시 읽지
+/// 않는다」, 유저 2026-11-20): every paint read the whole screen, and 🔬41%
+/// of a run's reads were of a screen nothing had been drawn on since the
+/// read before (서피스 11-20 — 9,346 reads, 1,104.7 s). A screen that
+/// counts no frames — one a test opened its own way — is read every time.
 Layer screenDrawnAsAPicture({
   required ui.Rect rect,
   required int textureId,
@@ -60,9 +84,10 @@ Layer screenDrawnAsAPicture({
       filterQuality: filterQuality,
     );
   }
-  final image = pictureOf(
-    PremultipliedRows.given(surface.read(), surface.width, surface.height),
-  );
+  final drawn = shownScreenTextures[textureId]?.debugFramesDrawn;
+  final image = drawn == null
+      ? _readOf(surface)
+      : _readOnceAFrame(textureId, surface, drawn);
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImageRect(
     image,
@@ -71,6 +96,27 @@ Layer screenDrawnAsAPicture({
     rect,
     ui.Paint()..filterQuality = filterQuality,
   );
-  image.dispose();
+  if (drawn == null) {
+    image.dispose();
+  }
   return PictureLayer(rect)..picture = recorder.endRecording();
+}
+
+/// [surface]'s pixels, read back.
+ui.Image _readOf(GpuSurface surface) => pictureOf(
+  PremultipliedRows.given(surface.read(), surface.width, surface.height),
+);
+
+/// [textureId]'s screen as read back when [drawn] frames had been drawn on
+/// it — read again where more have since. Kept till the screens go
+/// ([forgetScreensReadBack]).
+ui.Image _readOnceAFrame(int textureId, GpuSurface surface, int drawn) {
+  final kept = _readBack[textureId];
+  if (kept != null && kept.drawn == drawn) {
+    return kept.image;
+  }
+  kept?.image.dispose();
+  final image = _readOf(surface);
+  _readBack[textureId] = (image: image, drawn: drawn);
+  return image;
 }

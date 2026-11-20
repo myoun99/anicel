@@ -240,6 +240,11 @@ sealed class ScreenTexture {
   bool get showsAFrame => _showsAFrame;
   bool _showsAFrame = false;
 
+  /// Test seam: how many frames have been drawn on this screen, where a
+  /// test reads it back ([debugOnSurface]) — null on the app's own.
+  @visibleForTesting
+  int? get debugFramesDrawn => null;
+
   /// Frees the texture, once Flutter shows it no more — a frame the GPU
   /// is still drawing put up nowhere, though where the GPU fails it that
   /// is reported by name as ever ([present]).
@@ -333,7 +338,14 @@ final class _SurfaceTexture extends ScreenTexture {
   ValueListenable<int> get textureId => _id;
 
   @override
-  void _draw(void Function(GpuTarget next) draw) => draw(_surface);
+  int? get debugFramesDrawn => _framesDrawn;
+  int _framesDrawn = 0;
+
+  @override
+  void _draw(void Function(GpuTarget next) draw) {
+    _framesDrawn += 1;
+    draw(_surface);
+  }
 
   @override
   void _show() => _id.value = _nextId;
