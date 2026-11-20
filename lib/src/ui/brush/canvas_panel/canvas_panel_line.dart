@@ -219,7 +219,7 @@ class _CanvasPanelLine {
   Widget ants() => IgnorePointer(
     child: RepaintBoundary(
       child: ListenableBuilder(
-        listenable: Listenable.merge([trails, _state._pictureUp]),
+        listenable: Listenable.merge([trails, _state._viewShownMoves]),
         builder: (context, _) {
           final shown = _state._viewShown;
           return CustomPaint(

@@ -299,7 +299,7 @@ class _CanvasPanelText implements CelTextToolHost {
 
   Widget layer() => Positioned.fill(
     child: ListenableBuilder(
-      listenable: _state._pictureUp,
+      listenable: _state._viewShownMoves,
       builder: (context, _) => CelTextToolLayer(
         tool: tool,
         stage: CelTextStage(

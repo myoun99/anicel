@@ -48,11 +48,9 @@ class _PanelBuild {
     );
   }
 
-  // One VIEWPORT layout's state: assigned on every layout of the viewport
-  // (the LayoutBuilder may lay out more than once per build) and read by the
-  // gesture layer built in the same call — so `late`, not `late final`. The
-  // nullable ones are copied into locals where a null check must promote.
-  late Size _viewportSize;
+  // The deck's state: assigned when the deck is built ([_deckIn]) and read by
+  // the gesture layer built in the same call. The nullable ones are copied
+  // into locals where a null check must promote.
   late Widget _canvasView;
   late Widget Function(BuildContext context, CanvasViewport viewport)?
   _overlayBuilder;
@@ -63,17 +61,28 @@ class _PanelBuild {
   late bool _selectionLayerActive;
   late CanvasSelectionRegion? _idleSelection;
 
-  /// The viewport for the room the shell gives it: the canvas view, the
-  /// gesture layer that owns every pointer on it, and the ants of an idle
-  /// selection while a painting tool is armed.
+  /// The viewport for the room the shell gives it: the room remembered, and
+  /// the deck of this build of the panel ([_deckIn]).
+  ///
+  /// 🚨ONE deck per build (a-view-change-rebuilds-the-whole-canvas-panel,
+  /// 2026-11-20): a layout that only changed the room hands back the same
+  /// widget, so nothing under it builds for the room but what is drawn
+  /// through the view, which hears it ([_CanvasPanelViewport.moved]). ↩️The
+  /// deck was built again at every layout — the gates, the tool's entrance
+  /// and the cursors on every frame a docked panel's height changed.
   Widget _viewport(BuildContext context, BoxConstraints viewportConstraints) {
-    _viewportSize = Size(
-      viewportConstraints.maxWidth,
-      viewportConstraints.maxHeight,
+    _state._viewportState.rememberEditorViewportSize(
+      Size(viewportConstraints.maxWidth, viewportConstraints.maxHeight),
     );
-    _state._viewportState.rememberEditorViewportSize(_viewportSize);
+    return _deck ??= _deckIn(context);
+  }
 
-    _canvasView = _state._buildViewportContent(context);
+  Widget? _deck;
+
+  /// The canvas view, the gesture layer that owns every pointer on it, and
+  /// the ants of an idle selection while a painting tool is armed.
+  Widget _deckIn(BuildContext context) {
+    _canvasView = _throughTheView(_state._buildViewportContent);
     _overlayBuilder = _state.widget.viewportOverlayBuilder;
     _controlsBuilder = _state.widget.viewportControlsBuilder;
     _underlayBuilder = _state.widget.viewportUnderlayBuilder;
@@ -123,9 +132,11 @@ class _PanelBuild {
       child: AppScrollbarLaneScope(
         lane: _state._lane,
         child: _CanvasEditorPanelShell(
-          rightStripBar: _state._shellBars.memoizedRightStripBar(),
-          horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
-          bottomBar: _state._shellBars.memoizedBottomBar(),
+          rightStripBar: _barBy(_state._shellBars.memoizedRightStripBar),
+          horizontalStripBar: _barBy(
+            _state._shellBars.memoizedHorizontalStripBar,
+          ),
+          bottomBar: _barBy(_state._shellBars.memoizedBottomBar),
           transport: _state.widget.transport,
           leftPill: _state._floor?.leftPill,
           onLeftPillLaidOut: _state._rememberLeftPillBeside,
@@ -143,6 +154,21 @@ class _PanelBuild {
       ),
     ),
   );
+
+  /// A bar of the shell, asked again as the view moves: its memo hands back
+  /// the bar it has while what the bar shows stays.
+  Widget _barBy(Widget Function() bar) => ListenableBuilder(
+    listenable: _state._viewportState.movedForTheBars,
+    builder: (context, _) => bar(),
+  );
+
+  /// What [build] gives for the view as it is, built again as it moves
+  /// ([_CanvasPanelViewport.moved]).
+  Widget _throughTheView(Widget Function(BuildContext context) build) =>
+      ListenableBuilder(
+        listenable: _state._viewportState.moved,
+        builder: (context, _) => build(context),
+      );
 
   /// What sits on the artwork — [_toolDeck], behind the view hold's gate
   /// (I-15 · I-88): while the 「이동」 or the
@@ -330,22 +356,24 @@ class _PanelBuild {
       children: [
         if (underlayBuilder != null)
           Positioned.fill(
-            child: underlayBuilder(
-              context,
-              _state._viewportState._viewport,
-              // ★ONE PLACE DECIDES WHETHER THERE IS A PAINTER, and
-              // it is the builder. This call site used to ask the VERB
-              // coordinator first — a second copy of the same decision,
-              // with the ROW question mixed in — so standing on a
-              // property lane never even asked, and the live row sat in
-              // the composite tree with nobody to paint it. 🗣️유저
-              // 2026-09-12: 「레이어에 서있을땐 그림 제대로 보이는데
-              // 트랜스폼에 서면 그림이 사라져」. The builder answers null
-              // by itself when there is nothing to paint.
-              _state._activeSurfacePainter(),
-              (
-                liveRow: _state._selectionFloat,
-                liftedRows: _state._rowsHeldBeside(),
+            child: _throughTheView(
+              (context) => underlayBuilder(
+                context,
+                _state._viewportState._viewport,
+                // ★ONE PLACE DECIDES WHETHER THERE IS A PAINTER, and
+                // it is the builder. This call site used to ask the VERB
+                // coordinator first — a second copy of the same decision,
+                // with the ROW question mixed in — so standing on a
+                // property lane never even asked, and the live row sat in
+                // the composite tree with nobody to paint it. 🗣️유저
+                // 2026-09-12: 「레이어에 서있을땐 그림 제대로 보이는데
+                // 트랜스폼에 서면 그림이 사라져」. The builder answers null
+                // by itself when there is nothing to paint.
+                _state._activeSurfacePainter(),
+                (
+                  liveRow: _state._selectionFloat,
+                  liftedRows: _state._rowsHeldBeside(),
+                ),
               ),
             ),
           ),
@@ -391,39 +419,17 @@ class _PanelBuild {
   Widget _onThePicture(
     Widget Function(BuildContext context, CanvasViewport viewport) build,
   ) => ListenableBuilder(
-    listenable: _state._pictureUp,
+    listenable: _state._viewShownMoves,
     builder: (context, _) => build(context, _state._viewShown),
   );
 
   Widget _gestureLayer(BuildContext context) {
     final hud = _state.widget.flipHud;
-    final layer = CanvasViewportGestureLayer(
-      viewport: _state._viewportState._viewport,
-      onViewportChanged: _state._viewportState.setViewport,
-      hold: _state._viewportState._held,
-      rotationEnabled: _state.widget.allowViewRotation,
-      // I-88: the 「회전」 key turns about the middle the turn buttons use.
-      turnAnchor: () => _state._viewportState._viewportCenterAnchor,
-      oneFingerAction: _state.widget.oneFingerAction,
-      primaryPressPans: !_state.widget.runsTheSelectedTool,
-      flipHud: hud,
-      // PEN-7b: the control-mode touch slots — flip
-      // dispatches shell actions, brush size drives the
-      // tool state (both threaded from the workspace).
-      onInvokeAction: _state.widget.onInvokeAction,
-      onBrushSizeDragStart: _state.widget.onBrushSizeDragStart,
-      onBrushSizeDragUpdate: _state.widget.onBrushSizeDragUpdate,
-      onBrushSizeDragEnd: _state.widget.onBrushSizeDragEnd,
-      // Asked when an event arrives: a content stroke (a sheet or conte
-      // window's) used to rebuild this layer and the artwork under it
-      // through a listenable builder, and a canvas stroke the whole panel,
-      // for a value nothing here draws.
-      strokeActive: () =>
-          _state._strokeActive ||
-          _state._selectionDragActive ||
-          _state._textDragActive ||
-          (_contentStrokeActive?.value ?? false),
-      touchLocked: () => _state._modifierTouchDragActive,
+    final layer = ListenableBuilder(
+      // The view the layer works through moves under it; what it holds does
+      // not build for that ([_CanvasPanelViewport.moved]).
+      listenable: _state._viewportState.moved,
+      builder: (context, deck) => _gesturesOver(deck!),
       // Nothing drawn in the viewport (canvas, playback
       // frames, camera overlay) may paint outside the panel.
       child: ClipRect(
@@ -552,7 +558,7 @@ class _PanelBuild {
                 // it would be (F-114). ↩️An alpha-preview toggle
                 // swapped both for it, and went (F-146).
                 child: ListenableBuilder(
-                  listenable: _state._pictureUp,
+                  listenable: _state._viewShownMoves,
                   builder: (context, deck) => _StagePlanes(
                     backdropArgb: _state._stageBackdropArgb,
                     pasteboardArgb: _state._stagePasteboardArgb,
@@ -587,6 +593,41 @@ class _PanelBuild {
         layer,
         FlipHudOverlay(controller: hud),
       ],
+    );
+  }
+
+  /// The layer that owns pan and zoom, over [deck], working through the
+  /// view as it is.
+  Widget _gesturesOver(Widget deck) {
+    final hud = _state.widget.flipHud;
+    return CanvasViewportGestureLayer(
+      viewport: _state._viewportState._viewport,
+      onViewportChanged: _state._viewportState.setViewport,
+      hold: _state._viewportState._held,
+      rotationEnabled: _state.widget.allowViewRotation,
+      // I-88: the 「회전」 key turns about the middle the turn buttons use.
+      turnAnchor: () => _state._viewportState._viewportCenterAnchor,
+      oneFingerAction: _state.widget.oneFingerAction,
+      primaryPressPans: !_state.widget.runsTheSelectedTool,
+      flipHud: hud,
+      // PEN-7b: the control-mode touch slots — flip
+      // dispatches shell actions, brush size drives the
+      // tool state (both threaded from the workspace).
+      onInvokeAction: _state.widget.onInvokeAction,
+      onBrushSizeDragStart: _state.widget.onBrushSizeDragStart,
+      onBrushSizeDragUpdate: _state.widget.onBrushSizeDragUpdate,
+      onBrushSizeDragEnd: _state.widget.onBrushSizeDragEnd,
+      // Asked when an event arrives: a content stroke (a sheet or conte
+      // window's) used to rebuild this layer and the artwork under it
+      // through a listenable builder, and a canvas stroke the whole panel,
+      // for a value nothing here draws.
+      strokeActive: () =>
+          _state._strokeActive ||
+          _state._selectionDragActive ||
+          _state._textDragActive ||
+          (_contentStrokeActive?.value ?? false),
+      touchLocked: () => _state._modifierTouchDragActive,
+      child: deck,
     );
   }
 }
