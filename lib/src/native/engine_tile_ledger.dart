@@ -575,51 +575,130 @@ final GpuEngine _engine;
     bool compared = false,
     LandsAgain? again,
   }) => held((hold) {
-    final under = hold.slotsOfThose(landedCel, [
-      for (final ask in asks) ask.under,
-    ]);
-    final asked = <GpuTileAsk>[
-      for (final (at, ask) in asks.indexed)
-        (column: ask.column, row: ask.row, under: under[at]),
-    ];
+    final asked = _askedOf(hold, asks);
     List<GpuLanded> landOf(List<GpuTileAsk> asked) =>
         by(pool, _cels.putIfAbsent(landedCel, pool.cel), asked);
     final landed = landOf(asked);
-    if (landed.length < asked.length) {
-      final short = _shortAsRoomIsMade(asked.length - landed.length, () {
-        landed.addAll(landOf(asked.sublist(landed.length)));
-        return asked.length - landed.length;
-      });
-      if (short > 0) {
-        throw TileRoomRefused(
-          'the device lands ${landed.length} of the ${asked.length} tiles '
-          'it was asked for',
-        );
-      }
-    }
+    _allPlaced(
+      asked.length,
+      landed.length,
+      (from) {
+        final more = landOf(asked.sublist(from));
+        landed.addAll(more);
+        return more.length;
+      },
+      (landed) =>
+          'the device lands $landed of the ${asked.length} tiles it was '
+          'asked for',
+    );
     _copyHereOnceTheHandRests();
     if (ofTheHand) {
       _foldOnceTheHandRests();
     } else {
       _foldBeforeLong();
     }
-    return [
-      for (final (at, (:change, :tile)) in landed.indexed)
-        (
-          change: change,
-          tile: tile == null
-              ? null
-              : _adopted(
-                  tile,
-                  hasInk: compared ? true : null,
-                  under: asks[at].under,
-                  made: again == null
-                      ? null
-                      : (by: again, column: asks[at].column, row: asks[at].row),
-                ),
-        ),
-    ];
+    return _adoptedOf(asks, landed, compared: compared, again: again);
   });
+
+  /// [asks] as the engine takes them: each over the slot of the tile it
+  /// names, held by [hold] on the pages of what lands.
+  List<GpuTileAsk> _askedOf(TileHold hold, List<TileAsk> asks) {
+    final under = hold.slotsOfThose(landedCel, [
+      for (final ask in asks) ask.under,
+    ]);
+    return [
+      for (final (at, ask) in asks.indexed)
+        (column: ask.column, row: ask.row, under: under[at]),
+    ];
+  }
+
+  /// What [landed] made of [asks], in their order: a tile of its own
+  /// where one landed ([_adopted]) — its ink known where the landing
+  /// [compared] —, which keeps the tile it landed on and, where [again]
+  /// says how, the way its landing is made again.
+  List<LandedTile> _adoptedOf(
+    List<TileAsk> asks,
+    List<GpuLanded> landed, {
+    required bool compared,
+    LandsAgain? again,
+  }) => [
+    for (final (at, (:change, :tile)) in landed.indexed)
+      (
+        change: change,
+        tile: tile == null
+            ? null
+            : _adopted(
+                tile,
+                hasInk: compared ? true : null,
+                under: asks[at].under,
+                made: again == null
+                    ? null
+                    : (by: again, column: asks[at].column, row: asks[at].row),
+              ),
+      ),
+  ];
+
+  /// [land] compared, with no wait for the GPU: [by] —
+  /// `GpuStampLanding.finished`, `finishedMask` — is asked what it makes
+  /// of [asks] over the tiles they name, as the pool holds them now; and
+  /// once it is told what each is, the inked are given their slots and
+  /// put there on their way (`GpuFinished.landOnItsWay`). [unput] is
+  /// called where they were not put, as a stroke on its way is told
+  /// (`GpuStroke.landOnItsWay`): what the caller made of the tiles handed
+  /// back is forgotten there. Fails as its asking does, and where the
+  /// landing was not finished.
+  ///
+  /// 🗣️opening-a-transform-box-holds-the-ui-over-half-a-second (브러시/렌더링
+  /// 2026-11-20): what a box at rest cuts ahead of the press — a cel's
+  /// hole, its float's stamp — lands through here, a turn of the UI's
+  /// thread standing for none of it; a press, whose frame shows the cut,
+  /// lands through [land].
+  ///
+  /// ⚠️THE HOLD ENDS WITH THE ASKING. The engine reads the tiles under
+  /// on its own thread, off the pool's pages as they stood at the asking
+  /// (rust/src/kernels/dab/abi.rs, `finishing`), whatever a store or a
+  /// fold makes of their slots meanwhile — nothing need hold them through
+  /// the wait, which a hold of [held]'s could not: it ends with the call
+  /// it is handed to.
+  ///
+  /// No hand's landing: it puts no fold off ([_foldBeforeLong]).
+  Future<List<LandedTile>> landOnceTold(
+    List<TileAsk> asks, {
+    required FinishedBy by,
+    required void Function() unput,
+  }) async {
+    final finished = await held((hold) => by(pool, _askedOf(hold, asks)));
+    try {
+      final cel = _cels.putIfAbsent(landedCel, pool.cel);
+      List<GpuTile> putFrom(int first) =>
+          finished.landOnItsWay(pool, cel, first: first, unput: unput);
+      final places = putFrom(0);
+      _allPlaced(
+        finished.inked,
+        places.length,
+        (from) {
+          final more = putFrom(from);
+          places.addAll(more);
+          return more.length;
+        },
+        (put) =>
+            'the device puts $put of the ${finished.inked} tiles a landing '
+            'finished',
+      );
+      _copyHereOnceTheHandRests();
+      _foldBeforeLong();
+      var next = 0;
+      return _adoptedOf(asks, [
+        for (final change in finished.changes)
+          (
+            change: change,
+            tile: change == GpuChange.inked ? places[next++] : null,
+          ),
+      ], compared: true);
+    } finally {
+      finished.free();
+    }
+  }
 
   /// Every tile of [rect] — a rectangle of tiles on the canvas's grid: its
   /// first tile's column and row, and how many columns and rows it spans —
@@ -980,21 +1059,42 @@ final GpuEngine _engine;
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the
   /// budget, else as room is made ([_shortAsRoomIsMade]).
-  void _store(int cel, List<BitmapTile> tiles) {
-    var stored = _put(cel, tiles);
-    if (stored == tiles.length) {
+  void _store(int cel, List<BitmapTile> tiles) => _allPlaced(
+    tiles.length,
+    _put(cel, tiles),
+    (from) => _put(cel, tiles.sublist(from)),
+    (stored) =>
+        'the device stores $stored of the ${tiles.length} tiles a call holds',
+  );
+
+  /// All [count] placed — [placed] of them are, the first —, [more]
+  /// placing what it can from the one it is handed on, and answering how
+  /// many, as room is made ([_shortAsRoomIsMade]): a store's tiles
+  /// ([_store]), a landing's ([land]), the inked of one finished
+  /// ([landOnceTold]). Where room made every way leaves some out it is
+  /// refused as [refused] says of how many were placed.
+  ///
+  /// ↩️Each of the three spelled it till 2026-11-20 — a store and a
+  /// landing since they were written, and the finished landing would
+  /// have been the third.
+  void _allPlaced(
+    int count,
+    int placed,
+    int Function(int from) more,
+    String Function(int placed) refused,
+  ) {
+    if (placed == count) {
       return;
     }
-    final short = _shortAsRoomIsMade(tiles.length - stored, () {
-      stored += _put(cel, tiles.sublist(stored));
-      return tiles.length - stored;
+    final short = _shortAsRoomIsMade(count - placed, () {
+      placed += more(placed);
+      return count - placed;
     });
-    // ⚠️No test reaches the throw: past both budgets a store falls short
-    // only where the driver refuses a page, which no test has one do.
+    // ⚠️No test reaches the throw for a store: past both budgets one
+    // falls short only where the driver refuses a page, which no test
+    // has one do.
     if (short > 0) {
-      throw TileRoomRefused(
-        'the device stores $stored of the ${tiles.length} tiles a call holds',
-      );
+      throw TileRoomRefused(refused(placed));
     }
   }
 
@@ -1456,6 +1556,12 @@ typedef LandedTile = ({GpuChange change, BitmapTile? tile});
 /// What makes a landing of the tiles asked, on a cel of a pool.
 typedef LandedBy =
     List<GpuLanded> Function(GpuPool pool, int cel, List<GpuTileAsk> asked);
+
+/// What asks a landing's finish of the tiles asked, on a pool, and is
+/// told it ([EngineTileLedger.landOnceTold]): no cel named — what is
+/// finished takes its slots once told.
+typedef FinishedBy =
+    Future<GpuFinished> Function(GpuPool pool, List<GpuTileAsk> asked);
 
 /// How a landing is made again once the engine it was made on is gone:
 /// what it laid, as values — nothing of that engine's, which a [LandedBy]
