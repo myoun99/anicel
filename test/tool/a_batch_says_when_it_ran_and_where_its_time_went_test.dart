@@ -223,15 +223,16 @@ void main() {
       final before = mine();
       if (!Platform.isWindows) return; // `ps` gives no CPU here: 0.
       // Arithmetic and nothing else, three seconds of the wall between two
-      // reads of the table, till it says half a second was spent: user
-      // time, which the kernel's share of six table reads (a few tens of
-      // milliseconds each, measured 11-20) could never make up.
+      // reads of the table, till it says half a second was spent.
       // ↩️It was one stretch of a second and a half, and the run's tests
       // stand at Idle: on the Surface under a land's gate that stretch was
       // handed less than a third of a second of the CPU, and the pin went
       // red then green on the same inputs (11-20, flaky card). How long the
-      // machine takes to hand it over is not what this pins — but the
-      // reads stay few, or their own kernel time would fill the bar alone.
+      // machine takes to hand it over is not what this pins.
+      // ⚠️It cannot tell the kernel's share from the user's: on the main PC
+      // (11-20) a table that read either alone passed it too — the loop's
+      // clock reads spend kernel time, and so do the table's reads. That
+      // the two are summed is read from the source below.
       final busy = Stopwatch()..start();
       var x = 1;
       var spent = Duration.zero;
@@ -250,6 +251,11 @@ void main() {
       // table's ticks are a hundred nanoseconds, and read as anything else
       // they would be many times this.
       expect(spent, lessThan(busy.elapsed + const Duration(seconds: 1)));
+      // GetProcessTimes: [2] the kernel's, [3] the user's.
+      expect(
+        File('tool/process_tree.dart').readAsStringSync(),
+        contains('cpu: times[2] + times[3],'),
+      );
     });
   });
 
