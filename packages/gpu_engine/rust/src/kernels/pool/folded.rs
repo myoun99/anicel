@@ -772,15 +772,19 @@ impl Pool {
     /// 1,440 MiB — eleven pages of tiles and one of folded tiles — for
     /// as long as it was watched in two of them, 70 s and 200 s, where
     /// the build before came to 320 MiB within a second of its band's
-    /// end. Its line is 512 MiB by half its RAM over the laws' 5,768 —
-    /// under 1,455 MiB at 32 GB: a second page of folded tiles, at
-    /// 1,472, is past it. The build before folded once the band had
+    /// end. Its line is 1,440.7 MiB — 512 MiB by its allowance, the
+    /// 16,230.4 MB its memory tab says (half its RAM), over the laws'
+    /// 5,768 —: a second page of folded tiles, at 1,472, is past it.
+    /// The build before folded once the band had
     /// filled, and its first such page took four pages' tiles and more
     /// before it was full; that day's folds as the band fills
     /// (`EngineTileLedger._foldBeforeLong`) had filled it by the band's
-    /// end. ⚠️Read off the numbers; the device's own line is asked of
-    /// 검증. The main PC's line is 3 GiB, which nothing measured there
-    /// came near.
+    /// end. The main PC's line is 2,170.8 MiB, which nothing measured
+    /// there came near; kept to 289 MiB there (a widget test, S5_BA cut
+    /// 352 opened and left alone), the pool stood at 288 MiB — two
+    /// pages of tiles and one of folded tiles — for the 11 s it was
+    /// watched past its band's end, and with this came to 192 MiB
+    /// within 1.1 s of it.
     ///
     /// ⚠️Past the line by a page of tiles' bytes at the most, and while
     /// a fold is under way: tiles are handed over a page's before the
