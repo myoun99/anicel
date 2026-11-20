@@ -12,7 +12,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
-import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -30,6 +29,7 @@ import '../../helpers/named_finders.dart';
 import '../../helpers/room_for_the_pills.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/until_the_words_land.dart';
 import 'tile_store_idle.dart';
 
 /// 🔬I-22-rest (11-01, S5_BA 컷352, 디버그): a click on a rail row built the
@@ -57,12 +57,11 @@ void main() {
   /// moved by the second (11-08). ↩️It waited for the tiles alone.
   Future<ByteData> landedPixels(WidgetTester tester) async {
     final store = TimelineGridTileStore.instance;
-    final words = BakedWords.instance;
     for (var round = 0; round < 20; round += 1) {
       await tileStoreIdle(store, tester: tester);
-      await settleAsync(tester, () => words.debugWaitingWords == 0);
+      await settleAsync(tester, noWordWaits);
       await tester.pump();
-      if (!store.debugBusy && words.debugWaitingWords == 0) {
+      if (!store.debugBusy && noWordWaits()) {
         return screenPixels(tester);
       }
     }

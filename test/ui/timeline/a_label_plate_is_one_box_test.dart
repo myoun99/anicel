@@ -14,7 +14,7 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart'
-    show BakedWords, WordBakeWaiter;
+    show WordBakeWaiter;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
@@ -22,7 +22,7 @@ import 'package:anicel/src/ui/timeline/layer_plate_words.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineTextOnColor;
 
-import '../../helpers/settle_async.dart';
+import '../../helpers/until_the_words_land.dart';
 
 const _boundary = ValueKey<String>('boundary');
 const _host = ValueKey<String>('host');
@@ -126,13 +126,6 @@ Widget _takeAsItWas(LayerMark mark, Axis axis) => Builder(
     ),
   ),
 );
-
-/// Until no word waits for its bake, and the frame that draws the landed
-/// ones — so both sides are read drawing the same bakes.
-Future<void> _settle(WidgetTester tester) async {
-  await settleAsync(tester, () => BakedWords.instance.debugWaitingWords == 0);
-  await tester.pump();
-}
 
 Future<Uint8List> _pixels(WidgetTester tester) async {
   final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -238,7 +231,7 @@ void main() {
                   scale,
                 ),
               );
-              await _settle(tester);
+              await untilTheWordsLand(tester);
               final now = await _read(tester, find.byType(LayerMarkPlate));
 
               await tester.pumpWidget(
@@ -248,7 +241,7 @@ void main() {
                   scale,
                 ),
               );
-              await _settle(tester);
+              await untilTheWordsLand(tester);
               _expectSame(now, await _read(tester, find.byKey(_old)));
               handle.dispose();
             });
@@ -263,13 +256,13 @@ void main() {
             await tester.pumpWidget(
               _framed(LayerTakeText(mark: mark, axis: axis), host, scale),
             );
-            await _settle(tester);
+            await untilTheWordsLand(tester);
             final now = await _read(tester, find.byType(LayerTakeText));
 
             await tester.pumpWidget(
               _framed(_takeAsItWas(mark, axis), host, scale),
             );
-            await _settle(tester);
+            await untilTheWordsLand(tester);
             _expectSame(now, await _read(tester, find.byKey(_old)));
             handle.dispose();
           });
@@ -366,14 +359,14 @@ void main() {
     );
     for (final axis in Axis.values) {
       await tester.pumpWidget(labelled(before, shown: true, axis: axis));
-      await _settle(tester);
+      await untilTheWordsLand(tester);
       await tester.pumpWidget(labelled(after, shown: false, axis: axis));
-      await _settle(tester);
+      await untilTheWordsLand(tester);
       final handed = await _read(tester, find.byKey(_old));
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(labelled(after, shown: false, axis: axis));
-      await _settle(tester);
+      await untilTheWordsLand(tester);
       _expectSame(handed, await _read(tester, find.byKey(_old)));
     }
     handle.dispose();
@@ -385,14 +378,14 @@ void main() {
       LayerMarkPlate(mark: _marks['two words']!, axis: axis),
     );
     await tester.pumpWidget(turned(Axis.horizontal));
-    await _settle(tester);
+    await untilTheWordsLand(tester);
     await tester.pumpWidget(turned(Axis.vertical));
-    await _settle(tester);
+    await untilTheWordsLand(tester);
     final handed = await _pixels(tester);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(turned(Axis.vertical));
-    await _settle(tester);
+    await untilTheWordsLand(tester);
     expect(handed, await _pixels(tester));
   });
 

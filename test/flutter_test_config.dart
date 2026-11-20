@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart'
     show debugCheckFrameStanding;
 import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
+import 'package:anicel/src/ui/text/word_bake.dart' show BakedWords;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import '../tool/machine_cache.dart';
@@ -280,6 +281,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // failed on a raster the test before it had queued). A test ends with
   // the store empty; the drain it scheduled then finds nothing.
   tearDown(TimelineGridTileStore.instance.clear);
+  // So are the baked words, and a bake a test left in flight never lands
+  // in the next: its word stood waited for in every test after
+  // ([BakedWords.debugForgetEveryBake] has the measurement).
+  tearDown(BakedWords.instance.debugForgetEveryBake);
   // `flutter test` registers no texture a frame grid's screen could be
   // shown by ([ScreenTexture.debugOnSurface]): where a file opens the GPU
   // engine, each grid's screen opens on a surface of its own, freed as the

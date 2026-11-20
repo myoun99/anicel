@@ -793,12 +793,36 @@ final class BakedWords {
   /// and narrowing, a block word one per word.
   static const int _capacity = 512;
 
-  final BakeOnceLru<_Bake, ui.Image?> _images = BakeOnceLru(
+  BakeOnceLru<_Bake, ui.Image?> _images = _bakes();
+
+  static BakeOnceLru<_Bake, ui.Image?> _bakes() => BakeOnceLru(
     capacity: _capacity,
     costOf: (image) =>
         image == null ? 0 : estimatedImageBytes(image.width, image.height),
     retire: (image) => image?.dispose(),
   );
+
+  /// Every bake forgotten — landed, in flight and waited for — as a new
+  /// process would have none.
+  ///
+  /// 🚨ONE PER PROCESS, as the timeline's tile store is: a bake waits on
+  /// the clocks of the test that asked for it, and one in flight when that
+  /// test ended never lands. Its word was then waited for in every later
+  /// test of the process — 🔬11-20 (board
+  /// a-vertical-column-test-compares-letters-that-never-settled): ten pins
+  /// of another file run first left 51 words waiting, and the vertical
+  /// column's settle stood its whole 60 s twice a test. A test ends with
+  /// none (`flutter_test_config.dart`).
+  @visibleForTesting
+  void debugForgetEveryBake() {
+    _images.clear();
+    _images = _bakes();
+    _latestOf.clear();
+    _waiting.clear();
+    _toWake.clear();
+    _wakeScheduled = false;
+    _baking.clear();
+  }
 
   /// What the baked words' pictures weigh resident, for the memory census.
   int get imageBytes => _images.held;
