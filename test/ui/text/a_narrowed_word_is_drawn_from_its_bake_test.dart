@@ -615,6 +615,53 @@ void main() {
     );
   });
 
+  testWidgets('🚨a bake left in flight is forgotten with every other bake — '
+      'as each test ends, the store being one per process — and its word, '
+      'asked again, is baked anew', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // A quiet with no room that never moves: the bake stands in flight, as
+    // one does whose test's clocks are gone.
+    BakedWords.instance.quietTurns = QuietTurns(
+      clock: QuietClock(
+        quiet: () => (fromMicros: 0, untilMicros: 0),
+        now: () => 0,
+        moved: () => Completer<void>().future,
+      ),
+    );
+    addTearDown(() => BakedWords.instance.quietTurns = QuietTurns.instance);
+    const fit = (x: 0.25, y: 1.0);
+    Widget painting(TextPainter word) => Center(
+      child: CustomPaint(
+        size: const Size(40, 20),
+        painter: _PaintsOnce(word, fit),
+      ),
+    );
+    final word = _word('남은 굽기', fontSize: 12);
+    await tester.pumpWidget(painting(word));
+    word.dispose();
+    expect(
+      BakedWords.instance.debugWaitingWords,
+      1,
+      reason: 'the premise: its painter waits, the bake in flight',
+    );
+
+    BakedWords.instance.debugForgetEveryBake();
+    BakedWords.instance.quietTurns = QuietTurns.instance;
+    expect(BakedWords.instance.debugWaitingWords, 0, reason: 'nobody waits');
+
+    final again = _word('남은 굽기', fontSize: 12);
+    addTearDown(again.dispose);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(painting(again));
+    await pumpUntilAWordBakeLands(tester);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(),
+      reason: 'asked again, it was baked anew and landed',
+    );
+  });
+
   testWidgets('🚨while frames are held a word is drawn from its bake as soon '
       'as the bake lands — its turn waits for the GPU on its own', (
     tester,
