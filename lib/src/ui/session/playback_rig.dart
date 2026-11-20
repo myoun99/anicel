@@ -192,7 +192,8 @@ class PlaybackRig implements PlaybackRun {
         // band is full again ~0.8 s sooner at 400. ⛔Not shortened on that
         // without the user: the pen's frame is theirs to trade
         // (`cel_number_probe_test.dart` pstroke, CN_PSTROKE_BLUR=1, on the
-        // branch measure/measure-drag-value).
+        // branch measure/measure-drag-value). 🗣️F-620-Q7 (유저 2026-11-20
+        // 13:13): 「1.2초 그대로」.
         //
         // ⚠️MUTANT SURVIVES, wrong axis (2026-09-08): swapping the two
         // branches leaves every suite green. What the DELAY does is pinned
