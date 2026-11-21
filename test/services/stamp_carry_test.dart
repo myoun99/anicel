@@ -654,37 +654,49 @@ void main() {
     // the stamp.
     test('🚨an outline reaching two cells past the box carries its far '
         'side where a block there carries it', () {
-      // The box's right side is at 200 and its cells are 50 wide: the
-      // outline starts in the first cell past it and ends in the second.
-      final corner = CanvasPoint(x: 288, y: 137);
-      final outline = CanvasSelectionRegion.shape(
-        CanvasSelectionShape([
-          CanvasPoint(x: 207, y: 137),
-          corner,
-          CanvasPoint(x: 288, y: 143),
-          CanvasPoint(x: 207, y: 143),
-        ]),
-      );
-      // A block at the far end, its outline starting at the same corner —
-      // the first point of a carried outline is its first point carried.
-      final block = CanvasSelectionRegion.shape(
-        CanvasSelectionShape([
-          corner,
-          CanvasPoint(x: 288, y: 143),
-          CanvasPoint(x: 282, y: 143),
-          CanvasPoint(x: 282, y: 137),
-        ]),
-      );
-      final [carried] = ringsOf(bulge.regionThrough(outline));
-      final [there] = ringsOf(bulge.regionThrough(block));
-      final want = there.first;
+      CanvasSelectionRegion ring(List<(num, num)> points) =>
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape([
+              for (final (x, y) in points)
+                CanvasPoint(x: x.toDouble(), y: y.toDouble()),
+            ]),
+          );
+      // The box is 100..200 and its cells are 50: on each side an outline
+      // from 7 past it (the first cell) to 88 past it (the second), 6
+      // across, its second point its far corner — and a block at the far
+      // end whose outline starts at that corner, as the first point of a
+      // carried outline is its first point carried.
+      final sides = {
+        'right of it': (
+          outline: [(207, 137), (288, 137), (288, 143), (207, 143)],
+          block: [(288, 137), (288, 143), (282, 143), (282, 137)],
+        ),
+        'left of it': (
+          outline: [(93, 137), (12, 137), (12, 143), (93, 143)],
+          block: [(12, 137), (12, 143), (18, 143), (18, 137)],
+        ),
+        'below': (
+          outline: [(137, 207), (137, 288), (143, 288), (143, 207)],
+          block: [(137, 288), (143, 288), (143, 282), (137, 282)],
+        ),
+        'above': (
+          outline: [(137, 93), (137, 12), (143, 12), (143, 93)],
+          block: [(137, 12), (143, 12), (143, 18), (137, 18)],
+        ),
+      };
 
-      expect(
-        carried.map((point) => apart(point, want)).reduce(math.min),
-        lessThan(1e-9),
-        reason: 'the far corner of the outline goes where the same corner '
-            'of a block there goes',
-      );
+      for (final MapEntry(key: side, value: (:outline, :block))
+          in sides.entries) {
+        final [carried] = ringsOf(bulge.regionThrough(ring(outline)));
+        final want = ringsOf(bulge.regionThrough(ring(block))).single.first;
+
+        expect(
+          carried.map((point) => apart(point, want)).reduce(math.min),
+          lessThan(1e-9),
+          reason: 'the far corner of the outline $side goes where the same '
+              'corner of a block there goes',
+        );
+      }
     });
   });
 
