@@ -1,9 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -24,6 +20,8 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🗣️F-609 (유저 2026-11-17): 「s행에 일반 레이어에서 프레임 복사한거
 /// 붙여넣기 가능해서 그림 붙여넣어져버리는데 일반레이어에서 복사된건
@@ -69,19 +67,9 @@ void main() {
   /// Paints [red] over the first tile of [row]'s cel [id].
   void paint(EditorSessionManager s, LayerId row, FrameId id, int red) {
     final cut = s.requireActiveCut;
-    final bytes = Uint8List(256 * 256 * 4);
-    for (var pixel = 0; pixel < 256 * 256; pixel += 1) {
-      bytes.setRange(pixel * 4, pixel * 4 + 4, [red, 0, 0, 255]);
-    }
     s.pixelEditing.coordinator!.restoreSurfaceSnapshot(
       s.brushFrameKeyForCut(cut, row, id),
-      BitmapSurface(
-        canvasSize: cut.canvasSize,
-        tileSize: 256,
-        tiles: {
-          TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: bytes),
-        },
-      ),
+      aCelFilled(cut.canvasSize, [red, 0, 0, 255]),
     );
   }
 
@@ -119,10 +107,7 @@ void main() {
     s.pixelEditing.coordinator = BrushFrameEditingCoordinator(
       initialFrameKey: s.brushFrameKeyForCut(cut, plain, cel(plain, 0)),
       frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: cut.canvasSize,
-        tileSize: 256,
-      ),
+      sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
       historyPolicy: const BrushHistoryPolicy(),
     );
     paint(s, plain, cel(plain, 0), 10);

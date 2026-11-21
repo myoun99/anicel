@@ -58,9 +58,9 @@ pub(crate) mod folded_tests;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
 use crate::device::{Engine, Sent, let_go};
 use crate::fail;
@@ -71,7 +71,7 @@ use crate::kernels::shared::room;
 use crate::kernels::write::Write;
 use crate::platform::{self, VideoMemory};
 
-pub(crate) use folded::{Lying, Taken};
+pub(crate) use folded::{FoldTold, Lying, Taken, told_by};
 use folded::{Arena, Foldings};
 
 /// The most a page holds where a binding holds more (1a ④).
@@ -93,6 +93,12 @@ const MOST_PAGE_BYTES: u64 = 128 << 20;
 const MOST_PICTURE_PAGE_BYTES: u64 = 32 << 20;
 /// The pages a pool may have: a `TileAt` names each by a u16.
 const MOST_NAMED: usize = u16::MAX as usize + 1;
+
+/// The tiles a batch of the pictures' folds at a rest takes
+/// ([`Pictures::rests`]): what the engine's thread is held for at a time —
+/// the cels' batch (`EngineTileLedger.foldBatch`). 🔢브러시/렌더링's pick
+/// (2026-11-21), to measure on the Surface.
+const FOLD_BATCH: usize = 64;
 /// The slots a page may have: a `TileAt` names each by a u16 under the
 /// bit that says a folded tile's ([`FOLDED`]), so no slot of a tile as it
 /// is reads as a folded one's.
@@ -1268,6 +1274,10 @@ fn let_go_on_the_pages_thread<T: 'static>(engine: &Engine, page: Option<T>) {
 /// 32 to 55 ms each on the thread that asked, five such stops (68 ms the
 /// longest) each time the playback's pictures were laid again.
 ///
+/// ITS TILES ARE FOLDED AT A REST, AS THE CELS' ARE ([`Pictures::rests`];
+/// F-610, 2026-11-21), and a picture is laid where its tiles lie
+/// ([`Pictures::laid`]).
+///
 /// ⛔Not the cels' pool: that one is [`Full`] at the budget its store
 /// gives, and its store cools a cel for it. A picture is let go by the
 /// budget of what keeps it — the app's picture stores — so this pool
@@ -1284,6 +1294,39 @@ pub(crate) struct Pictures(Arc<Shelf>);
 struct Shelf {
     books: Mutex<Books>,
     unowned: AtomicU64,
+    /// The turn of the hand: one more at each rest and at each picture
+    /// made ([`Pictures::rests`], [`Pictures::fresh`]) — the folds of a
+    /// rest go on while it stands where that rest left it.
+    turn: AtomicU64,
+    /// What weighs itself by the pool's tiles, each till it is dropped
+    /// ([`Pictures::weighed_by`]).
+    weighing: Mutex<Vec<Weak<dyn Weighs>>>,
+}
+
+/// A rest's folds under way ([`Pictures::rests`]): the kernels they run
+/// by, and what tells the rest's caller once they are through — whether
+/// the pictures were weighed again by then ([`Weighs`]).
+struct Rest {
+    fold: Fold,
+    told: FoldTold,
+}
+
+/// What weighs itself by the pictures' tiles ([`Pictures::bytes_of`]) and
+/// tells the bytes where the budgets read them: told to weigh again once
+/// a rest's folds are through ([`Pictures::rests`]) — a screen
+/// (composite/abi.rs, `ScreenAndBytes`).
+///
+/// A TILE WEIGHS WHAT IT KEEPS MADE (F-610, 2026-11-21): a picture's
+/// tiles are folded at a rest and the pages of their slots given back,
+/// and each weighed a tile's bytes whole still — the memory tab's
+/// 「프레임 이미지」 row and the playback's budget read what the GPU held
+/// no more (🔬F1's landing, the main PC: the GPU's bytes in use fell
+/// 1,382 → 742 MiB at a rest on a copy of the user's line art, the row
+/// as it was).
+pub(crate) trait Weighs: Send + Sync {
+    /// Weighs its tiles again, each as the pool keeps it now, and tells
+    /// what they come to. On the engine's thread.
+    fn weighs_again(&self);
 }
 
 /// What the pictures' pool keeps: its pages, and which of the tiles on
@@ -1320,7 +1363,45 @@ struct Told {
     /// The tiles their maker let go while another picture holds them:
     /// weighed by no picture (kept.rs, `Kept::bytes` — a picture weighs
     /// the tiles it made), and kept all the same.
-    unowned: HashSet<TileAt>,
+    unowned: Unowned,
+}
+
+/// The tiles no picture weighs ([`Told::unowned`]), each with the bytes
+/// it was last weighed at ([`Pool::bytes_of`]), and those summed as the
+/// tiles come and go: a release reads the sum and walks no tile — a
+/// pen's stroke lets a tile or two go a hundred times a second.
+#[derive(Default)]
+struct Unowned {
+    tiles: HashMap<TileAt, u64>,
+    bytes: u64,
+}
+
+impl Unowned {
+    /// The tile at `at` is one of them from here on, weighing `bytes`.
+    /// ⚠️Put once: a tile its maker let go has no maker to let it go
+    /// again (kept.rs, `Kept::let_go` — a picture's own are the tiles it
+    /// ran for). Put twice, the sum would count it twice till the next
+    /// rest's folds weighed all again.
+    fn put(&mut self, at: TileAt, bytes: u64) {
+        self.tiles.insert(at, bytes);
+        self.bytes += bytes;
+    }
+
+    /// The tile at `at` is none of them.
+    fn take(&mut self, at: TileAt) {
+        if let Some(had) = self.tiles.remove(&at) {
+            self.bytes -= had;
+        }
+    }
+
+    /// Each weighed again, as `pool` keeps it now.
+    fn weighed_again(&mut self, pool: &Pool) {
+        self.bytes = 0;
+        for (&at, bytes) in &mut self.tiles {
+            *bytes = pool.bytes_of(at);
+            self.bytes += *bytes;
+        }
+    }
 }
 
 impl Told {
@@ -1329,7 +1410,7 @@ impl Told {
         if let Some(of) = self.of.remove(&at) {
             self.made.remove(&of);
         }
-        self.unowned.remove(&at);
+        self.unowned.take(at);
     }
 }
 
@@ -1350,7 +1431,7 @@ impl Pictures {
     #[cfg(test)]
     fn of(pool: Pool) -> Self {
         let books = Mutex::new(Books { pool: Some(pool), told: Told::default() });
-        Self(Arc::new(Shelf { books, unowned: AtomicU64::new(0) }))
+        Self(Arc::new(Shelf { books, ..Shelf::default() }))
     }
 
     /// `pool` kept to no budget (⛔ above).
@@ -1417,6 +1498,9 @@ impl Pictures {
         cel: Cel,
         count: usize,
     ) -> Option<(Vec<TileAt>, Vec<wgpu::Buffer>)> {
+        // A hand at work: the folds of the last rest stop behind the
+        // batch they wait for ([`Pictures::rests`]).
+        self.0.turn.fetch_add(1, Ordering::Relaxed);
         self.with(engine, |pool| {
             let mut places = Vec::with_capacity(count);
             while places.len() < count {
@@ -1497,14 +1581,62 @@ impl Pictures {
                 told.forget(at);
             }
         }
-        told.unowned.extend(left.filter(|&at| pool.holds(at) > 0));
-        self.0.unowned.store(told.unowned.len() as u64 * TILE_BYTES, Ordering::Relaxed);
+        for at in left.filter(|&at| pool.holds(at) > 0) {
+            told.unowned.put(at, pool.bytes_of(at));
+        }
+        self.0.unowned.store(told.unowned.bytes, Ordering::Relaxed);
+    }
+
+    /// What each of the tiles named at `places`, held, weighs as the pool
+    /// keeps it now ([`Pool::bytes_of`]), in their order: what a picture
+    /// weighs its own by (kept.rs, `Kept::weighed_again`). Nothing each
+    /// before any picture was kept.
+    pub(crate) fn bytes_of(&self, places: &[TileAt]) -> Vec<u64> {
+        let kept = self.kept();
+        let of = |&at: &TileAt| kept.pool.as_ref().map_or(0, |pool| pool.bytes_of(at));
+        places.iter().map(of).collect()
+    }
+
+    /// `picture` is told to weigh again whenever a rest's folds are
+    /// through ([`Self::weighs_again`]), till it is dropped.
+    pub(crate) fn weighed_by(&self, picture: Weak<dyn Weighs>) {
+        let mut weighing = self.0.weighing.lock().unwrap_or_else(PoisonError::into_inner);
+        // Those dropped since go where the list would grow for one more:
+        // a playback's pictures come and go by the hundred between two
+        // rests.
+        if weighing.len() == weighing.capacity() {
+            weighing.retain(|picture| picture.strong_count() > 0);
+        }
+        weighing.push(picture);
+    }
+
+    /// Every tile weighed again as the pool keeps it now: those no
+    /// picture weighs, here, and each picture told to weigh its own
+    /// ([`Weighs`]). On the engine's thread, the books let go before a
+    /// picture is told — it asks them itself ([`Self::bytes_of`]).
+    fn weighs_again(&self) {
+        {
+            let mut kept = self.kept();
+            let Books { pool: Some(pool), told } = &mut *kept else {
+                return;
+            };
+            told.unowned.weighed_again(pool);
+            self.0.unowned.store(told.unowned.bytes, Ordering::Relaxed);
+        }
+        let weighing: Vec<Arc<dyn Weighs>> = {
+            let weighing = self.0.weighing.lock().unwrap_or_else(PoisonError::into_inner);
+            weighing.iter().filter_map(Weak::upgrade).collect()
+        };
+        for picture in weighing {
+            picture.weighs_again();
+        }
     }
 
     /// The bytes of the tiles pictures hold that none of them weighs — their
-    /// maker gone ([`Told::unowned`]) —, as the last release left them:
-    /// what the budgets and the census weigh beside each picture's own
-    /// (`gpu_engine_pictures_unowned_bytes`). ⚠️Read off no book: the
+    /// maker gone ([`Told::unowned`]) —, each as it was last weighed
+    /// ([`Pool::bytes_of`]), as the last release and the last rest left
+    /// them: what the budgets and the census weigh beside each picture's
+    /// own (`gpu_engine_pictures_unowned_bytes`). ⚠️Read off no book: the
     /// thread a frame is built on asks it, and a book may be held while a
     /// page is made ([`Self::with`]).
     pub(crate) fn unowned_bytes(&self) -> u64 {
@@ -1517,35 +1649,249 @@ impl Pictures {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    /// The pages the tiles at `places` — each held — are on, each at its
-    /// own place, as a plan takes a picture's: up to the last of them, and
-    /// where none of them is on a page before it, the first that one is on
-    /// in its place.
+    /// The pool as a plan is laid on a picture's tiles — those named at
+    /// `places`, each held —: where each of the pool's tiles lies now
+    /// ([`Pool::lying`]), and the pages those of `places` lie on, each at
+    /// its own place: up to the last of them, and where none of them lies
+    /// on a page before it, the first that one lies on in its place. Taken
+    /// together: a tile folded since lies where it lay, its slot's bytes
+    /// untouched (`folded.rs`). None before any picture was kept.
     ///
-    /// ⚠️NOT THE POOL'S PAGES WHOLE: a picture that kept every page would
-    /// keep made a page the pool gave back ([`Pictures::give_back`]) —
-    /// a page is its buffer for as long as anyone keeps it. No pass binds a
-    /// page none of its tiles is on (composite/mod.rs, `lay`), so what
-    /// stands in such a place is read by nothing.
-    pub(crate) fn pages_of(&self, places: impl Iterator<Item = TileAt>) -> Vec<wgpu::Buffer> {
+    /// ⚠️NOT THE POOL'S PAGES WHOLE: a plan that kept every page would
+    /// keep made a page the pool gave back ([`Pictures::give_back`], a
+    /// fold's settle) — a page is its buffer for as long as anyone keeps
+    /// it. No pass binds a page none of its tiles is on
+    /// (composite/mod.rs, `lay`), so what stands in such a place is read
+    /// by nothing.
+    ///
+    /// ↩️The pages its tiles' NAMES are on, kept by the picture from its
+    /// making, till the pictures' tiles were folded (F-610, 2026-11-21):
+    /// a name and a place were one.
+    pub(crate) fn laid(&self, places: impl Iterator<Item = TileAt>) -> Option<(Vec<wgpu::Buffer>, Lying)> {
         let kept = self.kept();
-        let Some(pages) = kept.pool.as_ref().map(Pool::pages) else {
-            return Vec::new();
-        };
+        let pool = kept.pool.as_ref()?;
+        let (pages, lying) = (pool.pages(), pool.lying());
         let mut on = vec![false; pages.len()];
         for at in places {
-            on[usize::from(at.page)] = true;
+            on[usize::from(lying.of(at).page)] = true;
         }
-        let (Some(first), Some(last)) = (on.iter().position(|&on| on), on.iter().rposition(|&on| on)) else {
-            return Vec::new();
+        let (first, last) = (on.iter().position(|&on| on), on.iter().rposition(|&on| on));
+        let pages = match (first, last) {
+            (Some(first), Some(last)) => {
+                (0..=last).map(|page| pages[if on[page] { page } else { first }].clone()).collect()
+            }
+            _ => Vec::new(),
         };
-        (0..=last).map(|page| pages[if on[page] { page } else { first }].clone()).collect()
+        Some((pages, lying))
+    }
+
+    /// The hand rests: the pool's tiles are folded, a batch behind
+    /// another ([`Pool::folds_next_unwaited`]), till none is next, a fold
+    /// fails, or a picture is made ([`Pictures::fresh`] — a hand at work:
+    /// they stop behind the batch they wait for). Waits for nothing. Each
+    /// batch is settled on the engine's thread, under the books' lock
+    /// ([`Pictures::folds_on`]) — no caller keeps these books
+    /// ([`Pool::settles_unwaited`] names the caller's thread for the
+    /// cels' pool, whose books are its caller's alone).
+    ///
+    /// 🗣️유저 2026-11-19 (F-610-Q5, in chat): 「압축은 일단 중복줄이면서
+    /// 하는데 결국은 3번대로 하자. 결과가 제일 좋으니까. 할수있는거
+    /// 다하면서」 — 3번: the pictures' tiles and the cels'.
+    ///
+    /// THE TILES A HAND IS AT ARE NOT FOLDED, by the pool's own law: a
+    /// frame drawn on makes a tile or two again at every step of a
+    /// stroke, each in a fresh slot of the pool's room, whose tiles no
+    /// fold is handed (`folded.rs`, the module's head).
+    ///
+    /// Nothing where the engine has the fold's kernels compiled not yet
+    /// ([`Fold::compiled`]): the next rest asks again.
+    ///
+    /// `told` IS CALLED ONCE THE REST'S FOLDS ARE THROUGH, once — on the
+    /// engine's thread, or here where no kernel was compiled and none
+    /// began —: whether the pictures were weighed again
+    /// ([`Weighs`]) — true where they ended with the hand at rest still;
+    /// false where a hand at work ended them, a fold failed, or no
+    /// kernel was compiled. What the pictures weigh is the room their
+    /// keepers have (the app's playback line), and a keeper resting for
+    /// want of room looks again by this — no reader of a weight is told
+    /// by the weight (`gpu_engine_screen_bytes` is read, not heard).
+    pub(crate) fn rests(&self, engine: &Engine, told: FoldTold) {
+        let Some(fold) = Fold::compiled(engine) else {
+            told(false);
+            return;
+        };
+        let turn = self.0.turn.fetch_add(1, Ordering::Relaxed) + 1;
+        self.steps_on(engine, Arc::new(Rest { fold, told }), turn);
+    }
+
+    /// Hands the engine's thread the next step of a rest's folds
+    /// ([`Self::folds_on`]), its caller waiting for none of it — run
+    /// where it stands, on that thread already ([`Engine::posted`]).
+    fn steps_on(&self, engine: &Engine, rest: Arc<Rest>, turn: u64) {
+        let (pictures, handed) = (self.clone(), engine.clone());
+        engine.posted(move || {
+            pictures.folds_on(&handed, &rest, turn);
+            Some(())
+        });
+    }
+
+    /// Test seam: a hand at work, as a picture made says it
+    /// ([`Pictures::fresh`]).
+    #[cfg(test)]
+    pub(crate) fn hand_at_work(&self) {
+        self.0.turn.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Settles what the folds told have folded, and — while the hand
+    /// rests as it did at `turn` — hands over the next batch, told here
+    /// again ([`Pictures::rests`]). On the engine's thread.
+    ///
+    /// 🚨ON THE ENGINE'S THREAD ALONE, A STEP A JOB OF ITS OWN: a settle
+    /// says in the books where a tile lies from here on and hands over
+    /// the copy of it there, and a picture is laid by those books on
+    /// this thread ([`Pictures::laid`]) — settled from another, a body
+    /// run meanwhile would read the folded place before its copy was
+    /// submitted. Here the copy is submitted where it is handed over
+    /// (`EngineThread::posts`, on its own thread).
+    ///
+    /// 🚨A TELLING THAT COMES WHILE THE ASK IS IN HAND IS THE ASK'S TO
+    /// TAKE UP ([`FoldAsk`]), the books let go: a body handed over on
+    /// this thread runs where it stands, and a fold that submits
+    /// nothing tells at once, there (`fold::sized_then`) — gone on from
+    /// the telling, it would take the books this ask still holds.
+    fn folds_on(&self, engine: &Engine, rest: &Arc<Rest>, mut turn: u64) {
+        loop {
+            let asked = Arc::new(AtomicU8::new(FoldAsk::ASKING));
+            if self.folded_on(engine, rest, turn, &asked) == 0 {
+                // No batch is out, and none tells: this rest's folds
+                // are through, and what they moved is weighed as it
+                // lies ([`Weighs`]) — before the rest is told, so what
+                // hears it reads the weights told.
+                //
+                // 🔢Not where a hand at work ended them (브러시/렌더링
+                // 2026-11-21, said on F-610; no rule of the user's): the
+                // walk is every picture's own tiles on this thread, where
+                // the dab of the stroke that ended them waits — and the
+                // next rest's folds, through, weigh all the same.
+                let weighed = self.0.turn.load(Ordering::Relaxed) == turn;
+                if weighed {
+                    self.weighs_again();
+                }
+                (rest.told)(weighed);
+                return;
+            }
+            let returned = (FoldAsk::ASKING, FoldAsk::RETURNED, Ordering::AcqRel, Ordering::Acquire);
+            match asked.compare_exchange(returned.0, returned.1, returned.2, returned.3) {
+                Ok(_) => return,
+                Err(FoldAsk::TOLD_IT_WORKED) => {}
+                // One that failed left its tiles as they are, the next
+                // rest's to take again: asked for at once, a device
+                // short of memory would be asked without end. Its batch
+                // is settled all the same — taken back
+                // ([`Pool::settles_unwaited`]).
+                Err(_) => turn = 0,
+            }
+        }
+    }
+
+    /// [`Self::folds_on`]'s one step: how many tiles it handed over,
+    /// their telling `asked`'s to say where the step has not returned.
+    fn folded_on(&self, engine: &Engine, rest: &Arc<Rest>, turn: u64, asked: &Arc<AtomicU8>) -> usize {
+        let mut kept = self.kept();
+        let Some(pool) = kept.pool.as_mut() else {
+            return 0;
+        };
+        pool.settles_unwaited(engine);
+        if self.0.turn.load(Ordering::Relaxed) != turn {
+            return 0;
+        }
+        let (pictures, engine_then, rest_then) = (self.clone(), engine.clone(), Arc::clone(rest));
+        let asked = Arc::clone(asked);
+        let told: FoldTold = Arc::new(move |worked| {
+            let said = if worked { FoldAsk::TOLD_IT_WORKED } else { FoldAsk::TOLD_IT_FAILED };
+            let told = (FoldAsk::ASKING, said, Ordering::AcqRel, Ordering::Acquire);
+            if asked.compare_exchange(told.0, told.1, told.2, told.3).is_ok() {
+                return;
+            }
+            // The ask has returned: the next step is a job of the
+            // engine's thread, in its turn — from a thread of the
+            // engine's waits, where the GPU's answer is told.
+            let turn = if worked { turn } else { 0 };
+            pictures.steps_on(&engine_then, Arc::clone(&rest_then), turn);
+        });
+        // SAFETY: `told` keeps the rest, and the kernels with it, alive
+        // till it is called and let go of, and is any thread's to call.
+        unsafe { pool.folds_next_unwaited(engine, &raw const rest.fold, FOLD_BATCH, told) }
+    }
+
+    /// The bytes of the tiles named at `places`, each held — a tile's
+    /// each, in order, whatever it lies as ([`Pool::read`]) —, for a test
+    /// to read a kept picture by. ↩️Copied off the pages a picture named,
+    /// each as it is, till the pictures' tiles could lie folded
+    /// (2026-11-21).
+    ///
+    /// 🚨ON THE ENGINE'S THREAD, THE BOOKS TAKEN THERE: a read submits,
+    /// and a submit is that thread's (`Queue::submit`) — the books taken
+    /// on the caller's would be held through its wait for the thread,
+    /// where a picture let go waits for the books (a screen's free,
+    /// `Kept`'s drop): each for the other, for good. No holder of the
+    /// books waits for a run ([`Self::with`]).
+    /// 🔬2026-11-21, the crate's screen tests and the composite's ABI
+    /// tests run together (main PC, the machine quiet): the tests' engine
+    /// stood so in three runs of three, read off its threads' stacks
+    /// (cdb) — its own thread in a screen's free at `Pictures::release`,
+    /// a test's in this read at `Queue::submit`. ↩️The books were taken
+    /// here, on the caller's thread, for the first hours of the day.
+    #[cfg(test)]
+    pub(crate) fn read(&self, engine: &Engine, places: &[TileAt]) -> Option<Vec<u8>> {
+        let mut bytes = vec![0; places.len() * TILE_BYTES as usize];
+        engine.on_thread(|| self.kept().pool.as_ref()?.read(engine, places, &mut bytes))?;
+        Some(bytes)
+    }
+
+    /// Test seam: where the tile named `at` lies now ([`Pool::lies`]).
+    #[cfg(test)]
+    pub(crate) fn lies(&self, at: TileAt) -> TileAt {
+        self.kept().pool.as_ref().map_or(at, |pool| pool.lies(at))
+    }
+
+    /// Test seam: the bytes of the pool's pages made ([`Pool::bytes`]) —
+    /// one given back or away counts nothing.
+    #[cfg(test)]
+    pub(crate) fn bytes(&self) -> u64 {
+        self.kept().pool.as_ref().map_or(0, Pool::bytes)
     }
 
     /// The pool's pages, for a test to count them.
     #[cfg(test)]
     pub(crate) fn pages(&self) -> Vec<wgpu::Buffer> {
         self.kept().pool.as_ref().map_or_else(Vec::new, |pool| pool.pages().to_vec())
+    }
+
+    /// Test seam: the bytes the pool keeps made for the tiles pictures
+    /// hold — its pages less what is idle on them ([`Pool::bytes`],
+    /// [`Pool::idle_bytes`]): what the pictures' weights come to, with the
+    /// tiles none of them weighs.
+    #[cfg(test)]
+    pub(crate) fn held_bytes(&self) -> u64 {
+        self.kept().pool.as_ref().map_or(0, |pool| pool.bytes() - pool.idle_bytes())
+    }
+
+    /// Test seam: pages of `slots` tiles for these pictures, none kept
+    /// yet — an engine's own, for a test to fill a page with a picture of
+    /// a few tiles.
+    #[cfg(test)]
+    pub(crate) fn paged_by(&self, slots: usize) {
+        let mut kept = self.kept();
+        assert!(kept.pool.is_none(), "a picture is kept already");
+        kept.pool = Pool::sized(slots, MOST_NAMED, u64::MAX).map(Self::unbounded);
+    }
+
+    /// Test seam: how many are told to weigh again, those dropped and
+    /// not yet struck off among them ([`Self::weighed_by`]).
+    #[cfg(test)]
+    pub(crate) fn told_to_weigh(&self) -> usize {
+        self.0.weighing.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
     /// Gives back the pages no picture is on, the last first — the page made
@@ -1575,26 +1921,16 @@ impl Pictures {
     }
 }
 
-/// Copies the tiles at `places` on `pages`, each as it is, into `into` —
-/// a tile's bytes each, in order — and submits: a kept picture's off its
-/// own pages, for a test to read. ↩️The pool's read too, till its tiles
-/// could lie folded ([`Pool::gathered`], 2026-11-19).
-#[cfg(test)]
-pub(crate) fn gather(
-    engine: &Engine,
-    pages: &[wgpu::Buffer],
-    places: &[TileAt],
-    into: &wgpu::Buffer,
-) {
-    let mut encoder = engine
-        .device()
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(places) {
-        let page = &pages[usize::from(at.page)];
-        let from = u64::from(at.slot) * TILE_BYTES;
-        encoder.copy_buffer_to_buffer(page, from, into, to, TILE_BYTES);
-    }
-    engine.queue.submit([encoder.finish()]);
+/// Where an ask of a rest's folds stands with its telling
+/// ([`Pictures::folds_on`]): in hand, the books with it; returned, the
+/// telling the next step's to hand over; or told while it was in hand.
+struct FoldAsk;
+
+impl FoldAsk {
+    const ASKING: u8 = 0;
+    const RETURNED: u8 = 1;
+    const TOLD_IT_WORKED: u8 = 2;
+    const TOLD_IT_FAILED: u8 = 3;
 }
 
 /// Whether `page` is made and nobody's: a page of tiles, every slot of
@@ -1820,10 +2156,8 @@ pub unsafe extern "C" fn gpu_engine_pool_unwritten(
 /// `told` is called with `number`, and why the kernels are handed in):
 /// `gpu_engine_pool_settle` is its caller's once it is told.
 /// Returns how many it handed over; none, and `told` is not called — no
-/// tile of the pool's is left to fold as it stands. Where none is next
-/// and a page made ahead stands beside a room half a page from needing
-/// it, that page is the room from here and the tiles of the one that was
-/// are next ([`Pool::rooms_on_the_page_ahead`]).
+/// tile of the pool's is left to fold as it stands
+/// ([`Pool::folds_next_unwaited`]).
 ///
 /// # Safety
 /// `pool` and `engine` are live, the pool made on `engine` and its
@@ -1841,18 +2175,9 @@ pub unsafe extern "C" fn gpu_engine_pool_fold(
 ) -> usize {
     // SAFETY: see the function's contract.
     let (pool, engine) = unsafe { (&mut *pool, &*engine) };
-    let mut tiles = pool.to_fold(most);
-    if tiles.is_empty() && pool.rooms_on_the_page_ahead(engine) {
-        tiles = pool.to_fold(most);
-    }
-    // With none to fold, what the last settle could not give back: a page
-    // whose last tile lying on it was let go since.
-    if tiles.is_empty() {
-        pool.gives_back_where_no_tile_lies(engine);
-    }
     // SAFETY: `fold` is alive till `told` is called, and `told` is one any
     // thread may call (the function's contract).
-    unsafe { pool.folds_unwaited(engine, fold, &tiles, (told, number)) }
+    unsafe { pool.folds_next_unwaited(engine, fold, most, told_by(told, number)) }
 }
 
 /// Gives the tiles the folds told have folded their places, and hands

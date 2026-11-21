@@ -97,7 +97,7 @@ import '../native/app_gpu_engine.dart' show EnginePictures;
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_memory.dart';
-import '../native/tile_blocks.dart';
+import '../native/tiles_at_rest.dart';
 import '../native/tiles_stood_on.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
@@ -326,10 +326,25 @@ class EditorSessionManager extends ChangeNotifier
         renderCaches.brushFrameStore.hotBakedSurfaceOrNull,
       ),
     );
+    // Its store hears from it which cels a canvas stands on: every other
+    // hot cel that is kept — in the saved file, in the run's room — lets
+    // go of its bytes here once the engine's tiles rest ([TilesAtRest]),
+    // and every other unsaved one is parked behind as an import lands
+    // it (`BrushFrameStore.parkBehind`).
+    renderCaches.brushFrameStore.setCelsStoodOn(
+      editingCanvas.celsAtThePlayhead,
+    );
+    TilesAtRest.app.tells(
+      editingCanvas,
+      renderCaches.brushFrameStore.letGoOfBytesTheEngineHolds,
+    );
     // A plugin installed or taken off greys or ungreys the effects of it
     // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
     // 걸린다」) — the app's one list, so every open project hears it.
     this.fxPlugins.addListener(notifyListeners);
+    // The pictures weighed lighter at a rest are room on the playback's
+    // line that nothing else tells of ([playbackLineMoved]).
+    EnginePictures.weighedAgain.addListener(playbackLineMoved);
   }
 
   /// What follows the playhead — the cut a run plays, the cut under it and
@@ -479,12 +494,12 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.byteBudget = budgets.undo;
     playbackRig.playbackCache.playbackCacheByteBudget = own.playback;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
-    // The two the allowance did not reach until 2026-09-16 (Q2): the
-    // framework's image cache, seeded by the binding before any session,
-    // and the engine's parked tile blocks, a compile-time cap until then.
+    // The one the allowance did not reach until 2026-09-16 (Q2): the
+    // framework's image cache, seeded by the binding before any session.
+    // ↩️The engine's parked tile blocks were the other, till no block
+    // parked any more (2026-11-21, `TileBlocks`).
     // ★A new [CacheBudgetLine] is applied HERE, and nowhere else.
     _frameworkImageCache?.maximumSizeBytes = budgets.imageCache;
-    TileBlocks.setByteCap(budgets.enginePool);
     // The canvas's tile pictures (render round, 2026-09-16): the walk that
     // lets the unshown ones go reads this ceiling after every paint.
     TilePictureBudget.instance.byteBudget = budgets.tileImages;
@@ -515,6 +530,12 @@ class EditorSessionManager extends ChangeNotifier
   /// The playback line moved — the allowance, or a memory warning lifted as
   /// the app came back to the front (F-504) — so a warmer resting for want
   /// of room looks again, and a line that rose fills while nothing plays.
+  ///
+  /// And where the line stands but what it holds weighs less: the engine
+  /// folds the pictures' tiles at a rest and weighs them as they lie
+  /// ([EnginePictures.weighedAgain]; F-610, 2026-11-21) — room that came
+  /// back with the playhead standing, which no other channel of the
+  /// warmer's tells of.
   void playbackLineMoved() => playbackRig.prerenderScheduler.wake();
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
@@ -1953,6 +1974,9 @@ class EditorSessionManager extends ChangeNotifier
     RepaintOnWordBakes.clearKeptPictures,
     // Its canvas stands on no tile any more ([TilesStoodOn]).
     () => TilesStoodOn.app.standDown(editingCanvas),
+    // …and its store is told of no rest ([TilesAtRest]).
+    () => TilesAtRest.app.forgets(editingCanvas),
+    () => EnginePictures.weighedAgain.removeListener(playbackLineMoved),
     canvasStroke.dispose,
     historyManager.dispose,
   ];

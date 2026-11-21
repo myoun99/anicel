@@ -11,7 +11,8 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, Listenable, visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'src/engine_ffi.dart' as rust;
@@ -333,8 +334,9 @@ class GpuEngine {
   /// weighs. Screens composed of the same hold one tile for it, weighed by
   /// the screen that made it ([GpuScreen.bytes]); that one let go while
   /// others hold the tile, none of them weighs it — these, till the last
-  /// of them lets it go. What a budget and the memory census count beside
-  /// the screens' own bytes; read off no lock, on any thread.
+  /// of them lets it go, each as it lies ([GpuScreen.bytes]). What a
+  /// budget and the memory census count beside the screens' own bytes;
+  /// read off no lock, on any thread.
   int get unownedPictureBytes => rust.picturesUnownedBytes(_engine);
 
   /// Gives back what the engine keeps for pictures nobody holds till it is
@@ -373,8 +375,41 @@ class GpuEngine {
       return;
     }
     _atRest?.cancel();
-    _atRest = Timer(rest, () => rust.picturesRest(_engine));
+    _atRest = Timer(rest, _rests);
   }
+
+  /// The hand rests ([_composed]): the engine lets go of what its
+  /// composes kept and folds its pictures' tiles, and tells this isolate
+  /// once those folds are through ([_rested]).
+  void _rests() =>
+      rust.picturesRest(_engine, _rested.told, _rested.kept(this));
+
+  /// The rests on their way ([_rests]), each told by its number once its
+  /// folds are through, and whether the engine's pictures were weighed
+  /// again by then — not where a hand at work ended the folds, nor where
+  /// none ran (rust/src/kernels/pool/mod.rs, `Pictures::rests`).
+  static final _rested = _Told<GpuEngine>((_, _, weighed) {
+    if (weighed) {
+      _picturesWeighedAgain.tick();
+    }
+  });
+
+  static final _picturesWeighedAgain = _Ticks();
+
+  /// Ticks each time a rest has weighed an engine's pictures again, each
+  /// tile as it lies ([GpuScreen.bytes]) — any engine's of this isolate.
+  ///
+  /// WHAT THE PICTURES WEIGH IS THE ROOM THEIR KEEPERS HAVE: a screen's
+  /// bytes are read, not heard, and folded at a rest they read lighter
+  /// with nothing told — one that keeps pictures within a line, and rests
+  /// for want of room, looks again by this (the app's playback line).
+  static Listenable get picturesWeighedAgain => _picturesWeighedAgain;
+
+  /// Test seam: whether anyone hears [picturesWeighedAgain] — what a
+  /// keeper let go of must not: the ticks outlive every keeper.
+  @visibleForTesting
+  static bool get debugPicturesWeighedAgainIsHeard =>
+      _picturesWeighedAgain.isHeard;
 
   /// Test seam: whether a rest is on its way ([_composed]).
   @visibleForTesting
@@ -778,10 +813,28 @@ class GpuPool implements _OfAnEngine {
     if (pool == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuPool._(engine, pool);
+    return GpuPool._(engine, pool)
+      ..keepToInsteadOfTheOs(debugBudgetTillOneIsSet);
   }
 
   GpuPool._(this._engine, this._pool);
+
+  /// Test seam: the budget each pool made keeps to in place of the OS's
+  /// till one is set ([keepToInsteadOfTheOs]) — the OS's where null, as in
+  /// the app.
+  ///
+  /// 🗣️관제 2026-11-16 (pool-tests-ride-the-os-vram-budget): 「시험은 기계의
+  /// 살아 있는 상태에 기대지 않는다 — OS 예산 자체를 재는 시험이 아니면 시험이
+  /// 쓰는 풀은 예산을 스스로 정한다」. The crate's own tests keep to it where
+  /// their pools are made (rust/src/kernels/pool/mod.rs,
+  /// `BUDGET_TILL_ONE_IS_SET`); the app's tests run the engine as it ships,
+  /// so theirs are set here. 🔬The main PC, 11-18 and 11-19 (card
+  /// four-engine-tile-tests-redden-only-on-a-busy-machine): a ledger's test
+  /// found one page where it made two, and another no slot at all, red
+  /// only beside other suites — each red of them again, word for word, in
+  /// a pool kept to a budget of none.
+  @visibleForTesting
+  static int? debugBudgetTillOneIsSet;
 
   /// Past any page: what leaves a pool's pages as large as the engine
   /// makes them.
@@ -963,8 +1016,15 @@ class GpuPool implements _OfAnEngine {
 
   /// Keeps to [bytes] in place of the budget the OS gives this process;
   /// the OS's again where null.
-  void keepToInsteadOfTheOs(int? bytes) =>
-      rust.poolBudgetInstead(_pool, bytes ?? -1);
+  void keepToInsteadOfTheOs(int? bytes) {
+    _budgetInstead = bytes;
+    rust.poolBudgetInstead(_pool, bytes ?? -1);
+  }
+
+  /// What this pool keeps to in place of the OS's budget
+  /// ([keepToInsteadOfTheOs]): null where the OS's.
+  int? get budgetInstead => _budgetInstead;
+  int? _budgetInstead;
 
   /// Gives back the pages none of whose tiles is held, the last first, till
   /// the pages made hold [mostBytes]; a cel that needs a page again has it
@@ -3381,6 +3441,15 @@ class GpuScreen implements _OfAnEngine {
   /// engine has run: one handed over is counted by the time its done is
   /// told ([compose]).
   ///
+  /// EACH TILE AS IT LIES (F-610, 2026-11-21): folded at a rest of the
+  /// engine's ([GpuEngine.restsAfter]), a tile weighs what the engine
+  /// keeps made for it from there on, and the screen is told so by the
+  /// engine once that rest's folds are through — with no verb of its own:
+  /// a playback's picture nobody composes again reads lighter after the
+  /// rest. ↩️A tile's bytes whole for each till then, whatever it lay as:
+  /// the memory tab's 「프레임 이미지」 row and the playback's line read
+  /// several times what the GPU kept.
+  ///
   /// The tiles it MADE, of those it holds (F-610, 유저 2026-11-18 「같은
   /// 타일은 한 벌만」): a tile another screen made of the same input — a
   /// cut's paper, a row no frame of it changes — is held, not made, and is
@@ -4771,7 +4840,8 @@ class GpuFaces {
 }
 
 /// [GpuFaces] being handed to the engine a file at a time: each file
-/// copied by the engine as it is [add]ed — once, from where its bytes lie
+/// mapped by the engine where it is a file on the device ([addAt]), else
+/// copied by it as it is [add]ed — once, from where its bytes lie
 /// (`gpu_engine_faces_file`) — and the faces set up when all are
 /// ([done]).
 ///
@@ -4796,7 +4866,31 @@ class GpuFacesHanding {
     debugFilesHanded += 1;
   }
 
-  /// Test seam: how many files have been [add]ed, every handing's.
+  /// The file at [path] as one of family [family]'s, as [add] hands one —
+  /// mapped by the engine, not copied: its bytes are the file's own pages,
+  /// which the OS shares with whoever else maps it, and Flutter maps the
+  /// app's bundled fonts too (`gpu_engine_faces_file_at`). False, and
+  /// nothing handed, where the engine cannot map it: [add] its bytes then.
+  ///
+  /// 🗣️유저 (engine-fonts-held-twice): 「사본이나 ram에있는걸 최대한
+  /// 없애고싶어서」 — 🔬공통 11-21, a Windows release run: [add]'s copy was
+  /// the faces' one copy in the process, 35 MB.
+  bool addAt(int family, String path) => using((arena) {
+    final bytes = utf8.encode(path);
+    final mapped = rust.facesFileAt(
+      _handed,
+      family,
+      _bytes(arena, bytes),
+      bytes.length,
+    );
+    if (mapped) {
+      debugFilesHanded += 1;
+    }
+    return mapped;
+  });
+
+  /// Test seam: how many files have been handed ([add], [addAt]), every
+  /// handing's.
   @visibleForTesting
   static int debugFilesHanded = 0;
 
@@ -4939,6 +5033,13 @@ final _putsOnTheirWay = _Told<void Function()>((_, unput, put) {
     unput();
   }
 });
+
+/// What ticks, and says whether anyone hears it.
+final class _Ticks extends ChangeNotifier {
+  void tick() => notifyListeners();
+
+  bool get isHeard => hasListeners;
+}
 
 /// What a thread of the engine's tells this isolate by a number — a
 /// wait ended, a copy written, a picture put — and whether it went well:

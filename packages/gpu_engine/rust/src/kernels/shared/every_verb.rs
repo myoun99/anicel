@@ -200,9 +200,9 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
     ),
     ("the plug-in's reach, run on the CPU (fx_wgsl's `Kernel::reach`)", &["gpu_engine_plugin_reach"]),
     (
-        "copies a face's file into the faces being handed, on its caller's heap: no device \
-         is asked till they are set up (`gpu_engine_faces_of`)",
-        &["gpu_engine_faces_file"],
+        "copies a face's file into the faces being handed, on its caller's heap, or maps it \
+         there: no device is asked till they are set up (`gpu_engine_faces_of`)",
+        &["gpu_engine_faces_file", "gpu_engine_faces_file_at"],
     ),
     (
         "sets a word in the faces on the CPU, where it is called — which of its letters they have \
@@ -227,9 +227,15 @@ fn on_the_engines_thread(body: &str) -> bool {
     // (`gpu_engine_close`); `lands_unwaited` hands its put over by
     // `Engine::posted`, its books the caller's (`Pool::lands_unwaited`),
     // and so a fold and its settle hand over theirs
-    // (`Pool::folds_unwaited`, `Pool::settles_unwaited`).
-    const DOORS: [&str; 6] =
-        [".on_thread(", ".run_lent(", ".posted(", ".lands_unwaited(", ".folds_unwaited(", ".settles_unwaited("];
+    // (`Pool::folds_next_unwaited`, `Pool::settles_unwaited`).
+    const DOORS: [&str; 6] = [
+        ".on_thread(",
+        ".run_lent(",
+        ".posted(",
+        ".lands_unwaited(",
+        ".folds_next_unwaited(",
+        ".settles_unwaited(",
+    ];
     DOORS.iter().any(|door| body.contains(door))
 }
 

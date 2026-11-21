@@ -146,9 +146,9 @@ void main() {
   for (final (how, makeHot) in everyWayHot) {
     test('🚨a cel $how while its bytes are read is not laid again: the thaw '
         'asks for no tile block', () async {
-      // A tile side no other tile in this process wears, so the list of its
-      // size ([TileBlocks]) holds what this test parks there and nothing a
-      // collected tile's finalizer brings.
+      // A tile side no other tile in this process wears, so the blocks
+      // laid of its size ([TileBlocks.debugLaid]) are this test's cel's
+      // and nothing else's.
       const side = 24;
       const small = CanvasSize(width: 2 * side, height: side);
       final length = BitmapTile.bytesFor(side);
@@ -173,20 +173,16 @@ void main() {
       final thaw = store.thawAhead(k, canvasSize: small);
       expect(WorkerFileReads.inFlight, 1, reason: 'premise: being read');
       final hot = makeHot(store, k);
-      // Two blocks parked on the list once the cel is hot: the next two
-      // asks of that length are answered with them, the last freed first.
-      final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-      blocks.forEach(TileBlocks.free);
+      // The blocks laid once the cel is hot: laid only grows, whoever
+      // frees meanwhile.
+      final laid = TileBlocks.debugLaid(length);
       await thaw;
 
       expect(store.hotBakedSurfaceOrNull(k), same(hot), reason: 'premise');
-      final asked = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-      addTearDown(() => asked.forEach(TileBlocks.free));
       expect(
-        [for (final block in asked) block.address],
-        [blocks[1].address, blocks[0].address],
-        reason: 'the parked blocks lie as they lay: a thaw that laid the '
-            "cel's two tiles took them",
+        TileBlocks.debugLaid(length),
+        laid,
+        reason: "a thaw that laid the cel's two tiles asked for two more",
       );
     });
   }

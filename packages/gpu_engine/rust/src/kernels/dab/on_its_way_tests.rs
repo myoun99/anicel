@@ -733,7 +733,7 @@ fn a_mixing_step_and_a_rub_read_a_tile_that_lies_folded_as_it_was() {
         // whose tiles the pool hands none itself.
         let names = [under, ink].map(|word| TileAt::of_word(word).expect("a tile's name"));
         let number = numbered();
-        assert_eq!((*own.pool).folds_unwaited(&*own.engine, fold, &names, (fold_told, number)), 2);
+        assert_eq!((*own.pool).folds_unwaited(&*own.engine, fold, &names, crate::kernels::pool::told_by(fold_told, number)), 2);
         assert_eq!(told_within(number, Duration::from_secs(120)), Some(true));
         gpu_engine_pool_settle(own.pool, own.engine);
         assert!(names.iter().all(|&at| (*own.pool).lies(at).folded().is_some()), "⛔premise: both lie folded");

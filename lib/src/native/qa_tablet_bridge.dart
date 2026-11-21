@@ -132,6 +132,34 @@ external void _rawStop();
 @Native<Int32 Function(Pointer<Float>, Int32)>(symbol: 'qpr_poll')
 external int _rawPoll(Pointer<Float> out, int cap);
 
+/// What [QaTabletBridge.open] answered: the context opened, or why not
+/// (native/pen wintab.rs `Refusal` — the number `qat_open` says).
+enum QaTabletOpen {
+  opened(1),
+
+  /// wintab32 did not load, or no driver answered.
+  noDriver(0),
+
+  /// This process shows no app window yet.
+  noWindow(-1),
+
+  /// The driver gave no default system context.
+  noSystemContext(-2),
+
+  /// The driver gave no context for the one asked.
+  notOpened(-3);
+
+  const QaTabletOpen(this.said);
+
+  /// The number `qat_open` says for it.
+  final int said;
+
+  /// The answer `qat_open` said — none it does not know is taken as
+  /// opened.
+  static QaTabletOpen of(int said) =>
+      values.firstWhere((open) => open.said == said, orElse: () => notOpened);
+}
+
 /// The engine's pen on Windows (native/pen): what the tablet DRIVER says of
 /// the pen (Wintab — `qat_*`) and what its HID report says (Raw Input —
 /// `qpr_*`). Null on every other platform, and where the engine's pen
@@ -147,8 +175,9 @@ class QaTabletBridge {
 
   /// v2 (F-176-Q9): a packet's record carries the twist; v3 the context
   /// opens with the window a packet gives a mouse move its pressure within,
-  /// and the queue says how it went ([overflowed] · [clockGap]).
-  static const int abiVersion = 3;
+  /// and the queue says how it went ([overflowed] · [clockGap]); v4 an open
+  /// says why it did not ([QaTabletOpen]).
+  static const int abiVersion = 4;
 
   /// The Raw Input observer's own ABI: v2 (desktop-pen-tilt) hands over the
   /// report's tilt as well, v3 (F-176-Q9) its twist.
@@ -201,9 +230,10 @@ class QaTabletBridge {
 
   /// Opens the observe-only polling context (idempotent), a packet giving
   /// a mouse move the OS saw its pressure [within] of it (the Windows mouse
-  /// reader pairs them — native/pen points_win.rs). False = no driver / no
-  /// app window yet.
-  bool open({required Duration within}) => _open(within.inMilliseconds) != 0;
+  /// reader pairs them — native/pen points_win.rs) — or says why it did
+  /// not.
+  QaTabletOpen open({required Duration within}) =>
+      QaTabletOpen.of(_open(within.inMilliseconds));
 
   /// Hands over the newest packets heard and not handed yet, the oldest
   /// first — asking the driver nothing: the reader's own thread drains its

@@ -793,12 +793,50 @@ final class BakedWords {
   /// and narrowing, a block word one per word.
   static const int _capacity = 512;
 
-  final BakeOnceLru<_Bake, ui.Image?> _images = BakeOnceLru(
+  BakeOnceLru<_Bake, ui.Image?> _images = _bakes();
+
+  static BakeOnceLru<_Bake, ui.Image?> _bakes() => BakeOnceLru(
     capacity: _capacity,
     costOf: (image) =>
         image == null ? 0 : estimatedImageBytes(image.width, image.height),
     retire: (image) => image?.dispose(),
   );
+
+  /// Every bake forgotten — landed, in flight and waited for — as a new
+  /// process would have none.
+  ///
+  /// 🚨ONE PER PROCESS, as the timeline's tile store is: a bake waits on
+  /// the clocks of the test that asked for it, and one in flight when that
+  /// test ended never lands. Its word was then waited for in every later
+  /// test of the process — 🔬11-20 (board
+  /// a-vertical-column-test-compares-letters-that-never-settled): ten pins
+  /// of another file run first left 51 words waiting, and the vertical
+  /// column's settle stood its whole 60 s twice a test. A test ends with
+  /// none (`flutter_test_config.dart`).
+  @visibleForTesting
+  void debugForgetEveryBake() {
+    // ⚖️Gives back what the landed bakes hold (their images, disposed by
+    // the store's retire): the store made below holds none of them, and
+    // left here they wait for no one. No test sees it — its mutant lived
+    // (11-20, 관제: 「안 죽는 줄」 kept with its reason).
+    _images.clear();
+    // The bakes in flight go with the store: a word asked again joins
+    // none of them, and is baked anew.
+    _images = _bakes();
+    // ⚖️Each key here names a bake of the store let go above, where it
+    // finds nothing: only the map's room is given back. No test sees it —
+    // its mutant lived (11-20).
+    _latestOf.clear();
+    _waiting.clear();
+    // 🛡️A test that ends between a bake's landing and the frame that wakes
+    // its waiters: the painters to wake are that test's, and a wake it
+    // scheduled may never run once it has ended — left scheduled, no
+    // landing would wake a painter again in this process. No test ends
+    // there — both mutants lived (11-20).
+    _toWake.clear();
+    _wakeScheduled = false;
+    _baking.clear();
+  }
 
   /// What the baked words' pictures weigh resident, for the memory census.
   int get imageBytes => _images.held;

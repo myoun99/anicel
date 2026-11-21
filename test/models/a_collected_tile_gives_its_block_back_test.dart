@@ -9,24 +9,17 @@ import 'package:anicel/src/native/tile_blocks.dart';
 
 import '../helpers/collect_garbage.dart';
 
-/// A tile's pixels are a block of the lists ([TileBlocks]), and nothing
-/// gives it back but a finalizer — the tile's for a block of its own, the
-/// colour's for the block the tiles of one colour share: a block collected
-/// without one is held for as long as the app runs — 64 KB a tile, and a
-/// cel is hundreds of them.
+/// A tile's pixels are a block of the allocator's ([TileBlocks]), and
+/// nothing gives it back but a finalizer — the tile's for a block of its
+/// own, the colour's for the block the tiles of one colour share: a block
+/// collected without one is held for as long as the app runs — 64 KB a
+/// tile, and a cel is hundreds of them.
+///
+/// Read off the blocks' own books ([TileBlocks.debugHeld]), each test at a
+/// side no other tile wears: the blocks held of its size are its own.
 void main() {
-  /// Whether the next ask of [length] is answered with the block at
-  /// [address] — it is parked on the lists.
-  bool cameBack(int address, int length) {
-    final block = TileBlocks.alloc(length);
-    TileBlocks.free(block);
-    return block.address == address;
-  }
-
-  test('a collected tile gives its block back to the lists — the next ask '
-      'of its size is answered with it', () async {
-    // A side no other tile wears, so the list of its size holds this
-    // tile's block alone.
+  test('a collected tile gives its block back — none of its size is held '
+      'any more', () async {
     const side = 40;
     final length = BitmapTile.bytesFor(side);
     // Of two colours: a tile of one holds no block of its own.
@@ -35,18 +28,12 @@ void main() {
       pixels: Uint8List(length)..[3] = 255,
     );
     expect(tile.ownBytes, length, reason: 'fixture: the block is its own');
-    final address = tile.readPixels((pixels, _) => pixels.address);
+    expect(TileBlocks.debugHeld(length), 1, reason: 'fixture: and held');
     tile = null;
 
-    // An ask before the finalizer ran is answered with a fresh block, and
-    // the tile's parks over it when it comes.
-    await collectGarbageUntil(() => cameBack(address, length));
+    await collectGarbageUntil(() => TileBlocks.debugHeld(length) == 0);
 
-    expect(
-      cameBack(address, length),
-      isTrue,
-      reason: 'held still, it answers no ask',
-    );
+    expect(TileBlocks.debugHeld(length), 0);
   });
 
   test('🚨a colour\'s block goes back when the LAST tile of the colour is '
@@ -62,6 +49,7 @@ void main() {
       address,
       reason: 'fixture: the two read one block',
     );
+    expect(TileBlocks.debugHeld(length), 1, reason: 'fixture: the one');
     final bytes = one.pixels;
     one = null;
 
@@ -69,8 +57,8 @@ void main() {
     await collectGarbage();
 
     expect(
-      cameBack(address, length),
-      isFalse,
+      TileBlocks.debugHeld(length),
+      1,
       reason: 'a tile of the colour is alive, and reads this block',
     );
     expect(other.pixels, bytes);
@@ -83,19 +71,21 @@ void main() {
     const word = 0x00ffffff;
     final length = BitmapTile.bytesFor(side);
     BitmapTile? last = BitmapTile.ofOneColour(size: side, word: word);
-    final address = last.readPixels((pixels, _) => pixels.address);
     final bytes = last.pixels;
+    expect(TileBlocks.debugHeld(length), 1, reason: 'fixture: its block');
+    final laid = TileBlocks.debugLaid(length);
     last = null;
 
-    await collectGarbageUntil(() => cameBack(address, length));
+    await collectGarbageUntil(() => TileBlocks.debugHeld(length) == 0);
 
-    expect(
-      cameBack(address, length),
-      isTrue,
-      reason: 'held still, it answers no ask',
-    );
+    expect(TileBlocks.debugHeld(length), 0);
     final again = BitmapTile.ofOneColour(size: side, word: word);
     expect(again.pixels, bytes);
     expect(again.ownBytes, 0);
+    expect(
+      (TileBlocks.debugLaid(length), TileBlocks.debugHeld(length)),
+      (laid + 1, 1),
+      reason: 'laid anew, and one',
+    );
   });
 }

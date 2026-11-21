@@ -197,6 +197,11 @@ SingleActivator commandSwapped(SingleActivator activator) => SingleActivator(
   includeRepeats: activator.includeRepeats,
 );
 
+/// [activator] under the OTHER command key ([commandSwapped]) — null where
+/// it holds both Ctrl and ⌘, or neither, and there is no other.
+SingleActivator? otherCommandOf(SingleActivator activator) =>
+    activator.control == activator.meta ? null : commandSwapped(activator);
+
 /// How a shortcut is written on [platform]: 'Ctrl+Shift+Z' on Windows and
 /// the rest, '⇧⌘Z' on a Mac or an iPad — the modifier glyphs in the order
 /// Apple's own menus print them (⌃⌥⇧⌘), with no separators. The settings

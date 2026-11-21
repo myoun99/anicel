@@ -75,9 +75,9 @@ void main() {
       reason: 'a fixed 600MB that ignored the allowance would make it a lie',
     );
     // 유저 2026-09-16 (memory-allowance-Q2): 「천장을 걸 수 있는 것은 전부
-    // 허용치 안으로」 — the two that sat outside until then.
+    // 허용치 안으로」 — the one that sat outside until then, and stands
+    // (↩️the tile blocks' parking was the other, till 2026-11-21).
     expect(half.imageCache, budgets.imageCache ~/ 2);
-    expect(half.enginePool, budgets.enginePool ~/ 2);
     expect(half.tileImages, budgets.tileImages ~/ 2);
     expect(half.total, closeTo(budgets.total / 2, 16));
 
@@ -111,7 +111,6 @@ void main() {
     // moves inside without a word of UI changing.
     expect(CacheBudgetLine.covers('drawings'), isTrue);
     expect(CacheBudgetLine.covers('framePictures'), isTrue, reason: 'playback');
-    expect(CacheBudgetLine.covers('enginePool'), isTrue);
     expect(CacheBudgetLine.covers('imageCache'), isTrue);
     expect(CacheBudgetLine.covers('engineScratch'), isFalse);
     expect(CacheBudgetLine.covers('panelRasters'), isFalse);

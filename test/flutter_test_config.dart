@@ -7,7 +7,11 @@ import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart'
-    show AppKernels, debugAppShaderFolder, debugTakeAppGpuEngineNoted;
+    show
+        AppKernels,
+        debugAppShaderFolder,
+        debugOpenAppGpuEngineHere,
+        debugTakeAppGpuEngineNoted;
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
@@ -28,6 +32,7 @@ import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart'
     show debugCheckFrameStanding;
 import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
+import 'package:anicel/src/ui/text/word_bake.dart' show BakedWords;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import '../tool/machine_cache.dart';
@@ -54,6 +59,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // config from the engine, which it reaches all the same since Q24
   // (gpu_adapter_choice.dart says why, and why that is the law).
   debugGpuAdapterChoice = GpuAdapterChoice.first;
+  // 🚨A TEST'S POOL KEEPS TO NO BUDGET BUT ITS OWN, not to the OS's — the
+  // machine's VRAM as the other suites beside it leave it — till the test
+  // sets one (GpuPool.debugBudgetTillOneIsSet has the law and the reds).
+  GpuPool.debugBudgetTillOneIsSet = _noBudget;
   // 🚨EVERY TEST RUN OF A MACHINE KEEPS ITS SHADERS IN ONE FOLDER OF THE
   // MACHINE'S — `<machine cache>/test_shaders`, beside the line's own
   // (tool/machine_cache.dart) — so what one run's engine compiled, the
@@ -280,6 +289,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // failed on a raster the test before it had queued). A test ends with
   // the store empty; the drain it scheduled then finds nothing.
   tearDown(TimelineGridTileStore.instance.clear);
+  // So are the baked words, and a bake a test left in flight never lands
+  // in the next: its word stood waited for in every test after
+  // ([BakedWords.debugForgetEveryBake] has the measurement).
+  tearDown(BakedWords.instance.debugForgetEveryBake);
   // `flutter test` registers no texture a frame grid's screen could be
   // shown by ([ScreenTexture.debugOnSurface]): where a file opens the GPU
   // engine, each grid's screen opens on a surface of its own, freed as the
@@ -289,9 +302,16 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // test's pumped clock lends a compile on another isolate no real time to
   // finish in. The pins of the app's own route ask for it back.
   AppKernels.debugCompileHere = true;
-  // The same clock once more: it opens no engine either, so a canvas a test
-  // stands would mark its place for as long as the test settles
-  // (`pumpAndSettle`) — the mark turns. The pins of the mark stand it.
+  // And the engine they are compiled on (🗣️a-process-first-test-never-
+  // sees-the-canvas-stand-Q1 = 「시험에서는 엔진을 그 자리에서 연다」, 유저
+  // 2026-11-20): opened on another isolate, a file's first test asked for
+  // it and never had it — 🔬269 of 393 first tests (서피스 11-20) showed no
+  // canvas — and a later one had it once real time had passed.
+  debugOpenAppGpuEngineHere = true;
+  // The same clock once more: a canvas a test stands marks its place while
+  // its frame waits for its tools or kernels, for as long as the test
+  // settles (`pumpAndSettle`) — the mark turns. The pins of the mark stand
+  // it.
   FrameWaitMark.debugStands = false;
   debugLayerOfScreen = screenDrawnAsAPicture;
   // A zoom's stop rasters what it stretched, on the engine a session's
@@ -358,7 +378,10 @@ Future<ScreenTexture> _screenOnASurface(
   final surface = shownSurfaceOf(width, height);
   final id = shownScreens.length + 1;
   shownScreens[id] = surface;
-  return ScreenTexture.debugOnSurface(surface, id: id);
+  return shownScreenTextures[id] = ScreenTexture.debugOnSurface(
+    surface,
+    id: id,
+  );
 }
 
 void _freeScreenSurfaces() {
@@ -366,4 +389,10 @@ void _freeScreenSurfaces() {
     surface.free();
   }
   shownScreens.clear();
+  shownScreenTextures.clear();
+  forgetScreensReadBack();
 }
+
+/// The budget a test's pool keeps to in place of the OS's: past any
+/// device.
+const _noBudget = 0x7fffffffffffffff;

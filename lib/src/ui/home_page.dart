@@ -1011,9 +1011,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     for (final session in _projects.sessions) {
       session.respondToMemoryPressure();
     }
-    // The drawing engines are the process's, not a project's: the C
-    // engine's parked tile blocks and scratch buffers, and the GPU ledger's
-    // pages nobody holds, hear the warning here too.
+    // The drawing engines are the process's, not a project's: the
+    // scratch buffers, and the GPU ledger's pages nobody holds, hear the
+    // warning here too.
     DrawingEngines.respondToMemoryPressure();
   }
 

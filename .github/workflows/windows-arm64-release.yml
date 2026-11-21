@@ -1,5 +1,5 @@
 # 🪟THE WINDOWS BUILD FOR ARM PCs — a release bundle, the engine's tests
-# run on this CPU, launched once, zipped.
+# that draw nothing run on this CPU, launched once, zipped.
 #
 # 유저 2026-10-30 (board, windows-arm64-build): 「일단 arm64가 지금 없으니까
 # 이거 빌드에넣고싶」 — Windows on ARM has been a target since 2026-07-07, and
@@ -12,10 +12,14 @@
 #
 # ⚠️NOBODY HERE OWNS AN ARM PC. This file proves the bundle builds, that every
 # binary in it is ARM64, that the tests which call into the engine's library
-# pass on this CPU's build of it (↩️the C engine's byte parity with every other
-# platform, till the C went — 2026-11-13), that a .wasm plugin answers as its
-# native twin does, and that it opens its window on this runner. Whether a
-# pen's pressure arrives, or a real GPU keeps up, nobody has seen.
+# and reach no GPU pass on this CPU's build of it (↩️the C engine's byte
+# parity with every other platform, till the C went — 2026-11-13), and that
+# it opens its window on this runner. Whether a pen's pressure arrives, or
+# the engine draws on an ARM PC's GPU at all, nobody has seen: this runner
+# has none (the device step below).
+# ↩️Till 2026-11-08 it proved that a .wasm plugin answered as its native
+# twin did; the fx host is the Rust engine's since, and its WebAssembly
+# tests are its crate's, run on this CPU by hand (gpu-engine.yml).
 name: Windows ARM64 (release bundle)
 
 on:
@@ -110,10 +114,30 @@ jobs:
 
       # The release path's check of the engine, as the Linux build runs it:
       # the tests that call into the engine's library, on this runner's
-      # build of it. The engine built for ARM64 Windows is one nothing else
-      # here runs, and the fx pin's WebAssembly twin is Wasmtime writing
-      # ARM64 code as a plugin opens, in the Rust engine's fx host, which
-      # nothing else here does.
+      # build of it — LESS EVERY ONE THAT REACHES THE GPU ENGINE, left out
+      # as the Windows shards leave them, by the one answer to which those
+      # are (tool/tests_reaching_package.dart). What is left calls the
+      # library's CPU work — the cel codec, the sound, the pen, the window —
+      # as built for ARM64 Windows, which nothing else here runs.
+      # 🗣️유저 gpu-engine-skeleton-Q16 (2026-11-07) 「윈도 샤드는 엔진에 닿는
+      # 시험을 리눅스에 맡긴다」 and Q9 「ARM 은 빌드와 CPU 크레이트 시험만 —
+      # 다른 잡 급으로」: a Windows runner has no GPU, and WARP, the device
+      # the engine opens on it, never finishes the engine's optimised
+      # shaders. This runner is one — the device step names `Microsoft
+      # Basic Render Driver` (rounds 1094 and 1095, runs 44754428408 and
+      # 44807382647). From 2026-11-13 this step ran them all the same: the
+      # C's parity list became the tests that name `src/native/`, which open
+      # the Rust GPU engine, and no round got past it — 1091 and 1093 ran
+      # out of the hour, and in 1095 its 290 files waited past 30 s 129
+      # times, one process committed 8.1 GB, and the 28 red files all
+      # reached the GPU engine (card
+      # the-windows-arm64-build-stops-at-its-engine-tests, 2026-11-21).
+      # The cost, as Q9 took it: no test on this road draws on ARM64
+      # Windows, and every Dart test of the premultiplied copy's NEON step
+      # reaches the GPU engine too — the step is held on this CPU by its
+      # crate's own tests, by hand (gpu-engine.yml), and a real ARM PC is
+      # the first to draw. ⛔Running them here again is not a fix but a new
+      # question for the user.
       # ↩️That was the C host's own test, run here, until 2026-11-08. And
       # till 2026-11-13 the step was the C engine's parity check — MSVC on
       # ARM64, a compiler nothing else here ran — on the engine read in the
@@ -135,8 +159,16 @@ jobs:
       - name: Tests on the engine as this runner builds it
         run: |
           set -euo pipefail
-          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
-          echo "engine subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/engine.txt"
+          dart tool/tests_reaching_package.dart gpu_engine \
+            > "$RUNNER_TEMP/left_out.txt"
+          # ⛔An empty list fails: grep selects nothing, and exits 1.
+          grep -vxFf "$RUNNER_TEMP/left_out.txt" "$RUNNER_TEMP/engine.txt" \
+            > "$RUNNER_TEMP/parity.txt"
+          all=$(wc -l < "$RUNNER_TEMP/engine.txt")
+          here=$(wc -l < "$RUNNER_TEMP/parity.txt")
+          echo "engine subset: $here of the $all files that name src/native/ —" \
+            "$((all - here)) reach package:gpu_engine, not run here"
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
           dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"

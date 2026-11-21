@@ -511,10 +511,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 fn main() { out[0] = 7u; }
 ";
 
-    fn kept_in(name: &str) -> std::path::PathBuf {
-        let folder = std::env::temp_dir().join(format!("gpu_engine_kept_{}_{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        folder
+    /// The test's folder to keep in, gone with the test — at its end, or as
+    /// it panics (oracle's `TempFile`). ↩️Each test removed its folder at
+    /// its last line, which a test that failed first never reached: 33 were
+    /// left in Temp on the main PC on 11-18 (card
+    /// engine-kept-tests-leave-their-folder-when-they-fail).
+    fn kept_in(name: &str) -> oracle::TempFile {
+        oracle::TempFile::at(&format!("gpu_engine_kept_{name}"))
     }
 
     fn keeping(turn: &DeviceTurn, folder: &std::path::Path) -> crate::device::Engine {
@@ -575,7 +578,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn what_dxc_made_is_handed_to_the_next_engine() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("handed");
+        let kept = kept_in("handed");
+        let folder = kept.path();
         let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         assert_eq!(found(&first), 0, "nothing was kept before");
@@ -594,7 +598,6 @@ fn main() { out[0] = 7u; }
         assert_eq!(first_word(&next, &handed), 7);
         let used = std::fs::metadata(&path).and_then(|meta| meta.modified()).expect("its age");
         assert!(used > an_hour_ago + std::time::Duration::from_secs(1800), "used now");
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // A file cut short — a crash as it was written, a disk — is compiled
@@ -602,7 +605,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn a_kept_file_cut_short_is_compiled_again() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("cut");
+        let kept = kept_in("cut");
+        let folder = kept.path();
         let _ = pipeline(&keeping(&turn, &folder), &[WRITES_SEVEN], "main");
         let Ok([(path, whole)]) = <[_; 1]>::try_from(kept_files(&folder, "dxil")) else {
             panic!("one file is kept");
@@ -617,7 +621,6 @@ fn main() { out[0] = 7u; }
         assert_eq!(found(&next), 0, "what was cut short is handed to no one");
         assert_eq!(first_word(&next, &compiled), 7);
         assert_eq!(kept_files(&folder, "dxil"), [(path, whole)], "kept whole again");
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // A file whose DXIL changed on the disk, its length kept, is compiled
@@ -625,7 +628,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn a_kept_file_changed_on_the_disk_is_compiled_again() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("changed");
+        let kept = kept_in("changed");
+        let folder = kept.path();
         let _ = pipeline(&keeping(&turn, &folder), &[WRITES_SEVEN], "main");
         let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder, "dxil")) else {
             panic!("one file is kept");
@@ -637,7 +641,6 @@ fn main() { out[0] = 7u; }
         let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 0, "what changed is handed to no one");
         assert_eq!(first_word(&next, &compiled), 7);
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // What one asking kept, under the name of another's — as two whose
@@ -646,7 +649,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn a_file_under_another_s_name_is_not_handed() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("renamed");
+        let kept = kept_in("renamed");
+        let folder = kept.path();
         let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder, "dxil")) else {
@@ -659,7 +663,6 @@ fn main() { out[0] = 7u; }
         let compiled = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(found(&next), 0, "what another asked is handed to no one");
         assert_eq!(first_word(&next, &compiled), 7);
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // The app names its folder before it opens its engine
@@ -668,7 +671,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn engines_opened_once_the_app_names_a_folder_keep_their_shaders_there() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("named");
+        let kept = kept_in("named");
+        let folder = kept.path();
         let named = folder.to_string_lossy().into_owned();
         // SAFETY: `named` holds its length.
         unsafe { crate::platform::gpu_engine_keep_shaders_in(named.as_ptr(), named.len()) };
@@ -680,7 +684,6 @@ fn main() { out[0] = 7u; }
         assert_eq!(found(&next), 1, "the next engine is handed it");
         assert_eq!(pipelines_found(&next), 1, "and what the driver made of it");
         assert_eq!(first_word(&next, &handed), 7);
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // What another source asked is not handed for this one: each is kept
@@ -689,7 +692,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn what_was_asked_otherwise_is_kept_apart() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("apart");
+        let kept = kept_in("apart");
+        let folder = kept.path();
         let writes_eight = WRITES_SEVEN.replace("7u", "8u");
         let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
@@ -705,7 +709,6 @@ fn main() { out[0] = 7u; }
         assert_eq!(kept_files(&folder, "pso").len(), 2);
         assert_eq!(pipelines_found(&next), 2, "and each pipeline");
         assert_eq!((first_word(&next, &seven), first_word(&next, &eight)), (7, 8));
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // 🔬What the driver made of a pipeline, the next engine is handed — and
@@ -715,7 +718,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn what_the_driver_made_of_a_pipeline_is_handed_to_the_next_engine() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("pso_handed");
+        let kept = kept_in("pso_handed");
+        let folder = kept.path();
         let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         assert_eq!(pipelines_found(&first), 0, "nothing was kept before");
@@ -724,7 +728,6 @@ fn main() { out[0] = 7u; }
         let handed = pipeline(&next, &[WRITES_SEVEN], "main");
         assert_eq!(pipelines_found(&next), 1, "the next engine is handed it");
         assert_eq!(first_word(&next, &handed), 7);
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // What the driver made of another shader's pipeline, kept whole under
@@ -735,7 +738,8 @@ fn main() { out[0] = 7u; }
     #[test]
     fn a_pipeline_the_driver_refuses_is_made_again_and_kept_over() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("pso_refused");
+        let kept = kept_in("pso_refused");
+        let folder = kept.path();
         let first = keeping(&turn, &folder);
         let _ = pipeline(&first, &[WRITES_SEVEN], "main");
         let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder, "pso")) else {
@@ -767,19 +771,18 @@ fn main() { out[0] = 7u; }
         let handed = pipeline(&last, &[WRITES_SEVEN], "main");
         assert_eq!(pipelines_found(&last), 1, "kept over what was refused");
         assert_eq!(first_word(&last, &handed), 7);
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     /// What `WRITES_SEVEN` is kept as, made by an engine of its own in a
     /// folder of its own: (its file's name, its bytes).
     fn seven_as_kept(turn: &DeviceTurn, name: &str) -> (std::ffi::OsString, Vec<u8>) {
-        let folder = kept_in(name);
+        let kept = kept_in(name);
+        let folder = kept.path();
         let _ = pipeline(&keeping(turn, &folder), &[WRITES_SEVEN], "main");
         let Ok([(path, _)]) = <[_; 1]>::try_from(kept_files(&folder, "dxil")) else {
             panic!("one file is kept");
         };
         let kept = (path.file_name().expect("a name").to_owned(), std::fs::read(&path).expect("the file"));
-        let _ = std::fs::remove_dir_all(&folder);
         kept
     }
 
@@ -822,7 +825,8 @@ fn main() { out[0] = 7u; }
     fn a_kernel_another_compiles_now_is_waited_for() {
         let turn = a_device_of_its_own();
         let (kept_as, bytes) = seven_as_kept(&turn, "waited_made");
-        let folder = kept_in("waited");
+        let kept = kept_in("waited");
+        let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
         let (found, word) = seven_beside(&turn, &folder, || {
             let beside = folder.join("beside.tmp");
@@ -832,7 +836,6 @@ fn main() { out[0] = 7u; }
         });
         assert_eq!(found, 1, "handed what the other kept, not compiled again");
         assert_eq!(word, 7);
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     /// `WRITES_SEVEN` after a long run of sums: a kernel DXC takes a while
@@ -876,7 +879,8 @@ fn main() {{
     #[test]
     fn two_engines_asking_for_a_new_kernel_at_once_compile_it_once() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("at_once");
+        let kept = kept_in("at_once");
+        let folder = kept.path();
         let (one, other) = (keeping(&turn, &folder), keeping(&turn, &folder));
         let both = std::sync::Barrier::new(2);
         let slowly = seven_slowly();
@@ -897,7 +901,6 @@ fn main() {{
             1,
             "and its pipeline made by one, handed to the other"
         );
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // A turn let go with nothing kept — its compile failed, its process
@@ -906,7 +909,8 @@ fn main() {{
     fn a_turn_let_go_with_nothing_kept_is_taken() {
         let turn = a_device_of_its_own();
         let (kept_as, _) = seven_as_kept(&turn, "let_go_made");
-        let folder = kept_in("let_go");
+        let kept = kept_in("let_go");
+        let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
         let (found, word) = seven_beside(&turn, &folder, || {
             std::fs::remove_file(&held).expect("let go");
@@ -915,7 +919,6 @@ fn main() {{
         let kept = kept_files(&folder, "dxil").into_iter().map(|(path, _)| path).collect::<Vec<_>>();
         assert_eq!(kept, [folder.join(&kept_as)], "kept");
         assert_eq!(kept_files(&folder, "turn"), [], "and the turns gone with their holder");
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // A turn taken longer ago than a compile stands — its holder gone
@@ -925,7 +928,8 @@ fn main() {{
     fn a_turn_past_its_standing_is_not_waited_for() {
         let turn = a_device_of_its_own();
         let (kept_as, _) = seven_as_kept(&turn, "stale_made");
-        let folder = kept_in("stale");
+        let kept = kept_in("stale");
+        let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
         let an_hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
         let file = std::fs::File::options().write(true).open(&held).expect("the turn");
@@ -941,7 +945,6 @@ fn main() {{
         });
         let compiled = hear.recv_timeout(std::time::Duration::from_secs(10)).expect("not waited for");
         assert_eq!(compiled, (0, 7), "compiled here");
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     // A folder past what it may hold lets go of what was used longest ago,
@@ -949,7 +952,8 @@ fn main() {{
     #[test]
     fn a_folder_past_its_most_lets_its_oldest_go() {
         let turn = a_device_of_its_own();
-        let folder = kept_in("most");
+        let kept = kept_in("most");
+        let folder = kept.path();
         std::fs::create_dir_all(&folder).expect("the folder");
         let old = folder.join("old.dxil");
         let new = folder.join("new.dxil");
@@ -962,6 +966,5 @@ fn main() {{
         drop(keeping(&turn, &folder));
         assert!(!old.exists(), "the one used longest ago went");
         assert!(new.exists(), "what fits stayed");
-        let _ = std::fs::remove_dir_all(&folder);
     }
 }

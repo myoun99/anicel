@@ -89,18 +89,20 @@ void main() {
   // removed off the UI thread ([ScratchFile.letGo]), whenever the machine
   // gets to it — so no park may wear a name an earlier one wore, or that
   // removal could land on the later park's bytes.
-  test('🚨 a cel parked, thawed and parked again wears a new name each '
+  test('🚨 a cel parked, drawn on and parked again wears a new name each '
       'time, and the second park outlives the first one\'s removal', () async {
     final store = BrushFrameStore()..hotCelByteBudget = 0;
     final k1 = key('f1');
     final k2 = key('f2');
-    final s1 = inked(3);
-    store.storeBakedSurface(k1, s1);
+    store.storeBakedSurface(k1, inked(3));
     store.storeBakedSurface(k2, inked(5));
     await store.drainCooling();
     final first = store.bakedSnapshotForSave().cold[k1]!.filePath;
-    // Thawed, which lets the first park go; then the least recent again.
-    store.bakedSurfaceOrNull(k1);
+    // Drawn on, which lets the first park go (↩️a thaw did till
+    // 2026-11-21: a cel made hot keeps its park — cel-originals Q6); then
+    // the least recent again.
+    final drawn = inked(4);
+    store.storeBakedSurface(k1, drawn);
     store.storeBakedSurface(k2, inked(7));
     await store.drainCooling();
     expect(store.isCelCold(k1), isTrue, reason: 'premise: parked again');
@@ -111,7 +113,7 @@ void main() {
     expect(File(first).existsSync(), isFalse, reason: 'the first went');
     expect(
       store.bakedSurfaceOrNull(k1)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
-      s1.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      drawn.tiles[TileCoord(x: 0, y: 0)]!.pixels,
       reason: 'and the second is still the picture',
     );
   });

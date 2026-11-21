@@ -1,10 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -12,11 +9,12 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_timeline.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart'
     show timesheetInkPageKey;
 import 'package:anicel/src/services/project_tree_editor.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🗣️I-150 (유저 2026-11-03): 「트랙편집(우선은 이름?)/삭제/복제 가능」 —
 /// a timeline copied is a copy: every track, cut, row and cel of it under
@@ -56,21 +54,8 @@ void main() {
     ],
   };
 
-  BitmapSurface surfaceOf(EditorSessionManager s, int red) {
-    final pixels = Uint8List(256 * 256 * 4);
-    for (var at = 0; at < pixels.length; at += 4) {
-      pixels.setRange(at, at + 4, [red, 0, 0, 255]);
-    }
-    return BitmapSurface(
-      canvasSize: s.requireActiveCut.canvasSize,
-      tileSize: 256,
-    ).putTiles([
-      (
-        coord: TileCoord(x: 0, y: 0),
-        tile: BitmapTile(size: 256, pixels: pixels),
-      ),
-    ]);
-  }
+  BitmapSurface surfaceOf(EditorSessionManager s, int red) =>
+      aCelFilled(s.requireActiveCut.canvasSize, [red, 0, 0, 255]);
 
   BrushFrameKey keyOfOpenCel(EditorSessionManager s) {
     final row = s.activeLayer!;

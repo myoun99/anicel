@@ -10,9 +10,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart'
-    show BakedWords, WordBakeWaiter;
+    show WordBakeWaiter;
 
-import '../../helpers/settle_async.dart';
+import '../../helpers/until_the_words_land.dart';
 
 const _boundary = ValueKey<String>('boundary');
 const _host = ValueKey<String>('host');
@@ -52,13 +52,6 @@ Widget _asItWas(String text, CustomPainter painter, Size size) => Semantics(
     child: CustomPaint(key: _old, size: size, painter: painter),
   ),
 );
-
-/// Until no word waits for its bake, and the frame that draws the landed
-/// ones — so both sides are read drawing the same bakes.
-Future<void> _settle(WidgetTester tester) async {
-  await settleAsync(tester, () => BakedWords.instance.debugWaitingWords == 0);
-  await tester.pump();
-}
 
 Future<Uint8List> _pixels(WidgetTester tester) async {
   final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -138,7 +131,7 @@ void main() {
             'says and hits as the composition it replaced', (tester) async {
           final handle = tester.ensureSemantics();
           await tester.pumpWidget(_framed(column, host, scale));
-          await _settle(tester);
+          await untilTheWordsLand(tester);
           final box = find.byType(VerticalWritingText);
           final now = await _read(tester, box);
           final render = tester.renderObject<RenderVerticalWriting>(box);
@@ -148,7 +141,7 @@ void main() {
           await tester.pumpWidget(
             _framed(_asItWas(column.text, painter, natural), host, scale),
           );
-          await _settle(tester);
+          await untilTheWordsLand(tester);
           final old = await _read(tester, find.byKey(_old));
 
           expect(now.size, old.size);
@@ -195,15 +188,15 @@ void main() {
     );
     final box = find.byType(VerticalWritingText);
     await tester.pumpWidget(writing('カ'));
-    await _settle(tester);
+    await untilTheWordsLand(tester);
     await tester.pumpWidget(writing('カットシーン'));
-    await _settle(tester);
+    await untilTheWordsLand(tester);
     final handedSize = tester.getSize(box);
     final handedPixels = await _pixels(tester);
 
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(writing('カットシーン'));
-    await _settle(tester);
+    await untilTheWordsLand(tester);
     expect(handedSize, tester.getSize(box));
     expect(handedPixels, await _pixels(tester));
   });

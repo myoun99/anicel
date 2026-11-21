@@ -113,6 +113,18 @@ class ScratchFile {
     }
   }
 
+  /// Whether a file stands at [path] — what a save asks of a park before
+  /// it takes the park for a cel that is hot too
+  /// (`BrushFrameStore.bakedSnapshotForSave`). False where it cannot be
+  /// asked: the cel's own tiles are then what is written.
+  static bool holds(String path) {
+    try {
+      return File(path).existsSync();
+    } on Object {
+      return false;
+    }
+  }
+
   /// Removes [path]. Silent: the room goes with the run anyway, so a
   /// leftover costs nothing but space until then.
   static void remove(String path) {

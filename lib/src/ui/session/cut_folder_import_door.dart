@@ -179,7 +179,7 @@ class CutFolderImportDoor {
         canvas: cut.canvasSize,
         placement: fitPlacement(picture.size, cut.canvasSize, fit),
       );
-      bakeCelSurface(
+      landImportedCel(
         _renderCaches.brushFrameStore,
         _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
         surface,

@@ -13,7 +13,11 @@
 // opens, WARP, never finishes the engine's optimised shaders — so ci.yml's
 // Windows shards leave the tests that reach package:gpu_engine to the Linux
 // shards, which run them on lavapipe (.github/actions/test-shard,
-// `leave-out-package`).
+// `leave-out-package`). The Windows ARM64 release leaves them out of the
+// parity list it runs by this same answer, for the same device (card
+// the-windows-arm64-build-stops-at-its-engine-tests, 2026-11-21), and
+// every Windows job that runs a list is held to it (test/architecture/
+// a_windows_runner_runs_no_test_that_reaches_the_gpu_engine_test.dart).
 import 'dart:io';
 
 import 'import_graph.dart';

@@ -223,6 +223,59 @@ void main() {
     expect(back.panY, closeTo(kept.panY, 1e-6));
   });
 
+  testWidgets('🚨a project tab left for one whose viewer holds nothing, and '
+      'come back to, shows its file at the page it says — at its zoom '
+      '(F-382 ⑦, the 11-21 hands-on: 「쪽 표시는 5/8 인데 화면은 1쪽」)', (
+    tester,
+  ) async {
+    await _pumpEditor(
+      tester,
+      _project(
+        bookmarks: const {
+          'media-viewer-sub': MediaViewerBookmark(
+            path: 'C:/work/conte.pdf',
+            kind: MediaAssetKind.pdf,
+          ),
+        },
+      ),
+      surface: const Size(1600, 2100),
+    );
+    MediaViewerTabHost host() => tester.widget<MediaViewerTabHost>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is MediaViewerTabHost &&
+            widget.viewerId == EditorWorkspace.mediaViewerSubTabId,
+      ),
+    );
+    // The user reads the conte at a scale of their own, two pages on.
+    final view = host().viewportController!;
+    view.value = seedFromRender(tester, CanvasViewport(zoom: 1));
+    await tester.pumpAndSettle();
+    for (var turn = 0; turn < 2; turn += 1) {
+      await _tapKey(tester, 'media-viewer-sub-next-page-button');
+    }
+    expect(_pageTextIn(tester, _subViewer()), '3 / 5', reason: '⛔fixture');
+    final kept = renderOf(tester, view.value!);
+
+    // A new project — its viewers hold nothing — and then this one again.
+    await _tapKey(tester, 'top-strip-project-button');
+    await _tapKey(tester, 'menu-file-new');
+    expect(
+      host().request.value,
+      isNull,
+      reason: '⛔fixture: the other project shows nothing in the viewer',
+    );
+    await _tapKey(tester, 'project-tab-0');
+
+    expect(_pageTextIn(tester, _subViewer()), '3 / 5');
+    final back = renderOf(tester, host().viewportController!.value!);
+    expect(back.zoom, closeTo(kept.zoom, 1e-6), reason: 'not fitted');
+    expect(back.panX, closeTo(kept.panX, 1e-6));
+    // ⛔Mutation: the empty viewer leaves the conte named framed → the view
+    // the empty viewer turned to the top stays, at page one.
+    expect(back.panY, closeTo(kept.panY, 1e-6), reason: 'at the page it says');
+  });
+
   testWidgets('a remembered path the app can no longer reach comes back '
       'empty, and says nothing about it', (tester) async {
     await _pumpEditor(

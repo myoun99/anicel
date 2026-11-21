@@ -173,7 +173,7 @@ void main() {
 
       final donated = inkSurface(seed: 9);
       store.storeBakedSurface(k, donated);
-      expect(store.isCelCold(k), isFalse);
+      expect(store.isCelParked(k), isFalse);
       expect(identical(store.bakedSurfaceOrNull(k), donated), isTrue);
     },
   );

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
@@ -21,6 +20,7 @@ import '../media/project_font_sources.dart';
 import '../media/project_media_sources.dart'
     show ProjectConforms, mediaEntryNamesFor;
 import 'brush_drawing_binary_codec.dart';
+import 'compress_in_worker.dart';
 import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
 import 'same_file.dart';
@@ -92,10 +92,14 @@ class _CelWork {
   final BrushFrameKey key;
   final String name;
 
-  /// A cel still in RAM: its payload serialised straight off the surface
-  /// and handed over as one flat buffer that crosses into the isolate
-  /// without being written out again — the park road's shape
-  /// ([compressCelOnAWorker]).
+  /// A cel still in RAM: its blob, serialised and pressed on a worker and
+  /// handed over as one flat buffer that crosses into the isolate without
+  /// being written out again — the park road's own ([pressedBlobOnAWorker]).
+  ///
+  /// 🚨PRESSED, NOT ITS STREAM: the save holds every edited cel's work till
+  /// its isolate takes them, and the stream was as large as the cel's
+  /// tiles — 🔬2.0–2.3 GiB more over a save of 220 edited cels (card
+  /// incremental-save-holds-every-dirty-cel-at-once, 2026-11-21).
   ///
   /// 🚨F-304 (유저 2026-10-06): 「무거운 상태에서 저장버튼누르면 화면이
   /// 멈추고」. ↩️It was an [AnicelCelEntry] — a defensive copy of every
@@ -104,10 +108,9 @@ class _CelWork {
   /// and 1,211ms of the 2,005ms the UI isolate could not answer (benchmark
   /// `a_heavy_save_holds_the_screen_benchmark_test`).
   ///
-  /// Whether its picture shows anything rides with it: the blob's head says
-  /// it ([AnicelCelBlob.showsSomething]), and the stream cannot be asked
-  /// without decoding it.
-  final ({TransferableTypedData payload, bool showsSomething})? hot;
+  /// Whether its picture shows anything is in the blob's head
+  /// ([AnicelCelBlob.showsSomething]), asked of the surface on the way.
+  final TransferableTypedData? hot;
 
   /// 🪦A `coldBlob` rode here while the cold tier was RAM. Cooled cels are
   /// files in the run's 이사대기 room now, so they arrive as a ref like
@@ -117,8 +120,8 @@ class _CelWork {
   final int refOffset;
   final int refLength;
 
-  /// The blob to write, resolved INSIDE the save isolate: hot encodes,
-  /// cold passes through, a file ref reads back — and a stale key label
+  /// The blob to write, resolved INSIDE the save isolate: hot comes
+  /// pressed, cold passes through, a file ref reads back — and a stale key label
   /// (rekeyed cel) re-splices the header without touching pixels.
   ///
   /// 🚨★★★**NULL WHEN THE FILE A REF POINTS INTO IS GONE.**
@@ -149,11 +152,8 @@ class _CelWork {
   /// rename is, and still refused it stops the save: the old file stands
   /// with the cel in it, and the session still holds everything drawn since.
   AnicelCelBlob? resolveBlob() {
-    if (hot case (:final payload, :final showsSomething)) {
-      return AnicelCelBlob.ofPayload(
-        payload.materialize().asUint8List(),
-        showsSomething: showsSomething,
-      );
+    if (hot case final pressed?) {
+      return AnicelCelBlob(pressed.materialize().asUint8List());
     }
     final file = File(refPath!);
     for (var attempt = 0; ; attempt += 1) {
@@ -688,8 +688,45 @@ class AnicelFileService {
       }
     }
 
-    if (sound) {
-      final adopted = await _saveIncremental(
+    // The parks this save reads stay in the room till it has read them —
+    // a cel changed while it runs lets its park go
+    // ([BrushFrameStore.holdParksForSave]). Taken before the first await,
+    // so nothing lands between the snapshot and the hold.
+    final letGoOfParks = [
+      for (var index = 0; index < stores.length; index += 1)
+        stores[index].holdParksForSave(snapshots[index].cold.values),
+    ];
+    try {
+      if (sound) {
+        final adopted = await _saveIncremental(
+          project: project,
+          baked: baked,
+          dirty: dirty,
+          filePath: filePath,
+          saveDirectory: saveDirectory,
+          mediaToStore: mediaToStore,
+          carried: carried,
+          sessionFields: sessionFields,
+          onProgress: onProgress,
+          onStretch: onStretch,
+          heldEntries: heldEntries,
+          onMoveRefs: moveRefs,
+        );
+        if (adopted != null) {
+          adoptEach(adopted);
+          return settle(lost(
+            adopted,
+            carried: {
+              for (final key in allKeys)
+                if (!dirty.contains(key)) key,
+            },
+          ));
+        }
+        // A torn tail, refs the file does not back, or somebody else's
+        // archive → the whole write below.
+      }
+
+      final adopted = await _saveFull(
         project: project,
         baked: baked,
         dirty: dirty,
@@ -700,39 +737,16 @@ class AnicelFileService {
         sessionFields: sessionFields,
         onProgress: onProgress,
         onStretch: onStretch,
-        heldEntries: heldEntries,
-        onMoveRefs: moveRefs,
+        onFullWriteLeftAt: onFullWriteLeftAt,
+        beforeReplacing: beforeReplacing,
       );
-      if (adopted != null) {
-        adoptEach(adopted);
-        return settle(lost(
-          adopted,
-          carried: {
-            for (final key in allKeys)
-              if (!dirty.contains(key)) key,
-          },
-        ));
+      adoptEach(adopted);
+      return settle(lost(adopted));
+    } finally {
+      for (final letGo in letGoOfParks) {
+        letGo();
       }
-      // A torn tail, refs the file does not back, or somebody else's
-      // archive → the whole write below.
     }
-
-    final adopted = await _saveFull(
-      project: project,
-      baked: baked,
-      dirty: dirty,
-      filePath: filePath,
-      saveDirectory: saveDirectory,
-      mediaToStore: mediaToStore,
-      carried: carried,
-      sessionFields: sessionFields,
-      onProgress: onProgress,
-      onStretch: onStretch,
-      onFullWriteLeftAt: onFullWriteLeftAt,
-      beforeReplacing: beforeReplacing,
-    );
-    adoptEach(adopted);
-    return settle(lost(adopted));
   }
 
   /// Splits the dirty set into the cels that still have content and the
@@ -823,8 +837,8 @@ class AnicelFileService {
   /// the heavy save benchmark under `flutter test`, Surface Pro 11,
   /// 2026-11-13: read back 10–18 ms, the stream 12–23, its copy 6–11). A
   /// worker serialises it now from a copy it is handed a batch of tiles at
-  /// a time ([onAWorkerWithCelStream]), and the screen has its turns between
-  /// the batches; what stays here is the read (card
+  /// a time, and presses it ([pressedBlobOnAWorker]); the screen has its
+  /// turns between the batches, and what stays here is the read (card
   /// `a-save-serialises-each-hot-cel-on-the-ui-isolate`, the CPU census —
   /// 관제 2026-11-13).
   static Future<_CelWork?> _workForDirtyKey(
@@ -842,10 +856,7 @@ class AnicelFileService {
       return _CelWork(
         key: key,
         name: name,
-        hot: (
-          payload: await onAWorkerWithCelStream(key, surface, _toCross),
-          showsSomething: surface.showsSomething,
-        ),
+        hot: await pressedBlobOnAWorker(key, surface),
       );
     }
     final cold = baked.cold[key];
@@ -880,12 +891,6 @@ class AnicelFileService {
     }
     return null;
   }
-
-  /// What a worker makes of a hot cel's stream for the save
-  /// ([_workForDirtyKey]): one flat buffer that crosses into the save's
-  /// isolate without being written out again.
-  static TransferableTypedData _toCross(Uint8List stream) =>
-      TransferableTypedData.fromList([stream]);
 
   /// Whether the archive at [filePath] is the one [projectIdValue] names.
   ///

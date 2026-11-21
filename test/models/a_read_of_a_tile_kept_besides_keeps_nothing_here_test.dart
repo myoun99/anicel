@@ -83,24 +83,32 @@ void main() {
     expect(kept.reads, reads);
   });
 
-  test('the block a read is lent goes back to the lists as it returns — '
-      'and where the reader throws', () {
-    final lent = tile.readPixels((pointer, _) => pointer.address);
-    final next = TileBlocks.alloc(tileBytes);
-    addTearDown(() => TileBlocks.free(next));
-    expect(next.address, lent, reason: 'parked, and the next ask\'s');
+  test('the block a read is lent goes back as it returns — and where the '
+      'reader throws', () {
+    // A side no other tile wears: the blocks held of its size
+    // ([TileBlocks.debugHeld]) are this tile's reads' alone.
+    const own = 39;
+    final ownBytes = BitmapTile.bytesFor(own);
+    final lone = BitmapTile.onEngine(size: own, on: kept);
+    final laid = TileBlocks.debugLaid(ownBytes);
 
-    late int thrownWith;
+    final heldWhileRead = lone.readPixels(
+      (_, _) => TileBlocks.debugHeld(ownBytes),
+    );
+
+    expect(heldWhileRead, 1, reason: '⛔premise: the reader is lent a block');
+    expect(TileBlocks.debugHeld(ownBytes), 0);
+
     expect(
-      () => tile.readPixels((pointer, _) {
-        thrownWith = pointer.address;
-        throw StateError('the reader threw');
-      }),
+      () => lone.readPixels((_, _) => throw StateError('the reader threw')),
       throwsStateError,
     );
-    final after = TileBlocks.alloc(tileBytes);
-    addTearDown(() => TileBlocks.free(after));
-    expect(after.address, thrownWith);
+    expect(
+      TileBlocks.debugLaid(ownBytes),
+      laid + 2,
+      reason: '⛔premise: lent a block again',
+    );
+    expect(TileBlocks.debugHeld(ownBytes), 0);
   });
 
   test('a read its keeper refuses keeps nothing, and the next reads', () {

@@ -119,6 +119,12 @@ impl Arena {
     pub(super) fn held_bytes(&self) -> u64 {
         self.held.values().map(|&granules| u64::from(granules) * GRANULE_BYTES).sum()
     }
+
+    /// The bytes of the granules the tile lying from `first` lies in —
+    /// none where no tile lies from there.
+    fn bytes_from(&self, first: u32) -> u64 {
+        self.held.get(&first).map_or(0, |&granules| u64::from(granules) * GRANULE_BYTES)
+    }
 }
 
 /// The granules of a tile's bytes as it is.
@@ -342,6 +348,16 @@ impl Foldings {
 /// is its caller's to keep: a fold handed over before the last was settled
 /// counts on runs the last one's tiles then take, and a tile of its own
 /// that finds none is a fold's to take again.
+/// What a fold handed over unwaited is told by ([`Pool::folds_unwaited`]):
+/// whether its tiles folded, on whatever thread of the engine's learns it.
+pub(crate) type FoldTold = Arc<dyn Fn(bool) + Send + Sync>;
+
+/// The telling of a fold a caller over the C ABI asked for: `told`, with
+/// the `number` it gave the fold (`gpu_engine_pool_fold`).
+pub(crate) fn told_by(told: extern "C" fn(u64, bool), number: u64) -> FoldTold {
+    Arc::new(move |worked| told(number, worked))
+}
+
 struct Room {
     runs: Vec<Vec<(u32, u32)>>,
     page: Option<(u64, (Bounds, u64))>,
@@ -379,6 +395,33 @@ impl Pool {
     pub(crate) fn lies(&self, at: TileAt) -> TileAt {
         let lies = self.slots_at(at).and_then(|slots| slots.lying.get(usize::from(at.slot))).copied();
         lies.and_then(TileAt::of_word).unwrap_or(at)
+    }
+
+    /// The bytes the tile named `at`, held, keeps made: its slot's while
+    /// the page it is named on stands — away, a slot is bytes no more
+    /// ([`Slots::away`]) —, and those of the granules it lies in on a
+    /// page of folded tiles. One that lies folded while its page stands
+    /// keeps both, till the page goes
+    /// ([`Pool::gives_back_where_no_tile_lies`]). Nothing for a name of no
+    /// slot.
+    ///
+    /// EVERY HELD TILE'S, TOGETHER, ARE THE PAGES MADE LESS WHAT IS IDLE
+    /// ON THEM ([`Pool::bytes`], [`Pool::idle_bytes`]): what the pictures
+    /// weigh by (F-610, 2026-11-21 — `Pictures::bytes_of`), so the weights
+    /// and the idle bytes come to what the GPU holds for them.
+    pub(crate) fn bytes_of(&self, at: TileAt) -> u64 {
+        let Some(slots) = self.slots_at(at) else {
+            return 0;
+        };
+        let in_its_slot = if slots.away { 0 } else { TILE_BYTES };
+        // One that lies in its slot lies on a page of tiles: the page
+        // its name is on, whose slots were read above.
+        let lies = self.lies(at);
+        let folded = match self.pages.get(usize::from(lies.page)) {
+            Some(Some(Page::Folded(arena))) => arena.bytes_from(lies_from(lies)),
+            _ => 0,
+        };
+        in_its_slot + folded
     }
 
     /// Where each tile it holds lies now ([`Lying`]): taken with the
@@ -523,8 +566,8 @@ impl Pool {
     /// `fold`, its caller waiting for none of it ([`Engine::posted`]):
     /// `told` is called from
     /// a thread of the engine's once the GPU has said what each folds to
-    /// and the page their places need is made ([`Room`]), with `number`
-    /// and whether they folded — the caller's then to settle
+    /// and the page their places need is made ([`Room`]), with whether
+    /// they folded — the caller's then to settle
     /// ([`Pool::settles_unwaited`]). How many it handed over; none, and
     /// `told` is not called.
     ///
@@ -553,7 +596,7 @@ impl Pool {
         engine: &Engine,
         fold: *const Fold,
         places: &[TileAt],
-        (told, number): (extern "C" fn(u64, bool), u64),
+        told: FoldTold,
     ) -> usize {
         let mut tiles = Vec::new();
         for &at in places {
@@ -590,10 +633,11 @@ impl Pool {
                 // settle the telling brings finds it made.
                 let asked = page.is_some_and(|(bytes, within)| {
                     let page = ("pool page of folded tiles", bytes);
-                    room.ahead.asked_of(&pages_of, page, within, move || told(number, worked))
+                    let told = Arc::clone(&told);
+                    room.ahead.asked_of(&pages_of, page, within, move || told(worked))
                 });
                 if !asked {
-                    told(number, worked);
+                    told(worked);
                 }
             };
             // 🚨THE ENGINE'S THREAD WAITS FOR NO GPU HERE, and goes on
@@ -609,6 +653,36 @@ impl Pool {
             Some(())
         });
         count
+    }
+
+    /// [`Pool::folds_unwaited`] of the tiles next to fold — `most` of
+    /// them at most ([`Pool::to_fold`]). Where none is next and a page
+    /// made ahead stands beside a room half a page from needing it,
+    /// that page is the room from here and the tiles of the one that
+    /// was are next ([`Pool::rooms_on_the_page_ahead`]); and with none
+    /// to fold, what the last settle could not give back goes: a page
+    /// whose last tile lying on it was let go since. What a rest asks
+    /// of a pool, the cels' (`gpu_engine_pool_fold`) and the pictures'
+    /// (`Pictures::folds_at_rest`) alike.
+    ///
+    /// # Safety
+    /// As [`Pool::folds_unwaited`]'s.
+    pub(crate) unsafe fn folds_next_unwaited(
+        &mut self,
+        engine: &Engine,
+        fold: *const Fold,
+        most: usize,
+        told: FoldTold,
+    ) -> usize {
+        let mut tiles = self.to_fold(most);
+        if tiles.is_empty() && self.rooms_on_the_page_ahead(engine) {
+            tiles = self.to_fold(most);
+        }
+        if tiles.is_empty() {
+            self.gives_back_where_no_tile_lies(engine);
+        }
+        // SAFETY: the function's contract is that one's.
+        unsafe { self.folds_unwaited(engine, fold, &tiles, told) }
     }
 
     /// Gives each tile the folds told have folded a place of its own on a

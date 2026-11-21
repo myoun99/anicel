@@ -1,5 +1,6 @@
 //! What the native crates' tests share: a medium framed as the save frames
-//! it ([`framed`]), and a file of a test's own in Temp ([`TempFile`]).
+//! it ([`framed`]), and a file — or a folder — of a test's own in Temp
+//! ([`TempFile`]).
 //!
 //! ↩️The C answer key, which the crate is named for (native-to-rust, 관제
 //! 2026-11-06). While the app's native C moved to Rust a module at a time,
@@ -69,11 +70,19 @@ pub fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
 /// which a test that failed first never reached. The video decoder's movie
 /// that its tests shared was removed by nothing: Temp kept one of every
 /// run (169 on the Surface, 11-08 to 11-15).
+///
+/// 🚨A FOLDER LAID AT ITS PATH GOES WHOLE, by the same guard (card
+/// engine-kept-tests-leave-their-folder-when-they-fail, 2026-11-21): the
+/// engine's tests of the shaders it keeps (platform/windows.rs) each kept
+/// in a folder of their own and removed it at their last line, and so did
+/// media's deep folder of a long path — 33 such folders were left in Temp
+/// on the main PC on 11-18.
 pub struct TempFile(PathBuf);
 
 impl TempFile {
     /// A path of [`TempFile`]'s with nothing at it yet: where the OS writes
-    /// what a test then reads back (a movie the export writes).
+    /// what a test then reads back (a movie the export writes), or where a
+    /// test lays a folder (the shaders an engine keeps).
     pub fn at(name: &str) -> TempFile {
         static MADE: AtomicU32 = AtomicU32::new(0);
         let number = MADE.fetch_add(1, Ordering::Relaxed);
@@ -115,7 +124,9 @@ impl TempFile {
 
 impl Drop for TempFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        if std::fs::remove_file(&self.0).is_err() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 }
 
@@ -141,6 +152,27 @@ mod tests {
         });
         assert!(failed.is_err(), "LIVENESS: it panicked");
         assert!(TempFile::left("failed.bin").is_empty(), "gone as it panicked");
+    }
+
+    // 🚨A folder a test lays at the path goes whole with the test, the
+    // same way (card engine-kept-tests-leave-their-folder-when-they-fail).
+    #[test]
+    fn a_laid_folder_goes_whole_with_its_test_even_one_that_panics() {
+        let laid = TempFile::at("laid-folder");
+        let deeper = laid.path().join("deeper");
+        std::fs::create_dir_all(&deeper).expect("a folder");
+        std::fs::write(deeper.join("kept.bin"), b"bytes").expect("a file in it");
+        assert_eq!(TempFile::left("laid-folder"), [laid.path().to_path_buf()], "LIVENESS: seen while it is held");
+        drop(laid);
+        assert!(TempFile::left("laid-folder").is_empty(), "gone whole at the test's end");
+
+        let failed = std::panic::catch_unwind(|| {
+            let laid = TempFile::at("failed-folder");
+            std::fs::create_dir_all(laid.path()).expect("a folder");
+            panic!("a test that fails before its last line");
+        });
+        assert!(failed.is_err(), "LIVENESS: it panicked");
+        assert!(TempFile::left("failed-folder").is_empty(), "gone as it panicked");
     }
 
     // Each is a file of its own, though two tests at once ask one name.

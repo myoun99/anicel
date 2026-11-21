@@ -156,7 +156,7 @@ final class TileCutter {
   ({Pointer<Uint8> block, Uint8List view}) _blockAt(int tileX) =>
       _open[tileX - _tiles.firstX] ??= _taken();
 
-  /// A block of the lists, zeroed: a tile the rows leave part of is clear
+  /// A tile's block, zeroed: a tile the rows leave part of is clear
   /// there, whatever the block held before.
   ({Pointer<Uint8> block, Uint8List view}) _taken() {
     final length = BitmapTile.bytesFor(_side);

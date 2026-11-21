@@ -108,6 +108,32 @@ void main() {
       expect(told, [false], reason: 'nothing was asked for meanwhile');
     });
 
+    test('🔬a frame put up is counted, with how long it took since its '
+        'draw — one the GPU could not finish is not', () async {
+      final (:screen, :gates, told: _) = aScreen();
+      final counted = ScreenTexture.upsCounted;
+
+      screen.present((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(ScreenTexture.upsCounted, counted, reason: 'not up yet');
+      gates.single.complete();
+      await pumpEventQueue();
+
+      expect(ScreenTexture.upsCounted, counted + 1);
+      expect(
+        ScreenTexture.upMicros.last,
+        greaterThanOrEqualTo(10000),
+        reason: 'the 30 ms the GPU took over it are in it',
+      );
+
+      screen.present((_) {});
+      gates.last.completeError(GpuRefused('the GPU did not finish'));
+      await pumpEventQueue();
+
+      expect(ScreenTexture.upsCounted, counted + 1);
+      expect(reported, hasLength(1));
+    });
+
     test('🚨asked for while one is on the GPU, nothing is drawn — once that '
         'one is up the asker is told it is behind, and draws the newest '
         'where it presents again', () async {

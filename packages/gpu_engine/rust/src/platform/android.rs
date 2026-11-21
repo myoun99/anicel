@@ -78,6 +78,22 @@ impl Drop for NativeWindow {
 }
 
 /// A window Flutter shows, and the swapchain the engine presents into it.
+///
+/// ⏳THE THREAD THAT BUILDS THE APP'S FRAMES WAITS ON THE ENGINE'S TWICE A
+/// FRAME HERE — for the swapchain's next image (`gpu_engine_window_target`)
+/// and for the present. A way with no such wait was landed and taken out
+/// again the same day (2026-11-21, f2020bee3 and its revert; 관제 20:00
+/// 「되돌려라」, card the-galaxy-tab-canvas-went-slow-on-build-1095): the
+/// kernels wrote a texture of the engine's own and a present copied it
+/// onto the image, handed to Flutter once the GPU had finished the copy.
+/// Taken out TILL THE DEVICE HAS SAID, to be put back by its numbers: on
+/// the Galaxy Tab S9 Ultra build 1095's frame statistics read the build of
+/// a frame at ≤ 5.2 ms (p95) — what the wait can be of it — and the
+/// raster at 36–37 ms (p95), where that way was measured on no device: it
+/// adds a copy of the whole screen a frame, and hands the image over
+/// after work of the next frame may have been submitted. The statistics'
+/// SCREEN line (`ScreenTexture.upMicros`) reads a frame of this window to
+/// its present on this way, so the two can be told apart there.
 pub struct Window {
     surface: wgpu::Surface<'static>,
     current: Option<wgpu::SurfaceTexture>,

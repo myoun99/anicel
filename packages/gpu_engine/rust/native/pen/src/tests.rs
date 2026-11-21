@@ -33,3 +33,13 @@ fn bridge_asks(name: &str) -> i32 {
     let line = dart.lines().map(str::trim_start).find(|line| line.starts_with(&declared)).expect(name);
     line.trim_end_matches(';').rsplit(' ').next().and_then(|value| value.parse().ok()).expect(line)
 }
+
+/// The number the app's bridge reads for `qat_open`'s answer `name`, as its
+/// `QaTabletOpen` declares it (lib/src/native/qa_tablet_bridge.dart).
+#[cfg(windows)]
+fn bridge_reads(name: &str) -> i32 {
+    let dart = include_str!("../../../../../../lib/src/native/qa_tablet_bridge.dart");
+    let declared = format!("{name}(");
+    let line = dart.lines().map(str::trim_start).find(|line| line.starts_with(&declared)).expect(name);
+    line[declared.len()..].split(')').next().and_then(|value| value.parse().ok()).expect(line)
+}

@@ -74,12 +74,14 @@ pub use pen;
 // answered here, and the C's is gone. The app binds it with `@Native`
 // (premultiplied_copy.dart).
 pub use premultiply;
-// A tile's block of pixels, and the lists a freed one waits on (board
-// what-still-runs-on-the-cpu, 2026-11-12): `qa_tile_alloc` · `qa_tile_free`
-// · `qa_tile_pool_cached_bytes` · `qa_tile_pool_trim` ·
-// `qa_tile_pool_set_byte_cap` are answered here, and the C's are gone. The
-// app binds them with `@Native` (tile_blocks.dart), so a block is the
-// process's whichever isolate asks for it or frees it.
+// A tile's block of pixels (board what-still-runs-on-the-cpu,
+// 2026-11-12): `qa_tile_alloc` · `qa_tile_free` are answered here, and
+// the C's are gone — with `qa_tile_blocks_laid` · `qa_tile_blocks_held`,
+// the blocks' books a test reads. ↩️`qa_tile_pool_cached_bytes` ·
+// `qa_tile_pool_trim` · `qa_tile_pool_set_byte_cap` went with the lists a
+// freed block waited on (2026-11-21). The app binds them with `@Native`
+// (tile_blocks.dart), so a block is the process's whichever isolate asks
+// for it or frees it.
 pub use tile_blocks;
 pub use video;
 

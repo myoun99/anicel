@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -14,6 +12,7 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/native/tiles_stood_on.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/a_cel_of_one_tile.dart';
 import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🚨THE HOT CELS OF THE FRAME A PROJECT'S CANVAS STANDS ON ARE WHAT IT
@@ -40,12 +39,11 @@ void main() {
   /// The one tile of the cel of [layerId] at [frame], made hot.
   BitmapTile hotAt(EditorSessionManager session, LayerId layerId, int frame) {
     final cut = session.requireActiveCut;
-    final tile = BitmapTile(size: 8, pixels: Uint8List(8 * 8 * 4)..[3] = 255);
+    final tile = aTileOfTheAppsSide((bytes) => bytes[3] = 255);
     session.renderCaches.brushFrameStore.storeBakedSurface(
       session.brushFrameKeyForCut(cut, layerId, celAt(session, layerId, frame)),
       BitmapSurface(
         canvasSize: cut.canvasSize,
-        tileSize: 8,
         tiles: {TileCoord(x: 0, y: 0): tile},
       ),
     );

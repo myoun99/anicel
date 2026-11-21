@@ -30,3 +30,22 @@ fn a_stored_tile_is_read_in_stored_wgsl_alone() {
     let found = files_where("wgsl", |text| text.contains(READ) && !text.contains(DEFINED));
     assert_home_and_ledger(found, HOME, &NO_STORED_TILE, &format!("read a stored tile with stored_word ({HOME})"));
 }
+
+/// 🚨A stored tile's read reads its page at ONE site (F-610, 2026-11-21):
+/// the pages' reader is a switch with a case a page, which a device's
+/// compiler lays out again at each call of it, and five sites of it cost
+/// the composite's compile two and a half times its time (`stored_word`'s
+/// note has what was measured). A test of what is read passes one site
+/// and five alike, so this one counts them.
+#[test]
+fn a_stored_tile_reads_its_page_at_one_site() {
+    let sites: usize = include_str!("stored.wgsl")
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .map(|line| line.matches(READ).count())
+        .sum();
+    assert_eq!(
+        sites, 1,
+        "{HOME} reads its page at {sites} sites: work out where the next word lies and read it at the one"
+    );
+}

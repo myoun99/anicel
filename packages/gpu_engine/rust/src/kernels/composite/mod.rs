@@ -236,8 +236,14 @@ impl Named {
 
     /// The set a pass is laid on: each tile where it lies by `lying`.
     pub(crate) fn lying(&self, lying: &Lying) -> TileSet {
-        let tiles = self.0.tiles.iter().map(|tile| tile.map(|at| lying.of(at))).collect();
-        TileSet { tiles, ..self.0 }
+        Self::laid(&self.0, lying)
+    }
+
+    /// [`Self::lying`] of `names` — a set whose tiles are each named by
+    /// the slot it is held in, as a kept picture holds its own (kept.rs).
+    pub(crate) fn laid(names: &TileSet, lying: &Lying) -> TileSet {
+        let tiles = names.tiles.iter().map(|tile| tile.map(|at| lying.of(at))).collect();
+        TileSet { tiles, ..*names }
     }
 }
 

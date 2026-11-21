@@ -2,7 +2,7 @@
 // in CI's last run, so that the shards end together.
 //
 //   dart tool/test_shard.dart deal --total N --index I
-//       [--times <record>] [--leave-out <list>]
+//       [--times <record>] [--leave-out <list>] [--behind-ms <i>=<ms>,…]
 //   dart tool/test_shard.dart seed --times <record>
 //   dart tool/test_shard.dart keep --files <list> --to <record>
 //
@@ -89,11 +89,37 @@ Map<String, int> shardWeights({
 
 /// [files] dealt to [total] shards by [weights], longest first to the
 /// lightest ([dealt]). Ties go by [files]' order, so give them sorted.
+///
+/// [behind]: the milliseconds of test time each shard is behind before
+/// its first test, by its index — none for a shard not named.
+///
+/// 🔬Run 44754294330 (11-20 · card ci-shards-dealt-by-measured-seconds,
+/// 🤖AI 검증 실패 11-21): shard 0 runs `flutter analyze` before its tests
+/// (ci.yml — the merge gate's, so it stays there) and its tests began 93 s
+/// after the other five's, which the deal did not know: it gave all six
+/// the same 2,541 s. That shard ended last, 11:31 after the first.
 List<List<String>> shardsOf(
   List<String> files,
   Map<String, int> weights, {
   required int total,
-}) => dealt(longestFirst(files, weights), total, (file) => weights[file]!);
+  Map<int, int> behind = const {},
+}) => dealt(
+  longestFirst(files, weights),
+  total,
+  (file) => weights[file]!,
+  loadedWith: [for (var index = 0; index < total; index++) behind[index] ?? 0],
+);
+
+/// What [behind] loads the deal with: itself where the weights are
+/// milliseconds — some file of [files] timed in [known] — and nothing
+/// where they are bytes: with no file timed a file weighs its size
+/// ([shardWeights]), and a shard's milliseconds behind are of no unit the
+/// deal holds.
+Map<int, int> behindInTheDeal(
+  Map<int, int> behind,
+  Iterable<String> files,
+  Map<String, int> known,
+) => files.any(known.containsKey) ? behind : const {};
 
 /// What a shard hands the next run: [known]'s times of [files], its own
 /// slice, and of nothing else. The shards' records then never overlap, and
@@ -117,11 +143,14 @@ void main(List<String> args) {
       if (total == null || index == null || index < 0 || index >= total) {
         return _usage();
       }
+      final behind = _behind(options['--behind-ms']);
+      if (behind == null) return _usage();
       _deal(
         total: total,
         index: index,
         times: options['--times'],
         leaveOut: options['--leave-out'],
+        behind: behind,
       );
     case 'seed':
       final times = options['--times'];
@@ -137,11 +166,27 @@ void main(List<String> args) {
   }
 }
 
+/// `--behind-ms`'s `<index>=<ms>,…` as a map — empty where it is not
+/// given, null where it does not read.
+Map<int, int>? _behind(String? option) {
+  if (option == null || option.isEmpty) return const {};
+  final behind = <int, int>{};
+  for (final pair in option.split(',')) {
+    final parts = pair.split('=');
+    final at = parts.length == 2 ? int.tryParse(parts.first) : null;
+    final much = parts.length == 2 ? int.tryParse(parts.last) : null;
+    if (at == null || much == null) return null;
+    behind[at] = much;
+  }
+  return behind;
+}
+
 void _deal({
   required int total,
   required int index,
   required String? times,
   required String? leaveOut,
+  required Map<int, int> behind,
 }) {
   final missing = [
     for (final path in kOpensTheApp)
@@ -163,18 +208,24 @@ void _deal({
     opensTheApp: testsReaching(kOpensTheApp.toSet(), graph),
     known: known,
   );
-  final shards = shardsOf(files, weights, total: total);
-  stdout.write(shards[index].map((file) => '$file\n').join());
   final timed = files.where(known.containsKey).length;
+  final behindHere = behindInTheDeal(behind, files, known);
+  final shards = shardsOf(files, weights, total: total, behind: behindHere);
+  stdout.write(shards[index].map((file) => '$file\n').join());
   final seconds = [
     for (final shard in shards)
       shard.fold(0, (sum, file) => sum + weights[file]!) ~/ 1000,
+  ];
+  final late = [
+    for (final MapEntry(key: shard, value: ms) in behindHere.entries)
+      'shard $shard ${ms ~/ 1000} s behind',
   ];
   stderr.writeln(
     '${files.length} files${out.isEmpty ? '' : ' (${out.length} left out)'}'
     ': $timed weighed by the seconds the last run took,'
     ' ${files.length - timed} by their size'
-    '${timed == 0 ? '' : ' — each shard about ${seconds.join(' / ')} s'}',
+    '${timed == 0 ? '' : ' — each shard about ${seconds.join(' / ')} s'}'
+    '${late.isEmpty ? '' : ' (${late.join(', ')})'}',
   );
 }
 
@@ -222,6 +273,7 @@ void _usage() {
   stderr.writeln(
     'usage: dart tool/test_shard.dart deal --total N --index I'
     ' [--times <record>] [--leave-out <list>]\n'
+    '           [--behind-ms <index>=<ms>,…]\n'
     '       dart tool/test_shard.dart seed --times <record>\n'
     '       dart tool/test_shard.dart keep --files <list> --to <record>',
   );

@@ -360,6 +360,11 @@ void main() {
         // cel's tiles share goes with the last of them, a block with its
         // own tile, and only the collector can say either did.
         'test/models/tiles_made_together_are_weighed_once_test.dart',
+        // cel-originals-are-held-twice-in-ram-and-on-the-gpu ⓢ1 (11-21):
+        // what kept an edited cel is held on for the tiles it left and
+        // goes with the last of them, and only the collector can say that
+        // tile went. The store's other pins of it stay in the crowd.
+        'test/services/held_bytes_go_with_the_last_tile_that_waits_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '

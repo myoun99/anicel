@@ -1,11 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/cel_rekey.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -21,6 +17,8 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
+import '../../helpers/a_cel_of_one_tile.dart';
+
 /// 🗣️F-546 (유저 2026-11-03): 「일반행 복사해서 다른 어태치싱크행에
 /// 붙여넣을수있듯이. 그게 그림교체로 작동하듯이, 일반행을 어태치싱크행으로
 /// 블록을 드래그하는것도 가능하게. 지금은 어태치행으로 드래그하면 기준행의
@@ -31,8 +29,6 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 /// carries trade pictures with the blocks they land on, picked as a paste
 /// picks them.
 void main() {
-  const tileSize = 256;
-
   setUp(cursorNotices.clear);
 
   /// A drawing row added over the active one: a new row's cel on frame 0,
@@ -80,10 +76,7 @@ void main() {
         first.frames.first.id,
       ),
       frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: cut.canvasSize,
-        tileSize: tileSize,
-      ),
+      sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
       historyPolicy: const BrushHistoryPolicy(),
     );
     var red = 10;
@@ -682,19 +675,9 @@ Layer shownRow(EditorSessionManager s, LayerId row) =>
 /// Paints [red] over the first tile of [row]'s cel [cel].
 void paint(EditorSessionManager s, LayerId row, FrameId cel, int red) {
   final cut = s.requireActiveCut;
-  final bytes = Uint8List(256 * 256 * 4);
-  for (var pixel = 0; pixel < 256 * 256; pixel += 1) {
-    bytes.setRange(pixel * 4, pixel * 4 + 4, [red, 0, 0, 255]);
-  }
   s.pixelEditing.coordinator!.restoreSurfaceSnapshot(
     s.brushFrameKeyForCut(cut, row, cel),
-    BitmapSurface(
-      canvasSize: cut.canvasSize,
-      tileSize: 256,
-      tiles: {
-        TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: bytes),
-      },
-    ),
+    aCelFilled(cut.canvasSize, [red, 0, 0, 255]),
   );
 }
 

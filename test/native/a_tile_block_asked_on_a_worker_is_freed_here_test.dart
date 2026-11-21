@@ -21,10 +21,14 @@ import '../helpers/cel_text_fixture.dart' show celTextTestKey;
 /// ([TileBlocks]): a worker that lays a thawed cel's tiles (card
 /// `cel-thaw-holds-the-ui-thread`) takes blocks the main isolate's tiles
 /// adopt, and their finalizers give back. A block carries a head in front
-/// of its pixels, so one from anywhere else given to the lists — which a
+/// of its pixels, so one from anywhere else given back here — which a
 /// tile's finalizer does — breaks the heap.
 ///
-/// ↩️Till C ABI 82 the lists were the C engine's: a worker was told their
+/// Read off the blocks' own books ([TileBlocks.debugLaid],
+/// [TileBlocks.debugHeld]), the process's one: a worker with blocks of its
+/// own would leave them as they were.
+///
+/// ↩️Till C ABI 82 the blocks were the C engine's: a worker was told their
 /// functions' addresses, for its own probe could load another binary or
 /// none, and this suite skipped wherever no C binary was built.
 void main() {
@@ -38,28 +42,29 @@ void main() {
     debugWorkersRunHere = true;
   });
 
-  test('a block a worker asked for parks on the lists when it is freed '
-      'here, and the next ask of its size here takes it', () async {
-    // A size no tile wears, so the list of it holds this block alone.
+  test('a block a worker asked for is held on the books read here, and '
+      'held no more once it is freed here', () async {
+    // A size no tile wears, so the books of it count this block alone.
     const length = 12345;
+    final laid = TileBlocks.debugLaid(length);
+    final held = TileBlocks.debugHeld(length);
 
     final address = await Isolate.run(() => TileBlocks.alloc(length).address);
-    TileBlocks.free(Pointer<Uint8>.fromAddress(address));
-    final again = TileBlocks.alloc(length);
-    addTearDown(() => TileBlocks.free(again));
-
     expect(
-      again.address,
-      address,
-      reason: 'one allocator: lists of the worker\'s own would have '
-          'answered this isolate with a fresh block',
+      (TileBlocks.debugLaid(length), TileBlocks.debugHeld(length)),
+      (laid + 1, held + 1),
+      reason: 'one allocator: blocks of the worker\'s own would be on no '
+          'books this isolate reads',
     );
+    TileBlocks.free(Pointer<Uint8>.fromAddress(address));
+
+    expect(TileBlocks.debugHeld(length), held);
   });
 
   test('🚨and a cel thawed on a worker is laid in them', () async {
     // One tile, of the engine's side — the only one a cel's tile wears, so
-    // its list is not this block's alone: the lists hand back the block
-    // they parked last, which is the one freed here.
+    // the books of it are not this block's alone: the blocks laid only
+    // grow, and the ones held are read right before the free and after.
     const tileSize = defaultCelTileSize;
     final length = BitmapTile.bytesFor(tileSize);
     // ↩️Deflate until the connection round (connection-round-checklist H),
@@ -77,13 +82,20 @@ void main() {
         tiles: [(x: 0, y: 0, pixels: Uint8List(length)..[3] = 255)],
       ).toSurface(),
     );
+    final laidBefore = TileBlocks.debugLaid(length);
 
     final laid = await layCelInWorker(blob, reach: PasteboardReach.whole);
-    final address = (laid.tiles.single.pixels as LaidBlock).address;
-    TileBlocks.free(Pointer<Uint8>.fromAddress(address));
-    final again = TileBlocks.alloc(length);
-    addTearDown(() => TileBlocks.free(again));
 
-    expect(again.address, address, reason: 'it was one of the lists\' own');
+    expect(
+      TileBlocks.debugLaid(length),
+      greaterThan(laidBefore),
+      reason: 'its block is on the books read here',
+    );
+    final block = Pointer<Uint8>.fromAddress(
+      (laid.tiles.single.pixels as LaidBlock).address,
+    );
+    final held = TileBlocks.debugHeld(length);
+    TileBlocks.free(block);
+    expect(TileBlocks.debugHeld(length), held - 1);
   });
 }

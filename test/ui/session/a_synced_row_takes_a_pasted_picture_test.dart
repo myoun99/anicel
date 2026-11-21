@@ -1,10 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/attached_layer_resolve.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -30,6 +26,8 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🗣️F-545 (유저 2026-11-02): 「어태치 싱크 레이어의 프레임블록 복사한걸 다른
 /// 어태치 싱크행에 붙여넣을수있게. 대신 블록을 붙여넣는다기보단 그 경우 그림을
@@ -118,19 +116,9 @@ void main() {
   /// Paints [red] over the first tile of [row]'s cel number [index].
   void paint(EditorSessionManager s, LayerId row, int index, int red) {
     final cut = s.requireActiveCut;
-    final bytes = Uint8List(256 * 256 * 4);
-    for (var pixel = 0; pixel < 256 * 256; pixel += 1) {
-      bytes.setRange(pixel * 4, pixel * 4 + 4, [red, 0, 0, 255]);
-    }
     s.pixelEditing.coordinator!.restoreSurfaceSnapshot(
       s.brushFrameKeyForCut(cut, row, cel(row, index)),
-      BitmapSurface(
-        canvasSize: cut.canvasSize,
-        tileSize: 256,
-        tiles: {
-          TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: bytes),
-        },
-      ),
+      aCelFilled(cut.canvasSize, [red, 0, 0, 255]),
     );
   }
 
@@ -144,10 +132,7 @@ void main() {
         first.frames.first.id,
       ),
       frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: cut.canvasSize,
-        tileSize: 256,
-      ),
+      sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
       historyPolicy: const BrushHistoryPolicy(),
     );
   }

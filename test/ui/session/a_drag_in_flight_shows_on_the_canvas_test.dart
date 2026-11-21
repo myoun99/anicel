@@ -1,12 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/attached_placement.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -15,7 +11,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge, coveringDrawingBlockAt;
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -25,6 +20,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../helpers/a_cel_of_one_tile.dart';
 import '../../helpers/onion_ghosts.dart';
 import '../../helpers/placement_reading.dart';
 import '../../helpers/an_empty_drawing_row.dart';
@@ -487,16 +483,7 @@ void main() {
       final cut = session.requireActiveCut;
       session.renderCaches.brushFrameStore.storeBakedSurface(
         session.brushFrameKeyForCut(cut, layerId, cel),
-        BitmapSurface(
-          canvasSize: cut.canvasSize,
-          tileSize: 8,
-          tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(
-              size: 8,
-              pixels: Uint8List(8 * 8 * 4)..[3] = 255,
-            ),
-          },
-        ),
+        aCelOfOneTile(cut.canvasSize, (bytes) => bytes[3] = 255),
       );
     }
 

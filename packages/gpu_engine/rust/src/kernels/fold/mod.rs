@@ -29,8 +29,8 @@ use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::{GRANULE_BYTES, TILE_BYTES, TileAt};
 use crate::kernels::shared::{
-    Encoded, Given, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, given, page_table,
-    pipeline, pipeline_unzeroed, plane, range, runs, tiles_a_pass, whole,
+    Encoded, Given, Kernel, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, given,
+    page_table, plane, range, runs, tiles_a_pass, whole,
 };
 
 /// The most a folded tile takes (fold.wgsl's FOLD_MOST), in bytes: half a
@@ -127,6 +127,14 @@ fn sized_then(
     });
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Test seam: the folds asked on this thread — an engine's — submit
+    /// nothing, as on a device that refuses them their buffers, and are
+    /// told so at once, there ([`sized_then`]).
+    pub(crate) static SUBMITS_NOTHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// The fold and the unfold, compiled once for as many pages as the device
 /// lets them bind.
 pub(crate) struct Fold {
@@ -137,16 +145,33 @@ pub(crate) struct Fold {
 
 impl Fold {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        let (pages, fold, unfold) = Self::kernels(engine)?;
+        let (fold, unfold) = (fold.pipeline(engine).clone(), unfold.pipeline(engine).clone());
+        Some(Self { fold, unfold, pages })
+    }
+
+    /// [`Self::new`] where the engine has both kernels compiled already
+    /// — by the list a launch compiles ahead, or a pool's fold —, none
+    /// else: what the engine asks of itself on its own thread, where a
+    /// compile would keep its turn and a pen's dab wait behind it (the
+    /// pictures' folds at a rest, `pool::Pictures`).
+    pub(crate) fn compiled(engine: &Engine) -> Option<Self> {
+        let (pages, fold, unfold) = Self::kernels(engine)?;
+        let (fold, unfold) = (fold.compiled()?.clone(), unfold.compiled()?.clone());
+        Some(Self { fold, unfold, pages })
+    }
+
+    /// The pages a pass of either binds, and the two kernels — the fold's
+    /// and the unfold's —, compiled or still to be.
+    fn kernels(engine: &Engine) -> Option<(Pages, Kernel, Kernel)> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let read = pages.stored();
         let fold = [TILE_WGSL, &read, include_str!("fold.wgsl")];
         let unfold = [TILE_WGSL, &read, include_str!("unfold.wgsl")];
-        Some(Self {
-            fold: pipeline_unzeroed(engine, &fold, "fold"),
-            unfold: pipeline(engine, &unfold, "unfold"),
-            pages,
-        })
+        let fold = Kernel::of_unzeroed(engine, &fold, "fold");
+        let unfold = Kernel::of(engine, &unfold, "unfold");
+        Some((pages, fold, unfold))
     }
 
     /// The tiles at `places` — each a tile's place on the pool's `pool`
@@ -167,6 +192,8 @@ impl Fold {
         then: impl FnOnce(Option<Folded>) + Send + 'static,
     ) {
         let cut = tiles_a_pass(engine, MOST_FOLDED_BYTES, 0).map(|most| (self.pages.per_pass(), most));
+        #[cfg(test)]
+        let cut = cut.filter(|_| !SUBMITS_NOTHING.get());
         sized_then(engine, cut.and_then(|cut| self.submitted_by(engine, pool, places, cut)), then);
     }
 

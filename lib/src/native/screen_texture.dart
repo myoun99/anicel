@@ -42,6 +42,47 @@ sealed class ScreenTexture {
 
   final int _bytes;
 
+  /// 🔬How long the newest frames of every screen took from their draw to
+  /// being put up — the draw handed to the engine, the GPU finishing it,
+  /// the hand to Flutter —, in microseconds, oldest first, [upsKept] of
+  /// them at the most; and how many frames have been put up in all
+  /// ([upsCounted]). Flutter's own frame times say nothing of these: a
+  /// screen's frame is the engine's work, on no thread of Flutter's. The
+  /// frame statistics read them (`FrameStats`, Settings ▸ Debug).
+  ///
+  /// 🗣️유저 2026-11-21, on a Galaxy Tab out of this machine's reach (card
+  /// the-galaxy-tab-canvas-went-slow-on-build-1095): 「캔버스조작, 즉
+  /// 팬이나 줌이나 스트로크가 너무 느려졋어」 — and nothing the app showed
+  /// said which were the slow ones, its screens' frames or Flutter's.
+  static List<int> get upMicros => List.unmodifiable(_upMicros);
+  static final List<int> _upMicros = [];
+
+  /// How many frames [upMicros] keeps: seconds of them, at a screen's
+  /// rate.
+  static const int upsKept = 240;
+
+  static int get upsCounted => _upsCounted;
+  static int _upsCounted = 0;
+
+  static void _wentUp(int micros) {
+    _upsCounted += 1;
+    _upMicros.add(micros);
+    if (_upMicros.length > upsKept) {
+      _upMicros.removeAt(0);
+    }
+  }
+
+  /// Test seam: a frame put up [micros] after its draw.
+  @visibleForTesting
+  static void debugWentUp(int micros) => _wentUp(micros);
+
+  /// Test seam: no frame put up yet.
+  @visibleForTesting
+  static void debugForgetUps() {
+    _upMicros.clear();
+    _upsCounted = 0;
+  }
+
   /// A texture of [width] × [height] device pixels on [engine], the
   /// platform's way.
   static Future<ScreenTexture> open(
@@ -132,6 +173,9 @@ sealed class ScreenTexture {
   );
   int _asked = 0;
 
+  /// Since the draw of the frame begun last ([upMicros]).
+  final Stopwatch _sinceItsDraw = Stopwatch();
+
   /// The frame being begun: its draw, and what it is drawn for.
   ({void Function(GpuTarget next) draw, Object? drawnFor})? _beginning;
 
@@ -205,6 +249,9 @@ sealed class ScreenTexture {
 
   _Frame _begin(int asked) {
     final (:draw, :drawnFor) = _beginning!;
+    _sinceItsDraw
+      ..reset()
+      ..start();
     _draw(draw);
     return (asked: asked, drawnFor: drawnFor);
   }
@@ -217,6 +264,7 @@ sealed class ScreenTexture {
     }
     _show();
     _showsAFrame = true;
+    _wentUp(_sinceItsDraw.elapsedMicroseconds);
   }
 
   static void _report(Object error, StackTrace stack) =>
@@ -239,6 +287,11 @@ sealed class ScreenTexture {
   /// nothing drawn.
   bool get showsAFrame => _showsAFrame;
   bool _showsAFrame = false;
+
+  /// Test seam: how many frames have been drawn on this screen, where a
+  /// test reads it back ([debugOnSurface]) — null on the app's own.
+  @visibleForTesting
+  int? get debugFramesDrawn => null;
 
   /// Frees the texture, once Flutter shows it no more — a frame the GPU
   /// is still drawing put up nowhere, though where the GPU fails it that
@@ -333,7 +386,14 @@ final class _SurfaceTexture extends ScreenTexture {
   ValueListenable<int> get textureId => _id;
 
   @override
-  void _draw(void Function(GpuTarget next) draw) => draw(_surface);
+  int? get debugFramesDrawn => _framesDrawn;
+  int _framesDrawn = 0;
+
+  @override
+  void _draw(void Function(GpuTarget next) draw) {
+    _framesDrawn += 1;
+    draw(_surface);
+  }
 
   @override
   void _show() => _id.value = _nextId;

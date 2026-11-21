@@ -117,6 +117,86 @@ void main() {
     expect(service.heard(), isNull, reason: 'closed');
   });
 
+  test('h61-wintab-sometimes-not-engaged-at-launch: the start is kept step '
+      'by step from the first apply — a change of the setting, the start, '
+      'an open refused when its why changes, the try it opened at, the '
+      'first packet after and the stop — each +ms after the first', () {
+    final service = WintabPenService.instance;
+    var clock = DateTime(2026, 11, 18, 18, 39, 52);
+    WintabPenService.debugClockOverride = () => clock;
+    final bridge = FakeTabletBridge()
+      ..refusals.addAll([
+        QaTabletOpen.noWindow,
+        QaTabletOpen.noWindow,
+        QaTabletOpen.notOpened,
+      ]);
+    service.debugBridge = bridge;
+    const standard = AppInputSettings();
+    const wintab = AppInputSettings(tabletService: TabletService.wintab);
+
+    service.apply(standard);
+    service.apply(standard);
+    clock = clock.add(const Duration(milliseconds: 473));
+    service.apply(wintab);
+    service.apply(wintab);
+    clock = clock.add(const Duration(milliseconds: 12));
+    service.freshPacket();
+    expect(service.opening(), (tries: 1, refusal: QaTabletOpen.noWindow));
+    service.freshPacket();
+    service.freshPacket();
+    expect(service.opening(), (tries: 3, refusal: QaTabletOpen.notOpened));
+    clock = clock.add(const Duration(milliseconds: 56));
+    service.freshPacket();
+    expect(service.opening(), isNull, reason: 'open');
+    bridge.queued.add(
+      const QaTabletPacket(pressure: 0, timeMs: 1, buttons: 0),
+    );
+    service.freshPacket();
+    bridge.queued.add(
+      const QaTabletPacket(pressure: 0, timeMs: 2, buttons: 0),
+    );
+    service.freshPacket();
+    clock = clock.add(const Duration(seconds: 36));
+    service.apply(standard);
+
+    expect(service.startRecord, [
+      '+0ms APPLY standard running=false',
+      '+473ms APPLY wintab running=false',
+      '+473ms START timer',
+      '+485ms OPEN no try=1 noWindow',
+      '+485ms OPEN no try=3 notOpened',
+      '+541ms OPEN ok try=4',
+      '+541ms HEARD first packet',
+      '+36541ms APPLY standard running=true',
+      '+36541ms STOP',
+    ]);
+    expect(service.opening(), isNull, reason: 'stopped');
+  });
+
+  test('a start that finds no driver says so, and the record keeps the '
+      'first steps of a run, the launch among them', () {
+    final service = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2026);
+    service.debugBridge = FakeTabletBridge()..driver = false;
+
+    service.apply(const AppInputSettings(tabletService: TabletService.wintab));
+    expect(service.running, isFalse);
+    expect(service.startRecord, [
+      '+0ms APPLY wintab running=false',
+      '+0ms START no driver',
+    ]);
+
+    for (var i = 0; i < WintabPenService.startRecordRoom; i += 1) {
+      final next = i.isEven ? TabletService.standard : TabletService.wintab;
+      service.apply(AppInputSettings(tabletService: next));
+    }
+    expect(service.startRecord, hasLength(WintabPenService.startRecordRoom));
+    expect(service.startRecord.take(2), [
+      '+0ms APPLY wintab running=false',
+      '+0ms START no driver',
+    ]);
+  });
+
   test('the service follows the settings: wintab starts, standard stops', () {
     final service = WintabPenService.instance;
     service.debugPollOverride = () => const [];
@@ -245,6 +325,12 @@ void main() {
     expect(service.autoDemoted.value, isTrue);
     expect(persisted?.tabletService, TabletService.standard);
     expect(service.running, isFalse);
+    expect(service.startRecord, [
+      '+0ms START timer',
+      '+0ms HEARD first packet',
+      '+0ms DEMOTE packets=${WintabPenService.deadPathPacketBudget}',
+      '+0ms STOP',
+    ]);
   });
 
   test('any pointer activity calls the dead-path guard off', () async {

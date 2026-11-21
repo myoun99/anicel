@@ -196,10 +196,12 @@ void main() {
     expect(readsAgain, 1);
   });
 
-  // A tile's block comes from the engine's lists, where a freed one parks
-  // by its size for the next ask (TileBlocks): what it held is still there.
+  // A tile's block holds whatever the allocator left in it (TileBlocks) —
+  // here every byte set, said aloud.
   test('a tile of a shell whose cel keeps no bytes of it reads as nothing, '
       'whatever its block held before', () {
+    TileBlocks.debugComesFullOf = 0xFF;
+    addTearDown(() => TileBlocks.debugComesFullOf = null);
     final ledger = EngineTileLedger(
       appGpuEngine,
       byteBudget: 0,
@@ -214,9 +216,6 @@ void main() {
     )!;
     theTwoOldestSlotsGo(ledger);
     expect(ledger.slotOf(shell.tiles[left]!), isNull, reason: '⛔premise');
-    final parked = TileBlocks.alloc(gpuTileBytes);
-    parked.asTypedList(gpuTileBytes).fillRange(0, gpuTileBytes, 0xFF);
-    TileBlocks.free(parked);
 
     expect(shell.tiles[left]!.pixels.every((byte) => byte == 0), isTrue);
   });
@@ -356,7 +355,7 @@ void main() {
   // A store's copy is the engine's thread's, later, of bytes the store
   // holds a tile for (a_store_handed_over_holds_its_tiles_till_their_copy_
   // reads_them_test.dart) — and a shell's tile holds none: what a read of
-  // it is lent goes back to the lists as the read returns, for the next
+  // it is lent goes back as the read returns, the allocator's for the next
   // tile made.
   test('🚨a shell\'s tile whose slot went is stored again from its cel\'s '
       'kept bytes and keeps none — bytes the store has till its copy read '

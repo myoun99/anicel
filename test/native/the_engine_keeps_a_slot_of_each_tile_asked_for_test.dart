@@ -711,7 +711,11 @@ void main() {
     ledger.held((hold) => hold.slotsOf(a, rest));
     ledger.held((hold) => hold.slotsOf(b, [two]));
     final made = ledger.pool.bytes;
-    expect(made, 2 * slots * gpuTileBytes, reason: 'no budget but the OS');
+    expect(
+      made,
+      2 * slots * gpuTileBytes,
+      reason: "no budget: a test's pool keeps to none of the OS's",
+    );
     expect(ledger.slotOf(one), isNotNull);
 
     ledger.byteBudget = 0;

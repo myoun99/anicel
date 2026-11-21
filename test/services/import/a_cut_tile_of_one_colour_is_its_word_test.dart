@@ -14,30 +14,18 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 /// so a block of one colour adopted would be the weight the tile was to be
 /// without.
 void main() {
-  // A side no other tile wears, so the list of its size ([TileBlocks])
-  // holds what these tests park there and nothing else.
+  // A side no other tile wears, so the blocks laid and held of its size
+  // ([TileBlocks.debugLaid], [TileBlocks.debugHeld]) are these tests' and
+  // nothing else's.
   const side = 22;
   final length = BitmapTile.bytesFor(side);
   const red = [200, 10, 20, 255];
   const blue = [10, 20, 200, 255];
 
-  /// Two blocks of [length] parked on the lists: the addresses the next two
-  /// asks of that size are answered with, in that order.
-  List<int> twoParked() {
-    final blocks = [TileBlocks.alloc(length), TileBlocks.alloc(length)];
-    blocks.forEach(TileBlocks.free);
-    return [blocks[1].address, blocks[0].address];
-  }
-
-  /// What the next [count] asks of [length] are answered with, given back
-  /// when the test ends.
-  List<int> nextAsks(int count) {
-    final blocks = [
-      for (var ask = 0; ask < count; ask += 1) TileBlocks.alloc(length),
-    ];
-    addTearDown(() => blocks.forEach(TileBlocks.free));
-    return [for (final block in blocks) block.address];
-  }
+  /// Every tile a test adopted, held till the file ends: one collected
+  /// gives its block back when the collector chooses, under a later
+  /// test's count.
+  final adoptedHere = <BitmapTile>[];
 
   /// A tile's worth of [rgba].
   Uint8List filled(List<int> rgba) {
@@ -73,7 +61,8 @@ void main() {
 
   test('🚨a tile the picture covers in one colour closes as its word and '
       'keeps no block — the tile beside it, of two, keeps its own', () {
-    final parked = twoParked();
+    final laid = TileBlocks.debugLaid(length);
+    final held = TileBlocks.debugHeld(length);
 
     final tiles = redRedAndBlueNothing();
     addTearDown(() => giveBackCut(tiles));
@@ -81,14 +70,16 @@ void main() {
     expect([for (final tile in tiles) (tile.x, tile.y)], [(0, 0), (1, 0)]);
     expect(tiles[0].pixels, isA<LaidWord>());
     expect(tiles[1].pixels, isA<LaidBlock>());
-    final held = (tiles[1].pixels as LaidBlock).address;
-    expect(parked, contains(held), reason: 'fixture: a block of the lists');
-    // The clear tile's block went back last, so it answers first.
     expect(
-      nextAsks(2),
-      contains(parked.firstWhere((address) => address != held)),
-      reason: 'the red tile\'s block went back as it closed: held still, '
-          'the second ask is answered with a fresh one',
+      TileBlocks.debugLaid(length),
+      greaterThan(laid + 1),
+      reason: '⛔premise: the cut laid a block for more than the one tile',
+    );
+    expect(
+      TileBlocks.debugHeld(length),
+      held + 1,
+      reason: 'the red tile\'s block went back as it closed, and the '
+          'clear one\'s: the tile of two colours holds the one left',
     );
   });
 
@@ -97,6 +88,7 @@ void main() {
 
     final whole = tiles[0].pixels.adopted(side);
     final marked = tiles[1].pixels.adopted(side);
+    adoptedHere.addAll([whole, marked]);
 
     expect(whole.pixels, filled(red));
     expect(whole.ownBytes, 0);
@@ -104,13 +96,20 @@ void main() {
     expect(marked.ownBytes, length);
   });
 
-  test('given back unadopted, the one block the cut kept parks again', () {
-    final parked = twoParked();
+  test('given back unadopted, the one block the cut kept goes back', () {
+    final laid = TileBlocks.debugLaid(length);
+    final held = TileBlocks.debugHeld(length);
 
     giveBackCut(redRedAndBlueNothing());
 
-    // With the clear tile's block, which went back as the row closed.
-    expect(nextAsks(3), containsAll(parked));
+    expect(
+      TileBlocks.debugLaid(length),
+      greaterThan(laid),
+      reason: '⛔premise: the cut laid blocks',
+    );
+    // With the red and the clear tiles' blocks, which went back as the
+    // row closed.
+    expect(TileBlocks.debugHeld(length), held);
   });
 
   group('laid pixels in a block — for whoever writes into a laid tile '
@@ -136,11 +135,11 @@ void main() {
 
     test('🚨and laid again it is asked its colour again: one colour gives '
         'the block back, two keep it', () {
-      final parked = twoParked();
       final one = TileBlocks.alloc(length);
       one.asTypedList(length).setAll(0, filled(red));
       final two = TileBlocks.alloc(length);
       two.asTypedList(length).setAll(0, filled(red)..[0] = 0);
+      final held = TileBlocks.debugHeld(length);
 
       final laidOne = LaidPixels.keeping(one, one.asTypedList(length));
       final laidTwo = LaidPixels.keeping(two, two.asTypedList(length));
@@ -152,10 +151,11 @@ void main() {
         laidTwo,
         isA<LaidBlock>().having((b) => b.address, 'address', two.address),
       );
-      expect(one.address, parked[0], reason: 'fixture');
-      final next = TileBlocks.alloc(length);
-      TileBlocks.free(next);
-      expect(next.address, one.address, reason: 'its block is parked again');
+      expect(
+        TileBlocks.debugHeld(length),
+        held - 1,
+        reason: 'the block of one colour went back, and the other is kept',
+      );
     });
   });
 }

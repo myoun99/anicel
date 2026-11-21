@@ -43,8 +43,9 @@ void main() {
 
   test('🚨a picture that comes back after the stop gives its blocks back — '
       'a stored picture\'s, and a text layer\'s pictures\'', () async {
-    // A tile side no other tile in this process wears, so what parks is
-    // what these pictures give back.
+    // A tile side no other tile in this process wears, so the blocks
+    // held of its size ([TileBlocks.debugHeld]) are these pictures' alone.
+    const length = 20 * 20 * 4;
     AnicelLaidCel picture() => clipCelLaid(
       offscreenAttributeBytes(width: 300, height: 200, columns: 2, rows: 1),
       blockRecordsBytes({
@@ -69,7 +70,7 @@ void main() {
 
     final heard = Completer<void>();
     final landed = <int>[];
-    final before = TileBlocks.parkedBytes;
+    final before = TileBlocks.debugHeld(length);
     await ClipImportDoor.decodeEach(
       [0, 1, 2],
       atOnce: 3,
@@ -86,9 +87,9 @@ void main() {
         return true;
       },
     );
-    final givenBack = TileBlocks.parkedBytes - before;
+    final givenBack = before - TileBlocks.debugHeld(length);
     twins.forEach(freeLaidCel);
-    final twinsFreed = TileBlocks.parkedBytes - before - givenBack;
+    final twinsFreed = before - givenBack - TileBlocks.debugHeld(length);
     freeLaidCel(first);
 
     expect(landed, [0], reason: 'the picture in hand, then the stop');

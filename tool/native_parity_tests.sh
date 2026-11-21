@@ -17,6 +17,13 @@
 # on ARM alone — the premultiplied copy's NEON step (native/premultiply) —
 # runs on this road, or on one somebody started by hand (gpu-engine.yml,
 # apple-nightly.yml).
+# ⚠️BUT THE WINDOWS ARM64 BUILD RUNS ONLY THE PART THAT REACHES NO GPU: its
+# runner opens WARP, and a Windows runner leaves the tests that reach
+# package:gpu_engine out (유저 gpu-engine-skeleton-Q16 · Q9, 2026-11-07),
+# by tool/tests_reaching_package.dart — the one answer to which those are
+# (card the-windows-arm64-build-stops-at-its-engine-tests, 2026-11-21).
+# Every Dart test of the NEON step reaches the GPU engine, so on ARM64
+# Windows that step is held by its crate's own tests alone, by hand.
 #
 # ⚠️THE NAME IS THE OLD MEANING, and is changed after the connection round.
 # 「Parity」 was the C engine held to its Dart reference. The C went on

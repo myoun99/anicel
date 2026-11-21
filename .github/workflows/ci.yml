@@ -319,6 +319,13 @@ jobs:
           total: 6
           index: ${{ matrix.shard }}
           times-artifact: shard-times
+          # Shard 0 runs `flutter analyze` above and its tests start that
+          # much behind the others: 🔬run 44754294330 (11-20), 93 s after
+          # the other five began theirs — 186 s of test time at the two
+          # suites a shard runs at once. Dealt the same 2,541 s each, it
+          # ended last, 11:31 after the first (card
+          # ci-shards-dealt-by-measured-seconds, 🤖AI 검증 실패 11-21).
+          behind-ms: 0=186000
 
   # 🦀THE ENGINE BUILD THE LINUX SHARDS START FROM (card
   # ci-shards-build-the-engine-cold, 2026-11-17). A pull request's cache is

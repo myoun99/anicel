@@ -72,29 +72,86 @@ fn fold_index_bits(form: u32) -> u32 {
   return (1u << form) >> 1u;
 }
 
+// What the word read next is: a pixel's own — a tile as it is, a block as
+// it is, a palette's colour —, a folded tile's table entry, or the word a
+// pixel's index among a palette's colours is packed in.
+const STORED_PIXEL: u32 = 0u;
+const STORED_ENTRY: u32 = 1u;
+const STORED_PACKED: u32 = 2u;
+
 // The word of the pixel at `texel` — its place in its tile (tile.wgsl's
 // `tile_texel`) — of the tile in slot `slot` of the page this pass bound
 // as its k-th; 0 for a k that is no page's, as `page_word` reads NO_PAGE.
+//
+// 🚨THE PAGE IS READ AT ONE SITE, in a loop (F-610, 2026-11-21): where
+// the next word lies is worked out first, and the one call reads it.
+// `page_word` is a switch with a case for each page a pass binds —
+// sixteen at the most (pages.rs's `MOST_PAGES`) — and a device's compiler
+// lays that switch out again at every call of it. ↩️Read at five sites —
+// one a branch, as this was written on 2026-11-19 — the composite, which
+// reads a stored tile at seven places of its own, took two and a half
+// times as long to compile as it had before tiles were kept folded: the
+// wait window of a new build's first run stood 4.6 to 5.05 s on the
+// Surface where it had stood 2.76 to 3.02 (검증 2026-11-20; 저장 found
+// the commit the day after, card
+// the-wait-window-stands-seven-seconds-on-the-surface).
+//
+// 🔬The composite's one full pass, DXC, a release build, main PC with
+// every core busy, each shape nine times turn about (the middle one): 21.6
+// s read at five sites, 8.6 as it was before the fold, 8.9 so; 14.1 at
+// three sites with no loop, and 9.4 in a loop of three turns counted — a
+// loop that ends by what it read is the one no compiler can lay out
+// three times. What the GPU takes to read a tile did not move within
+// what that machine can tell (kernels/fold/cost.rs, an RTX 4080, eight
+// rounds of its fifteen reads: a read's own spread from round to round
+// is wider than any step between the shapes, folded and as it is
+// alike; a folded read 0.87 to 1.13 times the same read as it is, where
+// five sites gave 0.90 to 1.12) — ⏳a tablet's has not been asked. The
+// words read and the pixel answered are the same. `one_stored_read.rs`
+// keeps it the one site.
 fn stored_word(k: u32, slot: u32, texel: u32) -> u32 {
-  if ((slot & STORED_FOLDED) == 0u) {
-    return page_word(k, slot * TILE_TEXELS + texel);
+  var index = slot * TILE_TEXELS + texel;
+  var reads = STORED_PIXEL;
+  var first = 0u;
+  var pixel = 0u;
+  if ((slot & STORED_FOLDED) != 0u) {
+    first = (slot ^ STORED_FOLDED) * FOLD_GRANULE;
+    let x = texel % TILE_SIDE;
+    let y = texel / TILE_SIDE;
+    index = first + (y / FOLD_BLOCK) * FOLD_ACROSS + x / FOLD_BLOCK;
+    pixel = (y % FOLD_BLOCK) * FOLD_BLOCK + x % FOLD_BLOCK;
+    reads = STORED_ENTRY;
   }
-  let first = (slot ^ STORED_FOLDED) * FOLD_GRANULE;
-  let x = texel % TILE_SIDE;
-  let y = texel / TILE_SIDE;
-  let entry = page_word(k, first + (y / FOLD_BLOCK) * FOLD_ACROSS + x / FOLD_BLOCK);
-  if (fold_is_colour(entry)) {
-    return entry;
+  var at = 0u;
+  var bits = 0u;
+  var word = 0u;
+  // It ends by what it read, in three turns at most: a table's entry leads
+  // to a pixel's own word or to the word its index is packed in, that word
+  // to a pixel's own, and a pixel's own ends it.
+  loop {
+    word = page_word(k, index);
+    if (reads == STORED_PIXEL) {
+      break;
+    }
+    if (reads == STORED_ENTRY) {
+      if (fold_is_colour(word)) {
+        break;
+      }
+      at = first + (word & FOLD_AT);
+      let form = (word >> FOLD_FORM_SHIFT) & FOLD_FORM;
+      if (form == FOLD_AS_IT_IS) {
+        index = at + pixel;
+        reads = STORED_PIXEL;
+      } else {
+        bits = fold_index_bits(form);
+        let colours = ((word >> FOLD_COUNT_SHIFT) & FOLD_COUNT) + 1u;
+        index = at + colours + ((pixel * bits) >> 5u);
+        reads = STORED_PACKED;
+      }
+    } else {
+      index = at + ((word >> ((pixel * bits) & 31u)) & ((1u << bits) - 1u));
+      reads = STORED_PIXEL;
+    }
   }
-  let at = first + (entry & FOLD_AT);
-  let pixel = (y % FOLD_BLOCK) * FOLD_BLOCK + x % FOLD_BLOCK;
-  let form = (entry >> FOLD_FORM_SHIFT) & FOLD_FORM;
-  if (form == FOLD_AS_IT_IS) {
-    return page_word(k, at + pixel);
-  }
-  let colours = ((entry >> FOLD_COUNT_SHIFT) & FOLD_COUNT) + 1u;
-  let bits = fold_index_bits(form);
-  let bit = pixel * bits;
-  let packed = page_word(k, at + colours + (bit >> 5u));
-  return page_word(k, at + ((packed >> (bit & 31u)) & ((1u << bits) - 1u)));
+  return word;
 }

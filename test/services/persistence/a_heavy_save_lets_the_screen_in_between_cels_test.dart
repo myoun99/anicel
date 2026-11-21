@@ -156,16 +156,21 @@ void main() {
     expect(AnicelCelBlob.ofPayload(payload, showsSomething: false).tileSize, 4);
   });
 
-  test('a cel in RAM crosses as ONE serialised payload — never an entry of '
-      'tile copies for the message to copy again', () {
+  test('a cel in RAM crosses as ONE pressed blob, the parks\' road — never '
+      'its stream, nor an entry of tile copies for the message to copy '
+      'again', () {
     final source = File(
       'lib/src/services/persistence/anicel_file_service.dart',
     ).readAsStringSync();
     // ↩️`encodeCelEntryFromSurface(` was called here until a hot cel's
     // stream took one road for the save, the cooling and the park — the
-    // one that calls it now (2026-11-13).
-    expect(source, contains('onAWorkerWithCelStream('));
-    expect(source, contains('TransferableTypedData.fromList('));
+    // one that calls it now (2026-11-13). ↩️The stream crossed unpressed
+    // and the isolate pressed it — after the save held every edited cel's
+    // work (card incremental-save-holds-every-dirty-cel-at-once,
+    // 2026-11-21: 2.0–2.3 GiB more over a save of 220 edited cels).
+    expect(source, contains('pressedBlobOnAWorker('));
+    expect(source, isNot(contains('onAWorkerWithCelStream(')));
+    expect(source, isNot(contains('AnicelCelBlob.ofPayload(')));
     expect(source, isNot(contains('AnicelCelEntry.fromSurface(')));
   });
 }

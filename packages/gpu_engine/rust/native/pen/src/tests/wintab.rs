@@ -24,7 +24,7 @@ use wintab32::{
 
 use crate::points::Driven;
 use crate::points_win::Move;
-use crate::wintab::{self, Heard, Output, QUEUE, Scales};
+use crate::wintab::{self, Heard, Output, QUEUE, Refusal, Scales};
 
 /// The `qat_*` exports of one reader.
 #[derive(Clone, Copy)]
@@ -341,6 +341,20 @@ fn both_halves_keep_the_abi_their_bridge_asks_for() {
 }
 
 #[test]
+fn each_answer_of_an_open_says_the_number_the_bridge_reads_for_it() {
+    let refusals = [
+        ("noDriver", Refusal::NoDriver),
+        ("noWindow", Refusal::NoWindow),
+        ("noSystemContext", Refusal::NoSystemContext),
+        ("notOpened", Refusal::NotOpened),
+    ];
+    for (name, refusal) in refusals {
+        assert_eq!(refusal as i32, super::bridge_reads(name), "{name}");
+    }
+    assert_eq!(super::bridge_reads("opened"), 1, "what qat_open says of an open");
+}
+
+#[test]
 fn without_a_driver_nothing_opens() {
     let (driver, _turn) = driver();
     let _window = AppWindow::show();
@@ -358,9 +372,9 @@ fn without_the_apps_window_nothing_opens() {
     let (driver, _turn) = driver();
     let _others = AppWindow::not_the_apps();
     let reading = read(driver, RUST, &installed(&[packet(500, 0, 0, 0)]), &[64]);
-    assert_eq!((reading.available, reading.opened), (1, [0, 0]));
+    assert_eq!((reading.available, reading.opened), (1, [-1, -1]), "no window, said");
     assert_eq!(reading.seen.opens, 0, "the driver is not asked without a window");
-    let nothing = ["opened [0, 0]", "poll 0 [] +520"];
+    let nothing = ["opened [-1, -1]", "poll 0 [] +520"];
     assert_eq!(told(&reading), tells(&[&INSTALLED, &nothing, &NOT_ASKED, &["asked []"]]));
 }
 
@@ -368,14 +382,15 @@ fn without_the_apps_window_nothing_opens() {
 fn a_driver_without_a_system_context_or_that_opens_none() {
     let (driver, _turn) = driver();
     let window = AppWindow::show();
-    let nothing = ["opened [0, 0]", "poll 0 [] +520"];
     let script = Script { has_context: false, ..installed(&[packet(500, 0, 0, 0)]) };
     let reading = read(driver, RUST, &script, &[64]);
-    assert_eq!(reading.opened, [0, 0]);
+    assert_eq!(reading.opened, [-2, -2], "no system context, said");
+    let nothing = ["opened [-2, -2]", "poll 0 [] +520"];
     assert_eq!(told(&reading), tells(&[&INSTALLED, &nothing, &NOT_ASKED, &["asked []"]]));
     let script = Script { opens: false, ..installed(&[packet(500, 0, 0, 0)]) };
     let reading = read(driver, RUST, &script, &[64]);
-    assert_eq!((reading.opened, reading.polls[0].0), ([0, 0], 0));
+    assert_eq!((reading.opened, reading.polls[0].0), ([-3, -3], 0), "none opened, said");
+    let nothing = ["opened [-3, -3]", "poll 0 [] +520"];
     assert_eq!((reading.seen.opens, reading.seen.window), (2, window.0.0 as isize));
     let refused = [
         "seen 2 opens, 0 closes, queue 0, enable 1, a window",
@@ -410,7 +425,8 @@ fn the_name_is_what_room_there_is_for() {
     let reading = read(driver, RUST, &installed(&[]), &[]);
     let lengths: Vec<_> = reading.names.iter().map(|(length, _)| *length).collect();
     assert_eq!(lengths, [0, 0, 0, 4, 19, 19], "no room, none, one, five, 64, 100");
-    let closed = ["opened [0, 0]", NOT_ASKED[0], NOT_ASKED[1], "asked []"];
+    // No app window is shown here, and the opens say so.
+    let closed = ["opened [-1, -1]", NOT_ASKED[0], NOT_ASKED[1], "asked []"];
     assert_eq!(told(&reading), tells(&[&INSTALLED, &closed]));
     let long = "x".repeat(63);
     let script = Script { name: name(&long), ..installed(&[]) };
@@ -929,7 +945,7 @@ fn a_poll_and_a_point_ask_the_driver_nothing() {
     let (driver, _turn) = driver();
     let _window = AppWindow::show();
     driver.play(&a_hundred_high(&[queued(1000, 100)]));
-    assert!(wintab::open_drained_every(150, ASLEEP));
+    assert_eq!(wintab::open_drained_every(150, ASLEEP), Ok(()));
     wintab::drain();
     let before = driver.seen().asks;
     let mut room = [0.0f32; 64];
@@ -949,7 +965,7 @@ fn a_move_whose_packet_is_not_heard_yet_wakes_the_reader() {
     let _window = AppWindow::show();
     // The pen at hand: a packet a moment before the move.
     driver.play(&a_hundred_high(&[queued(1000, 100)]));
-    assert!(wintab::open_drained_every(150, ASLEEP));
+    assert_eq!(wintab::open_drained_every(150, ASLEEP), Ok(()));
     // The receiver's first drain hears it, and it sleeps from then.
     assert_eq!(handed_soon(), 1);
     // The packet that put the cursor at the move, queued as it moved.
@@ -969,7 +985,7 @@ fn a_move_with_no_pen_at_hand_wakes_no_reader() {
     let _window = AppWindow::show();
     // The pen last heard two seconds before: a mouse's move is a mouse's.
     driver.play(&a_hundred_high(&[queued(1000, 100)]));
-    assert!(wintab::open_drained_every(150, ASLEEP));
+    assert_eq!(wintab::open_drained_every(150, ASLEEP), Ok(()));
     // The receiver's first drain hears it, and it sleeps from then.
     assert_eq!(handed_soon(), 1);
     driver.play(&a_hundred_high(&[Packet { x: 60, ..queued(3004, 200) }]));
@@ -1001,7 +1017,7 @@ fn a_move_s_packet_heard_after_its_message_is_its_reading_as_the_app_reads_it() 
     };
     // The pen at hand elsewhere: nothing heard at the move's place.
     driver.play(&script(&[queued(time.wrapping_sub(5), 100)]));
-    assert!(wintab::open_drained_every(150, ASLEEP));
+    assert_eq!(wintab::open_drained_every(150, ASLEEP), Ok(()));
     wintab::drain();
     let word = (far as u16) as isize;
     crate::points_win::mouse(window.0, LPARAM(word | (word << 16)));

@@ -223,6 +223,12 @@ impl Kernel {
         Self::kept(engine, sources, entry, &[], true)
     }
 
+    /// [`pipeline_unzeroed`]'s kernel, compiled only where the engine has
+    /// it.
+    pub(crate) fn of_unzeroed(engine: &Engine, sources: &[&str], entry: &str) -> Self {
+        Self::kept(engine, sources, entry, &[], false)
+    }
+
     fn kept(
         engine: &Engine,
         sources: &[&str],

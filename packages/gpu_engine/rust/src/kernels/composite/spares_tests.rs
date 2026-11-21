@@ -7,6 +7,7 @@
 use super::abi::{
     gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes, gpu_engine_pictures_rest,
 };
+use crate::kernels::pool::folded_tests::{numbered, told};
 use super::chained_tests::{
     Laying, OWN, RECT, TILES, across, close, closed_as_a_row, held_chain, lensed,
 };
@@ -239,7 +240,7 @@ fn a_rest_is_taken_behind_the_composes_handed_over_before_it() {
         Some(())
     });
     // SAFETY: as above.
-    unsafe { gpu_engine_pictures_rest(&engine) };
+    unsafe { gpu_engine_pictures_rest(&engine, told, numbered()) };
     engine.on_thread(|| ());
     assert_eq!(engine.spares.made(), 1, "the premise: the compose ran, and took one");
     assert_eq!(engine.spares.bytes(), 0, "what it brought home is let go of at the rest behind it");

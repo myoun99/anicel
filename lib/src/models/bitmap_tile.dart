@@ -551,8 +551,8 @@ class BitmapTile implements Finalizable {
   /// [Finalizable] protects a RECEIVER for the duration of a call, not a
   /// value that outlives the getter. A tile whose only reference was such
   /// a local could be collected mid-read: its [NativeFinalizer] handed the
-  /// block back to the lists ([TileBlocks]), the lists handed it to the
-  /// next ask, and the copy then read/wrote another live buffer —
+  /// block back ([TileBlocks]), the next ask was handed it, and the copy
+  /// then read/wrote another live buffer —
   /// an access violation when the block had been unmapped, silent pixel
   /// corruption when it had not. (Found the hard way: the stroke
   /// promotion round raised tile churn enough to make it reproducible,

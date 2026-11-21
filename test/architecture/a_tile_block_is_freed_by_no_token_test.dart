@@ -6,7 +6,7 @@ import '../../tool/source_brackets.dart';
 
 /// a-thawed-cel-is-adopted-on-the-ui-thread: a tile's block is freed by a
 /// finalizer attached with NO detach token (`TileBlocks.freeWith`), and one
-/// nothing outside the lists can attach to.
+/// nothing outside the blocks' file can attach to.
 ///
 /// ⚠️A SOURCE PIN, because a token nobody detaches frees the same blocks at
 /// the same moment: what tells the two apart is what the VM keeps for every
@@ -33,7 +33,7 @@ void main() {
     expect(code, contains('_freesWhenCollected.attach(holder, block.cast());'));
   });
 
-  test('the finalizer of the tile blocks is the lists\' own', () {
+  test('the finalizer of the tile blocks is their file\'s own', () {
     final finalizers = [
       for (final declared in RegExp(
         r'NativeFinalizer (\w+) =',

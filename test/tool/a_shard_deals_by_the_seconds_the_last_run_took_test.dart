@@ -120,6 +120,48 @@ void main() {
         ),
       );
     });
+
+    test('🚨a shard behind before its tests (shard 0\'s analyze, ci.yml) '
+        'is dealt that much less — the piles end together', () {
+      expect(
+        shardsOf(
+          ['a', 'b', 'c', 'd', 'e', 'f'],
+          {'a': 30, 'b': 30, 'c': 20, 'd': 20, 'e': 10, 'f': 10},
+          total: 2,
+          behind: {0: 20},
+        ),
+        // 20 behind + 50 against 70 — and none behind, a c e | b d f.
+        [
+          ['b', 'd'],
+          ['a', 'c', 'e', 'f'],
+        ],
+      );
+    });
+
+    test('behind in milliseconds where a file was timed — and nothing where '
+        'none was: the weights are bytes then', () {
+      expect(behindInTheDeal({0: 186000}, ['a', 'b'], {'b': 900}), {
+        0: 186000,
+      });
+      expect(behindInTheDeal({0: 186000}, ['a', 'b'], {}), isEmpty);
+      expect(
+        behindInTheDeal({0: 186000}, ['a'], {'gone': 900}),
+        isEmpty,
+        reason: 'a record of a file no longer there times none of these',
+      );
+    });
+
+    test('and every file still goes to exactly one shard', () {
+      final files = [for (var i = 0; i < 40; i++) 'test/f${i}_test.dart'];
+      final weights = {
+        for (var i = 0; i < files.length; i++) files[i]: (i * 7919) % 101,
+      };
+      final shards = shardsOf(files, weights, total: 6, behind: {0: 300});
+      expect(
+        [for (final shard in shards) ...shard]..sort(),
+        [...files]..sort(),
+      );
+    });
   });
 
   group('what a shard hands the next run', () {

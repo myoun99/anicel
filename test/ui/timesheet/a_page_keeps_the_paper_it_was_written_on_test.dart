@@ -128,7 +128,7 @@ void main() {
         'paper', () {
       final store = shownTheNarrowCut();
       expect(store.isCelFileBacked(page), isTrue, reason: 'still its file');
-      expect(store.isCelCold(page), isFalse, reason: 'not parked anew');
+      expect(store.isCelParked(page), isFalse, reason: 'not parked anew');
       expect(
         store.dirtyCelKeysSinceSave,
         isNot(contains(page)),

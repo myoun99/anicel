@@ -1,11 +1,21 @@
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 
 /// A tablet bridge a test plays the driver's side of: always there, opening
-/// as asked and noting the window it was asked to open with, its queue
-/// saying [gap] and [overflowed] (WintabPenService.debugBridge).
+/// as asked — after the [refusals] it is given — and noting the window it
+/// was asked to open with, its queue saying [gap] and [overflowed]
+/// (WintabPenService.debugBridge).
 class FakeTabletBridge implements QaTabletBridge {
   /// The window the context was opened with; null before it was.
   Duration? within;
+
+  /// What the next opens answer, the first first, before one opens.
+  final List<QaTabletOpen> refusals = [];
+
+  /// What the next poll hands over.
+  final List<QaTabletPacket> queued = [];
+
+  /// Whether a driver answers.
+  bool driver = true;
 
   int? gap = 7;
 
@@ -14,16 +24,23 @@ class FakeTabletBridge implements QaTabletBridge {
   bool closed = false;
 
   @override
-  bool get available => true;
+  bool get available => driver;
 
   @override
-  bool open({required Duration within}) {
+  QaTabletOpen open({required Duration within}) {
+    if (refusals.isNotEmpty) {
+      return refusals.removeAt(0);
+    }
     this.within = within;
-    return true;
+    return QaTabletOpen.opened;
   }
 
   @override
-  List<QaTabletPacket> poll() => const [];
+  List<QaTabletPacket> poll() {
+    final handed = [...queued];
+    queued.clear();
+    return handed;
+  }
 
   @override
   int overflowed() => overflowedCount;

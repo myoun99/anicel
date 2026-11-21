@@ -202,13 +202,23 @@ bool _isSmall(Standing standing) => _workOf(standing) <= kSmallWork;
 /// another, and beside the build's wide check ([Standing.first]) two thirds
 /// for the check and the third left for each other run ([wideCheckShare])
 /// — and never more than the files it names or what it [asked].
+///
+/// 🗣️A SMALL RUN COUNTS BESIDE THE WIDE CHECK: 「넓은 검사 12칸 · 다른 실행
+/// 6칸」(유저 11-20, the-wide-check-takes-five-hours-Q1 c) names every other
+/// run; a small run is let off halving only a LONG run's share (유저 10-20
+/// Q6, [kSmallWork]). ↩️Until 11-21 the check did not see it either: it
+/// wanted all eighteen, stood first, and took them at every batch boundary —
+/// a one-file run waited out the whole check (타임라인/콘티 11-21 01:51,
+/// usage.tsv 「0 2」 then 「18 1」 two seconds later).
 int _wants(
   Standing standing,
   List<Standing> line, {
   required int machine,
   int? asked,
 }) {
-  final beside = line.where((o) => o.name != standing.name && !_isSmall(o));
+  final beside = line.where(
+    (o) => o.name != standing.name && (standing.first || !_isSmall(o)),
+  );
   final wide = wideCheckShare(machine);
   final share = beside.isEmpty
       ? machine

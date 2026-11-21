@@ -11,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/native_scratch.dart';
-import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -96,9 +95,6 @@ void main() {
       final scratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
       addTearDown(scratch.release);
       scratch.ensure(1000);
-      // A freed block parks on the lists, where the pool's row reads it.
-      const parked = 4096;
-      TileBlocks.free(TileBlocks.alloc(parked));
 
       final rows = {
         for (final item in collectMemoryCensusWhereTexturesAreRam([session]).items)
@@ -111,14 +107,9 @@ void main() {
         greaterThanOrEqualTo(oneImage),
         reason: 'fixture: a held picture is on the books',
       );
-      // Two rows since 2026-09-16: the pool has a ceiling the allowance
-      // sets, the scratch has none — one row was half inside and half out.
-      expect(rows['enginePool'], TileBlocks.parkedBytes);
-      expect(
-        rows['enginePool'],
-        greaterThanOrEqualTo(parked),
-        reason: 'fixture: a parked block is on the books',
-      );
+      // ↩️A row of the tile blocks parked for reuse stood beside it till
+      // no block parked any more (2026-11-21).
+      expect(rows.containsKey('enginePool'), isFalse);
       expect(rows['engineScratch'], NativeScratch.liveBytes);
       expect(
         rows['engineScratch'],

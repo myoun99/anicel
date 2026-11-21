@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
+    show activatorsEqual;
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
@@ -177,10 +179,9 @@ void main() {
     String? actionOn(EditorShortcutBindings bindings, SingleActivator key) {
       for (final MapEntry(key: form, value: intent)
           in bindings.shortcuts.entries) {
-        if (form is SingleActivator &&
-            form.trigger == key.trigger &&
-            form.shift == key.shift &&
-            form.control == key.control) {
+        // ↩️It matched on the trigger, Shift and Ctrl alone, and a ⌘K the
+        // map holds for Ctrl+K (H65-Q1 「both」) read as a bare K.
+        if (form is SingleActivator && activatorsEqual(form, key)) {
           return (intent as EditorActionIntent).actionId;
         }
       }

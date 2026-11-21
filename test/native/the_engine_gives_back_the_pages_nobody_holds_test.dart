@@ -13,6 +13,7 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 
 import '../helpers/census_where_textures_are_ram.dart';
 import '../helpers/collect_garbage.dart';
+import '../helpers/poll_until.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// The ledger gives back the engine's pages nobody holds
@@ -114,13 +115,35 @@ void main() {
   // A closed project's tiles are collected with it, and the give-back its
   // collection brings may land before their finalizers' messages.
   test("a collected tile's page goes back before its finalizer runs, and "
-      'the finalizer lets nothing go again', () async {
+      'the finalizer lets nothing go again — 🚨though the tile was held a '
+      'turn past its done, as on a loaded machine', () async {
     final ledger = EngineTileLedger(appGpuEngine);
     BitmapTile? tile = aTileOfItsOwn();
     await storedAndRead(ledger, tile);
+    final dropped = WeakReference(tile);
+    Object? heldATurn = tile;
+    Timer.run(() => heldATurn = null);
     tile = null;
 
-    collectGarbageInThisTurn();
+    // Collected inside a turn till it is gone, a beat let pass while it is
+    // not: what is read next is read in the turn whose collection found it
+    // gone, before the finalizer's message that collection sent can land.
+    //
+    // 🔬UNDER LOAD A TILE OUTLIVES THE COLLECTIONS OF THE TURN ITS DONE ENDS
+    // IN (브러시 k1941, 2026-11-21, card four-engine-tile-tests-redden-only-
+    // on-a-busy-machine): 22 times of 4,000 beside a wide run and the
+    // crate's tests, none of 200 at rest — gone after one turn each time,
+    // and no page left by a tile gone. ⚠️Who holds it that turn is not told
+    // apart: the store's word that its copy read the tile goes out on the
+    // engine's thread before the done is asked there
+    // (`Pool::lands_unwaited`, `Engine::done_within`), and two collections a
+    // barrier apart have taken what nothing reached (`reachabilityBarrier`).
+    await pollUntil(() {
+      collectGarbageInThisTurn();
+      return dropped.target == null;
+    });
+    expect(heldATurn, isNull, reason: 'LIVENESS: let go a turn on');
+    expect(dropped.target, isNull, reason: 'the premise: nothing holds it');
     expect(ledger.slotCount, 1, reason: 'the premise: no finalizer ran');
     ledger.respondToMemoryPressure();
 

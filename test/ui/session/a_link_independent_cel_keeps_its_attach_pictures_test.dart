@@ -1,21 +1,19 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart'
     show mirrorCopiesFor;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+
+import '../../helpers/a_cel_of_one_tile.dart';
 
 /// 🚨F-275 (유저 2026-10-04): 「기준레이어 링크된상태에서 독립시킬때, 어태치
 /// 싱크레이어의 그림은 사라지고 기준레이어 그림만 남아있는데, 어태치 싱크
@@ -27,16 +25,8 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 /// and the attach row lost the one it had drawn there.
 void main() {
   /// A picture at the CUT's canvas size, its first bytes [shade].
-  BitmapSurface ink(CanvasSize canvasSize, int shade) {
-    const tile = 256;
-    final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, shade);
-    return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
-      (
-        coord: TileCoord(x: 0, y: 0),
-        tile: BitmapTile(size: tile, pixels: pixels),
-      ),
-    ]);
-  }
+  BitmapSurface ink(CanvasSize canvasSize, int shade) =>
+      aCelOfOneTile(canvasSize, (bytes) => bytes.fillRange(0, 16, shade));
 
   Layer rowOf(EditorSessionManager s, LayerId id) =>
       s.requireActiveCut.layers.firstWhere((layer) => layer.id == id);

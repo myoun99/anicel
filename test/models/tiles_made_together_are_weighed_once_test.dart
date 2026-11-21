@@ -35,14 +35,6 @@ void main() {
     ],
   );
 
-  /// Whether the next ask of [length] is answered with the block at
-  /// [address] — it is parked on the lists.
-  bool cameBack(int address, int length) {
-    final block = TileBlocks.alloc(length);
-    TileBlocks.free(block);
-    return block.address == address;
-  }
-
   test('a cel laid on a worker is weighed once, as all of its blocks — a '
       'tile of one colour weighs nothing', () {
     const side = 16;
@@ -108,8 +100,8 @@ void main() {
 
   test('🚨a block whose tile goes first comes back while the rest of its '
       'cel stands — the weight frees no block', () async {
-    // A side no other tile wears, so the list of its size holds these
-    // tiles' blocks alone.
+    // A side no other tile wears, so the blocks held of its size
+    // ([TileBlocks.debugHeld]) are these tiles' alone.
     const side = 44;
     final length = BitmapTile.bytesFor(side);
     BitmapTile? gone;
@@ -118,16 +110,18 @@ void main() {
       gone = BitmapTile(size: side, pixels: inked(side), weighedBy: weight);
       stays = BitmapTile(size: side, pixels: inked(side), weighedBy: weight);
     });
-    final address = gone!.readPixels((pixels, _) => pixels.address);
+    expect(gone!.ownBytes, length, reason: 'fixture: a block of its own');
+    expect(TileBlocks.debugHeld(length), 2, reason: 'fixture: one each');
     final bytes = stays.pixels;
     gone = null;
 
-    await collectGarbageUntil(() => cameBack(address, length));
+    await collectGarbageUntil(() => TileBlocks.debugHeld(length) < 2);
 
     expect(
-      cameBack(address, length),
-      isTrue,
-      reason: 'its own tile went, and nothing else frees it',
+      TileBlocks.debugHeld(length),
+      1,
+      reason: 'its own tile went, and nothing else frees it — nor the '
+          'other\'s, which stands',
     );
     expect(stays.pixels, bytes);
   });

@@ -101,7 +101,8 @@ void main() {
 
     await store.thawAhead(k, canvasSize: canvasSize);
 
-    expect(store.isCelCold(k), isFalse, reason: 'kept hot, parking let go');
+    expect(store.isCelCold(k), isFalse, reason: 'kept hot');
+    expect(store.isCelParked(k), isTrue, reason: 'and its park with it');
     final hot = store.hotBakedSurfaceOrNull(k);
     expect(hot, isNotNull);
     expect(

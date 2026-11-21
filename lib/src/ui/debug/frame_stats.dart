@@ -3,6 +3,7 @@ import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher, Size;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../native/screen_texture.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
 import 'measurement_mode.dart';
@@ -36,6 +37,9 @@ class FrameStatsSnapshot {
     required this.uiWorst,
     required this.latencyP50,
     required this.latencyP95,
+    required this.screenUpP50,
+    required this.screenUpP95,
+    required this.screensUpPerSecond,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
@@ -79,6 +83,27 @@ class FrameStatsSnapshot {
   /// how the ink-lag report reads.
   final double latencyP50;
   final double latencyP95;
+
+  /// The engine's screens — the canvas, the frame grids: how long their
+  /// newest frames took from their draw to being put up
+  /// (`ScreenTexture.upMicros`), and how many were put up a second.
+  ///
+  /// None of it is in the three durations above. A screen's frame is
+  /// drawn by the engine, on no thread of Flutter's, and put up when the
+  /// GPU has finished it: a canvas can stand three frames behind the pen
+  /// while build, raster and latency all read inside budget. 🗣️유저
+  /// 2026-11-21, a Galaxy Tab out of reach (card
+  /// the-galaxy-tab-canvas-went-slow-on-build-1095): 「팬이나 줌이나
+  /// 스트로크가 너무 느려졋어」, and no line here said whose frames were
+  /// slow.
+  ///
+  /// ⚠️The percentiles are over the screens' own newest frames, not over
+  /// this window's: with no screen drawing they are what the last ones
+  /// took. The rate is a slope over the interval since the last
+  /// publication, as [bakesPerSecond] is.
+  final double screenUpP50;
+  final double screenUpP95;
+  final double screensUpPerSecond;
 
   /// The engine's retained-raster accounting, and the reason this class
   /// exists.
@@ -234,6 +259,10 @@ abstract final class FrameStats {
   static int _lastCaptureTotal = -1;
   static int? _lastCaptureVsync;
 
+  /// The screens' count of frames put up at the previous publication —
+  /// read at [_lastCaptureVsync], as the bakes' is.
+  static int _lastUpsCounted = -1;
+
   static final List<FrameTiming> _window = <FrameTiming>[];
   static bool _installed = false;
   static int? _lastPublishedVsync;
@@ -319,6 +348,7 @@ abstract final class FrameStats {
     // another test) and report a rate that never happened.
     _lastCaptureTotal = -1;
     _lastCaptureVsync = null;
+    _lastUpsCounted = -1;
     latest.value = null;
   }
 
@@ -400,6 +430,14 @@ abstract final class FrameStats {
         ? 0.0
         : (captures - previousTotal) / rateSeconds;
 
+    final ups = [...ScreenTexture.upMicros]..sort();
+    final upsCounted = ScreenTexture.upsCounted;
+    final previousUps = _lastUpsCounted;
+    _lastUpsCounted = upsCounted;
+    final screensUpPerSecond = previousUps < 0 || rateSeconds <= 0
+        ? 0.0
+        : (upsCounted - previousUps) / rateSeconds;
+
     return FrameStatsSnapshot(
       frames: window.length,
       windowSeconds: spanSeconds,
@@ -411,6 +449,9 @@ abstract final class FrameStats {
       uiWorst: _percentileMillis(ui, 1.0),
       latencyP50: _percentileMillis(latency, 0.50),
       latencyP95: _percentileMillis(latency, 0.95),
+      screenUpP50: _percentileMillis(ups, 0.50),
+      screenUpP95: _percentileMillis(ups, 0.95),
+      screensUpPerSecond: screensUpPerSecond,
       layerCacheCount: last.layerCacheCount,
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,

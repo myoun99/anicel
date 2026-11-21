@@ -8,7 +8,6 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/tile_blocks.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -29,6 +28,8 @@ import '../helpers/tiles_on_the_engine.dart';
 /// reached — its store holding 3,262MB the panel read as 「엔진·폰트·
 /// 프레임워크」, and the engine's parking filled to its cap with blocks no
 /// tab would ask for. After: 557MB for the process, nothing parked.
+/// ↩️The parking itself went on 2026-11-21 (`TileBlocks`): a freed block
+/// is the allocator's at once, and no test is left to say it is not kept.
 ///
 /// 🔬And the session itself (2026-10-30, the same measure): still reached
 /// once all that was given back, through the kept pictures of its rows'
@@ -40,9 +41,8 @@ void main() {
   setUpAll(openAppGpuEngine);
 
   testWidgets('a closed project lets go of its pictures and its history, the '
-      'app\'s timeline tiles and its rows\' kept pictures go with them, the '
-      'engine gives back what it parked of them, and the session itself is '
-      'collected', (tester) async {
+      'app\'s timeline tiles and its rows\' kept pictures go with them, and '
+      'the session itself is collected', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -118,14 +118,6 @@ void main() {
     }
 
     final closed = await closeAHeavyOne();
-    await tester.runAsync(
-      () => collectGarbageUntil(() => TileBlocks.parkedBytes == 0),
-    );
-    expect(
-      TileBlocks.parkedBytes,
-      0,
-      reason: 'what came back of its tiles is not kept for reuse',
-    );
     await tester.runAsync(
       () => collectGarbageUntil(() => closed.target == null),
     );

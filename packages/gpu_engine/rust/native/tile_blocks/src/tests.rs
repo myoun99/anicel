@@ -1,27 +1,55 @@
-//! The tile blocks' lists, through their exports. ↩️Held from Dart while the
-//! lists were the C's (test/services/qa_tile_allocator_test.dart, which
-//! skipped wherever no C engine was built); here every host runs them.
+//! The tile blocks, through their exports. ↩️Held from Dart while they
+//! were the C's (test/services/qa_tile_allocator_test.dart, which skipped
+//! wherever no C engine was built); here every host runs them.
+//!
+//! Each test asks at a size of its own: the books are the process's one,
+//! and by size.
 
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::ffi::c_void;
-use std::sync::{Mutex, MutexGuard};
 use std::thread;
 
-use super::{
-    CAP_AT_START, LISTS, qa_tile_alloc, qa_tile_free, qa_tile_pool_cached_bytes,
-    qa_tile_pool_set_byte_cap, qa_tile_pool_trim,
-};
+use super::{Head, qa_tile_alloc, qa_tile_blocks_held, qa_tile_blocks_laid, qa_tile_free};
 
-/// The lists are the process's one: a test holds this while it reads their
-/// count, and starts from none parked under the cap a launch starts at.
-static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+/// This test binary's allocator: the system's, counting the bytes each
+/// thread holds of it at a block's alignment — what the blocks' doors ask
+/// of the allocator and give back to it, read where no list can be.
+struct Counting;
 
-fn alone() -> MutexGuard<'static, ()> {
-    let held = ONE_AT_A_TIME
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    qa_tile_pool_set_byte_cap(CAP_AT_START);
-    qa_tile_pool_trim();
-    held
+thread_local! {
+    /// Bytes this thread asked for at a head's alignment and has not given
+    /// back. Const-made and of no destructor: the allocator reads it.
+    static HELD_HERE: Cell<i64> = const { Cell::new(0) };
+}
+
+fn counted(layout: Layout, by: i64) {
+    if layout.align() == align_of::<Head>() {
+        // A thread being torn down counts nothing: no test reads it then.
+        let _ = HELD_HERE.try_with(|held| held.set(held.get() + by * layout.size() as i64));
+    }
+}
+
+// SAFETY: the system's allocator, asked as it was asked.
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        counted(layout, 1);
+        // SAFETY: the caller's layout.
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, block: *mut u8, layout: Layout) {
+        counted(layout, -1);
+        // SAFETY: the caller's block, at the layout it was made at.
+        unsafe { System.dealloc(block, layout) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Counting = Counting;
+
+fn held_here() -> i64 {
+    HELD_HERE.with(Cell::get)
 }
 
 fn free(block: *mut c_void) {
@@ -29,131 +57,98 @@ fn free(block: *mut c_void) {
     unsafe { qa_tile_free(block) };
 }
 
+fn books_of(size: i64) -> (i64, i64) {
+    (qa_tile_blocks_laid(size), qa_tile_blocks_held(size))
+}
+
 #[test]
-fn a_freed_block_parks_and_the_next_ask_of_its_size_takes_it() {
-    let _alone = alone();
+fn a_block_is_its_holder_s_to_write_and_aligned_for_a_pixel() {
     const SIZE: i64 = 77_776;
 
-    let first = qa_tile_alloc(SIZE);
-    assert!(!first.is_null());
-    assert_eq!(first as usize % 16, 0, "aligned for any read of a pixel");
+    let block = qa_tile_alloc(SIZE);
+
+    assert!(!block.is_null());
+    assert_eq!(block as usize % 16, 0, "aligned for any read of a pixel");
     // SAFETY: SIZE bytes were asked for.
     unsafe {
-        let bytes = first.cast::<u8>();
+        let bytes = block.cast::<u8>();
         bytes.write(0xAB);
         bytes.add(SIZE as usize - 1).write(0xCD);
         assert_eq!(bytes.read(), 0xAB);
         assert_eq!(bytes.add(SIZE as usize - 1).read(), 0xCD);
     }
-
-    free(first);
-    assert_eq!(qa_tile_pool_cached_bytes(), SIZE, "parked, not freed");
-
-    let second = qa_tile_alloc(SIZE);
-    assert_eq!(second, first, "the parked block, handed back");
-    assert_eq!(qa_tile_pool_cached_bytes(), 0);
-    free(second);
+    free(block);
 }
 
+// 유저 2026-11-21 (cel-originals Q7): 「타일풀은 아예 없애는걸로 가자」.
 #[test]
-fn each_size_parks_on_a_list_of_its_own() {
-    let _alone = alone();
-    const A: i64 = 55_552;
-    const B: i64 = 66_664;
-    let a = qa_tile_alloc(A);
-    let b = qa_tile_alloc(B);
-    free(a);
-    free(b);
-
-    // By size, not by the order they were freed in.
-    let b_again = qa_tile_alloc(B);
-    let a_again = qa_tile_alloc(A);
-    assert_eq!(b_again, b);
-    assert_eq!(a_again, a);
-    free(a_again);
-    free(b_again);
-}
-
-#[test]
-fn a_trim_frees_every_parked_block() {
-    let _alone = alone();
+fn a_freed_block_goes_back_to_the_allocator_and_waits_for_no_ask() {
     const SIZE: i64 = 77_780;
-    free(qa_tile_alloc(SIZE));
-    assert_eq!(qa_tile_pool_cached_bytes(), SIZE, "the premise: one parked");
+    let of_a_block = SIZE + size_of::<Head>() as i64;
+    let before = held_here();
 
-    qa_tile_pool_trim();
-
-    assert_eq!(qa_tile_pool_cached_bytes(), 0);
-}
-
-// 유저 2026-09-16 (memory-allowance-Q2): the pool was a compile-time 512 MB,
-// the one line of the allowance the engine held outside it.
-#[test]
-fn a_lowered_cap_frees_what_is_parked_above_it_and_nothing_parks_past_it() {
-    let _alone = alone();
-    const SIZE: i64 = 88_880;
-    // Two held, then both parked: a block freed and asked for again would
-    // be the one block twice.
     let first = qa_tile_alloc(SIZE);
     let second = qa_tile_alloc(SIZE);
+    assert_eq!(held_here() - before, 2 * of_a_block, "the premise: two laid");
+
     free(first);
+    assert_eq!(held_here() - before, of_a_block, "given back as it is freed");
     free(second);
-    assert_eq!(qa_tile_pool_cached_bytes(), 2 * SIZE);
+    assert_eq!(held_here(), before, "nothing of them is kept");
 
-    qa_tile_pool_set_byte_cap(SIZE);
-    assert_eq!(qa_tile_pool_cached_bytes(), SIZE, "the excess, freed now");
-
-    free(qa_tile_alloc(SIZE + 16));
-    assert_eq!(
-        qa_tile_pool_cached_bytes(),
-        SIZE,
-        "a free that would cross the cap does not park",
-    );
+    // An ask after them is the allocator's to answer anew.
+    let third = qa_tile_alloc(SIZE);
+    assert_eq!(held_here() - before, of_a_block);
+    free(third);
+    assert_eq!(held_here(), before);
 }
 
 #[test]
-fn a_size_past_the_lists_is_freed_and_an_emptied_list_takes_another() {
-    let _alone = alone();
-    let size = |list: usize| 4_096 + 16 * list as i64;
-    for list in 0..LISTS {
-        free(qa_tile_alloc(size(list)));
-    }
-    let parked = qa_tile_pool_cached_bytes();
-    assert_eq!(parked, (0..LISTS).map(size).sum::<i64>());
+fn the_books_count_each_size_s_blocks_laid_and_held() {
+    const A: i64 = 55_552;
+    const B: i64 = 66_664;
+    assert_eq!((books_of(A), books_of(B)), ((0, 0), (0, 0)), "none laid yet");
 
-    free(qa_tile_alloc(size(LISTS)));
-    assert_eq!(qa_tile_pool_cached_bytes(), parked, "no list for a ninth");
+    let a = qa_tile_alloc(A);
+    let b = qa_tile_alloc(B);
+    let b_too = qa_tile_alloc(B);
+    assert_eq!((books_of(A), books_of(B)), ((1, 1), (2, 2)));
 
-    // The first list's one block leaves, and the ninth size parks there.
-    let taken = qa_tile_alloc(size(0));
-    free(qa_tile_alloc(size(LISTS)));
-    assert_eq!(qa_tile_pool_cached_bytes(), parked - size(0) + size(LISTS));
-    qa_tile_pool_set_byte_cap(0);
-    free(taken);
-    assert_eq!(qa_tile_pool_cached_bytes(), 0);
+    free(b);
+    assert_eq!((books_of(A), books_of(B)), ((1, 1), (2, 1)));
+    free(a);
+    free(b_too);
+    assert_eq!((books_of(A), books_of(B)), ((1, 0), (2, 0)));
+
+    // Laid is ever: a block asked for again is one more.
+    free(qa_tile_alloc(A));
+    assert_eq!(books_of(A), (2, 0));
 }
 
 #[test]
 fn no_size_is_no_block() {
-    let _alone = alone();
+    let before = held_here();
+
     assert!(qa_tile_alloc(0).is_null());
     assert!(qa_tile_alloc(-1).is_null());
     free(std::ptr::null_mut());
-    assert_eq!(qa_tile_pool_cached_bytes(), 0);
+
+    assert_eq!(held_here(), before);
+    assert_eq!((books_of(0), books_of(-1)), ((0, 0), (0, 0)));
 }
 
 // A tile's finalizer frees on the collector's thread while the app's own
-// asks and frees: the count is the lists' whoever calls.
+// asks and frees: the books are the process's whoever calls.
 #[test]
-fn threads_asking_and_freeing_at_once_leave_the_count_whole() {
-    let _alone = alone();
+fn threads_asking_and_freeing_at_once_leave_the_books_whole() {
     const SIZE: i64 = 65_536;
     const THREADS: usize = 8;
     const HELD: usize = 16;
+    const ROUNDS: usize = 200;
     thread::scope(|scope| {
         for thread in 0..THREADS {
             scope.spawn(move || {
-                for round in 0..200 {
+                for round in 0..ROUNDS {
                     let held: Vec<usize> = (0..HELD)
                         .map(|_| {
                             let block = qa_tile_alloc(SIZE);
@@ -175,9 +170,6 @@ fn threads_asking_and_freeing_at_once_leave_the_count_whole() {
             });
         }
     });
-    let parked = qa_tile_pool_cached_bytes();
-    assert_eq!(parked % SIZE, 0);
-    assert!(parked > 0 && parked <= (THREADS * HELD) as i64 * SIZE);
-    qa_tile_pool_trim();
-    assert_eq!(qa_tile_pool_cached_bytes(), 0);
+
+    assert_eq!(books_of(SIZE), ((THREADS * HELD * ROUNDS) as i64, 0));
 }
