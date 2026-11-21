@@ -615,5 +615,14 @@ Future<GpuEngine> _opening() async {
 /// it, and the canvas it showed never stood (🗣️a-process-first-test-never-
 /// sees-the-canvas-stand-Q1 = 「시험에서는 엔진을 그 자리에서 연다」, 유저
 /// 2026-11-20).
+///
+/// 🔬AND AN OPENING ON ANOTHER ISOLATE OUTLIVES THE WIDGET TEST THAT ASKED
+/// FOR IT (an-engine-setup-hangs-in-a-batch, 2026-11-21): the process keeps
+/// the opening ([openAppGpuEngine]), and what came back after that test
+/// ended went on on the clock of a test nobody pumps any more — the next
+/// test to wait for it in real time waited for good. Measured: a widget
+/// test that asked and ended without a pump, then a test that waited —
+/// stuck 20 s of 20 opened there, 0 ms opened here. A process that runs
+/// many files (bundled) meets it wherever one asks and the next waits.
 @visibleForTesting
 bool debugOpenAppGpuEngineHere = false;
