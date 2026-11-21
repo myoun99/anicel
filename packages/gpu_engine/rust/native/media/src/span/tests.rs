@@ -146,14 +146,16 @@ fn a_plain_span_reads_as_the_c_reads_it() {
 #[test]
 fn a_path_past_the_wide_buffer_is_refused() {
     let bytes = medium(5000);
-    let top = std::env::temp_dir().join(format!("미디어-스팬-{}-길다", std::process::id()));
-    let deep = (0..5).fold(top.clone(), |dir, k| dir.join(char::from_u32(0xAC00 + k).expect("Hangul").to_string().repeat(200)));
+    // Gone with the test, as it panics too (oracle's `TempFile`).
+    let top = TempFile::at("미디어-스팬-길다");
+    let deep = (0..5).fold(top.path().to_path_buf(), |dir, k| dir.join(char::from_u32(0xAC00 + k).expect("Hangul").to_string().repeat(200)));
     std::fs::create_dir_all(&deep).expect("a deep folder");
     let far = deep.join("medium.bin");
     std::fs::write(&far, &bytes).expect("a file far down");
     assert!(far.to_str().expect("UTF-8").encode_utf16().count() >= 1024, "LIVENESS — past the buffer");
     assert!(opened(&mut Costs::default(), far.to_str().expect("UTF-8"), 0, bytes.len() as i64, false).is_none());
-    std::fs::remove_dir_all(&top).expect("cleanup");
+    drop(top);
+    assert!(TempFile::left("미디어-스팬-길다").is_empty(), "the deep folder goes too");
 }
 
 // Framed media at the block sizes the writer has used and others — one
