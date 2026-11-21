@@ -108,23 +108,20 @@ void main() {
       expect(told, [false], reason: 'nothing was asked for meanwhile');
     });
 
-    test('🔬a frame put up is counted, with how long it took since its '
-        'draw — one the GPU could not finish is not', () async {
-      final (:screen, :gates, told: _) = aScreen();
+    test('🔬a frame put up is counted — one the GPU could not finish is '
+        'not', () async {
+      final (:screen, :gates, :told) = aScreen();
       final counted = ScreenTexture.upsCounted;
+      final behind = ScreenTexture.upsBehindCounted;
 
       screen.present((_) {});
-      await Future<void>.delayed(const Duration(milliseconds: 30));
       expect(ScreenTexture.upsCounted, counted, reason: 'not up yet');
       gates.single.complete();
       await pumpEventQueue();
 
       expect(ScreenTexture.upsCounted, counted + 1);
-      expect(
-        ScreenTexture.upMicros.last,
-        greaterThanOrEqualTo(10000),
-        reason: 'the 30 ms the GPU took over it are in it',
-      );
+      expect(told, [false], reason: '⛔premise: nothing asked for meanwhile');
+      expect(ScreenTexture.upsBehindCounted, behind);
 
       screen.present((_) {});
       gates.last.completeError(GpuRefused('the GPU did not finish'));
@@ -134,11 +131,65 @@ void main() {
       expect(reported, hasLength(1));
     });
 
+    // Each part loaded alone, and read against the two that were not: a
+    // part that took another's time in with its own reads as long as it.
+    group('🔬a frame put up is timed part by part', () {
+      /// Keeps this thread, as a wait inside a call does.
+      void held() {
+        final since = Stopwatch()..start();
+        while (since.elapsedMilliseconds < 60) {}
+      }
+
+      test('its draw is what the draw kept this thread for', () async {
+        final (:screen, :gates, told: _) = aScreen();
+
+        screen.present((_) => held());
+        gates.single.complete();
+        await pumpEventQueue();
+
+        final up = ScreenTexture.upMicros.last;
+        expect(up.draw, greaterThanOrEqualTo(60000));
+        expect(up.finish, lessThan(up.draw));
+        expect(up.show, lessThan(up.draw));
+      });
+
+      test('its finish is from its draw handed over to the GPU told '
+          'done', () async {
+        final (:screen, :gates, told: _) = aScreen();
+
+        screen.present((_) {});
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        gates.single.complete();
+        await pumpEventQueue();
+
+        final up = ScreenTexture.upMicros.last;
+        expect(up.finish, greaterThanOrEqualTo(40000));
+        expect(up.draw, lessThan(up.finish));
+        expect(up.show, lessThan(up.finish));
+      });
+
+      test('its show is what the hand to Flutter kept this thread '
+          'for', () async {
+        final (:screen, :gates, told: _) = aScreen();
+        screen.textureId.addListener(held);
+
+        screen.present((_) {});
+        gates.single.complete();
+        await pumpEventQueue();
+
+        final up = ScreenTexture.upMicros.last;
+        expect(up.show, greaterThanOrEqualTo(60000));
+        expect(up.draw, lessThan(up.show));
+        expect(up.finish, lessThan(up.show));
+      });
+    });
+
     test('🚨asked for while one is on the GPU, nothing is drawn — once that '
         'one is up the asker is told it is behind, and draws the newest '
         'where it presents again', () async {
       final (:screen, :gates, :told) = aScreen();
       final drawn = <String>[];
+      final behind = ScreenTexture.upsBehindCounted;
 
       screen.present((_) => drawn.add('first'), drawnFor: 'first');
       screen.present((_) => drawn.add('second'), drawnFor: 'second');
@@ -149,6 +200,11 @@ void main() {
       await pumpEventQueue();
 
       expect(told, [true]);
+      expect(
+        ScreenTexture.upsBehindCounted,
+        behind + 1,
+        reason: '🔬counted, for the frame statistics',
+      );
       expect(screen.shownFor, 'first', reason: 'what is up is what was drawn');
       screen.present((_) => drawn.add('newest'), drawnFor: 'newest');
       expect(drawn, ['first', 'newest']);

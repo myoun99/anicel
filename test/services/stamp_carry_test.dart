@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,7 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/services/stamp_carry.dart';
 
@@ -101,6 +103,35 @@ void main() {
   }
 
   double apart(CanvasPoint a, CanvasPoint b) => a.distanceTo(b);
+
+  /// The 6×6 block [stampOver] inks about [spot], as a selection.
+  CanvasSelectionRegion blockAt(CanvasPoint spot) {
+    final (x, y) = (spot.x.roundToDouble(), spot.y.roundToDouble());
+    return CanvasSelectionRegion.shape(
+      CanvasSelectionShape([
+        CanvasPoint(x: x - 3, y: y - 3),
+        CanvasPoint(x: x + 3, y: y - 3),
+        CanvasPoint(x: x + 3, y: y + 3),
+        CanvasPoint(x: x - 3, y: y + 3),
+      ]),
+    );
+  }
+
+  /// Every outline of [region], as its points.
+  List<List<CanvasPoint>> ringsOf(CanvasSelectionRegion region) => [
+    for (final step in region.steps)
+      if (step is CanvasSelectionCopies)
+        for (final shape in step.shapes) shape.points,
+  ];
+
+  /// The mean of [region]'s one outline's points.
+  CanvasPoint middleOf(CanvasSelectionRegion region) {
+    final [ring] = ringsOf(region);
+    return CanvasPoint(
+      x: ring.map((point) => point.x).reduce((a, b) => a + b) / ring.length,
+      y: ring.map((point) => point.y).reduce((a, b) => a + b) / ring.length,
+    );
+  }
 
   void sameStamp(BrushDab got, BrushDab want, String why) {
     expect(got.center, want.center, reason: '$why — where it stands');
@@ -230,6 +261,30 @@ void main() {
 
       expect(carried.center, CanvasPoint(x: 37, y: 32));
       expect(identical(carried.stamp!.rgba, other.stamp!.rgba), isTrue);
+    });
+
+    test('🚨a quad too degenerate to warp through moves no selection, as it '
+        'moves no pixel', () {
+      // ↩️The selection became the quad itself.
+      final flat = [
+        for (var k = 0; k < 4; k += 1)
+          CanvasPoint(x: 100.0 + k * 30, y: 100.0 + k * 30),
+      ];
+      final degenerate = QuadCarry(base: base, corners: flat, mode: mode);
+      final standing = float();
+      expect(
+        solveHomography(base, flat),
+        isNull,
+        reason: '⛔premise: no homography takes the box there',
+      );
+      expect(
+        identical(degenerate.through(standing), standing),
+        isTrue,
+        reason: '⛔premise: no pixel moves',
+      );
+      final selected = blockAt(CanvasPoint(x: 130, y: 140));
+
+      expect(identical(degenerate.regionThrough(selected), selected), isTrue);
     });
   });
 
@@ -415,6 +470,233 @@ void main() {
       ).through(standing);
 
       expect(identical(still, standing), isTrue);
+    });
+
+    // 🚨A selection goes where its pixels go (card a-mesh-warp-turns-the-
+    // selection-into-its-box, 2026-11-21): ↩️it became the grid's outer
+    // ring, holding pixels the mesh never moved.
+    test('🚨a selection goes where the mesh takes its pixels — a block of '
+        'ink in each half of the cells around the node pulled', () {
+      // Each block within one triangle of its cell, so its outline is its
+      // four corners still: (top left, top right, bottom left) of the cell
+      // or (top right, bottom right, bottom left).
+      final spots = [
+        CanvasPoint(x: 120, y: 115),
+        CanvasPoint(x: 132, y: 132),
+        CanvasPoint(x: 165, y: 125),
+        CanvasPoint(x: 140, y: 175),
+        CanvasPoint(x: 160, y: 160),
+      ];
+      final carried = bulge.through(float(ink: spots));
+      final selected = [
+        for (final spot in spots) middleOf(bulge.regionThrough(blockAt(spot))),
+      ];
+
+      expect(
+        [for (final (at, spot) in spots.indexed) apart(selected[at], spot) > 2],
+        [false, true, true, true, true],
+        reason: '⛔premise: the pull moves all but the first',
+      );
+      for (final (at, spot) in spots.indexed) {
+        expect(
+          // Near enough to read this block's ink alone, not a neighbour's
+          // the pull brought closer.
+          apart(inkNear(carried, selected[at], reach: 6), selected[at]),
+          lessThan(0.6),
+          reason: 'the ink of $spot and its selection',
+        );
+      }
+    });
+
+    test('🚨an edge is cut where it crosses a diagonal of the cells, and '
+        'bends there as the pixels do', () {
+      final corner = MeshCarry(
+        (
+          base: (left: 0, top: 0, width: 10, height: 10),
+          columns: 1,
+          rows: 1,
+          points: [
+            CanvasPoint(x: 0, y: 0),
+            CanvasPoint(x: 10, y: 0),
+            CanvasPoint(x: 0, y: 10),
+            CanvasPoint(x: 10, y: 20),
+          ],
+        ),
+        mode: mode,
+      );
+
+      final through = corner.regionThrough(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape([
+            CanvasPoint(x: 0, y: 4),
+            CanvasPoint(x: 10, y: 4),
+            CanvasPoint(x: 10, y: 6),
+            CanvasPoint(x: 0, y: 6),
+          ]),
+        ),
+      );
+
+      // Cut at (6,4) and (4,6), on the diagonal: the bottom right corner
+      // pulled 10 down bends each edge there, and moves nothing on its top
+      // left.
+      final want = [
+        CanvasPoint(x: 0, y: 4),
+        CanvasPoint(x: 6, y: 4),
+        CanvasPoint(x: 10, y: 8),
+        CanvasPoint(x: 10, y: 12),
+        CanvasPoint(x: 4, y: 6),
+        CanvasPoint(x: 0, y: 6),
+      ];
+      final [ring] = ringsOf(through);
+      expect(ring.length, want.length, reason: '$ring');
+      for (final (at, point) in want.indexed) {
+        expect(apart(ring[at], point), lessThan(1e-9), reason: '$ring');
+      }
+    });
+
+    test('🚨an edge is cut where it crosses a side between two cells, and '
+        'bends there as the pixels do — the cells side by side, or one '
+        'over the other', () {
+      // Two cells side by side, the node at the bottom of the side between
+      // them pulled 10 down; and the same laid the other way, each point's
+      // x and y swapped — which the cells' diagonals are swapped onto.
+      for (final sideBySide in [true, false]) {
+        CanvasPoint at(double x, double y) => sideBySide
+            ? CanvasPoint(x: x, y: y)
+            : CanvasPoint(x: y, y: x);
+        final nodes = [
+          [at(0, 0), at(10, 0), at(20, 0)],
+          [at(0, 10), at(10, 20), at(20, 10)],
+        ];
+        final twoCells = MeshCarry(
+          (
+            base: sideBySide
+                ? (left: 0, top: 0, width: 20, height: 10)
+                : (left: 0, top: 0, width: 10, height: 20),
+            columns: sideBySide ? 2 : 1,
+            rows: sideBySide ? 1 : 2,
+            points: sideBySide
+                ? [for (final row in nodes) ...row]
+                : [
+                    for (var column = 0; column < 3; column += 1)
+                      for (final row in nodes) row[column],
+                  ],
+          ),
+          mode: mode,
+        );
+
+        final through = twoCells.regionThrough(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape([at(2, 6), at(18, 6), at(18, 7), at(2, 7)]),
+          ),
+        );
+
+        // The long edges cut on the side (10 along) and on each cell's
+        // diagonal (4 and 14 along the first, 13 and 3 along the second).
+        final want = [
+          at(2, 6),
+          at(4, 6),
+          at(10, 12),
+          at(14, 12),
+          at(18, 8),
+          at(18, 9),
+          at(13, 14),
+          at(10, 14),
+          at(3, 7),
+          at(2, 7),
+        ];
+        final [ring] = ringsOf(through);
+        expect(ring.length, want.length, reason: '$sideBySide: $ring');
+        for (final (index, point) in want.indexed) {
+          expect(
+            apart(ring[index], point),
+            lessThan(1e-9),
+            reason: '$sideBySide: $ring',
+          );
+        }
+      }
+    });
+
+    test('🚨past the box a selection goes where its pixels go — on the way '
+        'the edge was going (H41)', () {
+      // A block beside each side of the box, in the half of a cell past it
+      // that the pulled node leads on to.
+      final spots = [
+        CanvasPoint(x: 60, y: 160), // left of it
+        CanvasPoint(x: 160, y: 60), // above
+        CanvasPoint(x: 240, y: 140), // right of it
+        CanvasPoint(x: 140, y: 240), // below
+      ];
+      final carried = bulge.through(
+        stampOver(left: 0, top: 0, width: 300, height: 300, ink: spots),
+      );
+      final selected = [
+        for (final spot in spots) middleOf(bulge.regionThrough(blockAt(spot))),
+      ];
+
+      for (final (at, spot) in spots.indexed) {
+        expect(
+          apart(selected[at], spot),
+          greaterThan(1),
+          reason: '⛔premise: the bulge goes on past the box at $spot',
+        );
+        expect(
+          apart(inkNear(carried, selected[at], reach: 6), selected[at]),
+          lessThan(0.6),
+          reason: 'the ink of $spot and its selection',
+        );
+      }
+    });
+
+    // Past the box a point is carried by the cell it is in, and a grid
+    // grown by one cell carries the second cell's points by the first's —
+    // so the grid is grown by ALL of the outline, as a stamp's is by all of
+    // the stamp.
+    test('🚨an outline reaching two cells past the box carries its far '
+        'side where a block there carries it', () {
+      CanvasSelectionRegion ring(List<(num, num)> points) =>
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape([
+              for (final (x, y) in points)
+                CanvasPoint(x: x.toDouble(), y: y.toDouble()),
+            ]),
+          );
+      // The box is 100..200 and its cells are 50: on each side an outline
+      // from 7 past it (the first cell) to 88 past it (the second), 6
+      // across, its second point its far corner — and a block at the far
+      // end whose outline starts at that corner, as the first point of a
+      // carried outline is its first point carried.
+      final sides = {
+        'right of it': (
+          outline: [(207, 137), (288, 137), (288, 143), (207, 143)],
+          block: [(288, 137), (288, 143), (282, 143), (282, 137)],
+        ),
+        'left of it': (
+          outline: [(93, 137), (12, 137), (12, 143), (93, 143)],
+          block: [(12, 137), (12, 143), (18, 143), (18, 137)],
+        ),
+        'below': (
+          outline: [(137, 207), (137, 288), (143, 288), (143, 207)],
+          block: [(137, 288), (143, 288), (143, 282), (137, 282)],
+        ),
+        'above': (
+          outline: [(137, 93), (137, 12), (143, 12), (143, 93)],
+          block: [(137, 12), (143, 12), (143, 18), (137, 18)],
+        ),
+      };
+
+      for (final MapEntry(key: side, value: (:outline, :block))
+          in sides.entries) {
+        final [carried] = ringsOf(bulge.regionThrough(ring(outline)));
+        final want = ringsOf(bulge.regionThrough(ring(block))).single.first;
+
+        expect(
+          carried.map((point) => apart(point, want)).reduce(math.min),
+          lessThan(1e-9),
+          reason: 'the far corner of the outline $side goes where the same '
+              'corner of a block there goes',
+        );
+      }
     });
   });
 

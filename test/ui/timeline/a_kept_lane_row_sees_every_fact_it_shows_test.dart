@@ -213,6 +213,27 @@ void main() {
       });
     });
 
+    // Each read asks for a group of the row's own (`groupsOpenOn`).
+    test('🚨a group twirled open on another row is no fact — the same '
+        'lanes', () {
+      final kept = KeptTimelineLanes();
+      final before = kept.of(
+        rowOf(otherId),
+        session: session,
+        expandedGroupKeys: open,
+      );
+      final twirled = {laneGroupKey(celId, transformGroupHeaderLane.laneId)};
+
+      expect(
+        identical(
+          kept.of(rowOf(otherId), session: session, expandedGroupKeys: twirled),
+          before,
+        ),
+        isTrue,
+        reason: 'a group twirl would draw the lane rows of every row again',
+      );
+    });
+
     test('the rows of the cut', () async {
       final layer = rowOf(otherId);
       await readAgainFor('the rows', otherId, () async {
@@ -221,15 +242,54 @@ void main() {
       });
     });
 
+    // The same layer through another session: the lanes read their values
+    // through the session they were built in (`valueSourceAt`).
     test('the session', () async {
+      final layer = rowOf(otherId);
       final other = sessionOf();
       addTearDown(other.dispose);
       await readAgainFor('the session', otherId, () async {
-        return (
-          layer: other.layers.singleWhere((layer) => layer.id == otherId),
-          session: other,
-          open: open,
+        return (layer: layer, session: other, open: open);
+      });
+    });
+
+    // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail
+    // (11-21): the rows are read for the attach question and an effect's
+    // row parameter alone (`rowsLanesRead`) — ↩️held as the list, a twirl,
+    // which hands them over anew, read every other row's lanes again.
+    test('🚨another row twirled is no fact the lanes of a row read — the same '
+        'lanes', () {
+      final kept = KeptTimelineLanes();
+      final before = kept.of(
+        rowOf(otherId),
+        session: session,
+        expandedGroupKeys: open,
+      );
+      final rows = session.layers;
+      session.layerSwitches.toggleLayerLanes(celId);
+      expect(
+        identical(session.layers, rows),
+        isFalse,
+        reason: '⛔premise: the twirl hands the rows over anew',
+      );
+
+      expect(
+        identical(
+          kept.of(rowOf(otherId), session: session, expandedGroupKeys: open),
+          before,
+        ),
+        isTrue,
+        reason: 'every twirl would draw the lane rows of every other row again',
+      );
+    });
+
+    test('the canvas the camera row is valued on', () async {
+      final layer = rowOf(cameraId);
+      await readAgainFor('the canvas', cameraId, () async {
+        session.cutVerbs.resizeActiveCutCanvas(
+          const CanvasSize(width: 320, height: 180),
         );
+        return (layer: layer, session: session, open: open);
       });
     });
 

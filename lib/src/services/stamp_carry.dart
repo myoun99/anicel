@@ -1,8 +1,11 @@
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
 
+import '../core/point_bounds.dart';
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
 import 'canvas_selection.dart';
+import 'canvas_selection_region.dart';
 import 'resample/resample_kernel.dart';
 
 /// 🚨★★★**WHAT AN OPEN BOX DOES TO A STAMP, AS A MAPPING OF THE CANVAS.**
@@ -42,6 +45,18 @@ sealed class StampCarry {
   /// narrows the work to what a PREVIEW shows; a landing asks for all of it,
   /// up to [within].
   BrushDab through(BrushDab stamp, {SelectionVisibleRect? visible});
+
+  /// [region] — standing on the canvas — through the mapping: a selection
+  /// goes where its pixels go ([through]).
+  ///
+  /// 🚨ONE CODE for the pixels and the selection (card a-mesh-warp-turns-
+  /// the-selection-into-its-box, 2026-11-21). ↩️The layer asked each warp
+  /// of the selection itself, twice — as it confirmed and as its ants were
+  /// drawn — and the mesh's answer was its grid's outer ring (R20-D3,
+  /// 07-14, nobody's order): a lasso warped by the mesh became the box it
+  /// stood in, holding pixels the mesh never moved, where the quad carried
+  /// it whole.
+  CanvasSelectionRegion regionThrough(CanvasSelectionRegion region);
 }
 
 /// Move · scale · rotate about the box's pivot.
@@ -53,6 +68,10 @@ final class AffineCarry extends StampCarry {
   @override
   BrushDab through(BrushDab stamp, {SelectionVisibleRect? visible}) =>
       transformStampDab(stamp, affine, mode: mode, visible: visible ?? within);
+
+  @override
+  CanvasSelectionRegion regionThrough(CanvasSelectionRegion region) =>
+      region.mapped(affine.apply);
 }
 
 /// A free quad (퍼스): the box's corners [base] went to [corners]
@@ -99,6 +118,16 @@ final class QuadCarry extends StampCarry {
       visible: visible ?? within,
     );
   }
+
+  /// A quad too degenerate to warp through moves no pixel ([through]), and
+  /// so no selection.
+  @override
+  CanvasSelectionRegion regionThrough(CanvasSelectionRegion region) {
+    final h = solveHomography(base, corners);
+    return h == null
+        ? region
+        : region.mapped((point) => applyHomography(h, point));
+  }
 }
 
 /// A mesh's grid: `columns × rows` cells over the rect [base], its nodes at
@@ -138,7 +167,7 @@ final class MeshCarry extends StampCarry {
     if (moved != null) {
       return moved;
     }
-    final over = _over(stamp);
+    final over = _over(stampRectOf(stamp));
     return transformStampDabMesh(
       stamp,
       columns: over.columns,
@@ -150,7 +179,29 @@ final class MeshCarry extends StampCarry {
     );
   }
 
-  /// The grid, grown by whole cells until it covers [stamp]'s rect.
+  /// Each outline of [region] through the grid's cells, as [through]
+  /// carries a pixel: a triangle of a cell at a time, split by its
+  /// diagonal from top right to bottom left, the grid grown as a stamp's is
+  /// past the box ([_over]). An edge is cut where it crosses a cell's side
+  /// or diagonal — each triangle maps straight lines to straight lines, and
+  /// the grid bends them where two meet.
+  @override
+  CanvasSelectionRegion regionThrough(CanvasSelectionRegion region) =>
+      region.ringsThrough((ring) {
+        final over = _over(_boundsOf(ring));
+        return [
+          for (var at = 0; at < ring.length; at += 1)
+            for (final point in _cutWhereItBends(
+              over,
+              ring[at],
+              ring[(at + 1) % ring.length],
+            ))
+              _pointThrough(over, point),
+        ];
+      });
+
+  /// The grid, grown by whole cells until it covers the rect [own] — a
+  /// stamp's, or a selection's outline's.
   ///
   /// 🚨A MESH IS DEFINED ON ITS BOX AND NOWHERE ELSE, and another cel's
   /// picture may reach past the box — it frames the STANDING cel's ink
@@ -163,8 +214,7 @@ final class MeshCarry extends StampCarry {
   /// 변형안먹힌 부분이 있었어」).
   ///
   /// A stamp the box already covers gets the grid back as it is.
-  MeshGrid _over(BrushDab stamp) {
-    final own = stampRectOf(stamp);
+  MeshGrid _over(StampRect? own) {
     final cellWidth = base.width / columns;
     final cellHeight = base.height / rows;
     int cellsPast(double overhang, double cell) =>
@@ -227,6 +277,90 @@ final class MeshCarry extends StampCarry {
     }
     return CanvasPoint(x: x, y: y);
   }
+}
+
+/// The rect [ring]'s points span; null where it has none.
+StampRect? _boundsOf(List<CanvasPoint> ring) {
+  if (ring.isEmpty) {
+    return null;
+  }
+  final bounds = pointsBounds([
+    for (final point in ring) Offset(point.x, point.y),
+  ]);
+  return (
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+  );
+}
+
+/// [from] and the points past it on the way to [to] where the edge crosses
+/// a side or a diagonal of [grid]'s cells, in order — [to] itself left to
+/// the edge after.
+List<CanvasPoint> _cutWhereItBends(
+  MeshGrid grid,
+  CanvasPoint from,
+  CanvasPoint to,
+) {
+  final (u0, v0) = _cellUnits(grid, from);
+  final (u1, v1) = _cellUnits(grid, to);
+  final cuts = <double>{
+    ..._crossings(u0, u1),
+    ..._crossings(v0, v1),
+    ..._crossings(u0 + v0, u1 + v1),
+  }.toList()..sort();
+  return [
+    from,
+    for (final t in cuts)
+      CanvasPoint(
+        x: from.x + t * (to.x - from.x),
+        y: from.y + t * (to.y - from.y),
+      ),
+  ];
+}
+
+/// Where between 0 and 1, exclusive, a value going from [from] to [to]
+/// passes a whole number.
+Iterable<double> _crossings(double from, double to) sync* {
+  if (from == to) {
+    return;
+  }
+  final (low, high) = from < to ? (from, to) : (to, from);
+  for (var whole = low.floor() + 1; whole < high; whole += 1) {
+    yield (whole - from) / (to - from);
+  }
+}
+
+/// [point] in [grid]'s cells: a cell a unit each way from its base's top
+/// left.
+(double, double) _cellUnits(MeshGrid grid, CanvasPoint point) => (
+  (point.x - grid.base.left) / (grid.base.width / grid.columns),
+  (point.y - grid.base.top) / (grid.base.height / grid.rows),
+);
+
+/// [point] through the triangle of [grid]'s cell it stands in — (top left,
+/// top right, bottom left) on the top left side of the diagonal, (top
+/// right, bottom right, bottom left) past it, as `transformStampDabMesh`
+/// lays them: its place in the cell's rest triangle, at the same weights
+/// of the nodes where they went.
+CanvasPoint _pointThrough(MeshGrid grid, CanvasPoint point) {
+  final (u, v) = _cellUnits(grid, point);
+  final column = u.floor().clamp(0, grid.columns - 1);
+  final row = v.floor().clamp(0, grid.rows - 1);
+  final (across, down) = (u - column, v - row);
+  CanvasPoint at(int c, int r) => grid.points[r * (grid.columns + 1) + c];
+  final (topRight, bottomLeft) = (at(column + 1, row), at(column, row + 1));
+  final (corner, weight) = across + down <= 1
+      ? (at(column, row), 1 - across - down)
+      : (at(column + 1, row + 1), across + down - 1);
+  final (toRight, toBottom) = across + down <= 1
+      ? (across, down)
+      : (1 - down, 1 - across);
+  return CanvasPoint(
+    x: weight * corner.x + toRight * topRight.x + toBottom * bottomLeft.x,
+    y: weight * corner.y + toRight * topRight.y + toBottom * bottomLeft.y,
+  );
 }
 
 /// A point through the homography [h] ([solveHomography]'s nine numbers);

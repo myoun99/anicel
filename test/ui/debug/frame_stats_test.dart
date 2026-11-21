@@ -2,12 +2,15 @@ import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
 
 import 'package:anicel/main.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/pointer_clock.dart';
+import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// Repaints whenever its notifier ticks, so a test can make a bake happen
@@ -35,6 +38,7 @@ FrameTiming _frame({
   required double uiMs,
   required double rasterMs,
   double vsyncToBuildMs = 0,
+  double buildToRasterMs = 0,
   int atMs = 0,
   int layerCacheCount = 0,
   int layerCacheBytes = 0,
@@ -45,7 +49,7 @@ FrameTiming _frame({
   final vsyncStart = us(atMs.toDouble());
   final buildStart = vsyncStart + us(vsyncToBuildMs);
   final buildFinish = buildStart + us(uiMs);
-  final rasterStart = buildFinish;
+  final rasterStart = buildFinish + us(buildToRasterMs);
   final rasterFinish = rasterStart + us(rasterMs);
   return FrameTiming(
     vsyncStart: vsyncStart,
@@ -104,6 +108,17 @@ void main() {
         isNull,
         reason: 'a stale window read as a live one would be worse than none',
       );
+    });
+
+    test('turning it off forgets the pointer packets timed while it was '
+        'up', () {
+      MeasurementMode.frameStats.value = true;
+      PointerClock.handled(points: 2, micros: 300);
+
+      MeasurementMode.frameStats.value = false;
+
+      expect(PointerClock.packetsCounted, 0);
+      expect(PointerClock.packetMicros, isEmpty);
     });
   });
 
@@ -293,26 +308,54 @@ void main() {
       );
     });
 
-    test('the screen line is the engine screens\' newest frames, from their '
-        'draw to being put up', () {
+    test('what a frame stood for before its build and before its raster is '
+        'read apart from both', () {
+      // Each wait in an order of its own, so one read for the other shows.
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, vsyncToBuildMs: 1, buildToRasterMs: 7),
+        _frame(uiMs: 1, rasterMs: 1, vsyncToBuildMs: 3, buildToRasterMs: 5),
+        _frame(uiMs: 1, rasterMs: 1, vsyncToBuildMs: 2, buildToRasterMs: 9),
+      ]);
+      FrameStats.publish();
+
+      final stats = FrameStats.latest.value!;
+      expect([stats.buildWaitP50, stats.buildWaitP95], [2.0, 3.0]);
+      expect([stats.rasterWaitP50, stats.rasterWaitP95], [7.0, 9.0]);
+      expect([stats.uiP50, stats.rasterP50], [1.0, 1.0]);
+    });
+
+    test('the screen lines are the engine screens\' newest frames — from '
+        'their draw to being put up, and part by part', () {
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
-      for (final micros in [4000, 20000, 6000]) {
-        ScreenTexture.debugWentUp(micros);
+      // Each part largest in a frame of its own.
+      for (final up in const [
+        (draw: 1000, finish: 4000, show: 2000),
+        (draw: 3000, finish: 20000, show: 500),
+        (draw: 2000, finish: 6000, show: 9000),
+      ]) {
+        ScreenTexture.debugWentUp(up);
       }
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       FrameStats.publish();
 
       final stats = FrameStats.latest.value!;
-      expect(stats.screenUpP50, 6.0);
-      expect(stats.screenUpP95, 20.0);
+      expect(
+        [stats.screenUpP50, stats.screenUpP95],
+        [17.0, 23.5],
+        reason: 'a frame\'s way up is its three parts together',
+      );
+      expect([stats.screenDrawP50, stats.screenDrawP95], [2.0, 3.0]);
+      expect([stats.screenFinishP50, stats.screenFinishP95], [6.0, 20.0]);
+      expect([stats.screenShowP50, stats.screenShowP95], [2.0, 9.0]);
     });
 
-    test('the screens\' rate is a slope over the interval between two '
+    test('the screens\' rates are slopes over the interval between two '
         'publications, as the bakes\' is', () {
+      const up = (draw: 0, finish: 1000, show: 0);
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
-      ScreenTexture.debugWentUp(1000);
+      ScreenTexture.debugWentUp(up, behind: true);
       // A window of FOUR SECONDS, published twice a QUARTER SECOND apart.
       FrameStats.debugFeed(<FrameTiming>[
         for (var ms = 0; ms <= 4000; ms += 40)
@@ -320,13 +363,16 @@ void main() {
       ]);
       FrameStats.publish();
       expect(
-        FrameStats.latest.value!.screensUpPerSecond,
-        0,
+        [
+          FrameStats.latest.value!.screensUpPerSecond,
+          FrameStats.latest.value!.screensBehindPerSecond,
+        ],
+        [0, 0],
         reason: 'the first publication has no reading before it',
       );
 
       for (var i = 0; i < 5; i += 1) {
-        ScreenTexture.debugWentUp(1000);
+        ScreenTexture.debugWentUp(up, behind: i < 2);
       }
       FrameStats.debugFeed(<FrameTiming>[
         _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
@@ -337,6 +383,56 @@ void main() {
         FrameStats.latest.value!.screensUpPerSecond,
         closeTo(5 / 0.25, 0.01),
         reason: 'five went up in the quarter second between the two',
+      );
+      expect(
+        FrameStats.latest.value!.screensBehindPerSecond,
+        closeTo(2 / 0.25, 0.01),
+        reason: 'two of them behind what was asked for',
+      );
+    });
+
+    test('the pointer line is the newest packets and their slopes — the '
+        'points, the packets and the time they took a second', () {
+      PointerClock.handled(points: 1, micros: 900);
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var ms = 0; ms <= 4000; ms += 40)
+          _frame(uiMs: 1, rasterMs: 1, atMs: ms),
+      ]);
+      FrameStats.publish();
+      final first = FrameStats.latest.value!;
+      expect(
+        [
+          first.pointsPerSecond,
+          first.packetsPerSecond,
+          first.pointerMillisPerSecond,
+        ],
+        [0, 0, 0],
+        reason: 'the first publication has no reading before it',
+      );
+
+      // Five packets of twelve points, five milliseconds in all.
+      for (final (points, micros) in const [
+        (2, 300),
+        (4, 2500),
+        (1, 100),
+        (3, 1700),
+        (2, 400),
+      ]) {
+        PointerClock.handled(points: points, micros: micros);
+      }
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
+      ]);
+      FrameStats.publish();
+
+      final stats = FrameStats.latest.value!;
+      expect(stats.packetsPerSecond, closeTo(5 / 0.25, 0.01));
+      expect(stats.pointsPerSecond, closeTo(12 / 0.25, 0.01));
+      expect(stats.pointerMillisPerSecond, closeTo(5 / 0.25, 0.01));
+      expect(
+        [stats.pointerP50, stats.pointerP95],
+        [0.9, 2.5],
+        reason: 'over the six packets kept: 100 300 400 900 1700 2500 µs',
       );
     });
 
@@ -557,6 +653,115 @@ void main() {
       expect(find.textContaining('SCREEN'), findsOneWidget);
       expect(find.textContaining('layer   cache 3'), findsOneWidget);
       expect(find.textContaining('picture cache 0'), findsOneWidget);
+    });
+
+    testWidgets('prints what a frame waited for, a screen\'s frame part by '
+        'part, and the pointer packets', (tester) async {
+      MeasurementMode.frameStats.value = true;
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      ScreenTexture.debugWentUp((draw: 1100, finish: 22200, show: 3300));
+      PointerClock.handled(points: 3, micros: 4400);
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(
+          uiMs: 0.4,
+          rasterMs: 0.6,
+          vsyncToBuildMs: 5.5,
+          buildToRasterMs: 7.7,
+        ),
+      ]);
+      FrameStats.publish();
+
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      await tester.pump();
+
+      // Each figure once, on the line that names it.
+      for (final (line, figure) in const [
+        (' waits  build', '5.5'),
+        (' waits  build', 'raster p50   7.7'),
+        ('SCREEN', '26.6'),
+        ('SCREEN', 'behind'),
+        (' draw', '1.1'),
+        (' finish', '22.2'),
+        (' show', '3.3'),
+        ('POINTER', '4.4'),
+        ('POINTER', 'pts/s'),
+      ]) {
+        expect(
+          find.textContaining(RegExp('^${RegExp.escape(line)}.*$figure')),
+          findsOneWidget,
+          reason: '$line … $figure',
+        );
+      }
+      expect(
+        find.textContaining(RegExp('copied|direct')),
+        findsNothing,
+        reason: 'no window was opened: every platform but Android',
+      );
+    });
+
+    testWidgets('says whether a window\'s frame is copied onto its image, '
+        'on the line of its show', (tester) async {
+      MeasurementMode.frameStats.value = true;
+      addTearDown(() => ScreenTexture.debugWindowsAre(copied: null));
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+
+      for (final (copied, said) in const [(true, 'copied'), (false, 'direct')]) {
+        ScreenTexture.debugWindowsAre(copied: copied);
+        FrameStats.publish();
+        await tester.pump();
+
+        expect(
+          find.textContaining(RegExp('^ show .*  $said\$')),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets('says what the newest frame was drawn as — its texels, the '
+        'display\'s scale and the mode —, on the line of its draw', (
+      tester,
+    ) async {
+      MeasurementMode.frameStats.value = true;
+      addTearDown(ScreenAsked.debugForget);
+      ScreenAsked.debugForget();
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.textContaining(RegExp(r'^ draw .*\d\s*$')),
+        findsOneWidget,
+        reason: 'no screen was shown: the line ends on its figures',
+      );
+
+      for (final (asked, said) in const [
+        (
+          (columns: 2560, rows: 1536, scale: 0.9712, mode: GpuSampling.blend),
+          '2560x1536  x0.97  blend',
+        ),
+        (
+          (columns: 640, rows: 1408, scale: 1.88, mode: GpuSampling.nearest),
+          '640x1408  x1.88  nearest',
+        ),
+      ]) {
+        ScreenAsked.shown(asked);
+        FrameStats.publish();
+        await tester.pump();
+
+        expect(
+          find.textContaining(RegExp('^ draw .*  ${RegExp.escape(said)}\$')),
+          findsOneWidget,
+          reason: said,
+        );
+      }
     });
   });
 

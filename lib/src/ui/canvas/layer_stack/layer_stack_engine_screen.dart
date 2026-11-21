@@ -174,6 +174,7 @@ final class EngineStackScreen {
     final (cornerX, cornerY) = corner;
     final (a, b) = (camera[0] * per, camera[4] * per);
     final (c, d) = (camera[1] * per, camera[5] * per);
+    final mode = gpuSamplingOf(filterQualityForDisplayScale(scale));
     screen.show(
       target,
       inverse: [
@@ -184,9 +185,11 @@ final class EngineStackScreen {
         d,
         camera[13] - c * cornerX - d * cornerY,
       ],
-      sampling: gpuSamplingOf(filterQualityForDisplayScale(scale)),
+      sampling: mode,
       rect: (0, 0, columns, rows),
     );
+    // For the frame statistics ([ScreenAsked]).
+    ScreenAsked.shown((columns: columns, rows: rows, scale: scale, mode: mode));
   }
 
   /// What a frame over the world [extent] will keep: a tile for each it

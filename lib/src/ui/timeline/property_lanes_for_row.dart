@@ -3,6 +3,7 @@ import '../../models/canvas_size.dart';
 import '../../models/fx_basis.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_effect.dart'
     show effectParameterValueAtTime, effectStandAt, effectStandPose;
 import '../../models/layer_kind.dart';
@@ -11,6 +12,7 @@ import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
 import '../../services/fx_plugins/fx_plugin_outcomes.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
+import 'memo_token.dart' show ByList, BySet;
 import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
     show referenceGroupHeader, referenceGroupLaneId, referencePropertyLanes;
@@ -51,7 +53,8 @@ import 'transform_lane_policy.dart'
 ///    without a value.
 ///
 /// [rows] are the rows the attach question is asked among, and the ones
-/// an effect's row parameter may name. No session is read here, so a rail
+/// an effect's row parameter may name — what of them is read, a host keeps
+/// its lanes by ([rowsLanesRead]). No session is read here, so a rail
 /// that has none — the storyboard panel — asks it too; and for the same
 /// reason [hasPlugin] comes in — whether this device has the plugin an
 /// effect is of, the app's one list that every rail reads alike
@@ -366,3 +369,34 @@ List<PropertyLaneRow> propertyLanesForRow({
   final at = source(frame);
   return (layer: at.layer, time: at.frame + (time - frame));
 }
+
+/// What [propertyLanesForRow] reads of its rows, as a host keeps the lanes
+/// by (`KeptLaneLists`): each row's id, name, kind, folder and the row it
+/// is attached to, in their order — what the attach question
+/// ([attachRowWearsBaseComposite]) and an effect's row parameter
+/// (`effectPropertyLanes`' `cutRows`) read of them.
+///
+/// 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail
+/// (2026-11-21): ↩️each host kept the lanes by the list itself, and a twirl
+/// — the rows handed over anew, one row's `lanesExpanded` the change —
+/// read every other row's lanes again: folding S1 on the conte drew S2's
+/// lane labels again, and they let their images go.
+///
+/// ⛔Every field either read takes of a row: one added there and left out
+/// here is a lane kept across a change of it.
+Object rowsLanesRead(List<Layer> rows) => ByList([
+  for (final row in rows)
+    (row.id, row.name, row.kind, row.folderId, row.attachedToLayerId),
+]);
+
+/// The groups open on [row] of [expandedGroupKeys], as a host keeps the
+/// lanes by: all [propertyLanesForRow] reads of them — each read asks for
+/// a group of the row's own ([laneGroupKey]).
+///
+/// 🔬Same card, the same day: ↩️kept by the set itself, a group twirled
+/// open on one row — the set handed over anew — read every row's lanes
+/// again.
+Object groupsOpenOn(LayerId row, Set<String> expandedGroupKeys) => BySet({
+  for (final key in expandedGroupKeys)
+    if (parseLaneGroupKey(key)?.layerId == row) key,
+});

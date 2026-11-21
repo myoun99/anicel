@@ -7,6 +7,8 @@ import '../../native/screen_texture.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
 import 'measurement_mode.dart';
+import 'pointer_clock.dart';
+import 'screen_asked.dart';
 
 /// One publication of the frame clock: percentiles over a rolling window,
 /// plus the two numbers nobody in this app had ever read.
@@ -37,9 +39,27 @@ class FrameStatsSnapshot {
     required this.uiWorst,
     required this.latencyP50,
     required this.latencyP95,
+    required this.buildWaitP50,
+    required this.buildWaitP95,
+    required this.rasterWaitP50,
+    required this.rasterWaitP95,
     required this.screenUpP50,
     required this.screenUpP95,
     required this.screensUpPerSecond,
+    required this.screensBehindPerSecond,
+    required this.screenDrawP50,
+    required this.screenDrawP95,
+    required this.screenFinishP50,
+    required this.screenFinishP95,
+    required this.screenShowP50,
+    required this.screenShowP95,
+    required this.windowsAreCopied,
+    required this.screenAsked,
+    required this.pointsPerSecond,
+    required this.packetsPerSecond,
+    required this.pointerP50,
+    required this.pointerP95,
+    required this.pointerMillisPerSecond,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
@@ -84,6 +104,22 @@ class FrameStatsSnapshot {
   final double latencyP50;
   final double latencyP95;
 
+  /// What of [latencyP50] is neither build nor raster: how long a frame
+  /// stood before its build began (`FrameTiming.vsyncOverhead`) — the
+  /// thread that builds the app's frames busy with something else: pointer
+  /// packets ([pointerMillisPerSecond]), a screen's draw told finished and
+  /// shown ([screenShowP50]) —, and how long it stood built before its
+  /// raster began — the raster thread still on the frame before.
+  ///
+  /// 🔬Build 1095 on the Galaxy Tab, panning (유저 2026-11-21, card
+  /// the-galaxy-tab-canvas-went-slow-on-build-1095): latency p50 30.3 ms
+  /// against raster 9.5 and build 2.6 — some 18 ms a frame in neither,
+  /// and no line said which of these two it was.
+  final double buildWaitP50;
+  final double buildWaitP95;
+  final double rasterWaitP50;
+  final double rasterWaitP95;
+
   /// The engine's screens — the canvas, the frame grids: how long their
   /// newest frames took from their draw to being put up
   /// (`ScreenTexture.upMicros`), and how many were put up a second.
@@ -104,6 +140,43 @@ class FrameStatsSnapshot {
   final double screenUpP50;
   final double screenUpP95;
   final double screensUpPerSecond;
+
+  /// How many of the frames put up a second went up with a newer one asked
+  /// for meanwhile (`ScreenTexture.upsBehindCounted`): near
+  /// [screensUpPerSecond], the screens are what holds the picture back;
+  /// near none, they put up all that was asked of them.
+  final double screensBehindPerSecond;
+
+  /// [screenUpP50] part by part (`ScreenUp`): the draw — on Android the
+  /// wait for the window's next image is in it —, the GPU finishing the
+  /// frame and this isolate hearing so, and the show — on Android the
+  /// present, with a copy of the whole screen where [windowsAreCopied].
+  /// The draw and the show are on the thread that builds the app's frames.
+  final double screenDrawP50;
+  final double screenDrawP95;
+  final double screenFinishP50;
+  final double screenFinishP95;
+  final double screenShowP50;
+  final double screenShowP95;
+
+  /// `ScreenTexture.windowsAreCopied`: null where no window was opened —
+  /// every platform but Android.
+  final bool? windowsAreCopied;
+
+  /// What the newest show of a canvas's screen asked of the engine
+  /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and
+  /// in which mode. Null till a screen is shown.
+  final ScreenAsk? screenAsked;
+
+  /// The pointer packets the platform handed over (`PointerClock`): the
+  /// points and the packets a second, how long a packet took to be dealt
+  /// with, and how many milliseconds of each second went to them — on the
+  /// thread that builds the app's frames, between its frames.
+  final double pointsPerSecond;
+  final double packetsPerSecond;
+  final double pointerP50;
+  final double pointerP95;
+  final double pointerMillisPerSecond;
 
   /// The engine's retained-raster accounting, and the reason this class
   /// exists.
@@ -211,7 +284,7 @@ class FrameStatsSnapshot {
 /// It is also the honest instrument in a way the overlay cannot be: the
 /// overlay is two full-width bar graphs that change every single frame,
 /// composited into the very scene whose raster time it reports, so it is
-/// inside its own number. This draws six lines of text at 4 Hz behind a
+/// inside its own number. This draws a column of text at 4 Hz behind a
 /// repaint boundary. When the two disagree, believe this one.
 ///
 /// Registration lives in `main()` and NOT in the merged
@@ -259,9 +332,11 @@ abstract final class FrameStats {
   static int _lastCaptureTotal = -1;
   static int? _lastCaptureVsync;
 
-  /// The screens' count of frames put up at the previous publication —
-  /// read at [_lastCaptureVsync], as the bakes' is.
-  static int _lastUpsCounted = -1;
+  /// What the screens and the pointer clock had counted at the previous
+  /// publication — read at [_lastCaptureVsync], as the bakes' total is —,
+  /// and null where there is none before.
+  static ({int ups, int upsBehind, int packets, int points, int pointerMicros})?
+  _lastCounted;
 
   static final List<FrameTiming> _window = <FrameTiming>[];
   static bool _installed = false;
@@ -348,7 +423,8 @@ abstract final class FrameStats {
     // another test) and report a rate that never happened.
     _lastCaptureTotal = -1;
     _lastCaptureVsync = null;
-    _lastUpsCounted = -1;
+    _lastCounted = null;
+    PointerClock.forget();
     latest.value = null;
   }
 
@@ -378,17 +454,19 @@ abstract final class FrameStats {
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
 
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
-    final raster = <int>[];
-    final ui = <int>[];
-    final latency = <int>[];
-    for (final timing in window) {
-      raster.add(timing.rasterDuration.inMicroseconds);
-      ui.add(timing.buildDuration.inMicroseconds);
-      latency.add(timing.totalSpan.inMicroseconds);
-    }
-    raster.sort();
-    ui.sort();
-    latency.sort();
+    // A figure of each of the window's frames, in microseconds, sorted for
+    // its percentiles.
+    List<int> sorted(int Function(FrameTiming timing) micros) =>
+        [for (final timing in window) micros(timing)]..sort();
+    final raster = sorted((timing) => timing.rasterDuration.inMicroseconds);
+    final ui = sorted((timing) => timing.buildDuration.inMicroseconds);
+    final latency = sorted((timing) => timing.totalSpan.inMicroseconds);
+    final buildWait = sorted((timing) => timing.vsyncOverhead.inMicroseconds);
+    final rasterWait = sorted(
+      (timing) =>
+          timing.timestampInMicroseconds(FramePhase.rasterStart) -
+          timing.timestampInMicroseconds(FramePhase.buildFinish),
+    );
 
     // The window's wall span, taken from the frame timestamps rather
     // than a clock read: they share one epoch, and using them keeps the
@@ -430,13 +508,27 @@ abstract final class FrameStats {
         ? 0.0
         : (captures - previousTotal) / rateSeconds;
 
-    final ups = [...ScreenTexture.upMicros]..sort();
-    final upsCounted = ScreenTexture.upsCounted;
-    final previousUps = _lastUpsCounted;
-    _lastUpsCounted = upsCounted;
-    final screensUpPerSecond = previousUps < 0 || rateSeconds <= 0
-        ? 0.0
-        : (upsCounted - previousUps) / rateSeconds;
+    final ups = ScreenTexture.upMicros;
+    final upWholes = [for (final up in ups) up.draw + up.finish + up.show]
+      ..sort();
+    final upDraws = [for (final up in ups) up.draw]..sort();
+    final upFinishes = [for (final up in ups) up.finish]..sort();
+    final upShows = [for (final up in ups) up.show]..sort();
+    final packets = [...PointerClock.packetMicros]..sort();
+
+    // Counters all, read as the bakes' total is: each one's slope over the
+    // interval since the last publication.
+    final counted = (
+      ups: ScreenTexture.upsCounted,
+      upsBehind: ScreenTexture.upsBehindCounted,
+      packets: PointerClock.packetsCounted,
+      points: PointerClock.pointsCounted,
+      pointerMicros: PointerClock.microsCounted,
+    );
+    final before = _lastCounted;
+    _lastCounted = counted;
+    double aSecond(int now, int? then) =>
+        then == null || rateSeconds <= 0 ? 0.0 : (now - then) / rateSeconds;
 
     return FrameStatsSnapshot(
       frames: window.length,
@@ -449,9 +541,28 @@ abstract final class FrameStats {
       uiWorst: _percentileMillis(ui, 1.0),
       latencyP50: _percentileMillis(latency, 0.50),
       latencyP95: _percentileMillis(latency, 0.95),
-      screenUpP50: _percentileMillis(ups, 0.50),
-      screenUpP95: _percentileMillis(ups, 0.95),
-      screensUpPerSecond: screensUpPerSecond,
+      buildWaitP50: _percentileMillis(buildWait, 0.50),
+      buildWaitP95: _percentileMillis(buildWait, 0.95),
+      rasterWaitP50: _percentileMillis(rasterWait, 0.50),
+      rasterWaitP95: _percentileMillis(rasterWait, 0.95),
+      screenUpP50: _percentileMillis(upWholes, 0.50),
+      screenUpP95: _percentileMillis(upWholes, 0.95),
+      screensUpPerSecond: aSecond(counted.ups, before?.ups),
+      screensBehindPerSecond: aSecond(counted.upsBehind, before?.upsBehind),
+      screenDrawP50: _percentileMillis(upDraws, 0.50),
+      screenDrawP95: _percentileMillis(upDraws, 0.95),
+      screenFinishP50: _percentileMillis(upFinishes, 0.50),
+      screenFinishP95: _percentileMillis(upFinishes, 0.95),
+      screenShowP50: _percentileMillis(upShows, 0.50),
+      screenShowP95: _percentileMillis(upShows, 0.95),
+      windowsAreCopied: ScreenTexture.windowsAreCopied,
+      screenAsked: ScreenAsked.last,
+      pointsPerSecond: aSecond(counted.points, before?.points),
+      packetsPerSecond: aSecond(counted.packets, before?.packets),
+      pointerP50: _percentileMillis(packets, 0.50),
+      pointerP95: _percentileMillis(packets, 0.95),
+      pointerMillisPerSecond:
+          aSecond(counted.pointerMicros, before?.pointerMicros) / 1000,
       layerCacheCount: last.layerCacheCount,
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,

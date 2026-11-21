@@ -9,6 +9,8 @@ import 'package:flutter/widgets.dart';
 import '../models/app_input_settings.dart';
 import '../services/input/pen_path.dart';
 import 'debug/input_inspector.dart';
+import 'debug/measurement_mode.dart';
+import 'debug/pointer_clock.dart';
 import 'input/ignored_fingers.dart';
 import 'input/pen_echoes.dart';
 import 'look_only_frames.dart';
@@ -184,6 +186,11 @@ mixin UiScaleViewConfiguration on RendererBinding {
   }
 
   void _handleScaledPointerDataPacket(ui.PointerDataPacket packet) {
+    // 🔬Timed while the frame statistics are up, and not otherwise
+    // ([PointerClock]).
+    final dealtWith = MeasurementMode.frameStats.value
+        ? (Stopwatch()..start())
+        : null;
     try {
       _pendingScaledPointerEvents.addAll(
         packet.data.expand(_madeOf).expand(_comesInWith),
@@ -199,6 +206,12 @@ mixin UiScaleViewConfiguration on RendererBinding {
           library: 'anicel ui scale',
           context: ErrorDescription('while handling a pointer data packet'),
         ),
+      );
+    }
+    if (dealtWith != null) {
+      PointerClock.handled(
+        points: packet.data.length,
+        micros: dealtWith.elapsedMicroseconds,
       );
     }
   }

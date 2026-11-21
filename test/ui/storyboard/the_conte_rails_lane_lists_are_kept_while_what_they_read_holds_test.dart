@@ -117,18 +117,25 @@ void main() {
     frames: const [],
     effects: [glowAs('fx-se')],
   );
+  final se2 = Layer(id: const LayerId('se2'), name: 'S2', frames: const []);
   final cut = Cut(
     id: const CutId('a'),
     name: 'a',
     duration: 12,
     canvasSize: const CanvasSize(width: 640, height: 360),
-    layers: [camera, cel],
+    // Two drawing rows, so their order can change: a cut keeps its rows in
+    // section order whatever order they are handed in.
+    layers: [
+      camera,
+      cel,
+      Layer(id: const LayerId('cel2'), name: 'cel2', frames: const []),
+    ],
   );
   final track = Track(
     id: const TrackId('t1'),
     name: 'V1',
     cuts: [cut],
-    seLayers: [se],
+    seLayers: [se, se2],
     effects: [glowAs('fx-track')],
   );
   final twirls = <String>{};
@@ -158,6 +165,64 @@ void main() {
   );
   _Ask askOf(Layer layer) =>
       (track: track, cut: cut, layer: layer, stood: true, reads: readsOf());
+  /// Each fact the lane law reads of the rows beside the one read
+  /// (`rowsLanesRead`), changed on [other] of [rows] alone.
+  Map<String, List<Layer>> aFactOfTheRows(List<Layer> rows, Layer other) {
+    List<Layer> changedTo(Layer changed) => [
+      for (final row in rows)
+        if (identical(row, other)) changed else row,
+    ];
+    return {
+      'another row\'s id': changedTo(
+        other.copyWith(id: LayerId('${other.id.value}!')),
+      ),
+      'another row\'s name': changedTo(
+        other.copyWith(name: '${other.name}!'),
+      ),
+      'another row\'s kind': changedTo(
+        other.copyWith(kind: LayerKind.folder),
+      ),
+      'the folder another row stands in': changedTo(
+        other.copyWith(folderId: const LayerId('folder')),
+      ),
+      'the row another row is attached to': changedTo(
+        other.copyWith(attachedToLayerId: const LayerId('base')),
+      ),
+      'a row joining them': [
+        ...rows,
+        Layer(id: const LayerId('joined'), name: 'joined', frames: const []),
+      ],
+      'their order': rows.reversed.toList(),
+    };
+  }
+
+  /// What a pass hands the rows over with that the lane law reads none of:
+  /// the same rows anew, and [other] of them twirled.
+  Map<String, List<Layer>> noFactOfTheRows(List<Layer> rows, Layer other) => {
+    'the rows handed over anew': [...rows],
+    'another row twirled': [
+      for (final row in rows)
+        if (identical(row, other))
+          row.copyWith(lanesExpanded: !row.lanesExpanded)
+        else
+          row,
+    ],
+  };
+  _Ask withSeRows(_Ask ask, List<Layer> rows) => (
+    track: _TrackOf(ask.track, seLayers: rows),
+    cut: ask.cut,
+    layer: ask.layer,
+    stood: ask.stood,
+    reads: ask.reads,
+  );
+  _Ask withCutRows(_Ask ask, List<Layer> rows) => (
+    track: ask.track,
+    cut: ask.cut.copyWith(layers: rows),
+    layer: ask.layer,
+    stood: ask.stood,
+    reads: ask.reads,
+  );
+
   final project = Project(
     id: const ProjectId('kept-conte-lanes'),
     name: 'kept conte lanes',
@@ -287,19 +352,14 @@ void main() {
         stood: ask.stood,
         reads: ask.reads,
       ),
-      'the track\'s S rows': (ask) => (
-        track: _TrackOf(ask.track, seLayers: [...ask.track.seLayers]),
-        cut: ask.cut,
-        layer: ask.layer,
-        stood: ask.stood,
-        reads: ask.reads,
-      ),
-      'the twirls': (ask) => (
+      for (final change in aFactOfTheRows(track.seLayers, se2).entries)
+        'the S rows — ${change.key}': (ask) => withSeRows(ask, change.value),
+      'a group of its own twirled': (ask) => (
         track: ask.track,
         cut: ask.cut,
         layer: ask.layer,
         stood: ask.stood,
-        reads: readsOf(expanded: {...twirls}),
+        reads: readsOf(expanded: {laneGroupKey(ask.layer.id, 'group')}),
       ),
       'the pose centre': (ask) => (
         track: ask.track,
@@ -322,6 +382,20 @@ void main() {
         stood: ask.stood,
         reads: readsOf(ran: otherOutcomes),
       ),
+    },
+    // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail
+    // (11-21): ↩️the S rows were a fact by identity, and a twirl of S1 read
+    // S2's lanes again — its label rows let their images go.
+    keeps: {
+      'a group of another row twirled': (ask) => (
+        track: ask.track,
+        cut: ask.cut,
+        layer: ask.layer,
+        stood: ask.stood,
+        reads: readsOf(expanded: {laneGroupKey(se2.id, 'group')}),
+      ),
+      for (final change in noFactOfTheRows(track.seLayers, se2).entries)
+        'the S rows — ${change.key}': (ask) => withSeRows(ask, change.value),
     },
   );
 
@@ -384,19 +458,15 @@ void main() {
         stood: ask.stood,
         reads: ask.reads,
       ),
-      'the cut\'s rows': (ask) => (
-        track: ask.track,
-        cut: ask.cut.copyWith(layers: [...ask.cut.layers]),
-        layer: ask.layer,
-        stood: ask.stood,
-        reads: ask.reads,
-      ),
-      'the twirls': (ask) => (
+      for (final change in aFactOfTheRows(cut.layers, camera).entries)
+        'the cut\'s rows — ${change.key}': (ask) =>
+            withCutRows(ask, change.value),
+      'a group of its own twirled': (ask) => (
         track: ask.track,
         cut: ask.cut,
         layer: ask.layer,
         stood: ask.stood,
-        reads: readsOf(expanded: {...twirls}),
+        reads: readsOf(expanded: {laneGroupKey(ask.layer.id, 'group')}),
       ),
       'the canvas it is valued on': (ask) => (
         track: ask.track,
@@ -437,6 +507,16 @@ void main() {
         stood: ask.stood,
         reads: readsOf(pose: const CanvasSize(width: 10, height: 10)),
       ),
+      'a group of another row twirled': (ask) => (
+        track: ask.track,
+        cut: ask.cut,
+        layer: ask.layer,
+        stood: ask.stood,
+        reads: readsOf(expanded: {laneGroupKey(camera.id, 'group')}),
+      ),
+      for (final change in noFactOfTheRows(cut.layers, camera).entries)
+        'the cut\'s rows — ${change.key}': (ask) =>
+            withCutRows(ask, change.value),
     },
   );
 }

@@ -18,6 +18,15 @@ import '../core/laid_whole.dart';
 /// drawn for ([ScreenTexture.present]).
 typedef _Frame = ({int asked, Object? drawnFor});
 
+/// 🔬What a frame of a screen took on its way up, in microseconds
+/// ([ScreenTexture.upMicros]): its [draw] — handing it to the engine, on the
+/// thread that builds the app's frames, which on Android waits there for
+/// the window's next image (rust/src/platform/android.rs) —, the GPU
+/// [finish]ing it and this isolate hearing so, and its [show] — the hand
+/// to Flutter, on that thread again, which on Android waits there for the
+/// present.
+typedef ScreenUp = ({int draw, int finish, int show});
+
 /// What the canvas view shows the engine's screen on: a texture of the
 /// view's size in device pixels, and the way a frame drawn on it reaches
 /// Flutter (screen-on-the-engine c6) — two surfaces, each a texture of its
@@ -42,45 +51,70 @@ sealed class ScreenTexture {
 
   final int _bytes;
 
-  /// 🔬How long the newest frames of every screen took from their draw to
-  /// being put up — the draw handed to the engine, the GPU finishing it,
-  /// the hand to Flutter —, in microseconds, oldest first, [upsKept] of
-  /// them at the most; and how many frames have been put up in all
-  /// ([upsCounted]). Flutter's own frame times say nothing of these: a
-  /// screen's frame is the engine's work, on no thread of Flutter's. The
-  /// frame statistics read them (`FrameStats`, Settings ▸ Debug).
+  /// 🔬What the newest frames of every screen took from their draw to
+  /// being put up, part by part ([ScreenUp]), oldest first, [upsKept] of
+  /// them at the most; how many frames have been put up in all
+  /// ([upsCounted]), and how many of those with a newer one asked for
+  /// meanwhile ([upsBehindCounted]) — a screen behind what is asked of it.
+  /// Flutter's own frame times say nothing of these: a screen's frame is
+  /// the engine's work, on no thread of Flutter's. The frame statistics
+  /// read them (`FrameStats`, Settings ▸ Debug).
   ///
   /// 🗣️유저 2026-11-21, on a Galaxy Tab out of this machine's reach (card
   /// the-galaxy-tab-canvas-went-slow-on-build-1095): 「캔버스조작, 즉
   /// 팬이나 줌이나 스트로크가 너무 느려졋어」 — and nothing the app showed
-  /// said which were the slow ones, its screens' frames or Flutter's.
-  static List<int> get upMicros => List.unmodifiable(_upMicros);
-  static final List<int> _upMicros = [];
+  /// said which were the slow ones, its screens' frames or Flutter's; nor,
+  /// with one figure a frame (build 1096), which part of a screen's frame
+  /// — and a build is a day's turn of that tablet.
+  static List<ScreenUp> get upMicros => List.unmodifiable(_upMicros);
+  static final List<ScreenUp> _upMicros = [];
 
-  /// How many frames [upMicros] keeps: seconds of them, at a screen's
-  /// rate.
+  /// How many frames [upMicros] keeps: seconds of them, at a screen's rate.
   static const int upsKept = 240;
 
   static int get upsCounted => _upsCounted;
   static int _upsCounted = 0;
 
-  static void _wentUp(int micros) {
+  static int get upsBehindCounted => _upsBehindCounted;
+  static int _upsBehindCounted = 0;
+
+  /// 🔬Whether a window's frame is copied onto its image as it is put up
+  /// — Android's, where the swapchain's images take no stores
+  /// ([GpuWindow.direct]): one GPU copy of the whole screen a frame, in
+  /// its [ScreenUp.show] —, and null where no window has been opened.
+  static bool? get windowsAreCopied => _windowsAreCopied;
+  static bool? _windowsAreCopied;
+
+  /// Test seam: a window opened whose frames are [copied] or not, or none
+  /// opened (null) — `flutter test` opens none.
+  @visibleForTesting
+  static void debugWindowsAre({required bool? copied}) =>
+      _windowsAreCopied = copied;
+
+  static void _wentUp(ScreenUp up) {
     _upsCounted += 1;
-    _upMicros.add(micros);
+    _upMicros.add(up);
     if (_upMicros.length > upsKept) {
       _upMicros.removeAt(0);
     }
   }
 
-  /// Test seam: a frame put up [micros] after its draw.
+  /// Test seam: a frame put up as [up] says — [behind], with a newer one
+  /// asked for meanwhile.
   @visibleForTesting
-  static void debugWentUp(int micros) => _wentUp(micros);
+  static void debugWentUp(ScreenUp up, {bool behind = false}) {
+    _wentUp(up);
+    if (behind) {
+      _upsBehindCounted += 1;
+    }
+  }
 
   /// Test seam: no frame put up yet.
   @visibleForTesting
   static void debugForgetUps() {
     _upMicros.clear();
     _upsCounted = 0;
+    _upsBehindCounted = 0;
   }
 
   /// A texture of [width] × [height] device pixels on [engine], the
@@ -173,8 +207,10 @@ sealed class ScreenTexture {
   );
   int _asked = 0;
 
-  /// Since the draw of the frame begun last ([upMicros]).
+  /// Since the draw of the frame begun last began, and how long that draw
+  /// took ([upMicros]).
   final Stopwatch _sinceItsDraw = Stopwatch();
+  int _itsDrawMicros = 0;
 
   /// The frame being begun: its draw, and what it is drawn for.
   ({void Function(GpuTarget next) draw, Object? drawnFor})? _beginning;
@@ -234,7 +270,11 @@ sealed class ScreenTexture {
             return;
           }
           _putUp();
-          putUp?.call(behind: _frames.behind);
+          final behind = _frames.behind;
+          if (behind) {
+            _upsBehindCounted += 1;
+          }
+          putUp?.call(behind: behind);
         },
         onError: (Object error, StackTrace stack) {
           _report(error, stack);
@@ -253,6 +293,7 @@ sealed class ScreenTexture {
       ..reset()
       ..start();
     _draw(draw);
+    _itsDrawMicros = _sinceItsDraw.elapsedMicroseconds;
     return (asked: asked, drawnFor: drawnFor);
   }
 
@@ -262,9 +303,14 @@ sealed class ScreenTexture {
     if (_frames.laid() == null) {
       return;
     }
+    final heard = _sinceItsDraw.elapsedMicroseconds;
     _show();
     _showsAFrame = true;
-    _wentUp(_sinceItsDraw.elapsedMicroseconds);
+    _wentUp((
+      draw: _itsDrawMicros,
+      finish: heard - _itsDrawMicros,
+      show: _sinceItsDraw.elapsedMicroseconds - heard,
+    ));
   }
 
   static void _report(Object error, StackTrace stack) =>
@@ -411,7 +457,9 @@ final class _WindowTexture extends ScreenTexture {
   // texture there (`texturesAreInTheRamFigure`).
   _WindowTexture(this._window, int width, int height, GpuEngine engine)
     : _id = ValueNotifier(_window.textureId),
-      super(width, height, surfaces: 2, done: engine.done);
+      super(width, height, surfaces: 2, done: engine.done) {
+    ScreenTexture._windowsAreCopied = !_window.direct;
+  }
 
   final GpuWindow _window;
   final ValueNotifier<int> _id;
