@@ -564,6 +564,15 @@ void main() {
     );
     final cameras = <Camera>[
       withRoom,
+      // Under the world: its tiles' columns are on the target, none of
+      // their rows.
+      (
+        name: 'at rest, under the world',
+        viewport: CanvasViewport(panY: -140),
+        devicePixelRatio: 1,
+        size: (300, 20),
+        drawn: const [null, null, null],
+      ),
       for (final view in views)
         (
           name: view.name,

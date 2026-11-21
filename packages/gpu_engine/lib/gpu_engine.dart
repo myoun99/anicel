@@ -2399,11 +2399,11 @@ enum GpuSampling {
   ///
   /// ⚠️The kernel's number said again, not read from it — and a bound,
   /// not what a read reaches at a scale: Blend's tent is as wide as a
-  /// pixel spans, this at the most. Told as none, or as two, it fails the
-  /// pin of a frame shown again where it changed alone, on the engine
-  /// itself (the app's
-  /// `the_engine_screen_shows_the_frame_it_keeps_test.dart`); what lies
-  /// between that and 16 no screen of the pin tells apart.
+  /// pixel spans, this at the most. The pin of a frame shown again where
+  /// it changed alone holds it by the texels drawn, and shows on the
+  /// engine itself what a shorter one leaves undrawn — none at a half,
+  /// two at a tenth (the app's
+  /// `the_engine_screen_shows_the_frame_it_keeps_test.dart`).
   int get reach => this == nearest ? 0 : 16;
 }
 
