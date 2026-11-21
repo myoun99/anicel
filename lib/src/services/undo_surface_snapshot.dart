@@ -576,7 +576,7 @@ class UndoSurfaceSnapshot {
       _letGo = true;
       return true;
     }
-    // 🎯ONE copy of the payload, not four — see [compressCelOnAWorker] for
+    // 🎯ONE copy of the payload, not four — see [pressedBlobOnAWorker] for
     // the measurement, and the road cooling takes. ↩️The surface
     // serialised here, straight into a flat buffer (no per-tile defensive
     // copy), and the buffer crossed to the worker; a worker serialises a
@@ -587,16 +587,7 @@ class UndoSurfaceSnapshot {
     // back under it.
     _pinTextsAndPhotos();
     final picture = _pictureOf(owned);
-    final compressed = await compressCelOnAWorker(key, picture);
-    final blob = AnicelCelBlob.fromCompressedBody(
-      key: key,
-      canvasSize: _canvasSize,
-      tileSize: _tileSize,
-      photoPaths: celPhotoPaths(picture.photos),
-      showsSomething: picture.showsSomething,
-      codec: compressed.codec,
-      body: compressed.bytes,
-    );
+    final blob = await blobPressedOnAWorker(key, picture);
     final path = await VolatileScratchFiles.write(blob.bytes);
     if (path == null) {
       return false;

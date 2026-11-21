@@ -2816,16 +2816,16 @@ class BrushFrameStore {
     return true;
   }
 
-  /// [surface]'s stream compressed to park ([compressCelOnAWorker]), or null
+  /// [surface]'s blob pressed to park ([blobPressedOnAWorker]), or null
   /// where the engine will not give it back: no one waits on a cooling pass
   /// to be told, so that ends the pass as a refused park ends it, the cel
   /// still hot (저장's review of the flip lane, 11-09).
-  Future<({int codec, Uint8List bytes})?> _compressedToPark(
+  Future<AnicelCelBlob?> _pressedToPark(
     BrushFrameKey key,
     BitmapSurface surface,
   ) async {
     try {
-      return await compressCelOnAWorker(key, surface);
+      return await blobPressedOnAWorker(key, surface);
     } on GpuReadFailed {
       return null;
     }
@@ -2903,36 +2903,27 @@ class BrushFrameStore {
   }
 
   /// The hot cel [key] parked in the run's room as it is — hot still,
-  /// and kept from there ([_storeCold]): its stream pressed on a worker
-  /// ([compressCelOnAWorker]) and written ONLY if the cel's surface is
+  /// and kept from there ([_storeCold]): its blob pressed on a worker
+  /// ([blobPressedOnAWorker]) and written ONLY if the cel's surface is
   /// still the identical object, kept nowhere (a donation in between
   /// wins, and a save's adoption, and the stale blob is dropped). One
   /// park of a cel at a time, whoever asks — the cooling, the parking
   /// behind ([parkBehind]) — joined by the other.
   ///
   /// False where it would not park — the engine would not give its
-  /// tiles back ([_compressedToPark]), the room refused ([_storeCold])
+  /// tiles back ([_pressedToPark]), the room refused ([_storeCold])
   /// — and the passes stand down ([_coolingStoodDown]), the cel hot.
   Future<bool> _park(BrushFrameKey key) => _parks.join(key, () async {
     final surface = _bakedSurfaces[key]!;
     // 🎯The park path's shape, and DELIBERATELY the same one: these
     // two were matched on purpose (fixing one alone would make it a
     // copy of the other), so they moved together. One copy of the
-    // payload instead of four — see [compressCelOnAWorker].
-    final compressed = await _compressedToPark(key, surface);
-    if (compressed == null) {
+    // payload instead of four — see [pressedBlobOnAWorker].
+    final blob = await _pressedToPark(key, surface);
+    if (blob == null) {
       _coolingStoodDown = true;
       return false;
     }
-    final blob = AnicelCelBlob.fromCompressedBody(
-      key: key,
-      canvasSize: surface.canvasSize,
-      tileSize: surface.tileSize,
-      photoPaths: celPhotoPaths(surface.photos),
-      showsSomething: surface.showsSomething,
-      codec: compressed.codec,
-      body: compressed.bytes,
-    );
     if (identical(_bakedSurfaces[key], surface) &&
         _kept(key) == null &&
         !_storeCold(key, blob)) {
@@ -2994,7 +2985,7 @@ class BrushFrameStore {
 
   /// How many cels are parked behind at once ([parkBehind]): each is a
   /// worker's, and the screen's isolate hands it its tiles a batch at a
-  /// time ([compressCelOnAWorker]).
+  /// time ([pressedBlobOnAWorker]).
   ///
   /// 🔬TWO, measured 2026-11-21 (main PC, no window, nothing else in
   /// the machine's line; a line-art .tvpp of 220 cels on 7751×4396,

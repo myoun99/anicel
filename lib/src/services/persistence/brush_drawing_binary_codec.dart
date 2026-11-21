@@ -805,9 +805,10 @@ class AnicelCelBlob {
 
   /// The blob of a cel's uncompressed [payload] — the bytes
   /// [encodeCelEntryFromSurface] writes off a surface — compressed here.
-  /// The save isolate's shape: a hot cel arrives there already serialised,
-  /// because a surface cannot cross, and [showsSomething] with it, asked of
-  /// the surface it was serialised from.
+  /// The worker's shape (`pressedBlobOnAWorker`): a hot cel's stream is
+  /// made there of a copy, because a surface cannot cross, and pressed
+  /// where it was made; [showsSomething] rides in, asked of the surface it
+  /// was serialised from.
   ///
   /// ⛔The blob's own header is READ OFF the payload's, never handed in
   /// beside it: two copies of a cel's key and size would be two answers to
@@ -833,9 +834,11 @@ class AnicelCelBlob {
     );
   }
 
-  /// A blob assembled around a payload SOMEBODY ELSE compressed —
-  /// the shape the park and cool paths need, because they compress in
-  /// a worker isolate and hand the bytes back. [photoPaths] is what the
+  /// A blob assembled around a payload compressed apart — [ofPayload]'s,
+  /// once it has pressed the stream. ↩️The park and cool paths assembled
+  /// one around a worker's body, the head handed in from the surface, till
+  /// the worker made the whole blob (2026-11-21, `pressedBlobOnAWorker`).
+  /// [photoPaths] is what the
   /// picture the payload was written from names ([celPhotoPaths]), and
   /// [showsSomething] what it shows ([BitmapSurface.showsSomething]).
   factory AnicelCelBlob.fromCompressedBody({

@@ -3,13 +3,25 @@ import 'dart:typed_data';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
-import 'anicel_payload_codec.dart';
 import 'brush_drawing_binary_codec.dart';
 
-/// [key]'s stream of the hot cel [surface], serialised and compressed on a
-/// worker ([onAWorkerWithCelStream]) and handed back as a
-/// [TransferableTypedData] rather than as an ordinary message: what a
-/// cooling and an undo snapshot's park write.
+/// [key]'s blob of the hot cel [surface] — its stream serialised and
+/// pressed on a worker ([onAWorkerWithCelStream], [AnicelCelBlob.ofPayload])
+/// — handed back as a [TransferableTypedData] rather than as an ordinary
+/// message: what a cooling's park, an undo snapshot's park and a save
+/// write ([blobPressedOnAWorker] where the blob is wanted here).
+///
+/// 🚨**PRESSED ON THE WORKER, FOR THE SAVE TOO** (card
+/// incremental-save-holds-every-dirty-cel-at-once, 2026-11-21). The save
+/// handed each edited cel across as its stream unpressed and pressed it
+/// in its isolate — after it held every edited cel's work at once, the
+/// stream as large as the cel's tiles. 🔬An imported copy's 220 cels
+/// (7751×4396 line art, m.tvpp) made edited and saved onto the same file
+/// raised the process 2.0–2.3 GiB over the save (main PC, two runs).
+/// Pressed here, what a save holds of them is their size in the file.
+/// ↩️The parks made the compressed body here and the blob around it on
+/// their own side, its head handed in from the surface; the save's road
+/// made it the third, and one.
 ///
 /// 🧪**MEASURED, 2026-09-10** — one park, end to end:
 /// | payload | plain message | transferable |
@@ -38,20 +50,29 @@ import 'brush_drawing_binary_codec.dart';
 /// road — and this isolate holds a batch where it held the whole stream
 /// (card `the-cooling-serialises-each-hot-cel-on-the-ui-isolate`,
 /// 2026-11-13).
-Future<({int codec, Uint8List bytes})> compressCelOnAWorker(
+Future<TransferableTypedData> pressedBlobOnAWorker(
   BrushFrameKey key,
   BitmapSurface surface,
-) async {
-  final out = await onAWorkerWithCelStream(key, surface, _compressedToCross);
-  return (codec: out.codec, bytes: out.bytes.materialize().asUint8List());
-}
+) => onAWorkerWithCelStream(
+  key,
+  surface,
+  _pressedToCross(surface.showsSomething),
+);
 
-({int codec, TransferableTypedData bytes}) _compressedToCross(
-  Uint8List stream,
-) {
-  final compressed = compressAnicelPayload(stream);
-  return (
-    codec: compressed.codec,
-    bytes: TransferableTypedData.fromList([compressed.bytes]),
-  );
-}
+/// [pressedBlobOnAWorker]'s blob, here.
+Future<AnicelCelBlob> blobPressedOnAWorker(
+  BrushFrameKey key,
+  BitmapSurface surface,
+) async => AnicelCelBlob(
+  (await pressedBlobOnAWorker(key, surface)).materialize().asUint8List(),
+);
+
+/// ⚠️Made HERE, of a bool alone, so the closure crosses with nothing of the
+/// surface ([onAWorkerWithCelStream]). Whether the picture shows anything
+/// rides in: the blob's head says it, and the stream holds no copy of it
+/// ([AnicelCelBlob.ofPayload]).
+TransferableTypedData Function(Uint8List stream) _pressedToCross(
+  bool showsSomething,
+) => (stream) => TransferableTypedData.fromList([
+  AnicelCelBlob.ofPayload(stream, showsSomething: showsSomething).bytes,
+]);

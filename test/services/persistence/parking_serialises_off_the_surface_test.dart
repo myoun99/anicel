@@ -27,10 +27,12 @@ import 'package:anicel/src/services/persistence/compress_in_worker.dart';
 /// ⚠️**THE SPEED-UP IS NOT A "MOVE".** `TransferableTypedData.fromList`
 /// copies its lists into one external buffer and the caller's list stays
 /// readable — I asserted the opposite here first and the probe said no.
-/// What it buys is the crossing (see `compressCelOnAWorker` for the
+/// What it buys is the crossing (see `pressedBlobOnAWorker` for the
 /// table). That is a timing property, so it is documented there rather
-/// than pinned as a test; what IS pinned here is that the blob made around
-/// the worker's bytes is the one made here.
+/// than pinned as a test; what IS pinned here is that the blob the worker
+/// hands back is the one made here — pressed: what crosses is the cel's
+/// size in the file, not its tiles' (card
+/// incremental-save-holds-every-dirty-cel-at-once, 2026-11-21).
 ///
 /// ↩️It also pinned that the stream off the surface was the one an entry
 /// wrote: that second writer went with format 29 (2026-10-24), when every
@@ -66,31 +68,26 @@ void main() {
     );
   }
 
-  test('a blob built around worker bytes is byte-identical to one made '
-      'here', () async {
+  test('the blob a worker hands back is byte-identical to one made here — '
+      'pressed, smaller than the stream it was made of', () async {
     // The road production takes: a worker of its own.
     debugWorkersRunHere = false;
     addTearDown(() => debugWorkersRunHere = true);
     final surface = celOf(2);
     final inline = AnicelCelBlob.ofSurface(key, surface);
     // Anti-vacuity: this is a real payload, not an empty buffer.
-    expect(
-      encodeCelEntryFromSurface(key, surface).length,
-      greaterThan(2 * BitmapTile.bytesFor(tileSize)),
-    );
+    final stream = encodeCelEntryFromSurface(key, surface);
+    expect(stream.length, greaterThan(2 * BitmapTile.bytesFor(tileSize)));
 
-    final compressed = await compressCelOnAWorker(key, surface);
-    final assembled = AnicelCelBlob.fromCompressedBody(
-      key: key,
-      canvasSize: surface.canvasSize,
-      tileSize: surface.tileSize,
-      photoPaths: const [],
-      showsSomething: surface.showsSomething,
-      codec: compressed.codec,
-      body: compressed.bytes,
-    );
+    final crossed = await pressedBlobOnAWorker(key, surface);
+    final assembled = AnicelCelBlob(crossed.materialize().asUint8List());
 
     expect(assembled.bytes, inline.bytes);
+    expect(
+      assembled.bytes.length,
+      lessThan(stream.length),
+      reason: 'what crosses is the cel pressed, not its stream',
+    );
     expect(assembled.codec, inline.codec);
     // And it still reads back as the same picture.
     expect(assembled.decoded((back) => back.tiles.length), surface.tiles.length);
