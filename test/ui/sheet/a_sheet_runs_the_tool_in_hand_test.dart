@@ -383,9 +383,12 @@ void main() {
         final tool = holding(CanvasTool.select);
         final (_, views) = await sheet.pump(tester, tool);
         final window = aWindow(tester, sheet.keyPrefix);
+        final tip = find.byKey(const ValueKey<String>('brush-cursor-overlay'));
+        expect(tip, findsNothing);
 
         tool.value = tool.value.copyWith(tool: CanvasTool.brush);
         await tester.pump();
+        expect(tip, findsOneWidget, reason: 'the panel runs the brush');
         final drawn = await dragAcross(tester, window);
         await tester.pumpAndSettle();
         expect(inkUnder(tester, window, drawn.middle), isTrue);
@@ -405,9 +408,12 @@ void main() {
           tester,
           holding(CanvasTool.brush),
         );
+        final tip = find.byKey(const ValueKey<String>('brush-cursor-overlay'));
+        expect(tip, findsNothing);
 
         brushOn.value = true;
         await tester.pumpAndSettle();
+        expect(tip, findsOneWidget, reason: 'the panel runs the brush');
         final window = aWindow(tester, sheet.keyPrefix);
         final drawn = await dragAcross(tester, window);
         await tester.pumpAndSettle();
@@ -416,6 +422,7 @@ void main() {
 
         brushOn.value = false;
         await tester.pumpAndSettle();
+        expect(tip, findsNothing, reason: 'the panel runs no tool');
         await dragAcross(tester, window);
         await tester.pumpAndSettle();
         expect(views, isNotEmpty, reason: 'the brush off, the sheet moved');
