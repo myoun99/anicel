@@ -299,8 +299,11 @@ class GpuEngine {
   /// [target]'s texture, for a draw on this engine to write: what the
   /// target was said to hold is forgotten ([GpuTarget.kept]). Every draw
   /// reaches a target's texture through here.
-  Pointer<rust.Texture> _toDrawOn(GpuTarget target) =>
-      (_its(target)..kept = null)._texture;
+  Pointer<rust.Texture> _toDrawOn(GpuTarget target) {
+    final texture = _its(target)._texture;
+    target.kept = null;
+    return texture;
+  }
 
   String get adapterName => using((arena) {
     const capacity = 256;
