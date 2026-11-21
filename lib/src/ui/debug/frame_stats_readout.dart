@@ -112,11 +112,38 @@ class FrameStatsReadout extends StatelessWidget {
                     'max${_ms(stats.uiWorst)}',
                 'LATENCY p50${_ms(stats.latencyP50)}  '
                     'p95${_ms(stats.latencyP95)}',
-                // The engine's screens, which the three lines above do
-                // not see ([FrameStatsSnapshot.screenUpP50]).
+                // What of the latency is neither build nor raster
+                // ([FrameStatsSnapshot.buildWaitP50]).
+                ' waits  build p50${_ms(stats.buildWaitP50)}  '
+                    'p95${_ms(stats.buildWaitP95)}  '
+                    'raster p50${_ms(stats.rasterWaitP50)}  '
+                    'p95${_ms(stats.rasterWaitP95)}',
+                // The engine's screens, which the lines above do not see
+                // ([FrameStatsSnapshot.screenUpP50]), then a frame of
+                // theirs part by part.
                 'SCREEN  p50${_ms(stats.screenUpP50)}  '
                     'p95${_ms(stats.screenUpP95)}  '
-                    '${stats.screensUpPerSecond.toStringAsFixed(1)}/s',
+                    '${stats.screensUpPerSecond.toStringAsFixed(1)}/s  '
+                    'behind '
+                    '${stats.screensBehindPerSecond.toStringAsFixed(1)}/s',
+                ' draw   p50${_ms(stats.screenDrawP50)}  '
+                    'p95${_ms(stats.screenDrawP95)}',
+                ' finish p50${_ms(stats.screenFinishP50)}  '
+                    'p95${_ms(stats.screenFinishP95)}',
+                ' show   p50${_ms(stats.screenShowP50)}  '
+                    'p95${_ms(stats.screenShowP95)}'
+                    '${switch (stats.windowsAreCopied) {
+                      null => '',
+                      true => '  copied',
+                      false => '  direct',
+                    }}',
+                // The pointer packets, dealt with between the frames
+                // ([FrameStatsSnapshot.pointsPerSecond]).
+                'POINTER ${stats.pointsPerSecond.toStringAsFixed(0)} pts/s  '
+                    '${stats.packetsPerSecond.toStringAsFixed(0)} pkts/s  '
+                    'p50${_ms(stats.pointerP50)}  '
+                    'p95${_ms(stats.pointerP95)}  '
+                    '${stats.pointerMillisPerSecond.toStringAsFixed(1)} ms/s',
                 'layer   cache ${stats.layerCacheCount}  '
                     '${stats.layerCacheMegabytes.toStringAsFixed(1)} MB',
                 // 🚨 Per-entry, against a window's worth of pixels — the

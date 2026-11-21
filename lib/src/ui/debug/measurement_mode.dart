@@ -88,7 +88,7 @@ abstract final class MeasurementMode {
   /// ⚠️Prefer this one when the two disagree. The overlay is two
   /// full-width bar graphs redrawn every frame INSIDE the scene whose
   /// raster time it reports — it is part of its own measurement. This
-  /// is six lines of text at 4 Hz behind a repaint boundary.
+  /// is a column of text at 4 Hz behind a repaint boundary.
   static final ValueNotifier<bool> frameStats = ValueNotifier<bool>(
     startWithFrameStats,
   );

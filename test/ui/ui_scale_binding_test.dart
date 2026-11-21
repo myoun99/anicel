@@ -4,6 +4,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/pointer_clock.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 
 import '../helpers/scaled_test_binding.dart';
@@ -201,6 +203,40 @@ void main() {
             'one the press reaches — divide by the raw ratio instead and '
             'the press lands 25% away and misses',
       );
+    });
+
+    // 🔬The frame statistics' pointer line ([PointerClock]): timed here,
+    // where a packet comes in, round all its points' handlers.
+    testWidgets('a packet is timed while the frame statistics are up — its '
+        'points counted, what its handlers kept this thread for in it — and '
+        'not while they are off', (tester) async {
+      PointerClock.forget();
+      addTearDown(PointerClock.forget);
+      addTearDown(MeasurementMode.reset);
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (_) {
+              final since = Stopwatch()..start();
+              while (since.elapsedMilliseconds < 30) {}
+            },
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+
+      await sendTap(tester, const Offset(600, 400));
+      expect(PointerClock.packetsCounted, 0, reason: 'the statistics are off');
+
+      MeasurementMode.frameStats.value = true;
+      await sendTap(tester, const Offset(600, 400));
+
+      expect(PointerClock.packetsCounted, 1);
+      expect(PointerClock.pointsCounted, 2, reason: 'a press and its lift');
+      expect(PointerClock.packetMicros.single, greaterThanOrEqualTo(30000));
+      expect(PointerClock.microsCounted, PointerClock.packetMicros.single);
     });
   });
 
