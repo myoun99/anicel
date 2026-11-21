@@ -27,14 +27,22 @@ final class ShellsWithNoBytes implements CelShells {
     if (!holds) {
       return null;
     }
+    // As the ledger says it (`EngineTileLedger.shellOf`): a tile that is
+    // the engine's already stays as it is — a shell's reads what it was
+    // made to read — and a cel of such tiles alone is its own shell.
+    if (surface.tiles.values.every((tile) => tile.isOnEngine)) {
+      return surface.tiles.isEmpty ? null : surface;
+    }
     final shell = surface.copyWith(
       tiles: {
         for (final MapEntry(key: at, value: tile) in surface.tiles.entries)
-          at: BitmapTile.onEngine(
-            size: tile.size,
-            on: _Held(this, tile.pixels, () => readAgain().tiles[at]!),
-            hasInk: tile.hasInk,
-          ),
+          at: tile.isOnEngine
+              ? tile
+              : BitmapTile.onEngine(
+                  size: tile.size,
+                  on: _Held(this, tile.pixels, () => readAgain().tiles[at]!),
+                  hasInk: tile.hasInk,
+                ),
       },
     );
     made.add(shell);

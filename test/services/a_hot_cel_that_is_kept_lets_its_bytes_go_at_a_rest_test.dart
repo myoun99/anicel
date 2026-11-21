@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +12,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/scratch_file.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
@@ -36,7 +34,9 @@ import '../helpers/shells_with_no_bytes.dart';
 /// project says it stands on its session's
 /// (a_session_lets_go_of_bytes_as_the_engine_s_tiles_rest_test.dart). That
 /// a parked cel made hot is parked still is
-/// a_cel_made_hot_keeps_its_park_test.dart's.
+/// a_cel_made_hot_keeps_its_park_test.dart's, and what an edit of such a
+/// shell holds on to for the tiles it left
+/// an_edited_cel_reads_what_it_was_kept_as_test.dart's.
 ///
 /// Here a keeper whose shells hold no bytes: a tile of one reads what the
 /// engine holds of it, or — its slot gone — its cel's kept bytes again.
@@ -160,9 +160,9 @@ void main() {
         expect(store.bakedSurfaceOrNull(key('f')), same(shell));
       });
 
-      test('🚨an edit brings its tiles\' bytes here first: whoever holds '
-          'one holds its pixels once what kept them is the cel\'s no more',
-          () async {
+      test('🚨an edit holds on to what kept its tiles: whoever holds one '
+          'reads its pixels still, once what kept them is the cel\'s no '
+          'more — and no byte of it comes here', () async {
         used('f');
         store.letGoOfBytesTheEngineHolds();
         final tile = store.hotBakedSurfaceOrNull(key('f'))!.tiles[origin]!;
@@ -172,7 +172,8 @@ void main() {
 
         store.storeBakedSurface(key('f'), ink(9));
 
-        expect(tile.hasItsBytesHere, isTrue);
+        expect(tile.hasItsBytesHere, isFalse);
+        expect(store.keptBytesHeldOn, 1);
         expect(tile.pixels, pixelsOf(4));
         expect(store.isCelFileBacked(key('f')), isFalse);
         expect(store.isCelParked(key('f')), isFalse);
@@ -242,26 +243,4 @@ void main() {
     });
   }
 
-  test('🚨an edit of a parked cel\'s shell lets its park go only once the '
-      'bytes are here', () async {
-    engine = ShellsWithNoBytes();
-    store = BrushFrameStore(shells: engine);
-    parkCold(store, {key('f'): ink(4), key('g'): ink(5)});
-    used('f');
-    store.letGoOfBytesTheEngineHolds();
-    final tile = store.hotBakedSurfaceOrNull(key('f'))!.tiles[origin]!;
-    final park = store.bakedSnapshotForSave().cold[key('f')]!.filePath;
-    expect(File(park).existsSync(), isTrue, reason: '⛔premise: parked');
-    engine.slots = false;
-
-    store.storeBakedSurface(key('f'), ink(9));
-
-    expect(tile.pixels, pixelsOf(4), reason: 'read before the park went');
-    await ScratchFile.lettingGo;
-    expect(File(park).existsSync(), isFalse);
-    expect(
-      store.bakedSurfaceOrNull(key('f'))!.tiles[origin]!.pixels,
-      pixelsOf(9),
-    );
-  });
 }

@@ -13,19 +13,23 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
 
-/// 🚨A PEN GOING DOWN ON A CANVAS ASKS ITS STORE FOR THE BYTES ITS CEL'S
-/// EDIT WILL NEED (`BrushFrameStore.bringBytesAhead`) — as it goes down,
-/// so they are read off the UI thread while the stroke is drawn, where the
-/// stroke's landing would read the cel's file on it (card
-/// `cel-originals-are-held-twice-in-ram-and-on-the-gpu` ②(3)).
+/// 🚨A PEN GOING DOWN ON A CANVAS ASKS ITS STORE TO HOLD WHAT KEEPS ITS
+/// CEL, AHEAD OF THE EDIT (`BrushFrameStore.holdOnAhead`) — as it goes
+/// down, so the cel's stretch of the saved file is read off the UI thread
+/// while the stroke is drawn, where the stroke's landing would read it on
+/// it (card `cel-originals-are-held-twice-in-ram-and-on-the-gpu` ②(3)).
+/// ↩️Till 2026-11-21 it asked for the cel's bytes, thawed and handed to
+/// its tiles (`bringBytesAhead`).
 ///
 /// What the store then does is the store's own pins'
 /// (`test/services/a_use_of_a_cel_kept_in_the_file_takes_its_shell_test.dart`);
 /// here the pen is real and the panel is the one every canvas is — the
 /// main one, a sheet's — so the asking is every surface's.
 void main() {
-  testWidgets('🚨a pen going down asks for the bytes of the cel it draws '
-      'on — once a stroke, and before the stroke lands', (tester) async {
+  testWidgets('🚨a pen going down asks for what keeps the cel it draws '
+      'on to be held — once a stroke, and before the stroke lands', (
+    tester,
+  ) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final store = _StoreSayingWhatWasAsked();
     final coordinator = BrushFrameEditingCoordinator(
@@ -72,13 +76,13 @@ void main() {
   });
 }
 
-/// A store that says which cels' bytes were asked ahead.
+/// A store that says which cels were asked to be held ahead.
 class _StoreSayingWhatWasAsked extends BrushFrameStore {
   final List<BrushFrameKey> asked = [];
 
   @override
-  Future<void> bringBytesAhead(BrushFrameKey key) {
+  Future<void> holdOnAhead(BrushFrameKey key) {
     asked.add(key);
-    return super.bringBytesAhead(key);
+    return super.holdOnAhead(key);
   }
 }

@@ -251,8 +251,8 @@ void main() {
     });
 
     test('and the tiles a use took of its shell go with it: an edit under '
-        'the new name hands them their bytes', () {
-      usedParked('f');
+        'the new name holds its park on for them', () {
+      final (hot: _, :park) = usedParked('f');
       store.letGoOfBytesTheEngineHolds();
       final tile = store.hotBakedSurfaceOrNull(key('f'))!.tiles[origin]!;
       expect(tile.hasItsBytesHere, isFalse, reason: '⛔premise: a shell');
@@ -261,7 +261,9 @@ void main() {
 
       store.storeBakedSurface(key('h'), ink(9));
 
-      expect(tile.hasItsBytesHere, isTrue);
+      expect(tile.hasItsBytesHere, isFalse);
+      expect(store.keptBytesHeldOn, 1);
+      expect(File(park.filePath).existsSync(), isTrue);
       expect(tile.pixels, pixelsOf(4));
     });
   });
