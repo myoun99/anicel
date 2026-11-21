@@ -5882,7 +5882,9 @@ int crc32Update(int running, Uint8List bytes, int length) {
 const int _crcSlice = 1 << 20;
 
 /// A Flutter texture the engine presents into: a SurfaceProducer's window,
-/// whose images Flutter shows without a copy (Android).
+/// whose images Flutter shows without a copy (Android). Drawn on and
+/// presented with no wait for the engine's thread
+/// (rust/src/platform/android.rs, `Window`).
 class GpuWindow extends GpuTarget {
   GpuWindow._(super._engine, this._window, this.textureId);
 
@@ -5891,27 +5893,18 @@ class GpuWindow extends GpuTarget {
   /// What a `Texture` widget shows the window by.
   final int textureId;
 
-  /// Whether the kernels store straight into the window's images; when
-  /// not, each present copies the engine's own texture into one.
-  bool get direct => rust.windowDirect(_window);
-
-  /// The window's next image — [present] shows what a kernel wrote there.
+  /// What the kernels write for the window, one texture for its life —
+  /// [present] shows what a kernel wrote there.
   @override
-  Pointer<rust.Texture> get _texture {
-    final target = rust.windowTarget(_window);
-    if (target == nullptr) {
-      throw GpuRefused(_lastError());
-    }
-    return target;
-  }
+  Pointer<rust.Texture> get _texture => rust.windowTarget(_window);
 
-  /// Hands the image a kernel last wrote ([fill], [GpuScreen.show]) to
-  /// Flutter.
-  void present() {
-    if (!rust.windowPresent(_engine._engine, _window)) {
-      throw GpuRefused(_lastError());
-    }
-  }
+  /// Hands what a kernel last wrote ([fill], [GpuScreen.show]) to
+  /// Flutter: copied onto the window's next image and put up once the GPU
+  /// has finished the copy, this isolate waiting for none of it. Asked
+  /// once the GPU has finished what was written ([GpuEngine.done]), as a
+  /// screen's frame is (`ScreenTexture.present`); where it fails, the
+  /// next done fails by it.
+  void present() => rust.windowPresent(_engine._engine, _window);
 
   /// Frees the swapchain, then Flutter's producer: the window it presents
   /// into must outlive it.

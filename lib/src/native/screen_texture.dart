@@ -355,15 +355,18 @@ final class _SurfaceTexture extends ScreenTexture {
 }
 
 /// Android's: the engine presents into a SurfaceProducer's window, whose
-/// images Flutter shows without a copy — its swapchain keeps the image
-/// drawn on apart from the one shown.
+/// images Flutter shows without a copy — a frame is drawn on a texture of
+/// the engine's own and copied onto the window's next image as it is put
+/// up, this isolate waiting for the engine's thread at neither
+/// (rust/src/platform/android.rs, `Window`).
 final class _WindowTexture extends ScreenTexture {
-  // ⚠️Two is the image drawn on and the one shown, the least it can be: how
-  // many its queue keeps is Android's, and the census does not read a
-  // texture there (`texturesAreInTheRamFigure`).
+  // ⚠️Three is the texture drawn on, the image it is copied onto and the
+  // one shown, the least it can be: how many its queue keeps is Android's,
+  // and the census does not read a texture there
+  // (`texturesAreInTheRamFigure`).
   _WindowTexture(this._window, int width, int height, GpuEngine engine)
     : _id = ValueNotifier(_window.textureId),
-      super(width, height, surfaces: 2, done: engine.done);
+      super(width, height, surfaces: 3, done: engine.done);
 
   final GpuWindow _window;
   final ValueNotifier<int> _id;
