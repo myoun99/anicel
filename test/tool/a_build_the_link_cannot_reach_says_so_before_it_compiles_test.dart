@@ -51,18 +51,29 @@ void main() {
       'target\'s or the host\'s — not Android\'s, not a folder within, not '
       'what is no library', () {
     library(windowsDeps, 'liba.rlib');
-    library('release/deps', 'libthe_host_builds_this_one.rlib');
+    library('release/deps', 'libthe_host_builds_this_one_as_well.rlib');
     library('aarch64-linux-android/release/deps',
         'libandroid_is_linked_by_another_linker_entirely.rlib');
     library('$windowsDeps/inner', 'libinside_a_folder_within_is_never_linked');
     library(windowsDeps, 'gpu_engine-0123456789abcdef.gpu_engine.long.o');
 
     expect(deepestLinkInput(shared),
-        'release/deps/libthe_host_builds_this_one.rlib');
+        'release/deps/libthe_host_builds_this_one_as_well.rlib');
 
     library('x86_64-pc-windows-msvc/debug/deps', 'libthe_longest_of_all.lib');
     expect(deepestLinkInput(shared),
         'x86_64-pc-windows-msvc/debug/deps/libthe_longest_of_all.lib');
+  });
+
+  test('of libraries as deep, the first in code-unit order — never the one '
+      'the folder lists first or last', () {
+    // NTFS lists these folded to one case — liba, libB, libc — and ext4 in
+    // no fixed order; code-unit order puts libB first.
+    for (final name in ['liba.rlib', 'libB.rlib', 'libc.rlib']) {
+      library(windowsDeps, name);
+    }
+
+    expect(deepestLinkInput(shared), '$windowsDeps/libB.rlib');
   });
 
   test('a folder that has built nothing yet has nothing to measure', () {

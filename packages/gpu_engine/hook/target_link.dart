@@ -105,8 +105,8 @@ String? whyTheLinkCannotReach(String target, Directory folder) {
 /// The deepest library link.exe opens under [folder], relative to it: the
 /// longest in a Windows `deps`, the target's (`<triple>/<profile>/deps`)
 /// or the host's (`<profile>/deps`, where build scripts and proc macros
-/// link) — never what lies in a folder within, nor Android's. Null when
-/// there is none.
+/// link) — never what lies in a folder within, nor Android's. Of two as
+/// deep, the one [_deeper] puts first. Null when there is none.
 String? deepestLinkInput(Directory folder) {
   if (!folder.existsSync()) return null;
   String? deepest;
@@ -119,7 +119,7 @@ String? deepestLinkInput(Directory folder) {
         continue;
       }
       final path = '$deps/$name';
-      if (path.length > (deepest?.length ?? 0)) deepest = path;
+      if (_deeper(path, than: deepest)) deepest = path;
     }
   }
 
@@ -138,6 +138,19 @@ String? deepestLinkInput(Directory folder) {
   }
   return deepest;
 }
+
+/// Whether [path] lies deeper than [than] — and of two as deep, whether it
+/// comes first in code-unit order.
+///
+/// 🎯NEVER THE ONE A FOLDER HAPPENS TO LIST FIRST (card
+/// the-link-depth-pin-ties-on-linux, 보드/인프라 2026-11-22). ext4 lists a
+/// folder in no fixed order: a pin whose two libraries tied at 45
+/// characters failed on one Linux CI runner and passed on another. The
+/// depth is the same either way; the path is what the refusal names.
+bool _deeper(String path, {required String? than}) =>
+    than == null ||
+    path.length > than.length ||
+    (path.length == than.length && path.compareTo(than) < 0);
 
 /// ⛔The link itself, never through it: it is the trunk's folder.
 void _letGo(String target) {
