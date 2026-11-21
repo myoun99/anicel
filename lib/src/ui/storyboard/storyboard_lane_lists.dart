@@ -215,8 +215,8 @@ final class KeptStoryboardLanes {
       (track: track.id, row: 'se', at: slot),
       identity: layer,
       key: (
-        ByIdentity(track.seLayers),
-        ByIdentity(reads.expandedGroupKeys),
+        rowsLanesRead(track.seLayers),
+        groupsOpenOn(layer.id, reads.expandedGroupKeys),
         reads.poseCentre,
         _plugins(layer.effects, reads),
         AppText.settings.value,
@@ -254,8 +254,8 @@ final class KeptStoryboardLanes {
       (track: track.id, row: 'conte', at: seat),
       identity: layer,
       key: (
-        ByIdentity(cut.layers),
-        ByIdentity(reads.expandedGroupKeys),
+        rowsLanesRead(cut.layers),
+        groupsOpenOn(layer.id, reads.expandedGroupKeys),
         // Valued where stood, on its canvas; the canvas, or none, says which.
         stood ? cut.canvasSize : null,
         _plugins(layer.effects, reads),

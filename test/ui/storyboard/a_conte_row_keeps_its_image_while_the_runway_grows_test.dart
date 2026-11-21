@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
 
 /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 — 행
@@ -375,6 +376,50 @@ void main() {
       ]),
       reason: 'the current row moved from the V row of t0 to its S1, and '
           'no other row shows it',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  // 🔬Card the-conte-rails-lane-rows-are-built-again-with-the-rail (11-21,
+  // AI 검증 ②): ↩️folding S1 drew the lane labels of S2 again — the S rows'
+  // lanes were kept by the list of them, and a twirl hands it over anew.
+  testWidgets('🚨a twirl of an S row leaves the lane labels of the other '
+      'standing as they were — the rows below move with their images', (
+    tester,
+  ) async {
+    await pumpConte(tester);
+    final before = await untilEveryRowIsAnImage(tester);
+    final taken = [for (final row in before) row.region.debugCaptureCount];
+    expectEveryLaneFamily(before);
+
+    await tester.tap(find.named('storyboard-lane-toggle-t0-S1'));
+    await tester.pump();
+    await untilEveryRowIsAnImage(tester);
+
+    final drawnAgain = [
+      for (final (index, (:name, :region)) in before.indexed)
+        if (region.attached && region.debugCaptureCount != taken[index])
+          name,
+    ];
+    expect(
+      drawnAgain,
+      unorderedEquals([
+        'storyboard-se-label-t0-1',
+        'storyboard-se-paper-t0-S1-150',
+      ]),
+      reason: 'S1 folded, and no other row shows it',
+    );
+    expect(
+      [
+        for (final (:name, :region) in before)
+          if (!region.attached && name.startsWith('storyboard-lane-stand-'))
+            name,
+      ],
+      unorderedEquals([
+        'storyboard-lane-stand-cell-t0-S1-sound-group',
+        'storyboard-lane-stand-cell-t0-S1-name-tag-group',
+      ]),
+      reason: '⛔premise: S1 folded its own lanes away, and only those',
     );
     await tester.pumpAndSettle();
   });

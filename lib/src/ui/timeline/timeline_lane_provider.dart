@@ -1,7 +1,9 @@
 import '../../core/identity_memo.dart';
+import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/transform_track.dart';
 import '../../services/project_lookup.dart'
     show cutWritingRow, requireCut, rowPoseSpace;
 import '../editor_session_manager.dart';
@@ -104,10 +106,14 @@ final class KeptLaneLists<K extends Object> {
 ///
 /// ⛔The key is EVERYTHING [timelineLanesForLayer] reads, each as the value
 /// it reads: a read added there and left out here is a lane kept across a
-/// change of it. The rows stand for the session and the cut it stands in —
-/// a session composes its own list, of that cut's object — and the pose an
-/// S row rests in is all it reads of the rest of the project. A layer's
-/// slot lives while the layer is one of the session's rows.
+/// change of it. Of the rows, what the lane law reads ([rowsLanesRead]); the
+/// session itself, which the lanes read their values through; and of the
+/// rest of the project, the pose an S row rests in and the camera row's cut
+/// ([_cameraReadOf]). ↩️The rows stood by identity for the session and the
+/// cut it stands in, and a twirl — the rows handed over anew — read every
+/// other row's lanes again (card the-conte-rails-lane-rows-are-built-again-
+/// with-the-rail, 2026-11-21). A layer's slot lives while the layer is one
+/// of the session's rows.
 final class KeptTimelineLanes {
   final KeptLaneLists<LayerId> _byLayer = KeptLaneLists();
   List<Layer>? _rows;
@@ -129,18 +135,23 @@ final class KeptTimelineLanes {
       layer.id,
       identity: layer,
       key: (
-        ByIdentity(rows),
+        rowsLanesRead(rows),
+        ByIdentity(session),
         rowPoseSpace(
           session.repository.requireProject(),
           layer,
           standing: session.activeCutId,
         ),
-        ByIdentity(expandedGroupKeys),
+        groupsOpenOn(layer.id, expandedGroupKeys),
         ByIdentity(session.fxPlugins.plugins),
         ByIdentity(session.fxPlugins.outcomes),
-        // The camera row's lanes are the track a camera drag previews.
+        // The camera row's lanes are its cut's camera, as a camera drag
+        // previews it, on its canvas.
         layer.kind == LayerKind.camera
-            ? ByIdentity(session.camera.activeCutCameraTrack)
+            ? switch (_cameraReadOf(session, layer)) {
+                null => null,
+                final read => (ByIdentity(read.track), read.canvasSize),
+              }
             : null,
         // A lane's name is a word of the app's language.
         AppText.settings.value,
@@ -156,6 +167,19 @@ final class KeptTimelineLanes {
 
 /// The CAMERA row's lanes: its cut's camera track, the member lanes alone.
 List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
+  final read = _cameraReadOf(session, row);
+  return read == null
+      ? const []
+      : cameraPropertyLanes(row, read.track, canvasSize: read.canvasSize);
+}
+
+/// What the CAMERA row's lanes are read off — its cut's camera track and
+/// canvas — for them and for the key they are kept by
+/// ([KeptTimelineLanes]); null where no cut writes the row.
+({TransformTrack track, CanvasSize canvasSize})? _cameraReadOf(
+  EditorSessionManager session,
+  Layer row,
+) {
   // The cut that holds the row — the active one wherever the timeline
   // draws it, but the storyboard's camera row twirls any cut's camera, a
   // gap's included (I-73 ④ⓔ). ↩️It read the active cut, required: in a gap
@@ -163,11 +187,11 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
   final project = session.repository.requireProject();
   final cutId = cutWritingRow(project, row.id, standing: session.activeCutId);
   if (cutId == null) {
-    return const [];
+    return null;
   }
   final cut = requireCut(project, cutId);
   if (cut.id != session.activeCutId) {
-    return cameraPropertyLanes(row, cut.camera.track, canvasSize: cut.canvasSize);
+    return (track: cut.camera.track, canvasSize: cut.canvasSize);
   }
   // ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
   // 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.
@@ -189,8 +213,10 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
   // preview-aware channel every other row gets for free from its previewed
   // Layer — reading the cut here is exactly why camera member lanes sat
   // still while every other transform lane followed its drag live.
-  final cameraTrack = session.camera.activeCutCameraTrack ?? cut.camera.track;
-  return cameraPropertyLanes(row, cameraTrack, canvasSize: cut.canvasSize);
+  return (
+    track: session.camera.activeCutCameraTrack ?? cut.camera.track,
+    canvasSize: cut.canvasSize,
+  );
 }
 
 /// The CAMERA row's union summary lane — the row band's key markers.
