@@ -370,9 +370,11 @@ final GpuEngine _engine;
   /// the next cut, thawed ahead of a step into it — kept every byte for
   /// as long as it was hot. 🔬The main PC, a copy of S5_BA cut 352 opened
   /// from its file, played ten seconds and left to rest, no window
-  /// (k1947, k1948): the drawings' bytes in RAM 43.7 MiB at that rest,
-  /// three cels of 14 MiB — two thawed ahead so, the third stood on —,
-  /// and 1.2 with their 680 tiles stored here.
+  /// (k1947 before, k1965 with this): the drawings' bytes in RAM 43.7
+  /// MiB at that rest, three cels of 14 MiB — two thawed ahead so, the
+  /// third stood on —, and 1.2 with their tiles stored here; 28.5 and
+  /// none once the band was full. The pool's pages stood at 193.3 MiB
+  /// either way: the tiles went on pages already made.
   ///
   /// ⛔WITHIN THE BUDGET AS IT STANDS, AND NO ROOM MADE (the same hand's,
   /// that day): a store a call holds has room made every way

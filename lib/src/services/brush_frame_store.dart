@@ -1366,7 +1366,8 @@ class BrushFrameStore {
   /// each, thawed ahead of a step into the next cut
   /// (`EditorSessionManager._thawTheCelsAStepLandsOn`) or stood on, with
   /// no tile of their own on the engine: the screens showed them by
-  /// the pictures the band had made. A pen that comes down on a shell
+  /// the pictures the band had made. 1.2 MiB at that rest with each of
+  /// them laid there and its shell (k1965). A pen that comes down on a shell
   /// waits for no read either: what kept the cel is held on ahead as
   /// the pen goes down ([holdOnAhead]).
   void letGoOfBytesTheEngineHolds() {
