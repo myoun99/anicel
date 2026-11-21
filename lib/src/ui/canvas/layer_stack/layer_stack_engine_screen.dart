@@ -375,9 +375,6 @@ final class _Lays {
   /// there was none, and null where it is not told — one of them made all
   /// of it again, or is held apart no more.
   Rect? since(int lay) {
-    if (lay >= _last) {
-      return Rect.zero;
-    }
     if (_newest.first.lay > lay + 1) {
       return null;
     }
@@ -417,7 +414,10 @@ Rect _tilesMet(Rect where) {
 /// canvas pixels [where] — [left, top, right, bottom), null where none
 /// does: those a texel's middle lands within the mode's reach of
 /// ([GpuSampling.reach]), found by the camera turned about — a canvas
-/// pixel to the texel — as the box round where its corners land.
+/// pixel to the texel — as the box round where its corners land. A
+/// camera that turns about to none is one the engine refuses
+/// (`Screen::show`): its frame is given up, and no target is left
+/// holding one through it to come here.
 ///
 /// A texel is taken where any of it lies in that box, its middle or not:
 /// the half a texel that spares is what the engine's own arithmetic may
@@ -427,10 +427,6 @@ Rect _tilesMet(Rect where) {
   final (columns, rows) = through.size;
   final [a, b, c, d, e, f] = through.inverse;
   final turned = a * e - b * d;
-  if (turned == 0 || !turned.isFinite) {
-    // No camera of a view's: nothing is told of where it lands.
-    return (0, 0, columns, rows);
-  }
   final read = where.inflate(through.mode.reach.toDouble());
   double acrossOf(double x, double y) =>
       (e * (x - c) - b * (y - f)) / turned;

@@ -480,18 +480,20 @@ void main() {
     tearDown(ScreenAsked.debugForget);
 
     /// A cel whose tiles are [cel]'s of the seeds [seeds] name, column by
-    /// column: a tile of another seed differs over all of it.
-    BitmapSurface celOf(List<int> seeds) => BitmapSurface(
-      canvasSize: canvas,
-      tileSize: side,
-      tiles: {
-        for (final (index, column) in columns.indexed)
-          TileCoord(x: column, y: 0): cel(
-            seeds[index],
-            over: [column],
-          ).tileAt(TileCoord(x: column, y: 0))!,
-      },
-    );
+    /// column — those of the columns [over] alone: a tile of another seed
+    /// differs over all of it.
+    BitmapSurface celOf(List<int> seeds, {List<int> over = columns}) =>
+        BitmapSurface(
+          canvasSize: canvas,
+          tileSize: side,
+          tiles: {
+            for (final column in over)
+              TileCoord(x: column, y: 0): cel(
+                seeds[columns.indexOf(column)],
+                over: [column],
+              ).tileAt(TileCoord(x: column, y: 0))!,
+          },
+        );
 
     /// What [screen] shows through [camera] on a target drawn whole — one
     /// nothing was drawn on.
@@ -550,6 +552,16 @@ void main() {
       'moved and shrunk at twice the pixels': [(96, 100), null, (64, 100)],
       'magnified twice': [(128, 64), null, null],
     };
+    // Under 100% the display's law reads Blend, a texel a tent over what
+    // it spans: one beside a tile reads into it. What is drawn is the
+    // tile and 16 pixels round it ([GpuSampling.reach]).
+    final Camera half = (
+      name: 'shrunk to a half',
+      viewport: CanvasViewport(zoom: 0.5),
+      devicePixelRatio: 1,
+      size: (160, 64),
+      drawn: const [(72, 64), (80, 64), (8, 64)],
+    );
     final cameras = <Camera>[
       withRoom,
       for (final view in views)
@@ -560,16 +572,7 @@ void main() {
           size: view.size,
           drawn: drawnThrough[view.name],
         ),
-      // Under 100% the display's law reads Blend, a texel a tent over
-      // what it spans: one beside a tile reads into it. What is drawn is
-      // the tile and 16 pixels round it ([GpuSampling.reach]).
-      (
-        name: 'shrunk to a half',
-        viewport: CanvasViewport(zoom: 0.5),
-        devicePixelRatio: 1,
-        size: (160, 64),
-        drawn: const [(72, 64), (80, 64), (8, 64)],
-      ),
+      half,
       (
         name: 'shrunk to a tenth',
         viewport: CanvasViewport(zoom: 0.1),
@@ -579,19 +582,25 @@ void main() {
       ),
       // A camera turned is snapped to no device pixel
       // (`renderSnappedViewport`): a tile's edges lie a part of a texel
-      // in — under the half, and over it.
+      // in — under the half a quarter round, over it turned over, where
+      // the world's left lands right of its right and its top under its
+      // bottom.
       (
-        name: 'turned, three tenths of a pixel in',
+        name: 'turned a quarter, under half a pixel in',
         viewport: CanvasViewport(panX: 128.3, panY: 0.4, rotationDegrees: 90),
         devicePixelRatio: 1,
         size: (132, 260),
         drawn: null,
       ),
       (
-        name: 'turned, seven tenths of a pixel in',
-        viewport: CanvasViewport(panX: 128.7, panY: 0.7, rotationDegrees: 90),
+        name: 'turned over, over half a pixel in',
+        viewport: CanvasViewport(
+          panX: 256.7,
+          panY: 128.7,
+          rotationDegrees: 180,
+        ),
         devicePixelRatio: 1,
-        size: (132, 260),
+        size: (260, 132),
         drawn: null,
       ),
     ];
@@ -649,12 +658,17 @@ void main() {
       addTearDown(screen.free);
       final target = shownSurfaceOf(300, 140);
       addTearDown(target.free);
+      final reduced = shownSurfaceOf(160, 64);
+      addTearDown(reduced.free);
       await screen.compose(frameOf(celOf(const [5, 5, 5])));
       expect(drawnOn(target, screen, withRoom), roomy);
+      expect(drawnOn(reduced, screen, half), half.size);
 
       expect(drawnOn(target, screen, withRoom), isNull);
+      expect(drawnOn(reduced, screen, half), isNull, reason: 'nor in Blend');
       await screen.compose(frameOf(celOf(const [5, 5, 5])), changed: Rect.zero);
       expect(drawnOn(target, screen, withRoom), isNull, reason: 'no pixel');
+      expect(drawnOn(reduced, screen, half), isNull, reason: 'no pixel');
       expect(target.fingerprint(), whole(screen, withRoom));
 
       // Beside a lay that made a tile again, it adds nothing to draw.
@@ -664,6 +678,31 @@ void main() {
       );
       await screen.compose(frameOf(celOf(const [5, 5, 9])), changed: Rect.zero);
       expect(drawnOn(target, screen, withRoom), (128, 128));
+      expect(target.fingerprint(), whole(screen, withRoom));
+    });
+
+    // A lay told nothing of where is one over all the frame; and a frame
+    // of another world — the tile past the page wiped — is laid on a
+    // canvas of its own, all of it: its second tile too, which the lay is
+    // told nothing of.
+    test('a frame laid everywhere, or one of another world, is drawn '
+        'whole', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(target, screen, withRoom), roomy);
+
+      await screen.compose(frameOf(celOf(const [5, 5, 9])));
+      expect(drawnOn(target, screen, withRoom), roomy, reason: 'everywhere');
+      expect(target.fingerprint(), whole(screen, withRoom));
+
+      await screen.compose(
+        frameOf(celOf(const [5, 5, 3], over: const [0, 1])),
+        changed: inTheFirst,
+      );
+      expect(drawnOn(target, screen, withRoom), roomy, reason: 'a world');
       expect(target.fingerprint(), whole(screen, withRoom));
     });
 
