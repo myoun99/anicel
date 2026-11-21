@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -57,16 +58,24 @@ Cut _withLayer(Cut cut, LayerId id, Layer Function(Layer layer) change) =>
 /// store that says a cut's pictures are made of its rows' eyes — as the
 /// app's says they are made of what a render reads, and of no lane's
 /// twirl.
-Future<ValueNotifier<Project>> _film(WidgetTester tester) async {
-  final film = ValueNotifier(conteTrackProject());
+///
+/// [asked] is told each cut the store is asked about.
+Future<ValueNotifier<Project>> _film(
+  WidgetTester tester, {
+  Project? project,
+  void Function(CutId cut)? asked,
+}) async {
+  final film = ValueNotifier(project ?? conteTrackProject());
   addTearDown(film.dispose);
   final fixed = fixedThumbnails(
     (cut, frame, {required shownHeight, region}) => null,
   );
   final pictures = (
     resolve: fixed.resolve,
-    madeOf: (Cut cut) =>
-        [for (final layer in cut.layers) layer.isVisible].join(),
+    madeOf: (Cut cut) {
+      asked?.call(cut.id);
+      return [for (final layer in cut.layers) layer.isVisible].join();
+    },
     noticesFor: fixed.noticesFor,
     landed: fixed.landed,
     pending: fixed.pending,
@@ -207,6 +216,54 @@ void main() {
       isNot(contains(startsWith('storyboard-conte-row-t'))),
       reason: 'and the conte row does not',
     );
+  });
+
+  testWidgets('🚨only the cuts in the window are asked what their pictures '
+      'are made of — the ones a paint asks pictures for; a long film is not '
+      'spelled cut by cut for a row built again', (tester) async {
+    final short = conteTrackProject();
+    final track = short.tracks.single;
+    final asked = <CutId>{};
+    final film = await _film(
+      tester,
+      project: short.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              ...track.cuts,
+              for (var far = 0; far < 60; far += 1)
+                Cut(
+                  id: CutId('far-$far'),
+                  name: 'far $far',
+                  duration: 24,
+                  canvasSize: const CanvasSize(width: 32, height: 32),
+                  layers: const [],
+                ),
+            ],
+          ),
+        ],
+      ),
+      asked: asked.add,
+    );
+    expect(
+      _blocks(tester).blockForCut(const CutId('far-59')),
+      isNull,
+      reason: '⛔premise: the last cut lies outside the window',
+    );
+    asked.clear();
+
+    film.value = _withCut1(
+      film.value,
+      (cut) => _withLayer(
+        cut,
+        conteCelId,
+        (layer) => layer.copyWith(lanesExpanded: !layer.lanesExpanded),
+      ),
+    );
+    await tester.pump();
+
+    expect(asked, contains(_cut1), reason: '⛔premise: the row was asked');
+    expect(asked, isNot(contains(const CutId('far-59'))));
   });
 
   testWidgets('a panel made longer repaints both rows — the conte row\'s '
