@@ -23,9 +23,9 @@ import '../../helpers/tiles_on_the_engine.dart';
 /// 「사본이나 ram에있는걸 최대한 없애고싶어서」): at a rest
 /// (`TilesAtRest`) its kept cels let go of their bytes here — the frame's
 /// its canvas stands on as any other, and one no screen stored laid on
-/// the engine there —, and the cels an import lands are parked behind —
-/// every one but the frame's its canvas stands on, read where the playhead
-/// is then; and a project closed hears no more.
+/// the engine there —, and the cels an import lands are parked behind,
+/// every one — the frame's its canvas stands on hot still, read where the
+/// playhead is then; and a project closed hears no more.
 ///
 /// What the store does with each word is its own
 /// (a_hot_cel_that_is_kept_lets_its_bytes_go_at_a_rest_test.dart,
@@ -101,8 +101,9 @@ void main() {
     expect(store.hotBakedBytes, 0);
   });
 
-  test('🚨the cels an import lands are parked behind — but the frame\'s '
-      'its canvas stands on, read where it stands then', () async {
+  test('🚨the cels an import lands are parked behind — the frame\'s its '
+      'canvas stands on too, which stays hot: read where it stands then',
+      () async {
     final (:session, :at0, :at3) = twoCels();
     addTearDown(session.dispose);
     final store = session.renderCaches.brushFrameStore;
@@ -113,7 +114,7 @@ void main() {
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(at3), isNotNull);
-    expect(store.isCelParked(at3), isFalse);
+    expect(store.isCelParked(at3), isTrue);
     expect(store.hotBakedSurfaceOrNull(at0), isNull);
     expect(store.isCelCold(at0), isTrue);
   });

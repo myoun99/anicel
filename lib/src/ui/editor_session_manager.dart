@@ -326,8 +326,8 @@ class EditorSessionManager extends ChangeNotifier
         renderCaches.brushFrameStore.hotBakedSurfaceOrNull,
       ),
     );
-    // Its store hears from it which cels a canvas stands on: every
-    // other unsaved one is parked behind as an import lands it
+    // Its store hears from it which cels a canvas stands on: those
+    // stay hot as an import's cels are parked behind, every one
     // (`BrushFrameStore.parkBehind`). And every hot cel that is kept —
     // in the saved file, in the run's room — lets go of its bytes here
     // once the engine's tiles rest ([TilesAtRest]).

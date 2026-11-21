@@ -148,8 +148,9 @@ void main() {
     expect(store.validPreviewSurfaceOrNull(key('f')), isNull);
   });
 
-  test('🚨a cel a canvas stands on is not parked: hot as it landed, its '
-      'bytes here — the pen\'s', () async {
+  test('🚨a cel a canvas stands on is parked as any other, and hot '
+      'still: its bytes here till the rest lays its tiles on the engine',
+      () async {
     store.setCelsStoodOn(() => [key('f')]);
     land('f', 4);
     final landed = store.hotBakedSurfaceOrNull(key('f'));
@@ -158,9 +159,19 @@ void main() {
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(key('f')), same(landed));
-    expect(store.isCelParked(key('f')), isFalse);
+    expect(store.isCelParked(key('f')), isTrue);
     expect(store.isCelCold(key('g')), isTrue);
     expect(store.hotBakedSurfaceOrNull(key('g')), isNull);
+    expect(engine.laid, isEmpty, reason: 'the rest\'s to lay');
+
+    store.letGoOfBytesTheEngineHolds();
+
+    expect(engine.laid.single.surface, same(landed));
+    expect(store.hotBakedBytes, 0);
+    expect(
+      store.hotBakedSurfaceOrNull(key('f'))!.tiles[origin]!.pixels,
+      pixelsOf(4),
+    );
   });
 
   test('one a canvas came to stand on while it was parked keeps its bytes '
