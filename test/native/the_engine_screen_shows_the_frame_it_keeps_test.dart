@@ -439,9 +439,9 @@ void main() {
   });
 
   // What a show asked is told for the frame statistics ([ScreenAsked]):
-  // the target's texels, the display's scale — the zoom by the device's
-  // ratio — and the mode the display's law picks by it, Blend under 100%
-  // and Nearest from it.
+  // the texels it drew — all of a target nothing was drawn on —, the
+  // display's scale — the zoom by the device's ratio — and the mode the
+  // display's law picks by it, Blend under 100% and Nearest from it.
   test('a show tells what it asked of the engine: its texels, the '
       'display\'s scale and the mode by it', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
@@ -581,14 +581,6 @@ void main() {
           size: view.size,
           drawn: drawnThrough[view.name],
         ),
-      half,
-      (
-        name: 'shrunk to a tenth',
-        viewport: CanvasViewport(zoom: 0.1),
-        devicePixelRatio: 1,
-        size: (32, 16),
-        drawn: const [(15, 15), (17, 15), (2, 15)],
-      ),
       // A camera turned is snapped to no device pixel
       // (`renderSnappedViewport`): a tile's edges lie a part of a texel
       // in — under the half a quarter round, over it turned over, where
@@ -611,6 +603,14 @@ void main() {
         devicePixelRatio: 1,
         size: (260, 132),
         drawn: null,
+      ),
+      half,
+      (
+        name: 'shrunk to a tenth',
+        viewport: CanvasViewport(zoom: 0.1),
+        devicePixelRatio: 1,
+        size: (32, 16),
+        drawn: const [(15, 15), (17, 15), (2, 15)],
       ),
     ];
 
