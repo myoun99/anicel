@@ -341,15 +341,18 @@ external Pointer<Window> windowNew(
   int height,
 );
 
+@Native<Bool Function(Pointer<Window>)>(symbol: 'gpu_engine_window_direct')
+external bool windowDirect(Pointer<Window> window);
+
 @Native<Pointer<Texture> Function(Pointer<Window>)>(
   symbol: 'gpu_engine_window_target',
 )
 external Pointer<Texture> windowTarget(Pointer<Window> window);
 
-@Native<Void Function(Pointer<Engine>, Pointer<Window>)>(
+@Native<Bool Function(Pointer<Engine>, Pointer<Window>)>(
   symbol: 'gpu_engine_window_present',
 )
-external void windowPresent(Pointer<Engine> engine, Pointer<Window> window);
+external bool windowPresent(Pointer<Engine> engine, Pointer<Window> window);
 
 @Native<Void Function(Pointer<Window>)>(symbol: 'gpu_engine_window_free')
 external void windowFree(Pointer<Window> window);

@@ -1350,7 +1350,7 @@ pub unsafe extern "C" fn gpu_engine_composited_free(composited: *mut Composited)
 /// right, bottom) — leaving the rest of it as it was, and waits for the GPU;
 /// returns how many passes it took, -1 on failure (see the last error).
 /// `target` is what the screen shows: a surface's texture
-/// (`gpu_engine_surface_texture`) or the one a window is drawn on
+/// (`gpu_engine_surface_texture`) or a window's next image
 /// (`gpu_engine_window_target`), one entry for both (kernels/mod.rs).
 ///
 /// # Safety
@@ -1725,8 +1725,8 @@ pub unsafe extern "C" fn gpu_engine_screen_compose_over(
 /// was, and submits the work, as [`gpu_engine_screen_compose`] does. The
 /// camera is `inverse` — a screen pixel to the canvas's, the affine
 /// `[a, b, c, d, e, f]` — sampled by `sampling` (0 blend, 1 pick, 3
-/// nearest). `target` is a surface's texture or the one a window is drawn
-/// on, as `gpu_engine_composite_show`'s is.
+/// nearest). `target` is a surface's texture or a window's next image, as
+/// `gpu_engine_composite_show`'s is.
 ///
 /// ↩️It took the display's scale too till 2026-11-19: which halving stage
 /// the screen read under 1/16 ([`Screen::show`]).

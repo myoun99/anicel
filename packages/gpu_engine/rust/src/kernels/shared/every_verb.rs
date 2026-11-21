@@ -144,7 +144,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_pool_ahead_bytes",
             "gpu_engine_grid_kept_bytes",
             "gpu_engine_grid_most_side",
-            "gpu_engine_window_target",
+            "gpu_engine_window_direct",
             "gpu_engine_surface_texture",
             "gpu_engine_surface_handle",
         ],
@@ -310,27 +310,6 @@ fn every_verb_does_what_it_does_of_the_device_on_the_engines_thread() {
         assert_eq!(handed_the_engine(verb), handed, "{name} is on the other ledger's side ({why})");
         assert!(!through_the_door(verb), "{name} goes through a door — off the ledger with it ({why})");
     }
-}
-
-/// 🚨A frame of every screen shows its window on the thread that builds the
-/// app's frames (Dart's `GpuWindow.present`), so the verb hands its body
-/// over and waits for no turn of the engine's thread
-/// (`platform/android.rs`, `Window`, has what the wait cost till
-/// 2026-11-21). Android's sources compile on no machine that runs these
-/// tests, so no test of behaviour reads them: this one reads the verb. The
-/// texture a window is drawn on is named through no door at all, which the
-/// ledger holds it to ([`NO_HAND_ON_THE_DEVICE`]).
-#[test]
-fn a_window_is_shown_with_no_wait_for_the_engines_thread() {
-    const WAITED_FOR: [&str; 2] = [".on_thread(", ".run_lent("];
-    let verbs = verbs();
-    let present = verbs.get("gpu_engine_window_present").expect("LIVENESS — the scan finds Android's verbs");
-    let waits: Vec<_> = WAITED_FOR.iter().filter(|door| present.body.contains(**door)).collect();
-    assert!(
-        waits.is_empty(),
-        "gpu_engine_window_present waits for the engine's thread ({waits:?}) on the thread that builds the \
-         app's frames — hand its body over (`Engine::posted`)"
-    );
 }
 
 #[test]

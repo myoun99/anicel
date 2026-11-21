@@ -345,7 +345,7 @@ pub unsafe extern "C" fn gpu_engine_grid_lay_free(lay: *mut GridLay) {
 /// 8i + 4]` of its own pixels onto `boxes[8i + 4 .. 8i + 8]` of the
 /// screen's, each [left, top, right, bottom) ([`GridLay::lay`]); waits for
 /// the GPU. `target` is what the view shows: a surface's texture
-/// (`gpu_engine_surface_texture`) or the one a window is drawn on
+/// (`gpu_engine_surface_texture`) or a window's next image
 /// (`gpu_engine_window_target`). False on failure; see the last error.
 ///
 /// # Safety

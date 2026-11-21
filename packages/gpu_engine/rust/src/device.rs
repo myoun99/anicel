@@ -2067,14 +2067,12 @@ pub(crate) unsafe fn let_go<T>(handed: *mut T) {
 /// engine that made `handed`, as [`Engine::on_thread`] runs a verb's body:
 /// for a verb that is handed a thing and no engine, and takes a hand on the
 /// device by it all the same — lets go of what the thing keeps of the
-/// device.
+/// device, or asks the driver for its next image.
 ///
 /// 🔬Three of the 71 verbs handed neither an engine nor a thing to free did
 /// (2026-11-14, each body read): `gpu_engine_held_let_go` and
 /// `gpu_engine_blurs_let_go` let buffers go on their caller's thread, and
-/// Android's `gpu_engine_window_target` took the swapchain's image there
-/// (↩️it names a texture of the engine's own from 2026-11-21, and takes no
-/// hand on the device: `platform/android.rs`) —
+/// Android's `gpu_engine_window_target` took the swapchain's image there —
 /// past `every_verb.rs`, which read the verbs handed the engine alone till
 /// then.
 ///
