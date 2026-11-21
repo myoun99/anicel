@@ -112,6 +112,11 @@ class FrameStatsReadout extends StatelessWidget {
                     'max${_ms(stats.uiWorst)}',
                 'LATENCY p50${_ms(stats.latencyP50)}  '
                     'p95${_ms(stats.latencyP95)}',
+                // The engine's screens, which the three lines above do
+                // not see ([FrameStatsSnapshot.screenUpP50]).
+                'SCREEN  p50${_ms(stats.screenUpP50)}  '
+                    'p95${_ms(stats.screenUpP95)}  '
+                    '${stats.screensUpPerSecond.toStringAsFixed(1)}/s',
                 'layer   cache ${stats.layerCacheCount}  '
                     '${stats.layerCacheMegabytes.toStringAsFixed(1)} MB',
                 // 🚨 Per-entry, against a window's worth of pixels — the

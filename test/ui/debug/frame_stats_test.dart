@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/main.dart';
+import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
@@ -292,6 +293,53 @@ void main() {
       );
     });
 
+    test('the screen line is the engine screens\' newest frames, from their '
+        'draw to being put up', () {
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      for (final micros in [4000, 20000, 6000]) {
+        ScreenTexture.debugWentUp(micros);
+      }
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+
+      final stats = FrameStats.latest.value!;
+      expect(stats.screenUpP50, 6.0);
+      expect(stats.screenUpP95, 20.0);
+    });
+
+    test('the screens\' rate is a slope over the interval between two '
+        'publications, as the bakes\' is', () {
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      ScreenTexture.debugWentUp(1000);
+      // A window of FOUR SECONDS, published twice a QUARTER SECOND apart.
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var ms = 0; ms <= 4000; ms += 40)
+          _frame(uiMs: 1, rasterMs: 1, atMs: ms),
+      ]);
+      FrameStats.publish();
+      expect(
+        FrameStats.latest.value!.screensUpPerSecond,
+        0,
+        reason: 'the first publication has no reading before it',
+      );
+
+      for (var i = 0; i < 5; i += 1) {
+        ScreenTexture.debugWentUp(1000);
+      }
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
+      ]);
+      FrameStats.publish();
+
+      expect(
+        FrameStats.latest.value!.screensUpPerSecond,
+        closeTo(5 / 0.25, 0.01),
+        reason: 'five went up in the quarter second between the two',
+      );
+    });
+
     testWidgets('the slope is over the interval it measured, not the window', (
       tester,
     ) async {
@@ -506,6 +554,7 @@ void main() {
       expect(find.textContaining('RASTER'), findsOneWidget);
       expect(find.textContaining('12.3'), findsOneWidget);
       expect(find.textContaining('LATENCY'), findsOneWidget);
+      expect(find.textContaining('SCREEN'), findsOneWidget);
       expect(find.textContaining('layer   cache 3'), findsOneWidget);
       expect(find.textContaining('picture cache 0'), findsOneWidget);
     });
