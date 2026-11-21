@@ -20,6 +20,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import '../helpers/a_room_that_refuses.dart';
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/files_written_under.dart';
 import '../helpers/shells_with_no_bytes.dart';
 
 /// 🚨Card `cel-originals-are-held-twice-in-ram-and-on-the-gpu` ② (유저
@@ -76,12 +77,8 @@ void main() {
 
   /// How many files lie in the run's room — under it, a store's cels
   /// lying in a folder of its own.
-  int celsInTheRoom() {
-    final room = Directory(SessionScratch.stagedFolder());
-    return room.existsSync()
-        ? room.listSync(recursive: true).whereType<File>().length
-        : 0;
-  }
+  int celsInTheRoom() =>
+      filesWrittenUnder(Directory(SessionScratch.stagedFolder())).length;
 
   late ShellsWithNoBytes engine;
   late BrushFrameStore store;

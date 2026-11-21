@@ -18,6 +18,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/files_written_under.dart';
 import '../helpers/shells_with_no_bytes.dart';
 
 /// 🚨AN EDITED CEL HOLDS NO BYTE OF THE TILES ITS EDIT LEFT (card
@@ -117,12 +118,8 @@ void main() {
 
   /// How many files lie in the run's room — under it, a store's cels
   /// lying in a folder of its own.
-  int filesInTheRoom() {
-    final room = Directory(SessionScratch.stagedFolder());
-    return room.existsSync()
-        ? room.listSync(recursive: true).whereType<File>().length
-        : 0;
-  }
+  int filesInTheRoom() =>
+      filesWrittenUnder(Directory(SessionScratch.stagedFolder())).length;
 
   group('a cel the saved file keeps', () {
     late AnicelCelFileRef kept;
