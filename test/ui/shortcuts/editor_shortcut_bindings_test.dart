@@ -540,17 +540,23 @@ void main() {
         final undo = bindings.primaryActivatorFor(EditorActionIds.undo)!;
         expect(undo.meta, isTrue);
         expect(undo.control, isFalse);
+        // ↩️It said 「Ctrl+Z is not undo on a Mac」 till H65-Q1 「both」: a
+        // command is pressed with Ctrl or with ⌘ on every device
+        // (a_command_is_pressed_with_ctrl_or_command_test.dart).
         expect(
           bindings.shortcuts.entries.any(
             (entry) =>
                 entry.key is SingleActivator &&
                 (entry.key as SingleActivator).trigger ==
                     LogicalKeyboardKey.keyZ &&
-                (entry.key as SingleActivator).control &&
-                !(entry.key as SingleActivator).shift,
+                (entry.key as SingleActivator).meta &&
+                !(entry.key as SingleActivator).control &&
+                !(entry.key as SingleActivator).shift &&
+                (entry.value as EditorActionIntent).actionId ==
+                    EditorActionIds.undo,
           ),
-          isFalse,
-          reason: 'Ctrl+Z is not undo on a Mac',
+          isTrue,
+          reason: 'the map holds ⌘Z for undo',
         );
         // Recording ⌘Z by hand is recording the default, not an override.
         bindings.setActivators(EditorActionIds.undo, const [
