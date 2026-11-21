@@ -33,6 +33,7 @@ import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -458,6 +459,37 @@ void main() {
         window.inputSettings(),
         next.toInputSettings(),
         reason: '${window.key} reads the brush in hand',
+      );
+    }
+  });
+
+  // a-tool-change-lets-the-sheet-panels-dock-image-go (11-22): with the
+  // brush switch off — its default — a tool change between one a sheet
+  // runs and one it does not built the sheet's panel again for the same
+  // answer, and the dock around it let its image go: ALT's eyedropper did
+  // it twice a press. The law is the sheets' panel's ([SheetCanvasPanel]),
+  // so the conte stands for the three.
+  testWidgets('with the brush off, a tool change builds and paints nothing '
+      'of the sheet — the dock around it keeps its image', (tester) async {
+    final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    addTearDown(brush.dispose);
+    await _pumpConte(tester, brushToolState: brush);
+    final sheet = tester.renderObject(find.byType(ConteTabHost));
+
+    for (final tool in [CanvasTool.eyedropper, CanvasTool.brush]) {
+      final census = await frameCensus(
+        tester,
+        () => brush.value = brush.value.copyWith(tool: tool),
+      );
+      expect(
+        census.rebuilt,
+        isNot(contains(BrushCanvasPanel)),
+        reason: '$tool',
+      );
+      expect(
+        paintedInside(census.painted, sheet),
+        isFalse,
+        reason: '$tool: nothing of the sheet is painted again',
       );
     }
   });
