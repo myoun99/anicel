@@ -90,8 +90,23 @@ class MediaViewerRequest {
 /// there are two.
 class MediaViewerSlot {
   MediaViewerSlot() {
+    request.addListener(_framedNothingWhileEmpty);
     position.addListener(_keepPage);
     viewport.addListener(_keepFraming);
+  }
+
+  /// 🚨A VIEWER THAT HOLDS NOTHING HAS FRAMED NOTHING (F-382 ⑦, the 11-21
+  /// hands-on: 「다른 프로젝트 탭에 갔다가 돌아오면 쪽 표시는 5/8 인데
+  /// 화면은 1쪽」). Emptied — a project with no reference of its own on
+  /// screen, a close, a swap with an empty viewer — it still named the last
+  /// document in [framedFor], while the empty viewer's first page turned the
+  /// view under it to the top; that document opened again was taken as
+  /// framed already, so the view it was left at was never put back, and it
+  /// showed page one under the page it was left at.
+  void _framedNothingWhileEmpty() {
+    if (request.value == null) {
+      framedFor.value = null;
+    }
   }
 
   final ValueNotifier<MediaViewerRequest?> request = ValueNotifier(null);
