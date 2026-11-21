@@ -101,12 +101,14 @@ const STORED_PACKED: u32 = 2u;
 // s read at five sites, 8.6 as it was before the fold, 8.9 so; 14.1 at
 // three sites with no loop, and 9.4 in a loop of three turns counted — a
 // loop that ends by what it read is the one no compiler can lay out
-// three times. What the GPU takes to read a folded tile did not move
-// within what that machine can tell (kernels/fold/cost.rs: a folded
-// read against the same read as it is, 0.90 to 1.13 times for every
-// shape) — ⏳a tablet's has not been asked. The words read and the
-// pixel answered are the same. `one_stored_read.rs` keeps it the one
-// site.
+// three times. What the GPU takes to read a tile did not move within
+// what that machine can tell (kernels/fold/cost.rs, an RTX 4080, eight
+// rounds of its fifteen reads: a read's own spread from round to round
+// is wider than any step between the shapes, folded and as it is
+// alike; a folded read 0.87 to 1.13 times the same read as it is, where
+// five sites gave 0.90 to 1.12) — ⏳a tablet's has not been asked. The
+// words read and the pixel answered are the same. `one_stored_read.rs`
+// keeps it the one site.
 fn stored_word(k: u32, slot: u32, texel: u32) -> u32 {
   var index = slot * TILE_TEXELS + texel;
   var reads = STORED_PIXEL;
