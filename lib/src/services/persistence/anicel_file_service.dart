@@ -688,8 +688,45 @@ class AnicelFileService {
       }
     }
 
-    if (sound) {
-      final adopted = await _saveIncremental(
+    // The parks this save reads stay in the room till it has read them —
+    // a cel changed while it runs lets its park go
+    // ([BrushFrameStore.holdParksForSave]). Taken before the first await,
+    // so nothing lands between the snapshot and the hold.
+    final letGoOfParks = [
+      for (var index = 0; index < stores.length; index += 1)
+        stores[index].holdParksForSave(snapshots[index].cold.values),
+    ];
+    try {
+      if (sound) {
+        final adopted = await _saveIncremental(
+          project: project,
+          baked: baked,
+          dirty: dirty,
+          filePath: filePath,
+          saveDirectory: saveDirectory,
+          mediaToStore: mediaToStore,
+          carried: carried,
+          sessionFields: sessionFields,
+          onProgress: onProgress,
+          onStretch: onStretch,
+          heldEntries: heldEntries,
+          onMoveRefs: moveRefs,
+        );
+        if (adopted != null) {
+          adoptEach(adopted);
+          return settle(lost(
+            adopted,
+            carried: {
+              for (final key in allKeys)
+                if (!dirty.contains(key)) key,
+            },
+          ));
+        }
+        // A torn tail, refs the file does not back, or somebody else's
+        // archive → the whole write below.
+      }
+
+      final adopted = await _saveFull(
         project: project,
         baked: baked,
         dirty: dirty,
@@ -700,39 +737,16 @@ class AnicelFileService {
         sessionFields: sessionFields,
         onProgress: onProgress,
         onStretch: onStretch,
-        heldEntries: heldEntries,
-        onMoveRefs: moveRefs,
+        onFullWriteLeftAt: onFullWriteLeftAt,
+        beforeReplacing: beforeReplacing,
       );
-      if (adopted != null) {
-        adoptEach(adopted);
-        return settle(lost(
-          adopted,
-          carried: {
-            for (final key in allKeys)
-              if (!dirty.contains(key)) key,
-          },
-        ));
+      adoptEach(adopted);
+      return settle(lost(adopted));
+    } finally {
+      for (final letGo in letGoOfParks) {
+        letGo();
       }
-      // A torn tail, refs the file does not back, or somebody else's
-      // archive → the whole write below.
     }
-
-    final adopted = await _saveFull(
-      project: project,
-      baked: baked,
-      dirty: dirty,
-      filePath: filePath,
-      saveDirectory: saveDirectory,
-      mediaToStore: mediaToStore,
-      carried: carried,
-      sessionFields: sessionFields,
-      onProgress: onProgress,
-      onStretch: onStretch,
-      onFullWriteLeftAt: onFullWriteLeftAt,
-      beforeReplacing: beforeReplacing,
-    );
-    adoptEach(adopted);
-    return settle(lost(adopted));
   }
 
   /// Splits the dirty set into the cels that still have content and the

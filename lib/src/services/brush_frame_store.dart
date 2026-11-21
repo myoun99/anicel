@@ -1994,12 +1994,53 @@ class BrushFrameStore {
   }
 
   /// Whether a cel keeps [ref]'s file — by the very ref, the one way a
-  /// parked file comes to be kept twice ([_keepCold]).
+  /// parked file comes to be kept twice ([_keepCold]) — or a save in
+  /// flight is to read it still ([holdParksForSave]).
   bool _parkedFileKept(AnicelCelFileRef ref) =>
-      _coldCels.values.any((kept) => identical(kept, ref));
+      _coldCels.values.any((kept) => identical(kept, ref)) ||
+      _parksSavesRead.any((read) => read.contains(ref));
+
+  /// The parks each save in flight reads: the very refs its snapshot
+  /// named, a set for each save ([holdParksForSave]).
+  final List<Set<AnicelCelFileRef>> _parksSavesRead = [];
+
+  /// Keeps the room's file of each of [parks] — the parks a save's
+  /// snapshot named ([bakedSnapshotForSave]) — till the save is done with
+  /// them, and answers the letting go, to be called once it is, written
+  /// or not.
+  ///
+  /// 🚨★★★A SAVE READS A PARK LATE, AND A CEL LETS ITS PARK GO EARLY. The
+  /// save takes its snapshot as it begins and reads the parks on its own
+  /// isolate once the cels in RAM are made ready — seconds later in a big
+  /// project; a change to the cel in between ends its park
+  /// ([_letTheKeptGo]) and its file went at once. The save then found no
+  /// file, left the cel out, and named it lost: the archive held no entry
+  /// for a cel the person had when they saved (저장 2026-11-21 — every cel
+  /// of an import is parked as it lands, card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu).
+  /// 🧪a_park_a_save_reads_stays_till_it_is_read_test.dart.
+  ///
+  /// ⚠️The very refs, as a cel keeps one: a set the save took, never a
+  /// count beside [_coldCels] that could disagree with it.
+  void Function() holdParksForSave(Iterable<AnicelCelFileRef> parks) {
+    final read = Set<AnicelCelFileRef>.identity()..addAll(parks);
+    if (read.isEmpty) {
+      return () {};
+    }
+    _parksSavesRead.add(read);
+    return () {
+      // Gone already where the store let go of every cel since.
+      if (!_parksSavesRead.remove(read)) {
+        return;
+      }
+      for (final park in read) {
+        _letGoUnlessKept(park);
+      }
+    };
+  }
 
   /// [ref]'s file let go, now that a cel let go of it — unless another
-  /// still keeps it ([_keepCold]).
+  /// still keeps it ([_keepCold]), or a save is to read it still.
   void _letGoUnlessKept(AnicelCelFileRef ref) {
     if (_parkedFileKept(ref)) {
       return;
@@ -2224,6 +2265,7 @@ class BrushFrameStore {
     _shells.clear();
     _takenKept.clear();
     _coldCels.clear();
+    _parksSavesRead.clear();
     _fileCels.clear();
     _hotWeights.clear();
     _coldBytes = 0;
