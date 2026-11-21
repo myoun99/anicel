@@ -1395,9 +1395,18 @@ pub unsafe extern "C" fn gpu_engine_screen_new(
     Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| {
         let screen = Arc::new(ScreenAndBytes::new(screen));
         // Its canvas is kept in the engine's pictures (`Kept::made`),
-        // whose rest tells it to weigh again ([`Weighs`]).
+        // whose rest tells it to weigh again ([`Weighs`]) — written among
+        // those told on the engine's thread, in turn before any body that
+        // comes to the screen: a making that takes a hand on the engine
+        // besides handing its thing out is a body for that thread
+        // (`shared/every_verb.rs`, `hands_out_alone`).
         let weighs: Weak<ScreenAndBytes> = Arc::downgrade(&screen);
-        engine.pictures.weighed_by(weighs);
+        let handed = Sent((engine.pictures.clone(), weighs));
+        engine.posted(move || {
+            let (pictures, weighs) = handed.taken();
+            pictures.weighed_by(weighs);
+            Some(())
+        });
         engine.hands(screen)
     })
 }
