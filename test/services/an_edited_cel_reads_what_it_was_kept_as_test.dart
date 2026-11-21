@@ -89,6 +89,18 @@ void main() {
     return shell;
   }
 
+  /// The cel — a shell a use took — hot no more, as a full pool has one
+  /// let go whose slots went: the looks' shell again, its tiles written
+  /// down still. The engine holds no slot from here, so a tile read is
+  /// read where its bytes are kept.
+  void cooled() {
+    engine
+      ..whole = false
+      ..slots = false;
+    store.coolWhereTheEngineLetGo(f);
+    expect(store.hotBakedSurfaceOrNull(f), isNull, reason: '⛔premise');
+  }
+
   /// [from] drawn on at its right tile alone, and stored.
   BitmapSurface drawOn(BitmapSurface from, int seed) {
     final drawn = from.copyWith(
@@ -253,6 +265,89 @@ void main() {
 
       expect(store.keptBytesHeldOn, 0);
     });
+
+    test('🚨the tiles the room lets go for are written down as the '
+        'cel\'s again — no shell made of it between, a canvas standing '
+        'on it: the edit after holds what it is kept as then for '
+        'them', () async {
+      final shell = itsShell();
+      final leftAlone = shell.tiles[left]!;
+      drawOn(shell, 9);
+      savedAs(cel(4, 9));
+      waitsNoMore(shell.tiles[right]!);
+      store.setCelsStoodOn(() => [f]);
+      store.letGoOfBytesTheEngineHolds();
+      await ScratchFile.lettingGo;
+      expect(store.keptBytesHeldOn, 0, reason: '⛔premise: let go');
+      final drawn = store.hotBakedSurfaceOrNull(f)!;
+      expect(
+        drawn.tiles[right]!.hasItsBytesHere,
+        isTrue,
+        reason: '⛔premise: no shell made of it',
+      );
+
+      drawOn(drawn, 7);
+
+      expect(store.keptBytesHeldOn, 1);
+      engine.slots = false;
+      expect(leftAlone.pixels, pixelsOf(4));
+    });
+
+    test('kept anew and hot no more, its tiles the looks\' shell\'s: the '
+        'room lets go of what it was, as for a hot cel', () async {
+      final shell = itsShell();
+      final leftAlone = shell.tiles[left]!;
+      final steppedBack = shell.tiles[right]!;
+      drawOn(shell, 9);
+      savedAs(cel(4, 9));
+      store.letGoOfBytesTheEngineHolds();
+      expect(store.keptBytesHeldOn, 1, reason: '⛔premise: one waits');
+      cooled();
+      waitsNoMore(steppedBack);
+
+      store.letGoOfBytesTheEngineHolds();
+      await ScratchFile.lettingGo;
+
+      expect(store.keptBytesHeldOn, 0);
+      expect(store.coldBakedBytes, 0);
+      expect(leftAlone.hasItsBytesHere, isFalse);
+      expect(
+        leftAlone.pixels,
+        pixelsOf(4),
+        reason: 'read by its cel\'s name: in the file that keeps it now',
+      );
+    });
+
+    test('🚨laid on another canvas where it is not hot — its kept bytes '
+        'remade — the tiles that wait read what it was kept as: at that '
+        'door, and at the rests after', () async {
+      final shell = itsShell();
+      final waiting = shell.tiles[left]!;
+      cooled();
+
+      store.resizeBakedSurfaces(
+        const CanvasSize(
+          width: defaultCelTileSize ~/ 2,
+          height: defaultCelTileSize,
+        ),
+        cutId: const CutId('c'),
+      );
+
+      expect(store.isCelFileBacked(f), isFalse, reason: '⛔premise: remade');
+      expect(store.isCelParked(f), isTrue, reason: '⛔premise: and parked');
+      expect(store.keptBytesHeldOn, 1);
+      expect(waiting.pixels, pixelsOf(4));
+
+      store.letGoOfBytesTheEngineHolds();
+      await ScratchFile.lettingGo;
+
+      expect(
+        store.keptBytesHeldOn,
+        1,
+        reason: 'the shell of what it was is no tile of what it is',
+      );
+      expect(waiting.pixels, pixelsOf(4));
+    });
   });
 
   group('a cel parked in the run\'s room', () {
@@ -299,6 +394,39 @@ void main() {
       expect(store.keptBytesHeldOn, 0);
       expect(store.coldBakedBytes, 0);
       expect(File(park).existsSync(), isFalse);
+    });
+
+    test('a hand going down on it asks for nothing: its park is held on '
+        'as it lies', () async {
+      itsShell();
+      final room = filesInTheRoom();
+      final held = store.coldBakedBytes;
+
+      await store.holdOnAhead(f);
+      await ScratchFile.lettingGo;
+
+      expect(filesInTheRoom(), room);
+      expect(store.coldBakedBytes, held);
+    });
+
+    test('laid on another canvas where it is not hot, the park it was '
+        'stays for the tiles that wait in it', () async {
+      final shell = itsShell();
+      final waiting = shell.tiles[left]!;
+      cooled();
+
+      store.resizeBakedSurfaces(
+        const CanvasSize(
+          width: defaultCelTileSize ~/ 2,
+          height: defaultCelTileSize,
+        ),
+        cutId: const CutId('c'),
+      );
+      await ScratchFile.lettingGo;
+
+      expect(File(park).existsSync(), isTrue);
+      expect(store.keptBytesHeldOn, 1);
+      expect(waiting.pixels, pixelsOf(4));
     });
 
     test('a park whose file is gone from the room holds nothing: the '

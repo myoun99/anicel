@@ -469,6 +469,45 @@ void main() {
       expect(store.keptBytesHeldOn, 0);
     });
 
+    test('what was held ahead goes where the edit holds nothing on: no '
+        'tile waits by then', () async {
+      final tile = await aTileTaken('f');
+      final room = celsInTheRoom();
+      await store.holdOnAhead(key('f'));
+      expect(celsInTheRoom(), room + 1, reason: '⛔premise: held ahead');
+      tile.readPixels((_, pixels) => tile.keepBytesHere(pixels));
+
+      store.storeBakedSurface(key('f'), ink(9));
+      await ScratchFile.lettingGo;
+
+      expect(store.keptBytesHeldOn, 0);
+      expect(store.coldBakedBytes, 0);
+      expect(celsInTheRoom(), room);
+    });
+
+    test('🚨a tile nothing holds the bytes of — its file gone and no '
+        'slot of it as the edit lands — is refused: ⛔not read as what '
+        'its cel is kept as after', () async {
+      final tile = await aTileTaken('f');
+      File(refs[key('f')]!.filePath).deleteSync();
+      engine.slots = false;
+      store.storeBakedSurface(key('f'), ink(9));
+      expect(tile.hasItsBytesHere, isFalse, reason: '⛔premise: none to hand');
+      expect(store.keptBytesHeldOn, 0, reason: '⛔premise: none held');
+      // Kept anew, as a save keeps it.
+      final snapshot = store.bakedSnapshotForSave();
+      final saved = keepInAFile(
+        BrushFrameStore(shells: ShellsWithNoBytes()),
+        {key('f'): ink(9)},
+      )[key('f')]!;
+      store.adoptSavedFile({
+        key('f'): saved,
+      }, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
+      expect(store.isCelFileBacked(key('f')), isTrue, reason: '⛔premise');
+
+      expect(() => tile.pixels, throwsStateError);
+    });
+
     test('what was held ahead goes as the engine\'s tiles rest, no edit '
         'having come — and stays for a cel a canvas stands on', () async {
       await aTileTaken('f');

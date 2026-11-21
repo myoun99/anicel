@@ -1462,8 +1462,8 @@ class BrushFrameStore {
     final held = from != null && from.tiles.any(_waits)
         ? _heldInTheRoom(key, ahead)
         : null;
-    if (ahead != null && !identical(ahead.held, held)) {
-      _letGoUnlessKept(ahead.held);
+    if (ahead != null && !identical(ahead, held)) {
+      _letGoUnlessKept(ahead);
     }
     if (from == null) {
       return;
@@ -1479,11 +1479,18 @@ class BrushFrameStore {
   /// [key]'s kept bytes as a file of the run's room, to be held on
   /// there: its park as it lies — 유저 2026-11-21 on Q6, a cel made hot
   /// keeps its park —, else its stretch of the saved file written to
-  /// one, pressed as it is: what [ahead] wrote of this very ref
-  /// ([holdOnAhead]), else read and written here. Null where it is kept
-  /// nowhere, its park's file is gone from the room, the file will not
-  /// read or the room refuses.
-  AnicelCelFileRef? _heldInTheRoom(BrushFrameKey key, _HeldAhead? ahead) {
+  /// one, pressed as it is: what was written [ahead] ([holdOnAhead]),
+  /// else read and written here. Null where it is kept nowhere, its
+  /// park's file is gone from the room, the file will not read or the
+  /// room refuses.
+  ///
+  /// What was written ahead is the cel's kept bytes still, whatever ref
+  /// names them by now — moved in their file, saved again under another
+  /// name: they change by this door alone, which takes it ([_holdOn]).
+  AnicelCelFileRef? _heldInTheRoom(
+    BrushFrameKey key,
+    AnicelCelFileRef? ahead,
+  ) {
     final kept = _kept(key);
     if (kept == null) {
       return null;
@@ -1491,8 +1498,8 @@ class BrushFrameStore {
     if (kept.parked) {
       return ScratchFile.holds(kept.ref.filePath) ? kept.ref : null;
     }
-    if (ahead != null && identical(ahead.of, kept.ref)) {
-      return ahead.held;
+    if (ahead != null) {
+      return ahead;
     }
     try {
       final path = ScratchCelFiles.write(
@@ -1596,11 +1603,13 @@ class BrushFrameStore {
 
   /// 🚨WHAT [key] IS KEPT AS STOPS BEING ITS CEL'S — its park in the
   /// run's room with its stretch of the saved file ([_letTheFileRefGo]),
-  /// the bytes handed first from whichever kept them ([_kept]): every
-  /// door a HOT cel's pixels change by goes through here. A cel made
-  /// hot keeps its park (유저 2026-11-21 on Q6), so a hot cel's park
-  /// names what it shows exactly as its file ref does, and ends where
-  /// that ends. Answers the file's ref.
+  /// held on first for the tiles that wait in whichever kept them
+  /// ([_holdOn]): every door a HOT cel's pixels change by goes through
+  /// here, and a kept cel remade where it is not hot
+  /// ([_rewriteKeptCels]). A cel made hot keeps its park (유저
+  /// 2026-11-21 on Q6), so a hot cel's park names what it shows exactly
+  /// as its file ref does, and ends where that ends. Answers the file's
+  /// ref.
   ///
   /// ⛔[_letTheFileRefGo] alone only where the park is the cel's still,
   /// or is replaced beside it: a copy's keep ([_keepCopy]), a file
@@ -1665,16 +1674,21 @@ class BrushFrameStore {
   ///
   /// As [thawAhead]: asked again while it runs it answers the same
   /// future; it never throws, and where the file would not read the
-  /// door reads it. 🚨WHAT IS WRITTEN IS HELD FOR THE VERY REF IT WAS
-  /// READ BY ([_keptBlobOffThisThread]): a cel kept anew meanwhile, or
-  /// moved in its file, is read at the door. One no edit came for goes
-  /// as the engine's tiles rest ([letGoOfBytesTheEngineHolds]).
+  /// door reads it. 🚨WHAT IS WRITTEN IS KEPT ONLY WHERE THE CEL IS KEPT
+  /// BY THE REF IT WAS READ BY STILL, AS THE WRITE ENDS
+  /// ([_keptBlobOffThisThread]'s law): a cel edited, kept anew or moved
+  /// in its file meanwhile is read at the door. From there it is the
+  /// cel's kept bytes till that door, the one way they change
+  /// ([_heldInTheRoom]): a ref that changes with no door names the
+  /// same bytes ([relocateFileRefs], [repointFileRefs], a save's of a
+  /// cel not drawn on). One no edit came for goes as the engine's
+  /// tiles rest ([letGoOfBytesTheEngineHolds]).
   Future<void> holdOnAhead(BrushFrameKey key) {
     key = _canonicalize(key);
     final kept = _kept(key);
     if (kept == null ||
         kept.parked ||
-        identical(_heldAhead[key]?.of, kept.ref) ||
+        _heldAhead.containsKey(key) ||
         !(_keptBytes[key]?.tiles.any(_waits) ?? false)) {
       return Future<void>.value();
     }
@@ -1695,7 +1709,7 @@ class BrushFrameStore {
           return;
         }
         _letTheAheadGo(key);
-        _heldAhead[key] = (of: ref, held: _nowInTheRoom(_heldAt(path, ref)));
+        _heldAhead[key] = _nowInTheRoom(_heldAt(path, ref));
       } on Object {
         // The door reads it.
       }
@@ -1705,14 +1719,14 @@ class BrushFrameStore {
   final InFlight<BrushFrameKey, void> _holdingAhead = InFlight();
 
   /// What [holdOnAhead] wrote to the room, by the cel it wrote it for:
-  /// its bytes there, and the ref of the saved file they were read by.
-  final Map<BrushFrameKey, _HeldAhead> _heldAhead = {};
+  /// its kept bytes, alone in a file there.
+  final Map<BrushFrameKey, AnicelCelFileRef> _heldAhead = {};
 
   /// What was held ahead for [key] goes, its file with it.
   void _letTheAheadGo(BrushFrameKey key) {
     final ahead = _heldAhead.remove(key);
     if (ahead != null) {
-      _letGoUnlessKept(ahead.held);
+      _letGoUnlessKept(ahead);
     }
   }
 
@@ -1742,13 +1756,10 @@ class BrushFrameStore {
     if (inTheFile != null) {
       _fileCels[to] = inTheFile;
     }
-    // Read by their cel's new name, at the revision it has there
-    // ([_rehome] gives it before this).
+    // Read by their cel's new name.
     final taken = _keptBytes.remove(from);
     if (taken != null) {
-      _keptBytes[to] = taken
-        ..key = to
-        ..revision = sourceRevisionOf(to);
+      _keptBytes[to] = taken..key = to;
     }
     return true;
   }
@@ -2014,15 +2025,14 @@ class BrushFrameStore {
   }
 
   /// What [key]'s shells read again from here, their cel kept as it is
-  /// now ([_keptBytes]): the one it has — or, where it has none, or one
-  /// of a revision the cel left by no door, one made.
-  _KeptBytes _keptBytesOf(BrushFrameKey key) {
-    final revision = sourceRevisionOf(key);
-    final had = _keptBytes[key];
-    return had != null && had.revision == revision
-        ? had
-        : _keptBytes[key] = _KeptBytes(key, revision);
-  }
+  /// now ([_keptBytes]): the one it has, else one made. 🚨ONE FOR AS
+  /// LONG AS THE CEL IS KEPT AS IT IS: every way what a cel is kept as
+  /// changes takes it ([_holdOn] — an edit's door, and a kept cel
+  /// remade, [_rewriteKeptCels]), so the one a cel has names the bytes
+  /// it is kept as now
+  /// (`what_a_cel_is_kept_as_goes_through_one_door_test.dart`).
+  _KeptBytes _keptBytesOf(BrushFrameKey key) =>
+      _keptBytes[key] ??= _KeptBytes(key);
 
   /// A cel's pixels at [canvasSize] as [from] keeps them, read again for
   /// a shell's tile whose slot the engine let go ([CelShells]) — decoded
@@ -2036,8 +2046,7 @@ class BrushFrameStore {
     final held = from.held;
     final surface = held != null
         ? _readHeld(held)
-        : identical(_keptBytes[from.key], from) &&
-              sourceRevisionOf(from.key) == from.revision
+        : identical(_keptBytes[from.key], from)
         ? _asKept(from.key)
         : null;
     if (surface == null || surface.canvasSize != canvasSize) {
@@ -3771,12 +3780,18 @@ class BrushFrameStore {
           stands?.call(ref);
           continue;
         }
-        // ⚠️Out of the source map FIRST when it is not the destination: a
-        // file-backed cel that stayed in `_fileCels` would claim the saved
-        // archive still holds bytes the rewrite just replaced.
-        if (!identical(from, _coldCels)) {
-          from.remove(key);
-        }
+        // 🚨THROUGH THE DOOR, AS AN EDIT GOES ([_letTheKeptGo]): what the
+        // cel was kept as is held on for the tiles that wait in it — a
+        // shell's the looks keep, a step back's — before the park that
+        // replaces it is kept. ↩️Till 2026-11-21 a ref in the saved file
+        // was taken out of its map here and no more, a park replaced
+        // where it lay, and such a tile read what the cel was remade as
+        // (🔬found by reading, a mutant of the door's having led here;
+        // no run had shown it).
+        // ⚠️Out of its map FIRST: a file-backed cel that stayed in
+        // `_fileCels` would claim the saved archive still holds bytes the
+        // rewrite just replaced.
+        _letTheKeptGo(key);
         _keepCold(key, next.kept);
         stands?.call(next.kept);
         _markDirty(key);
@@ -4082,19 +4097,17 @@ typedef _TakenTile = ({WeakReference<BitmapTile> tile, TileCoord at});
 
 /// A cel's kept bytes as the tiles of its shells read them again
 /// ([BrushFrameStore._readAgain]): the cel's own, by its [key], while it
-/// keeps them at [revision] — and, an edit having ended that, what they
-/// were, [held] on in the run's room for the [tiles] of them that wait
-/// ([BrushFrameStore._heldOn]). One a shell's tiles are made to read
-/// stays theirs: what the cel is kept as after is another's.
+/// is the one its cel has ([BrushFrameStore._keptBytesOf]) — and, an
+/// edit having ended that, what they were, [held] on in the run's room
+/// for the [tiles] of them that wait ([BrushFrameStore._heldOn]). One a
+/// shell's tiles are made to read stays theirs: what the cel is kept as
+/// after is another's.
 final class _KeptBytes {
-  _KeptBytes(this.key, this.revision);
+  _KeptBytes(this.key);
 
   /// The cel, by the name it has now: a cel renamed takes it along
   /// ([BrushFrameStore._keptMoves]).
   BrushFrameKey key;
-
-  /// The revision its cel keeps these bytes at.
-  int revision;
 
   /// The file of the run's room they are held on in, once an edit ended
   /// what kept them.
@@ -4117,11 +4130,6 @@ final class _KeptBytes {
     return from;
   }
 }
-
-/// What was written to the run's room ahead of an edit
-/// ([BrushFrameStore.holdOnAhead]): a cel's bytes [held] there, and the
-/// ref [of] the saved file they were read by.
-typedef _HeldAhead = ({AnicelCelFileRef of, AnicelCelFileRef held});
 
 /// Writes [bytes] at [path] in the run's room: whether the room took
 /// them ([ScratchFile.write]).
