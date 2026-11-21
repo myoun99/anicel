@@ -1005,7 +1005,13 @@ AnicelZipLayout appendAnicelEntries({
         entry,
   ];
 
-  final builder = BytesBuilder(copy: false);
+  // 🚨EACH ENTRY IS WRITTEN AS IT IS, never joined into one buffer first
+  // (card incremental-save-holds-every-dirty-cel-at-once, 2026-11-21). A
+  // `BytesBuilder` here made one copy of every new entry at the write: 🔬a
+  // save of 220 edited cels hands in 110.4 MiB of blobs, and held them
+  // twice at that moment. The whole write already streams entry by entry
+  // (`AnicelFileService._writeArchiveInIsolate`).
+  final locals = <(Uint8List header, Uint8List data)>[];
   final appended = <AnicelZipEntry>[];
   var writeOffset = committedEnd;
 
@@ -1021,9 +1027,7 @@ AnicelZipLayout appendAnicelEntries({
         crc32: crc,
       ),
     );
-    builder
-      ..add(header)
-      ..add(entry.value);
+    locals.add((header, entry.value));
     writeOffset += header.length + entry.value.length;
   }
 
@@ -1060,7 +1064,10 @@ AnicelZipLayout appendAnicelEntries({
   final raf = file.openSync(mode: FileMode.append);
   try {
     raf.setPositionSync(committedEnd);
-    _write(raf, builder.takeBytes());
+    for (final (header, data) in locals) {
+      _write(raf, header);
+      _write(raf, data);
+    }
     for (var i = 0; i < streamedEntries.length; i += 1) {
       final entry = streamedEntries[i];
       _write(raf, _localHeaderBytes(entry.name, entry.length, streamedCrcs[i]));
