@@ -23,6 +23,7 @@ import 'dialogs/dialog_verb.dart';
 import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
+import 'widgets/tick_layer.dart';
 import 'sliced_value_listenable_builder.dart' show SlicedListenable;
 import 'timeline/memo_token.dart' show AsPrinted, ByIdentity, ByList;
 import 'timesheet/cut_sheet_document.dart';
@@ -544,9 +545,21 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           // switch changes nothing on a sheet (F-215, 유저
                           // 2026-09-28: 「on하든off하든 바뀌는게 없어야」). It
                           // takes no input, so the pen goes through it.
+                          //
+                          // 🚨ON A TICK LAYER, not a bare boundary (card
+                          // a-playhead-move-lets-the-timesheets-dock-image-go,
+                          // 11-21). ↩️To a still region ([StillRaster]) a
+                          // boundary painted again is the region changed:
+                          // every frame picked drew the sheet's dock live and
+                          // every rest took its image again — 🔬14 picks, 14
+                          // images, none drawn twice (test VM, the engine
+                          // open); the real app the same (검증 11-21 21:26).
+                          // A tick is drawn live between what the region
+                          // holds — the tool cursors' law on this panel
+                          // (F-428).
                           Positioned.fill(
                             child: IgnorePointer(
-                              child: RepaintBoundary(
+                              child: TickLayer.heard(
                                 child: CustomPaint(
                                   key: const ValueKey<String>(
                                     'timesheet-playhead-overlay',
