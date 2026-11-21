@@ -88,7 +88,7 @@ void main() {
         r'C:\Program Files\Anicel\Anicel.exe',
         'windows',
       ),
-      r'C:\Program Files\Anicel/data/flutter_assets',
+      'C:/Program Files/Anicel/data/flutter_assets',
     );
     expect(
       EngineFaces.bundleFolderOf('/opt/anicel/anicel', 'linux'),

@@ -1,11 +1,11 @@
 import 'dart:io' show Platform;
-import 'dart:math' show max;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../ui/theme/app_theme.dart' show AppTypography;
 
 /// THE FACES THE GPU ENGINE SETS LETTERS IN: the app's bundled families
@@ -54,7 +54,8 @@ abstract final class EngineFaces {
     final folder = bundleFolder;
     for (final (family, face) in AppTypography.canvasLetterFaces.indexed) {
       for (final file in face.files) {
-        if (folder != null && handing.addAt(family, '$folder/$file')) {
+        if (folder != null &&
+            handing.addAt(family, pathInFolder(folder, file))) {
           continue;
         }
         handing.add(family, Uint8List.sublistView(await rootBundle.load(file)));
@@ -82,16 +83,15 @@ abstract final class EngineFaces {
   /// (`FlutterNSBundleUtils.mm` `kDefaultAssetPath`).
   @visibleForTesting
   static String? bundleFolderOf(String executable, String operatingSystem) {
-    final beside = executable.substring(
-      0,
-      max(executable.lastIndexOf('/'), executable.lastIndexOf(r'\')),
-    );
-    return switch (operatingSystem) {
-      'windows' || 'linux' => '$beside/data/flutter_assets',
-      'macos' => '$beside/../Frameworks/App.framework/Resources/flutter_assets',
-      'ios' => '$beside/Frameworks/App.framework/flutter_assets',
+    final inBundle = switch (operatingSystem) {
+      'windows' || 'linux' => 'data/flutter_assets',
+      'macos' => '../Frameworks/App.framework/Resources/flutter_assets',
+      'ios' => 'Frameworks/App.framework/flutter_assets',
       _ => null,
     };
+    return inBundle == null
+        ? null
+        : pathInFolder(folderOfPath(executable), inBundle);
   }
 
   /// Whether the bundle's have been read ([bundled]): what a paint asks
