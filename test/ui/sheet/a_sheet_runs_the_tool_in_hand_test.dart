@@ -47,6 +47,11 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// F-80's law, a tool at a time: 「작동가능한거면 해당 도구 작동시키고,
 /// 불가능하면 팬」 — on every sheet that takes the pen.
 void main() {
+  /// The sheets' brush switch — on, unless a test turns it.
+  late ValueNotifier<bool> brushOn;
+  setUp(() => brushOn = ValueNotifier<bool>(true));
+  tearDown(() => brushOn.dispose());
+
   /// The panel, brush on, with [tool] in hand, on [session]'s own stores —
   /// and every view it reports from here on.
   Future<List<CanvasViewport>> pumpPanel(
@@ -210,9 +215,9 @@ void main() {
         inkController: ink,
         pictures: cels,
         brushToolState: tool,
-        brushAllowed: true,
+        brushAllowed: brushOn.value,
       ),
-      [ink, cels],
+      [ink, cels, brushOn],
     );
     return (session, views);
   }
@@ -260,10 +265,10 @@ void main() {
                 onViewportChanged: onViewportChanged,
                 inkController: ink,
                 brushToolState: tool,
-                brushAllowed: true,
+                brushAllowed: brushOn.value,
                 onBrushAllowedChanged: (_) {},
               ),
-              [ink],
+              [ink, brushOn],
             );
             return (session, views);
           },
@@ -295,9 +300,9 @@ void main() {
                 onViewportChanged: onViewportChanged,
                 inkController: ink,
                 brushToolState: tool,
-                brushAllowed: true,
+                brushAllowed: brushOn.value,
               ),
-              [ink],
+              [ink, brushOn],
             );
             return (session, views);
           },
@@ -367,6 +372,53 @@ void main() {
         tool.value = tool.value.copyWith(tool: CanvasTool.select);
         await tester.pump();
         expect(tip, findsNothing, reason: 'a press here moves the sheet');
+      });
+
+      // What a press does is asked again when the tool in hand changes —
+      // and only then (a-tool-change-lets-the-sheet-panels-dock-image-go,
+      // 11-22: the panel was built again for a tool change it answered the
+      // same).
+      testWidgets('🚨a tool changed in hand changes what a press does: the '
+          'brush draws, then the select tool moves the sheet', (tester) async {
+        final tool = holding(CanvasTool.select);
+        final (_, views) = await sheet.pump(tester, tool);
+        final window = aWindow(tester, sheet.keyPrefix);
+
+        tool.value = tool.value.copyWith(tool: CanvasTool.brush);
+        await tester.pump();
+        final drawn = await dragAcross(tester, window);
+        await tester.pumpAndSettle();
+        expect(inkUnder(tester, window, drawn.middle), isTrue);
+        expect(views, isEmpty, reason: 'the brush drew, nothing moved');
+
+        tool.value = tool.value.copyWith(tool: CanvasTool.select);
+        await tester.pump();
+        await dragAcross(tester, window);
+        await tester.pumpAndSettle();
+        expect(views, isNotEmpty, reason: 'the select tool moved the sheet');
+      });
+
+      testWidgets('🚨the brush switched on under the brush in hand draws, '
+          'and switched off moves the sheet', (tester) async {
+        brushOn.value = false;
+        final (_, views) = await sheet.pump(
+          tester,
+          holding(CanvasTool.brush),
+        );
+
+        brushOn.value = true;
+        await tester.pumpAndSettle();
+        final window = aWindow(tester, sheet.keyPrefix);
+        final drawn = await dragAcross(tester, window);
+        await tester.pumpAndSettle();
+        expect(inkUnder(tester, window, drawn.middle), isTrue);
+        expect(views, isEmpty, reason: 'the brush drew, nothing moved');
+
+        brushOn.value = false;
+        await tester.pumpAndSettle();
+        await dragAcross(tester, window);
+        await tester.pumpAndSettle();
+        expect(views, isNotEmpty, reason: 'the brush off, the sheet moved');
       });
 
       for (final tool in [
