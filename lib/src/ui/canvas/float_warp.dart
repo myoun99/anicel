@@ -328,7 +328,9 @@ class FloatWarp {
   }
 
   /// The mesh's outer boundary ring (top row → right column → bottom row
-  /// reversed → left column reversed) — the warped region polygon.
+  /// reversed → left column reversed) — the box's outline as it stands
+  /// (`BoxOnScreen`), not the selection: that goes where its pixels go
+  /// (`StampCarry.regionThrough`).
   ///
   /// Reads the grid the POINTS were built for, not the current setting:
   /// changing the grid size rebuilds the points, and until it does the two

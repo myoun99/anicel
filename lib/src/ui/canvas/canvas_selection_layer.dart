@@ -2283,7 +2283,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Where [region] stands once the open box has had its way with it: where
   /// its pixels go, by the same carry ([StampCarry.regionThrough]).
   ///
-  /// ↩️Each warp was asked here, and again for the ants ([_shownBy]): the
+  /// ↩️Each warp was asked here, and again for the ants (`_shownBy`): the
   /// mesh made the selection its grid's outer ring (R20-D3, 07-14 — 「the
   /// mesh maps the LIFTED pixels, so what is selected afterwards is the
   /// warped outline」, nobody's order), and a quad too degenerate to warp
