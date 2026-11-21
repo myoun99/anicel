@@ -211,7 +211,7 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   /// Whether [event] presses [actionId] through one of its live keys, in
-  /// any of the forms [pressableForms] names.
+  /// any of the forms [_pressedBy] names.
   ///
   /// ★THE ONE ANSWER to 「does this key press that action」: the app-level
   /// [shortcuts] map is built from the same forms, and the held keys and the
@@ -224,8 +224,9 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// Shift+Space turned into the pan under a pen (I-61). At a key that
   /// presses anything the two agree: the engine syncs to Windows first.
   bool presses(String actionId, KeyEvent event) {
+    late final held = _keysHeldAsTheyAre();
     for (final activator in activatorsFor(actionId)) {
-      for (final form in _formsOf(actionId, activator)) {
+      for (final form in _pressedBy(actionId, activator, () => held)) {
         if (form.accepts(event, ModifierKeys.keyboard)) {
           return true;
         }
@@ -233,6 +234,39 @@ class EditorShortcutBindings extends ChangeNotifier {
     }
     return false;
   }
+
+  /// [activator]'s forms for [actionId] ([_formsOf]), and its forms under
+  /// the OTHER command key ([otherCommandOf]) where no action holds that
+  /// key as it is ([held]: every [activatorKey] some action holds).
+  ///
+  /// 🗣️H65 (유저 2026-11-21): 「아이패드에서 키보드 블루투스로 연결해서 쓰는데
+  /// 일반키보드거든? 윈도우 기준 키보드?」, then 「뭐 설정안해도 먹히는게
+  /// 편해서」 — H65-Q1 「both」: a command is pressed with Ctrl or with ⌘ on
+  /// every device, and written as the device writes it
+  /// ([singleActivatorLabel]). ⛔The keyboard is not asked: iPadOS tells an
+  /// app nothing of a keyboard's layout — GameController shows every
+  /// keyboard as one (`GCKeyboard.coalesced`), its one keyboard category is
+  /// `GCProductCategoryKeyboard` (Apple's documentation, read 2026-11-21).
+  /// ★A key held AS IT IS wins: ⌃K recorded on a Mac presses its own action
+  /// and not the one ⌘K is — the way to give Ctrl+K a job of its own there.
+  Iterable<ShortcutActivator> _pressedBy(
+    String actionId,
+    SingleActivator activator,
+    Set<String> Function() held,
+  ) sync* {
+    yield* _formsOf(actionId, activator);
+    final other = otherCommandOf(activator);
+    if (other != null && !held().contains(activatorKey(other))) {
+      yield* _formsOf(actionId, other);
+    }
+  }
+
+  /// Every key some action holds, as it is ([activatorKey]).
+  Set<String> _keysHeldAsTheyAre() => {
+    for (final definition in definitions)
+      for (final activator in activatorsFor(definition.id))
+        activatorKey(activator),
+  };
 
   /// How the sheet in front of the user turns the arrows (F-241) — the
   /// shell hands its flip HUD in. Null reads every arrow as the timeline
@@ -358,6 +392,7 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// clash to the settings dialog.
   Map<ShortcutActivator, Intent> get shortcuts {
     final map = <ShortcutActivator, Intent>{};
+    final held = _keysHeldAsTheyAre();
     for (final definition in definitions) {
       // A HELD action is taken on the way past (EditorKeyHolds), never
       // dispatched as an intent.
@@ -365,7 +400,7 @@ class EditorShortcutBindings extends ChangeNotifier {
         continue;
       }
       for (final activator in activatorsFor(definition.id)) {
-        for (final form in _formsOf(definition.id, activator)) {
+        for (final form in _pressedBy(definition.id, activator, () => held)) {
           map[form] = EditorActionIntent(definition.id);
         }
       }
@@ -975,6 +1010,12 @@ class EditorShortcutManager extends ShortcutManager {
   ///
   /// ⚠️Asked of the engine's record, not of the held keys: those tables are
   /// run by managers that read the record, and this says what they will do.
+  ///
+  /// 🚨IN EITHER COMMAND KEY (H65-Q1 「both」, `_pressedBy`): the app's
+  /// ⌘C is pressed by Ctrl+C too, so a Ctrl+C typed into a rename box on an
+  /// iPad — whose text table binds ⌘C alone — would copy a FRAME. A key
+  /// whose other command form a table binds is the field's as well; the
+  /// field leaves it to the platform, as it always did a key it binds.
   bool _fieldKeeps(KeyEvent event) {
     final focusContext = focusedTextField();
     if (focusContext == null) {
@@ -991,7 +1032,11 @@ class EditorShortcutManager extends ShortcutManager {
           widget is Shortcuts &&
           !identical(widget.manager, this) &&
           widget.shortcuts.keys.any(
-            (activator) => activator.accepts(event, keyboard),
+            (activator) =>
+                activator.accepts(event, keyboard) ||
+                activator is SingleActivator &&
+                    (otherCommandOf(activator)?.accepts(event, keyboard) ??
+                        false),
           );
       return !bound;
     });
