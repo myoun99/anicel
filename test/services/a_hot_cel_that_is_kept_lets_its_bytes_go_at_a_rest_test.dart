@@ -23,11 +23,16 @@ import '../helpers/shells_with_no_bytes.dart';
 /// that is kept — in the saved file, or parked in the run's room —, made
 /// hot by a use that found no shell — a frame a screen stood on before any
 /// look made it — holds its bytes here only till the engine's tiles rest.
-/// Then it is its shell (`BrushFrameStore.letGoOfBytesTheEngineHolds`): hot
-/// as it was, the engine's tiles and no bytes here, as a use that took a
-/// shell a look left is from the start
+/// Then its tiles are laid on the engine and it is its shell
+/// (`BrushFrameStore.letGoOfBytesTheEngineHolds`): hot as it was, the
+/// engine's tiles and no bytes here, as a use that took a shell a look left
+/// is from the start
 /// (a_use_of_a_cel_kept_in_the_file_takes_its_shell_test.dart). ↩️It kept
-/// them for as long as it was hot.
+/// them for as long as it was hot — and, till 2026-11-21, through every
+/// rest where a canvas stood on it or the engine held no tile of it.
+///
+/// A rest is asked for as such bytes come here: a thaw, a park or a save
+/// stores no tile on the engine, which is what else brings one.
 ///
 /// When the engine's tiles rest is the ledger's
 /// (the_ledger_folds_its_tiles_once_the_hand_rests_test.dart), and what a
@@ -129,6 +134,8 @@ void main() {
         );
         expect(store.shells, isEmpty, reason: 'the cel\'s, not the looks\'');
         expect(hot.tiles[origin]!.pixels, pixelsOf(4));
+        expect(engine.laid.single.surface, same(thawed));
+        expect(engine.laid.single.cel, key('f').cel);
       });
 
       test('🚨what its screens are drawn from is the shell too: nothing '
@@ -157,6 +164,7 @@ void main() {
         store.letGoOfBytesTheEngineHolds();
 
         expect(engine.made, hasLength(1));
+        expect(engine.laid, hasLength(1), reason: 'no bytes of it to lay');
         expect(store.bakedSurfaceOrNull(key('f')), same(shell));
       });
 
@@ -179,59 +187,85 @@ void main() {
         expect(store.isCelParked(key('f')), isFalse);
       });
 
-      test('🚨a cel a canvas stands on keeps its bytes through the rest, '
-          'and the rest after it has moved on takes them', () {
-        final stoodOn = used('f');
+      test('🚨a cel a canvas stands on is its shell at the rest as any '
+          'other', () {
+        used('f');
         used('g');
-        var stands = [key('f')];
-        store.setCelsStoodOn(() => stands);
+        store.setCelsStoodOn(() => [key('f')]);
 
-        store.letGoOfBytesTheEngineHolds();
-
-        expect(store.hotBakedSurfaceOrNull(key('f')), same(stoodOn));
-        expect(
-          store
-              .hotBakedSurfaceOrNull(key('g'))!
-              .tiles[origin]!
-              .hasItsBytesHere,
-          isFalse,
-        );
-
-        stands = [];
         store.letGoOfBytesTheEngineHolds();
 
         expect(store.hotBakedBytes, 0);
+        for (final frame in ['f', 'g']) {
+          expect(
+            store
+                .hotBakedSurfaceOrNull(key(frame))!
+                .tiles[origin]!
+                .hasItsBytesHere,
+            isFalse,
+            reason: frame,
+          );
+        }
       });
 
       test('a rest is no use of it: the cel keeps its place in the line, '
-          'and the one used last is the one that stays', () async {
+          'ahead of one used after it', () async {
         used('f');
-        final last = used('g');
-        store.setCelsStoodOn(() => [key('g')]);
+        store.storeBakedSurface(key('h'), ink(9));
+        final last = store.hotBakedSurfaceOrNull(key('h'));
         store.letGoOfBytesTheEngineHolds();
+        expect(
+          store.hotBakedBytes,
+          greaterThan(0),
+          reason: '⛔premise: the bytes of the cel drawn, the only ones',
+        );
 
-        // Over its budget by the cel stood on: the line lets go from its
+        // Over its budget by the cel drawn: the line lets go from its
         // head, and never of the last used.
         store.hotCelByteBudget = 0;
         store.coolToBudget();
         await store.drainCooling();
 
-        expect(store.hotBakedSurfaceOrNull(key('g')), same(last));
+        expect(store.hotBakedSurfaceOrNull(key('h')), same(last));
         expect(store.hotBakedSurfaceOrNull(key('f')), isNull);
       });
 
-      test('a cel the engine holds no tile of stays as it is', () {
+      test('🚨a cel the engine held no tile of is laid there at the rest, '
+          'and is its shell', () {
         final thawed = used('f');
         engine.holds = false;
 
         store.letGoOfBytesTheEngineHolds();
 
+        expect(engine.laid.single.surface, same(thawed));
+        expect(
+          store.hotBakedSurfaceOrNull(key('f')),
+          same(engine.made.single),
+        );
+        expect(store.hotBakedBytes, 0);
+      });
+
+      test('one the engine has no room for stays as it is, and is laid '
+          'again at the rest after', () {
+        final thawed = used('f');
+        engine
+          ..holds = false
+          ..takes = false;
+
+        store.letGoOfBytesTheEngineHolds();
+
         expect(store.hotBakedSurfaceOrNull(key('f')), same(thawed));
         expect(store.tilesWrittenDown, 0);
+
+        engine.takes = true;
+        store.letGoOfBytesTheEngineHolds();
+
+        expect(engine.laid, hasLength(2));
+        expect(store.hotBakedBytes, 0);
       });
 
       test('a cel drawn — kept no more — keeps its bytes: they are the '
-          'only ones', () {
+          'only ones, and nothing of it is laid', () {
         store.storeBakedSurface(key('f'), ink(9));
         final drawn = store.hotBakedSurfaceOrNull(key('f'));
 
@@ -239,8 +273,71 @@ void main() {
 
         expect(store.hotBakedSurfaceOrNull(key('f')), same(drawn));
         expect(engine.made, isEmpty);
+        expect(engine.laid, isEmpty);
+      });
+
+      test('🚨a use that thaws it asks for a rest — it stores no tile on '
+          'the engine, which is what else brings one', () {
+        final asked = engine.restsAsked;
+
+        used('f');
+
+        expect(engine.restsAsked, asked + 1);
       });
     });
   }
 
+  group('a save\'s file that comes to keep a cel —', () {
+    setUp(() {
+      engine = ShellsWithNoBytes()..holds = false;
+      store = BrushFrameStore(shells: engine);
+    });
+
+    /// [frame]'s cel kept anew as a save keeps it: a stretch of a file
+    /// holding [seed]'s picture, adopted.
+    void savedAs(String frame, int seed) {
+      final snapshot = store.bakedSnapshotForSave();
+      final saved = keepInAFile(BrushFrameStore(shells: ShellsWithNoBytes()), {
+        key(frame): ink(seed),
+      })[key(frame)]!;
+      store.adoptSavedFile({
+        key(frame): saved,
+      }, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
+      expect(store.isCelFileBacked(key(frame)), isTrue, reason: '⛔premise');
+    }
+
+    test('🚨hot, its bytes here: a rest is asked for, and takes them — '
+        'they are the file\'s too from there', () {
+      store.storeBakedSurface(key('h'), ink(9));
+      final drawn = store.hotBakedSurfaceOrNull(key('h'));
+      final asked = engine.restsAsked;
+
+      savedAs('h', 9);
+
+      expect(engine.restsAsked, asked + 1);
+      expect(
+        store.hotBakedSurfaceOrNull(key('h')),
+        same(drawn),
+        reason: 'till the rest',
+      );
+
+      store.letGoOfBytesTheEngineHolds();
+
+      expect(engine.laid.single.surface, same(drawn));
+      expect(store.hotBakedBytes, 0);
+      expect(
+        store.hotBakedSurfaceOrNull(key('h'))!.tiles[origin]!.pixels,
+        pixelsOf(9),
+      );
+    });
+
+    test('hot nowhere: no rest is asked for', () {
+      parkCold(store, {key('f'): ink(4)});
+      final asked = engine.restsAsked;
+
+      savedAs('f', 4);
+
+      expect(engine.restsAsked, asked);
+    });
+  });
 }

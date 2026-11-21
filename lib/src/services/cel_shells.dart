@@ -6,6 +6,15 @@ import '../models/bitmap_surface.dart';
 /// bytes is handed the tiles the engine still holds, where it thawed them
 /// from the file again and put every one back on the engine.
 abstract interface class CelShells {
+  /// Lays on the engine those of [surface]'s tiles that hold bytes of
+  /// their own here and have no slot there yet, on pages of [cel]'s (the
+  /// name a painter gives its cel, `BrushFrameKey.cel`) — what a rest
+  /// does of a hot cel that is kept, before it is made its shell
+  /// ([shellOf]): one thawed here that no screen has laid has every byte
+  /// here and no tile there. As many as the engine has room for as it
+  /// stands; one left out stays as it is.
+  void lay(BitmapSurface surface, {required Object cel});
+
   /// A shell of [surface] — its tiles, each holding the slot on the engine
   /// its own held and no bytes here (`TilePixelsKeptBesides`) — or null
   /// where the engine holds none of them. A tile of it whose slot the
@@ -19,4 +28,9 @@ abstract interface class CelShells {
   /// Whether every tile of [shell] still has its slot on the engine: a full
   /// pool lets a shell's slots go as freely as any whose bytes are here.
   bool isWhole(BitmapSurface shell);
+
+  /// Has the engine's tiles come to rest before long, where no rest is
+  /// asked for already: bytes came here that a rest lets go of, and
+  /// nothing stored on the engine since would bring one.
+  void restBeforeLong();
 }

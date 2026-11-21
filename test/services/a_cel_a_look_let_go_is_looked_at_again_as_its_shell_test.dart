@@ -88,6 +88,11 @@ void main() {
       expect(again, same(shells.made.single));
       expect(again, isNot(same(looked)));
       expect(store.isCelCold(key('a')), isTrue, reason: 'still not hot');
+      expect(
+        shells.laid,
+        isEmpty,
+        reason: 'a look lets go of what the engine holds: it lays nothing',
+      );
     });
 
     test('🚨a shell some of whose slots the engine let go is thawed again, '
@@ -300,6 +305,17 @@ final class _Shells implements CelShells {
   /// What each shell made reads where the engine let a slot of it go.
   final readsAgain = <BitmapSurface Function()>[];
   bool whole = true;
+
+  /// What was laid on the engine: a rest's doing, of a hot cel — a look
+  /// lets go of what the engine holds already, and lays nothing.
+  final laid = <BitmapSurface>[];
+
+  @override
+  void lay(BitmapSurface surface, {required Object cel}) =>
+      laid.add(surface);
+
+  @override
+  void restBeforeLong() {}
 
   @override
   BitmapSurface? shellOf(

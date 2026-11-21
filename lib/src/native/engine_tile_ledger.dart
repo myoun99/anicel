@@ -356,6 +356,48 @@ final GpuEngine _engine;
     (tile) => !tile.isOnEngine || _slotNow(tile) != null,
   );
 
+  /// 🚨A KEPT CEL'S TILES ARE STORED HERE AT A REST, NOT ONLY WHERE A
+  /// SCREEN LAID THEM ([CelShells.lay]): each tile of [surface] with
+  /// bytes of its own and no slot is given one of [cel]'s, so the shell
+  /// made of it next ([shellOf]) leaves no byte of it in RAM. A tile of a
+  /// colour stays as it is, as a shell leaves it.
+  ///
+  /// 🔢브러시/렌더링's (2026-11-21, card
+  /// cel-originals-are-held-twice-in-ram-and-on-the-gpu — no rule of the
+  /// user's; theirs are Q3 「놓는다」 and Q6 「사본이나 ram에있는걸 최대한
+  /// 없애고싶어서」). ↩️Till then a rest made a shell only of the tiles a
+  /// screen had laid, and a cel thawed here that none had — the cel of
+  /// the next cut, thawed ahead of a step into it — kept every byte for
+  /// as long as it was hot. 🔬The main PC, a copy of S5_BA cut 352 opened
+  /// from its file, played ten seconds and left to rest, no window
+  /// (k1947, k1948): the drawings' bytes in RAM 43.7 MiB at that rest,
+  /// three cels of 14 MiB — two thawed ahead so, the third stood on —,
+  /// and 1.2 with their 680 tiles stored here.
+  ///
+  /// ⛔WITHIN THE BUDGET AS IT STANDS, AND NO ROOM MADE (the same hand's,
+  /// that day): a store a call holds has room made every way
+  /// ([_shortAsRoomIsMade]) since what is on its way to the screen has
+  /// no fallback — slots let go, the budget lifted, bytes read back from
+  /// the engine while this thread waits. A rest's has one: the tiles
+  /// left out stay as they are, and a rest after stores them once there
+  /// is room.
+  @override
+  void lay(BitmapSurface surface, {required Object cel}) {
+    if (surface.tileSize != gpuTileSide) {
+      return;
+    }
+    final loose = [
+      for (final tile in surface.tiles.values)
+        if (tile.hasItsBytesHere &&
+            identical(tile.pixelsKey, tile) &&
+            _slotNow(tile) == null)
+          tile,
+    ];
+    if (loose.isNotEmpty) {
+      _put(_cels.putIfAbsent(cel, pool.cel), loose);
+    }
+  }
+
   /// A shell's tile of [tile]'s pixels, read through [pixels], given
   /// [slot] — [tile]'s till now, which has none from here on.
   BitmapTile _shellOf(BitmapTile tile, _Slot slot, _ShellPixels pixels) {
@@ -1494,6 +1536,13 @@ final GpuEngine _engine;
   /// rest is taken from here.
   void theFoldKernelsCame() => _foldBeforeLong();
 
+  /// [CelShells.restBeforeLong]: a rest is asked for where none is —
+  /// what its bytes come here asks of a kept cel's store
+  /// (`BrushFrameStore.letGoOfBytesTheEngineHolds` hears it), where
+  /// nothing stored or landed since would bring one.
+  @override
+  void restBeforeLong() => _foldBeforeLong();
+
   /// The batches of the folds, one behind another ([foldABatch]), till
   /// none is left or the hand comes ([_foldOnceTheHandRests]).
   Future<void> _foldAtRest() async {
@@ -1517,7 +1566,12 @@ final GpuEngine _engine;
     for (var at = 0; at < slots.length; at++) {
       _give(tiles[at], slots[at]);
     }
-    _foldBeforeLong();
+    // ⛔Not where none landed: a rest that stores what it can
+    // ([lay]) would, on a full pool, ask for the rest after it for
+    // as long as the pool stayed full.
+    if (slots.isNotEmpty) {
+      _foldBeforeLong();
+    }
     return slots.length;
   }
 

@@ -92,6 +92,11 @@ void main() {
     expect(store.hotBakedBytes, 0);
     expect(store.coldBakedBytes, greaterThan(0));
     expect(
+      engine.laid,
+      isEmpty,
+      reason: 'to the room, and nothing laid on the engine for it',
+    );
+    expect(
       store
           .bakedSurfaceOrNull(key('f'), read: CelRead.look)!
           .tiles[origin]!
@@ -159,17 +164,25 @@ void main() {
   });
 
   test('one a canvas came to stand on while it was parked keeps its bytes '
-      '— and its park', () async {
+      '— and its park — till the rest its park asks for', () async {
     var stands = <BrushFrameKey>[];
     store.setCelsStoodOn(() => stands);
     land('f', 4);
     final landed = store.hotBakedSurfaceOrNull(key('f'));
     expect(store.isBeingParked(key('f')), isTrue, reason: '⛔premise');
+    expect(engine.restsAsked, 0, reason: '⛔premise: kept by nothing yet');
     stands = [key('f')];
 
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(key('f')), same(landed));
+    expect(store.isCelParked(key('f')), isTrue);
+    expect(engine.restsAsked, 1);
+
+    store.letGoOfBytesTheEngineHolds();
+
+    expect(engine.laid.single.surface, same(landed));
+    expect(store.hotBakedBytes, 0);
     expect(store.isCelParked(key('f')), isTrue);
   });
 
