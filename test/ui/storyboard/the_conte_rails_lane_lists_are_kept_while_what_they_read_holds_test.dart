@@ -173,6 +173,9 @@ void main() {
         if (identical(row, other)) changed else row,
     ];
     return {
+      'another row\'s id': changedTo(
+        other.copyWith(id: LayerId('${other.id.value}!')),
+      ),
       'another row\'s name': changedTo(
         other.copyWith(name: '${other.name}!'),
       ),

@@ -146,12 +146,10 @@ final class KeptTimelineLanes {
         ByIdentity(session.fxPlugins.plugins),
         ByIdentity(session.fxPlugins.outcomes),
         // The camera row's lanes are its cut's camera, as a camera drag
-        // previews it, on its canvas.
+        // previews it. Its canvas is the pose space above: a camera row
+        // poses on its cut's canvas, the cut [_cameraReadOf] reads.
         layer.kind == LayerKind.camera
-            ? switch (_cameraReadOf(session, layer)) {
-                null => null,
-                final read => (ByIdentity(read.track), read.canvasSize),
-              }
+            ? ByIdentity(_cameraReadOf(session, layer)?.track)
             : null,
         // A lane's name is a word of the app's language.
         AppText.settings.value,
