@@ -13,7 +13,7 @@
 - **Réserve de tuiles** — le moteur de dessin ne met plus de côté la mémoire des tuiles qu'il a libérées pour la réutiliser, et la rend tout de suite. La ligne « Réserve de tuiles du moteur de dessin » de l'onglet mémoire a disparu.
 - **Polices** — le moteur graphique lit les polices fournies avec l'application là où elles se trouvent, sans en garder une copie. Sous Windows, « Cette application, en RAM » a baissé d'environ 24 Mo. Android reste comme avant.
 - **Images composées** — dès que la main se repose, les images composées de la lecture sont elles aussi repliées et prennent moins de mémoire graphique, et la ligne « Images composées » de l'onglet mémoire montre la taille qu'elles occupent vraiment. La bande verte se remplit d'autant plus dans la place libérée.
-- **Le canevas sous Android** — sous Android, la fenêtre de l'application affiche son image sans attendre le tour du moteur graphique. Ceci a été revu pour que les traits au stylet, le panoramique et le zoom juste après l'ouverture d'un nouveau projet saccadent moins. Ce n'est pas encore mesuré sur un appareil.
+- **La touche de commande des raccourcis** — quel que soit le clavier branché sur quel appareil, la touche de commande d'un raccourci fait la même chose qu'on l'appuie en Ctrl ou en ⌘ (la touche Win d'un clavier Windows). Il n'y a rien à régler. Ctrl+Z annule aussi sur Mac.
 
 ## Corrections
 

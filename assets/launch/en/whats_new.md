@@ -13,7 +13,7 @@
 - **Tile pool** — the drawing engine no longer stores tile memory it let go of to reuse it, and gives it back at once. The "Drawing engine tile pool" row in the memory tab is gone.
 - **Fonts** — the graphics engine reads the fonts bundled with the app where they lie instead of keeping a copy. On Windows, "This app, in RAM" fell by about 24 MB. Android is as before.
 - **Frame pictures** — once your hand rests, the frame pictures for playback are folded too, using less graphics memory, and the "Frame pictures" row in the memory tab shows the size they really hold. The green band fills further into the room the folding made.
-- **The canvas on Android** — on Android, the app's window shows its picture without waiting for the graphics engine's turn. This was reworked so that pen strokes, panning and zooming right after opening a new project hitch less. It has not been measured on a device yet.
+- **The command key of shortcuts** — whatever keyboard is on whatever device, a shortcut's command key does the same whether you press it as Ctrl or as ⌘ (the Win key on a Windows keyboard). There is nothing to set. Ctrl+Z undoes on a Mac too.
 
 ## Fixed
 
