@@ -261,6 +261,30 @@ void main() {
       expect(carried.center, CanvasPoint(x: 37, y: 32));
       expect(identical(carried.stamp!.rgba, other.stamp!.rgba), isTrue);
     });
+
+    test('🚨a quad too degenerate to warp through moves no selection, as it '
+        'moves no pixel', () {
+      // ↩️The selection became the quad itself.
+      final flat = [
+        for (var k = 0; k < 4; k += 1)
+          CanvasPoint(x: 100.0 + k * 30, y: 100.0 + k * 30),
+      ];
+      final degenerate = QuadCarry(base: base, corners: flat, mode: mode);
+      final standing = float();
+      expect(
+        solveHomography(base, flat),
+        isNull,
+        reason: '⛔premise: no homography takes the box there',
+      );
+      expect(
+        identical(degenerate.through(standing), standing),
+        isTrue,
+        reason: '⛔premise: no pixel moves',
+      );
+      final selected = blockAt(CanvasPoint(x: 130, y: 140));
+
+      expect(identical(degenerate.regionThrough(selected), selected), isTrue);
+    });
   });
 
   group('a mesh', () {
@@ -526,6 +550,90 @@ void main() {
       expect(ring.length, want.length, reason: '$ring');
       for (final (at, point) in want.indexed) {
         expect(apart(ring[at], point), lessThan(1e-9), reason: '$ring');
+      }
+    });
+
+    test('🚨an edge is cut where it crosses a side between two cells, and '
+        'bends there as the pixels do', () {
+      // Two cells side by side, the node at the bottom of the side between
+      // them pulled 10 down.
+      final twoCells = MeshCarry(
+        (
+          base: (left: 0, top: 0, width: 20, height: 10),
+          columns: 2,
+          rows: 1,
+          points: [
+            CanvasPoint(x: 0, y: 0),
+            CanvasPoint(x: 10, y: 0),
+            CanvasPoint(x: 20, y: 0),
+            CanvasPoint(x: 0, y: 10),
+            CanvasPoint(x: 10, y: 20),
+            CanvasPoint(x: 20, y: 10),
+          ],
+        ),
+        mode: mode,
+      );
+
+      final through = twoCells.regionThrough(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape([
+            CanvasPoint(x: 2, y: 6),
+            CanvasPoint(x: 18, y: 6),
+            CanvasPoint(x: 18, y: 7),
+            CanvasPoint(x: 2, y: 7),
+          ]),
+        ),
+      );
+
+      // The long edges cut on the side (x 10) and on each cell's diagonal
+      // (x 4 and 14 at the top, 13 and 3 at the bottom).
+      final want = [
+        CanvasPoint(x: 2, y: 6),
+        CanvasPoint(x: 4, y: 6),
+        CanvasPoint(x: 10, y: 12),
+        CanvasPoint(x: 14, y: 12),
+        CanvasPoint(x: 18, y: 8),
+        CanvasPoint(x: 18, y: 9),
+        CanvasPoint(x: 13, y: 14),
+        CanvasPoint(x: 10, y: 14),
+        CanvasPoint(x: 3, y: 7),
+        CanvasPoint(x: 2, y: 7),
+      ];
+      final [ring] = ringsOf(through);
+      expect(ring.length, want.length, reason: '$ring');
+      for (final (at, point) in want.indexed) {
+        expect(apart(ring[at], point), lessThan(1e-9), reason: '$ring');
+      }
+    });
+
+    test('🚨past the box a selection goes where its pixels go — on the way '
+        'the edge was going (H41)', () {
+      // A block beside each side of the box, in the half of a cell past it
+      // that the pulled node leads on to.
+      final spots = [
+        CanvasPoint(x: 60, y: 160), // left of it
+        CanvasPoint(x: 160, y: 60), // above
+        CanvasPoint(x: 240, y: 140), // right of it
+        CanvasPoint(x: 140, y: 240), // below
+      ];
+      final carried = bulge.through(
+        stampOver(left: 0, top: 0, width: 300, height: 300, ink: spots),
+      );
+      final selected = [
+        for (final spot in spots) middleOf(bulge.regionThrough(blockAt(spot))),
+      ];
+
+      for (final (at, spot) in spots.indexed) {
+        expect(
+          apart(selected[at], spot),
+          greaterThan(1),
+          reason: '⛔premise: the bulge goes on past the box at $spot',
+        );
+        expect(
+          apart(inkNear(carried, selected[at], reach: 6), selected[at]),
+          lessThan(0.6),
+          reason: 'the ink of $spot and its selection',
+        );
       }
     });
   });
