@@ -4815,7 +4815,8 @@ class GpuFaces {
 }
 
 /// [GpuFaces] being handed to the engine a file at a time: each file
-/// copied by the engine as it is [add]ed — once, from where its bytes lie
+/// mapped by the engine where it is a file on the device ([addAt]), else
+/// copied by it as it is [add]ed — once, from where its bytes lie
 /// (`gpu_engine_faces_file`) — and the faces set up when all are
 /// ([done]).
 ///
@@ -4840,7 +4841,31 @@ class GpuFacesHanding {
     debugFilesHanded += 1;
   }
 
-  /// Test seam: how many files have been [add]ed, every handing's.
+  /// The file at [path] as one of family [family]'s, as [add] hands one —
+  /// mapped by the engine, not copied: its bytes are the file's own pages,
+  /// which the OS shares with whoever else maps it, and Flutter maps the
+  /// app's bundled fonts too (`gpu_engine_faces_file_at`). False, and
+  /// nothing handed, where the engine cannot map it: [add] its bytes then.
+  ///
+  /// 🗣️유저 (engine-fonts-held-twice): 「사본이나 ram에있는걸 최대한
+  /// 없애고싶어서」 — 🔬공통 11-21, a Windows release run: [add]'s copy was
+  /// the faces' one copy in the process, 35 MB.
+  bool addAt(int family, String path) => using((arena) {
+    final bytes = utf8.encode(path);
+    final mapped = rust.facesFileAt(
+      _handed,
+      family,
+      _bytes(arena, bytes),
+      bytes.length,
+    );
+    if (mapped) {
+      debugFilesHanded += 1;
+    }
+    return mapped;
+  });
+
+  /// Test seam: how many files have been handed ([add], [addAt]), every
+  /// handing's.
   @visibleForTesting
   static int debugFilesHanded = 0;
 

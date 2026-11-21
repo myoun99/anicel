@@ -88,7 +88,14 @@ windows = { version = "0.62", features = [
   "Win32_Graphics_Dxgi",
   "Win32_Graphics_Dxgi_Common",
   "Win32_System_LibraryLoader",
+  # A face's file mapped, not copied (kernels/letters/mapped.rs).
+  "Win32_System_Memory",
 ] }
+
+# A face's file mapped, not copied (kernels/letters/mapped.rs): mmap, as
+# libc says it on every unix; already in the lock as the audio crates'.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # Android presents through Vulkan (platform/android.rs); Cargo adds this
 # feature to the wgpu above, on Android only.

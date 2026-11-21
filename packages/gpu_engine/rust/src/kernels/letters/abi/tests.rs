@@ -8,6 +8,7 @@ use super::*;
 use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::composite::tests::rig;
 use crate::kernels::letters::glyphs_tests::{faces, file, here, run};
+use crate::kernels::letters::mapped::tests::path_of;
 use crate::testing::{done_here, last_error, read_buffer};
 
 const WORDS: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
@@ -626,4 +627,81 @@ fn faces_in_another_order_outlive_the_faces_they_were_ordered_from() {
         gpu_engine_word_free(word);
         gpu_engine_faces_free(chinese);
     }
+}
+
+/// The app's faces as [`handed`] hands them, each file mapped from where
+/// it lies instead of copied ([`gpu_engine_faces_file_at`]).
+fn mapped_faces() -> *mut Faces {
+    let handed = gpu_engine_faces_handed();
+    for (name, family) in [
+        ("BIZUDPGothic-Regular.ttf", 0),
+        ("BIZUDPGothic-Bold.ttf", 0),
+        ("NanumGothic-Regular.ttf", 1),
+        ("NanumGothic-Bold.ttf", 1),
+        ("NotoSansSC-Regular.ttf", 2),
+        ("NotoSansSC-Bold.ttf", 2),
+    ] {
+        assert!(map(handed, family, &path_of(name)), "{name}");
+    }
+    // SAFETY: `handed` is set up once, here.
+    unsafe { gpu_engine_faces_of(handed) }
+}
+
+/// Maps the file at `path` into `handed` as one of family `family`'s.
+fn map(handed: *mut FacesHanded, family: u32, path: &str) -> bool {
+    // SAFETY: `handed` is not yet set up; `path` holds its length.
+    unsafe { gpu_engine_faces_file_at(handed, family, path.as_ptr(), path.len()) }
+}
+
+#[test]
+fn faces_mapped_from_their_files_set_a_word_as_faces_copied_from_them_do() {
+    let mapped = mapped_faces();
+    assert!(!mapped.is_null(), "{}", last_error());
+    let copied = handed();
+    let word = gpu_engine_word_new();
+    // A letter of each family, in both weights.
+    assert!(word_run_of(word, "3셀业", 12 * 64, 12 * 64, 12 * 64), "{}", last_error());
+    let (width, height) = (120u32, 49u32);
+    let raster = |faces: *const Faces| {
+        let mut bytes = vec![7u8; (width * height) as usize];
+        // SAFETY: every pointer is live, and `bytes` holds the raster.
+        let rastered =
+            unsafe { gpu_engine_word_raster(word, faces, TWICE_OVER.as_ptr(), width, height, bytes.as_mut_ptr()) };
+        assert!(rastered, "{}", last_error());
+        bytes
+    };
+    let from_files = raster(mapped);
+    assert!(from_files == raster(copied), "the coverage");
+    assert!(from_files.iter().any(|&alpha| alpha != 0), "LIVENESS: the word has ink");
+    // SAFETY: each came from its `_new` or `_of`.
+    unsafe {
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(mapped);
+        gpu_engine_faces_free(copied);
+    }
+}
+
+#[test]
+fn a_file_that_cannot_be_mapped_is_not_handed() {
+    let handed = gpu_engine_faces_handed();
+    assert!(!map(handed, 0, &path_of("no-such-face.ttf")));
+    let not_utf8 = [0xFFu8, 0xFE];
+    // SAFETY: `handed` is not yet set up; `not_utf8` holds its length.
+    assert!(!unsafe { gpu_engine_faces_file_at(handed, 0, not_utf8.as_ptr(), not_utf8.len()) });
+    // Nothing was handed: the next file is family 0's first.
+    assert!(map(handed, 0, &path_of("NanumGothic-Regular.ttf")));
+    // SAFETY: `handed` is set up once, here.
+    let faces = unsafe { gpu_engine_faces_of(handed) };
+    assert!(!faces.is_null(), "{}", last_error());
+    // SAFETY: it came from `gpu_engine_faces_of`.
+    unsafe { gpu_engine_faces_free(faces) };
+}
+
+#[test]
+fn a_mapped_file_handed_out_of_family_order_is_refused() {
+    let handed = gpu_engine_faces_handed();
+    assert!(map(handed, 1, &path_of("NanumGothic-Regular.ttf")));
+    // SAFETY: `handed` is set up once, here.
+    assert!(unsafe { gpu_engine_faces_of(handed) }.is_null());
+    assert!(last_error().contains("family 1"), "{}", last_error());
 }

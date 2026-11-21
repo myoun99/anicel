@@ -9,7 +9,10 @@
 #[cfg(test)]
 mod tests;
 
+use std::path::Path;
 use std::sync::Arc;
+
+use read_fonts::model::Blob;
 
 use crate::device::{Engine, hands_bytes, let_go_bytes, taken_bytes};
 use crate::fail;
@@ -19,6 +22,7 @@ use crate::kernels::pool::{Cel, Pool, Writing};
 use crate::kernels::write::Change;
 
 use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
+use super::mapped::mapped;
 use super::{Covered, Pass, lettered, set, words};
 
 /// A picture of letters as the app builds it: its passes, bottom to top,
@@ -64,12 +68,31 @@ unsafe fn affine(at: *const f32) -> Option<Affine> {
 }
 
 /// The faces being handed to the engine a file at a time
-/// ([`gpu_engine_faces_file`]), each family's files together, till
-/// [`gpu_engine_faces_of`] sets them up — and the first thing it refused.
+/// ([`gpu_engine_faces_file`], [`gpu_engine_faces_file_at`]), each
+/// family's files together, till [`gpu_engine_faces_of`] sets them up —
+/// and the first thing it refused.
 #[derive(Default)]
 pub struct FacesHanded {
-    families: Vec<Vec<Vec<u8>>>,
+    families: Vec<Vec<Blob>>,
     refused: Option<String>,
+}
+
+impl FacesHanded {
+    /// `file` as one of family `family`'s: 0 first and each one the last's
+    /// or the next — else refused.
+    fn hand(&mut self, family: u32, file: Blob) {
+        if self.refused.is_some() {
+            return;
+        }
+        let families = &mut self.families;
+        if family as usize == families.len() {
+            families.push(Vec::new());
+        } else if family as usize + 1 != families.len() {
+            self.refused = Some(format!("family {family} is not the last one's nor the next"));
+            return;
+        }
+        families.last_mut().expect("pushed above").push(file);
+    }
 }
 
 /// Nothing handed yet: what [`gpu_engine_faces_file`] is handed each file
@@ -89,7 +112,9 @@ pub extern "C" fn gpu_engine_faces_handed() -> *mut FacesHanded {
 /// them in a block it zeroed and filled first, and the engine copied that
 /// (🔬저장 11-14, the surface's AOT profiler: 35 MB three times over, a
 /// 50–120 ms stop of the UI the first time letters were set). ⚠️Nothing
-/// here may call back into the app's runtime, as no leaf may.
+/// here may call back into the app's runtime, as no leaf may. A file that
+/// is a file on the device is mapped instead, and copied by no one
+/// ([`gpu_engine_faces_file_at`]).
 ///
 /// # Safety
 /// `handed` came from [`gpu_engine_faces_handed`] and is not yet set up;
@@ -103,19 +128,42 @@ pub unsafe extern "C" fn gpu_engine_faces_file(
 ) {
     // SAFETY: see the function's contract.
     let handed = unsafe { &mut *handed };
-    if handed.refused.is_some() {
-        return;
-    }
-    let families = &mut handed.families;
-    if family as usize == families.len() {
-        families.push(Vec::new());
-    } else if family as usize + 1 != families.len() {
-        handed.refused = Some(format!("family {family} is not the last one's nor the next"));
-        return;
-    }
     // SAFETY: see the function's contract.
     let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
-    families.last_mut().expect("pushed above").push(bytes.to_vec());
+    handed.hand(family, Blob::from(bytes.to_vec()));
+}
+
+/// Maps the file at `path` — UTF-8, `length` bytes, alive for the call —
+/// into `handed` as one of family `family`'s, as [`gpu_engine_faces_file`]
+/// copies one: its bytes the file's own pages, read-only, shared with
+/// whoever else maps it — the app's bundled faces are mapped by Flutter
+/// too — and so in none of the process' own memory (`mapped`). False,
+/// and nothing handed, where the file cannot be mapped: the app hands its
+/// bytes instead.
+///
+/// 🗣️유저 (engine-fonts-held-twice): 「사본이나 ram에있는걸 최대한
+/// 없애고싶어서」 — the copy [`gpu_engine_faces_file`] makes was the
+/// faces' only one in the process (🔬공통 11-21, a Windows release run).
+///
+/// # Safety
+/// `handed` came from [`gpu_engine_faces_handed`] and is not yet set up;
+/// `path` holds `length`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_file_at(
+    handed: *mut FacesHanded,
+    family: u32,
+    path: *const u8,
+    length: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let handed = unsafe { &mut *handed };
+    // SAFETY: see the function's contract.
+    let path = unsafe { std::slice::from_raw_parts(path, length) };
+    let Some(file) = std::str::from_utf8(path).ok().and_then(|path| mapped(Path::new(path))) else {
+        return false;
+    };
+    handed.hand(family, file);
+    true
 }
 
 /// The faces letters are set in, of the files `handed` was handed — which

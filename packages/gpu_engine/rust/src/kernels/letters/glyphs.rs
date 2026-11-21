@@ -19,6 +19,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use harfrust::{Buffer, Font, ShapeOptions, ShaperFont, shape};
+use read_fonts::model::Blob;
 use read_fonts::model::attribute::{Attributes, Style, Width};
 use read_fonts::model::glyph::outline::{DrawMemory, DrawOptions, PathSink};
 use read_fonts::types::{GlyphId, Tag};
@@ -61,8 +62,8 @@ pub(super) struct Face {
 }
 
 impl Face {
-    fn of(bytes: Vec<u8>) -> Option<Self> {
-        let font = Font::new(bytes, 0)?;
+    fn of(file: Blob) -> Option<Self> {
+        let font = Font::new(file, 0)?;
         let Attributes { width, style, weight } = font.default_attributes();
         Some(Self {
             width: width_class(width),
@@ -160,8 +161,8 @@ impl Family {
     /// alike: each file's first face, in the order the engine was handed
     /// them, which breaks a tie. A file that holds no face is passed over;
     /// `None` if none does.
-    pub(crate) fn of_files(files: Vec<Vec<u8>>) -> Option<Self> {
-        Self::of_faces(files.into_iter().filter_map(Face::of).collect())
+    pub(crate) fn of_files(files: Vec<impl Into<Blob>>) -> Option<Self> {
+        Self::of_faces(files.into_iter().filter_map(|file| Face::of(file.into())).collect())
     }
 
     pub(super) fn of_faces(faces: Vec<Face>) -> Option<Self> {

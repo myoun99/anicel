@@ -20,6 +20,7 @@
 
 pub(crate) mod abi;
 pub(crate) mod glyphs;
+mod mapped;
 #[cfg(test)]
 pub(crate) mod glyphs_tests;
 #[cfg(test)]
