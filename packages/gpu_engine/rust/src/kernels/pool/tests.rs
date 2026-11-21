@@ -953,6 +953,48 @@ fn the_engines_pictures_pool_makes_a_page_past_the_oss_budget() {
     assert_eq!(fits, Some(true));
 }
 
+// A read of the pictures' tiles holds no book while it waits for the
+// engine's thread: a picture let go on that thread — a screen's free —
+// takes the books there, and a reader come with them in hand would stand
+// it for good, itself with it. The thread stands still, a picture's
+// let-go handed over behind it, and the read asked meanwhile ends once the
+// thread goes on. On an engine of its own: one that stood so is none
+// another test can go on with.
+#[test]
+fn a_read_of_the_pictures_tiles_waits_for_the_engines_thread_with_no_book_in_hand() {
+    use super::folded_tests::tile as coloured;
+    use crate::device::gpu_engine_stand_still;
+    use crate::testing::{a_device_of_its_own, done_here};
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let mut pool = Pool::new(&engine, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let (read, let_go) = (coloured(31, 2), coloured(32, 2));
+    let at = pool.store(&engine, cel, &[&read[..], &let_go[..]]).expect("store");
+    assert_eq!(done_here(&engine), Ok(()), "⛔premise: both written");
+    let pictures = Pictures::of(pool);
+    // SAFETY: the engine is live.
+    unsafe { gpu_engine_stand_still(&engine, 1_000) };
+    let (letting_go, gone) = (pictures.clone(), at[1]);
+    engine.posted(move || {
+        letting_go.release(std::iter::once(gone), std::iter::empty());
+        Some(())
+    });
+    let (reading, on, place) = (pictures.clone(), engine.clone(), at[0]);
+    let reader = std::thread::spawn(move || reading.read(&on, &[place]));
+    let asked = Instant::now();
+    while !reader.is_finished() {
+        if asked.elapsed() > Duration::from_secs(120) {
+            // The engine's thread stands with the reader: nothing of this
+            // test is let go on it.
+            std::mem::forget((pictures, engine));
+            panic!("the read never ended: it holds the books the engine's thread waits for");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(reader.join().expect("the reader") == Some(read), "the tile's bytes, as stored");
+}
+
 /// What stores through the C ABI told of their copies: each one's number
 /// and whether it wrote (`gpu_engine_pool_store`).
 static READ: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());

@@ -1709,10 +1709,23 @@ impl Pictures {
     /// to read a kept picture by. ↩️Copied off the pages a picture named,
     /// each as it is, till the pictures' tiles could lie folded
     /// (2026-11-21).
+    ///
+    /// 🚨ON THE ENGINE'S THREAD, THE BOOKS TAKEN THERE: a read submits,
+    /// and a submit is that thread's (`Queue::submit`) — the books taken
+    /// on the caller's would be held through its wait for the thread,
+    /// where a picture let go waits for the books (a screen's free,
+    /// `Kept`'s drop): each for the other, for good. No holder of the
+    /// books waits for a run ([`Self::with`]).
+    /// 🔬2026-11-21, the crate's screen tests and the composite's ABI
+    /// tests run together (main PC, the machine quiet): the tests' engine
+    /// stood so in three runs of three, read off its threads' stacks
+    /// (cdb) — its own thread in a screen's free at `Pictures::release`,
+    /// a test's in this read at `Queue::submit`. ↩️The books were taken
+    /// here, on the caller's thread, for the first hours of the day.
     #[cfg(test)]
     pub(crate) fn read(&self, engine: &Engine, places: &[TileAt]) -> Option<Vec<u8>> {
         let mut bytes = vec![0; places.len() * TILE_BYTES as usize];
-        self.kept().pool.as_ref()?.read(engine, places, &mut bytes)?;
+        engine.on_thread(|| self.kept().pool.as_ref()?.read(engine, places, &mut bytes))?;
         Some(bytes)
     }
 
