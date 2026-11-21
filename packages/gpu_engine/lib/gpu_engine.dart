@@ -813,10 +813,28 @@ class GpuPool implements _OfAnEngine {
     if (pool == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuPool._(engine, pool);
+    return GpuPool._(engine, pool)
+      ..keepToInsteadOfTheOs(debugBudgetTillOneIsSet);
   }
 
   GpuPool._(this._engine, this._pool);
+
+  /// Test seam: the budget each pool made keeps to in place of the OS's
+  /// till one is set ([keepToInsteadOfTheOs]) — the OS's where null, as in
+  /// the app.
+  ///
+  /// 🗣️관제 2026-11-16 (pool-tests-ride-the-os-vram-budget): 「시험은 기계의
+  /// 살아 있는 상태에 기대지 않는다 — OS 예산 자체를 재는 시험이 아니면 시험이
+  /// 쓰는 풀은 예산을 스스로 정한다」. The crate's own tests keep to it where
+  /// their pools are made (rust/src/kernels/pool/mod.rs,
+  /// `BUDGET_TILL_ONE_IS_SET`); the app's tests run the engine as it ships,
+  /// so theirs are set here. 🔬The main PC, 11-18 and 11-19 (card
+  /// four-engine-tile-tests-redden-only-on-a-busy-machine): a ledger's test
+  /// found one page where it made two, and another no slot at all, red
+  /// only beside other suites — each red of them again, word for word, in
+  /// a pool kept to a budget of none.
+  @visibleForTesting
+  static int? debugBudgetTillOneIsSet;
 
   /// Past any page: what leaves a pool's pages as large as the engine
   /// makes them.
@@ -998,8 +1016,15 @@ class GpuPool implements _OfAnEngine {
 
   /// Keeps to [bytes] in place of the budget the OS gives this process;
   /// the OS's again where null.
-  void keepToInsteadOfTheOs(int? bytes) =>
-      rust.poolBudgetInstead(_pool, bytes ?? -1);
+  void keepToInsteadOfTheOs(int? bytes) {
+    _budgetInstead = bytes;
+    rust.poolBudgetInstead(_pool, bytes ?? -1);
+  }
+
+  /// What this pool keeps to in place of the OS's budget
+  /// ([keepToInsteadOfTheOs]): null where the OS's.
+  int? get budgetInstead => _budgetInstead;
+  int? _budgetInstead;
 
   /// Gives back the pages none of whose tiles is held, the last first, till
   /// the pages made hold [mostBytes]; a cel that needs a page again has it

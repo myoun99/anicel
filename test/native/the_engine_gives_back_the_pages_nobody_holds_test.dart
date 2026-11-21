@@ -58,6 +58,33 @@ void main() {
     return ledger;
   }
 
+  /// Collects inside a turn till [dropped] is gone, a turn let pass between
+  /// while it is not — [turns] at most: what the test reads next it reads
+  /// in the turn whose collection found it gone, before the finalizer's
+  /// message that collection sent can land.
+  ///
+  /// 🔬UNDER LOAD A TILE OUTLIVES THE COLLECTIONS OF THE TURN ITS DONE ENDS
+  /// IN (브러시 k1941, 2026-11-21, card four-engine-tile-tests-redden-only-
+  /// on-a-busy-machine): 22 times of 4,000 beside a wide run and the crate's
+  /// tests, none of 200 at rest — gone after one turn each time, and a
+  /// page held by none that was gone. ⚠️Who holds it that turn is not told
+  /// apart: the store's word that its copy read the tile goes out on the
+  /// engine's thread before the done is asked there (`Pool::lands_unwaited`,
+  /// `Engine::done_within`), and two collections a barrier apart have taken
+  /// what nothing reached (`reachabilityBarrier`).
+  Future<void> collectTillItGoesInATurn(
+    WeakReference<Object> dropped, {
+    int turns = 10,
+  }) async {
+    for (var turn = 0; ; turn += 1) {
+      collectGarbageInThisTurn();
+      if (dropped.target == null || turn == turns) {
+        return;
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
   test('a page nobody holds goes back on the memory warning, and a cel '
       'that needs one again has it made', () async {
     final ledger = await aPageNobodyHolds(EngineTileLedger(appGpuEngine));
@@ -114,13 +141,19 @@ void main() {
   // A closed project's tiles are collected with it, and the give-back its
   // collection brings may land before their finalizers' messages.
   test("a collected tile's page goes back before its finalizer runs, and "
-      'the finalizer lets nothing go again', () async {
+      'the finalizer lets nothing go again — 🚨though the tile was held a '
+      'turn past its done, as on a loaded machine', () async {
     final ledger = EngineTileLedger(appGpuEngine);
     BitmapTile? tile = aTileOfItsOwn();
     await storedAndRead(ledger, tile);
+    final dropped = WeakReference(tile);
+    Object? heldATurn = tile;
+    Timer.run(() => heldATurn = null);
     tile = null;
 
-    collectGarbageInThisTurn();
+    await collectTillItGoesInATurn(dropped);
+    expect(heldATurn, isNull, reason: 'LIVENESS: let go a turn on');
+    expect(dropped.target, isNull, reason: 'the premise: nothing holds it');
     expect(ledger.slotCount, 1, reason: 'the premise: no finalizer ran');
     ledger.respondToMemoryPressure();
 

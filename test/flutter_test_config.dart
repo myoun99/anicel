@@ -59,6 +59,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // config from the engine, which it reaches all the same since Q24
   // (gpu_adapter_choice.dart says why, and why that is the law).
   debugGpuAdapterChoice = GpuAdapterChoice.first;
+  // 🚨A TEST'S POOL KEEPS TO NO BUDGET BUT ITS OWN, not to the OS's — the
+  // machine's VRAM as the other suites beside it leave it — till the test
+  // sets one (GpuPool.debugBudgetTillOneIsSet has the law and the reds).
+  GpuPool.debugBudgetTillOneIsSet = _noBudget;
   // 🚨EVERY TEST RUN OF A MACHINE KEEPS ITS SHADERS IN ONE FOLDER OF THE
   // MACHINE'S — `<machine cache>/test_shaders`, beside the line's own
   // (tool/machine_cache.dart) — so what one run's engine compiled, the
@@ -388,3 +392,7 @@ void _freeScreenSurfaces() {
   shownScreenTextures.clear();
   forgetScreensReadBack();
 }
+
+/// The budget a test's pool keeps to in place of the OS's: past any
+/// device.
+const _noBudget = 0x7fffffffffffffff;

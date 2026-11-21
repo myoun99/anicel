@@ -218,12 +218,7 @@ final GpuEngine _engine;
   /// gives — a device at its line, which no test fills a device to reach;
   /// the OS's again where null.
   @visibleForTesting
-  void debugKeepToOsBudget(int? bytes) {
-    _osBudgetInstead = bytes;
-    pool.keepToInsteadOfTheOs(bytes);
-  }
-
-  int? _osBudgetInstead;
+  void debugKeepToOsBudget(int? bytes) => pool.keepToInsteadOfTheOs(bytes);
 
   /// The OS says memory is tight, or a closed project was collected: every
   /// page nobody holds goes back — what only makes the next store cheaper.
@@ -1165,11 +1160,15 @@ final GpuEngine _engine;
         short = placeRest();
       }
       if (short > 0) {
+        // ↩️The ledger kept a word of its own of the budget kept to instead,
+        // and set that back: a pool told one where it was made — a test's
+        // (GpuPool.debugBudgetTillOneIsSet) — would go back to the OS's.
+        final instead = pool.budgetInstead;
         pool.keepToInsteadOfTheOs(_unbounded);
         try {
           short = placeRest();
         } finally {
-          pool.keepToInsteadOfTheOs(_osBudgetInstead);
+          pool.keepToInsteadOfTheOs(instead);
         }
       }
       return short;
