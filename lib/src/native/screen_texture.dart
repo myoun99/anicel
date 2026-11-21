@@ -212,6 +212,12 @@ sealed class ScreenTexture {
   final Stopwatch _sinceItsDraw = Stopwatch();
   int _itsDrawMicros = 0;
 
+  /// The target the frame begun last was drawn on: the one a frame the
+  /// GPU did not finish leaves holding nothing known ([GpuTarget.kept]).
+  /// Frames are drawn one at a time ([_frames]), so it is that frame's
+  /// till the next is begun.
+  GpuTarget? _drawnOnLast;
+
   /// The frame being begun: its draw, and what it is drawn for.
   ({void Function(GpuTarget next) draw, Object? drawnFor})? _beginning;
 
@@ -278,10 +284,17 @@ sealed class ScreenTexture {
         },
         onError: (Object error, StackTrace stack) {
           _report(error, stack);
+          // What the GPU did of a frame it did not finish is not known:
+          // the next drawn on its target is drawn whole.
+          _drawnOnLast?.kept = null;
           if (_freed) {
             return;
           }
-          putUp?.call(behind: _frames.layingGivenUp());
+          // Given up whether or not anyone is told: a call on no one runs
+          // none of its arguments, and the frame stayed the one being
+          // drawn — nothing after it began (2026-11-22).
+          final behind = _frames.layingGivenUp();
+          putUp?.call(behind: behind);
         },
       ),
     );
@@ -292,7 +305,10 @@ sealed class ScreenTexture {
     _sinceItsDraw
       ..reset()
       ..start();
-    _draw(draw);
+    _draw((next) {
+      _drawnOnLast = next;
+      draw(next);
+    });
     _itsDrawMicros = _sinceItsDraw.elapsedMicroseconds;
     return (asked: asked, drawnFor: drawnFor);
   }

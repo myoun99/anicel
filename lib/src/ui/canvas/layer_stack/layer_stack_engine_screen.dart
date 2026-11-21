@@ -35,6 +35,10 @@ final class EngineStackScreen {
   /// The mask the range a fill holds is marked under.
   late final EngineRangeMask _range = EngineRangeMask(_composite);
 
+  /// Where the kept frame was made again, lay by lay: what a show reads to
+  /// draw again only what its target does not hold yet ([show]).
+  final _Lays _lays = _Lays();
+
   /// Lays [frame] onto the kept frame over the world pixels [changed] —
   /// all of it the first time, and when the world the frame holds is not
   /// the one kept: a stroke past the page grows it. Where it changed is
@@ -57,6 +61,7 @@ final class EngineStackScreen {
       frame,
       holds,
       standing,
+      changed,
       (screen, pool, plan, world) =>
           screen.compose(pool, plan, _edgesOf(changed ?? world)),
     );
@@ -84,6 +89,8 @@ final class EngineStackScreen {
       frame,
       holds,
       standing,
+      // The first lay of a screen: all of it.
+      null,
       (screen, pool, plan, _) =>
           screen.composeOver(under, pool, plan, _edgesOf(over.fresh)),
     );
@@ -92,7 +99,9 @@ final class EngineStackScreen {
   /// [frame]'s rows planned ([_planned]) and handed to [lay] with the kept
   /// frame — made again over the world the frame holds where it is not the
   /// one kept: what [lay] ends by. Its chains' puts are held in [holds], if
-  /// any, for the canvas [standing] stands for, if any.
+  /// any, for the canvas [standing] stands for, if any. The kept frame is
+  /// made again over the world pixels [changed], all of it where null
+  /// ([_Lays.made]).
   ///
   /// Throws [FrameKernelsToCome], nothing laid, where the frame has an
   /// effect chain and the chains' kernels are not compiled yet.
@@ -100,6 +109,7 @@ final class EngineStackScreen {
     StackedFrame frame,
     EngineChainHolds? holds,
     Object? standing,
+    Rect? changed,
     Future<void> Function(
       GpuScreen screen,
       GpuPool pool,
@@ -128,7 +138,15 @@ final class EngineStackScreen {
             nowhere.free();
           }
         }
-        return lay(_screenOver(world), pool, plan, world);
+        final kept = _screenOver(world);
+        // Told as it is asked, whether or not the engine lays it. A lay
+        // that fails leaves no canvas, and the next lays all of it
+        // (`Screen::compose`): the pixels told changed made again, and
+        // every other as it was — what a lay of them alone leaves. A
+        // frame shown meanwhile is given up, its target holding nothing
+        // known (`ScreenTexture.present`).
+        _lays.made(changed);
+        return lay(kept, pool, plan, world);
       },
       doneOf: (laid) => laid,
     );
@@ -143,6 +161,8 @@ final class EngineStackScreen {
     }
     _screen?.free();
     _kept = world;
+    // Another canvas: nothing a target holds is of it.
+    _lays.made(null);
     return _screen = GpuScreen(_composite, _edgesOf(world));
   }
 
@@ -153,6 +173,27 @@ final class EngineStackScreen {
   /// it, columns by rows: a target that holds room around its view stands
   /// the view inside (`_RenderFrameScreen`). Its work is handed to the
   /// engine, waited for by none ([GpuScreen.show]).
+  ///
+  /// 🚨DRAWN WHERE IT DIFFERS ALONE, where [target] still holds this
+  /// screen's frame through this very camera ([GpuTarget.kept]): the texels
+  /// that read a tile made again since ([_Lays.since]) — the kept frame
+  /// differs nowhere else, a lay making again the tiles its rect meets,
+  /// whole (`Screen::compose`) —, and nothing where none was. A stroke's
+  /// step draws its dabs' tiles, not the screen. Whole through any other
+  /// camera, on a target that holds another's frame or none known, and
+  /// past the lays kept apart.
+  ///
+  /// 🗣️유저 2026-11-21, on a Galaxy Tab (card
+  /// the-galaxy-tab-canvas-went-slow-on-build-1095): 「캔버스조작, 즉
+  /// 팬이나 줌이나 스트로크가 너무 느려졋어」, and nothing else of the app
+  /// slow. ↩️Every frame drew every texel of its target — the box, its
+  /// room to pan and what its sides' step spares: 1536×3072 for a window
+  /// of 1080×2424, read off an emulator (2026-11-22) —, each by a thread
+  /// of the composite's walk, a stroke's step as a zoom's.
+  ///
+  /// ⛔Not on a window's image ([GpuWindow], Android's): its next is
+  /// another of its swapchain's each frame, holding a frame older than
+  /// the last by how many it keeps — which nothing here is told.
   void show(
     GpuTarget target,
     (int, int) size, {
@@ -169,27 +210,54 @@ final class EngineStackScreen {
     // A texel is a device pixel, the camera's unit a logical one.
     final per = 1 / devicePixelRatio;
     final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
-    final (columns, rows) = size;
     // The view's pixel a texel is: the texel less the corner.
     final (cornerX, cornerY) = corner;
     final (a, b) = (camera[0] * per, camera[4] * per);
     final (c, d) = (camera[1] * per, camera[5] * per);
     final mode = gpuSamplingOf(filterQualityForDisplayScale(scale));
-    screen.show(
-      target,
-      inverse: [
-        a,
-        b,
-        camera[12] - a * cornerX - b * cornerY,
-        c,
-        d,
-        camera[13] - c * cornerX - d * cornerY,
-      ],
-      sampling: mode,
-      rect: (0, 0, columns, rows),
-    );
-    // For the frame statistics ([ScreenAsked]).
-    ScreenAsked.shown((columns: columns, rows: rows, scale: scale, mode: mode));
+    final inverse = [
+      a,
+      b,
+      camera[12] - a * cornerX - b * cornerY,
+      c,
+      d,
+      camera[13] - c * cornerX - d * cornerY,
+    ];
+    final through = (inverse: inverse, mode: mode, size: size);
+    // Read before the draw, which forgets it.
+    final rect = _texelsToDraw(target.kept, through);
+    if (rect case (final left, final top, final right, final bottom)) {
+      screen.show(target, inverse: inverse, sampling: mode, rect: rect);
+      // For the frame statistics ([ScreenAsked]): the texels drawn.
+      ScreenAsked.shown((
+        columns: right - left,
+        rows: bottom - top,
+        scale: scale,
+        mode: mode,
+      ));
+    }
+    if (target is GpuSurface) {
+      target.kept = (of: this, lay: _lays.last, through: through);
+    }
+  }
+
+  /// The texels of a target a show [through] a camera is to draw — [left,
+  /// top, right, bottom) —, the target holding what [kept] says: all of
+  /// them, unless it holds this screen's frame through that camera; then
+  /// those that read a tile made again since, and null where none was.
+  (int, int, int, int)? _texelsToDraw(Object? kept, _Through through) {
+    final (columns, rows) = through.size;
+    final whole = (0, 0, columns, rows);
+    if (kept is! _ShownOn ||
+        !identical(kept.of, this) ||
+        !_sameCamera(kept.through, through)) {
+      return whole;
+    }
+    final again = _lays.since(kept.lay);
+    if (again == null) {
+      return whole;
+    }
+    return again.isEmpty ? null : _texelsReading(_tilesMet(again), through);
   }
 
   /// What a frame over the world [extent] will keep: a tile for each it
@@ -254,6 +322,133 @@ final class EngineStackScreen {
   rect.right.ceil(),
   rect.bottom.ceil(),
 );
+
+/// The camera a frame is shown through, as the engine is handed it
+/// ([GpuScreen.show]): a texel to the canvas's pixel, the mode it is read
+/// in, and the target's texels, columns by rows.
+typedef _Through = ({List<double> inverse, GpuSampling mode, (int, int) size});
+
+/// What a target keeps of a screen's frame ([GpuTarget.kept]): whose, as of
+/// which lay of its ([_Lays.last]), and through which camera.
+typedef _ShownOn = ({EngineStackScreen of, int lay, _Through through});
+
+/// Whether [a] and [b] are one camera: every texel reads the same. The
+/// mode is not asked — it is the scale's, which the inverse holds.
+bool _sameCamera(_Through a, _Through b) {
+  if (a.size != b.size) {
+    return false;
+  }
+  for (var at = 0; at < a.inverse.length; at++) {
+    if (a.inverse[at] != b.inverse[at]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// WHERE A KEPT FRAME WAS MADE AGAIN, LAY BY LAY: each lay numbered from
+/// one, the newest [_kept] of them held with the world pixels each made
+/// again — null, all of them.
+final class _Lays {
+  /// How many lays are held apart: what two targets shown in turn fall
+  /// behind by, a few lays a frame. One behind by more is drawn whole
+  /// ([since]) — the bound costs a whole frame, never a wrong one.
+  static const int _kept = 8;
+
+  final List<({int lay, Rect? where})> _newest = [];
+
+  /// The lay made last, by number; none yet, 0.
+  int get last => _last;
+  int _last = 0;
+
+  /// A lay made the kept frame again over the world pixels [where] — all
+  /// of it where null.
+  void made(Rect? where) {
+    _last += 1;
+    _newest.add((lay: _last, where: where));
+    if (_newest.length > _kept) {
+      _newest.removeAt(0);
+    }
+  }
+
+  /// The world pixels made again by the lays after [lay]: empty where
+  /// there was none, and null where it is not told — one of them made all
+  /// of it again, or is held apart no more.
+  Rect? since(int lay) {
+    if (lay >= _last) {
+      return Rect.zero;
+    }
+    if (_newest.first.lay > lay + 1) {
+      return null;
+    }
+    Rect? again;
+    for (final made in _newest) {
+      if (made.lay <= lay) {
+        continue;
+      }
+      final where = made.where;
+      if (where == null) {
+        return null;
+      }
+      // A lay over no pixel made nothing again (`Screen::compose`).
+      if (!where.isEmpty) {
+        again = again?.expandToInclude(where) ?? where;
+      }
+    }
+    return again ?? Rect.zero;
+  }
+}
+
+/// The tiles of a kept frame the world pixels [where] meet, whole: what a
+/// lay over them makes again (`Screen::compose`).
+Rect _tilesMet(Rect where) {
+  final side = gpuTileSide.toDouble();
+  double down(double edge) => (edge / side).floorToDouble() * side;
+  double up(double edge) => (edge / side).ceilToDouble() * side;
+  return Rect.fromLTRB(
+    down(where.left),
+    down(where.top),
+    up(where.right),
+    up(where.bottom),
+  );
+}
+
+/// The texels of a target shown [through] a camera whose read reaches the
+/// canvas pixels [where] — [left, top, right, bottom), null where none
+/// does: those a texel's middle lands within the mode's reach of
+/// ([GpuSampling.reach]), found by the camera turned about — a canvas
+/// pixel to the texel — as the box round where its corners land.
+///
+/// A texel is taken where any of it lies in that box, its middle or not:
+/// the half a texel that spares is what the engine's own arithmetic may
+/// differ from this by — it reads the camera rounded to Q.20 and lands a
+/// middle on Q.16, a part of a texel in tens of thousands.
+(int, int, int, int)? _texelsReading(Rect where, _Through through) {
+  final (columns, rows) = through.size;
+  final [a, b, c, d, e, f] = through.inverse;
+  final turned = a * e - b * d;
+  if (turned == 0 || !turned.isFinite) {
+    // No camera of a view's: nothing is told of where it lands.
+    return (0, 0, columns, rows);
+  }
+  final read = where.inflate(through.mode.reach.toDouble());
+  double acrossOf(double x, double y) =>
+      (e * (x - c) - b * (y - f)) / turned;
+  double downOf(double x, double y) => (a * (y - f) - d * (x - c)) / turned;
+  final corners = [
+    (read.left, read.top),
+    (read.right, read.top),
+    (read.left, read.bottom),
+    (read.right, read.bottom),
+  ];
+  final across = [for (final (x, y) in corners) acrossOf(x, y)]..sort();
+  final down = [for (final (x, y) in corners) downOf(x, y)]..sort();
+  final left = across.first.floor().clamp(0, columns).toInt();
+  final top = down.first.floor().clamp(0, rows).toInt();
+  final right = across.last.ceil().clamp(0, columns).toInt();
+  final bottom = down.last.ceil().clamp(0, rows).toInt();
+  return left >= right || top >= bottom ? null : (left, top, right, bottom);
+}
 
 /// The picture a fill pressed on [frame] reads, over the pixels [box] of
 /// the space its seed is in — the canvas, or [space], the artwork of a row

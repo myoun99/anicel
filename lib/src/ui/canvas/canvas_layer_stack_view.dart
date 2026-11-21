@@ -7,7 +7,9 @@ import 'package:gpu_engine/gpu_engine.dart'
         GpuMask,
         GpuPlan,
         GpuPool,
+        GpuSampling,
         GpuScreen,
+        GpuSurface,
         GpuTarget,
         gpuTileBytes,
         gpuTileSide;

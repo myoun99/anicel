@@ -296,6 +296,12 @@ class GpuEngine {
     return made;
   }
 
+  /// [target]'s texture, for a draw on this engine to write: what the
+  /// target was said to hold is forgotten ([GpuTarget.kept]). Every draw
+  /// reaches a target's texture through here.
+  Pointer<rust.Texture> _toDrawOn(GpuTarget target) =>
+      (_its(target)..kept = null)._texture;
+
   String get adapterName => using((arena) {
     const capacity = 256;
     final buffer = arena<Uint8>(capacity);
@@ -652,10 +658,29 @@ sealed class GpuTarget implements _OfAnEngine {
   /// The texture the kernel writes.
   Pointer<rust.Texture> get _texture;
 
+  /// WHAT THE TARGET STILL HOLDS OF THE FRAME DRAWN ON IT LAST, as who drew
+  /// it says once it has — read back by who draws on it next, to draw
+  /// again only what differs (the app's `EngineStackScreen.show`). Null
+  /// where nothing is known of it: never drawn on; drawn on since, every
+  /// draw forgetting it as it reaches the texture
+  /// ([GpuEngine._toDrawOn]); or a frame drawn on it was given up (the
+  /// app's `ScreenTexture.present`) — what the GPU did of a frame it did
+  /// not finish is not known, so the next is drawn whole.
+  ///
+  /// 📍On the target, not kept beside it: a draw that knows nothing of it
+  /// — another kernel's, on a texture two share — cannot leave it
+  /// standing.
+  Object? kept;
+
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
   Duration fill(int seed) => _ran(
-    rust.fillRun(_engine._fillKernel, _engine._engine, _texture, seed),
+    rust.fillRun(
+      _engine._fillKernel,
+      _engine._engine,
+      _engine._toDrawOn(this),
+      seed,
+    ),
   );
 }
 
@@ -2363,6 +2388,23 @@ enum GpuSampling {
   const GpuSampling(this.id);
 
   final int id;
+
+  /// How far from the source pixel a pixel's centre lands in its read
+  /// reaches, in source pixels a side, at the most: none for [nearest],
+  /// which reads that one; for the others R1's ceiling, 16
+  /// (rust/src/kernels/shared/resample.wgsl `RESAMPLE_CEILING` — Blend's
+  /// radius, the square a flat reach is told by, and exact Pick's widest
+  /// preimage). What a source pixel changed can change of a picture laid
+  /// through a pose is read by it (`EngineStackScreen.show`).
+  ///
+  /// ⚠️The kernel's number said again, not read from it — and a bound,
+  /// not what a read reaches at a scale: Blend's tent is as wide as a
+  /// pixel spans, this at the most. Told as none, or as two, it fails the
+  /// pin of a frame shown again where it changed alone, on the engine
+  /// itself (the app's
+  /// `the_engine_screen_shows_the_frame_it_keeps_test.dart`); what lies
+  /// between that and 16 no screen of the pin tells apart.
+  int get reach => this == nearest ? 0 : 16;
 }
 
 /// The channel a blur map is read through, by the engine's ids.
@@ -3249,7 +3291,7 @@ class GpuComposite implements _OfAnEngine {
         _engine._engine,
         _engine._its(pool)._pool,
         _engine._its(plan)._plan,
-        _engine._its(target)._texture,
+        _engine._toDrawOn(target),
         _edges(arena, rect),
       ),
     );
@@ -3430,7 +3472,7 @@ class GpuScreen implements _OfAnEngine {
         _engine._engine,
         _doubles(arena, inverse),
         sampling.id,
-        _engine._its(target)._texture,
+        _engine._toDrawOn(target),
         _edges(arena, rect),
       ),
     );
@@ -5645,7 +5687,7 @@ class GpuGridLay {
       rust.gridLay(
         _lay,
         _engine._engine,
-        _engine._its(target)._texture,
+        _engine._toDrawOn(target),
         edges,
         pictures,
         boxes,
