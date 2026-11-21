@@ -454,26 +454,19 @@ abstract final class FrameStats {
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
 
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
-    final raster = <int>[];
-    final ui = <int>[];
-    final latency = <int>[];
-    final buildWait = <int>[];
-    final rasterWait = <int>[];
-    for (final timing in window) {
-      raster.add(timing.rasterDuration.inMicroseconds);
-      ui.add(timing.buildDuration.inMicroseconds);
-      latency.add(timing.totalSpan.inMicroseconds);
-      buildWait.add(timing.vsyncOverhead.inMicroseconds);
-      rasterWait.add(
-        timing.timestampInMicroseconds(FramePhase.rasterStart) -
-            timing.timestampInMicroseconds(FramePhase.buildFinish),
-      );
-    }
-    raster.sort();
-    ui.sort();
-    latency.sort();
-    buildWait.sort();
-    rasterWait.sort();
+    // A figure of each of the window's frames, in microseconds, sorted for
+    // its percentiles.
+    List<int> sorted(int Function(FrameTiming timing) micros) =>
+        [for (final timing in window) micros(timing)]..sort();
+    final raster = sorted((timing) => timing.rasterDuration.inMicroseconds);
+    final ui = sorted((timing) => timing.buildDuration.inMicroseconds);
+    final latency = sorted((timing) => timing.totalSpan.inMicroseconds);
+    final buildWait = sorted((timing) => timing.vsyncOverhead.inMicroseconds);
+    final rasterWait = sorted(
+      (timing) =>
+          timing.timestampInMicroseconds(FramePhase.rasterStart) -
+          timing.timestampInMicroseconds(FramePhase.buildFinish),
+    );
 
     // The window's wall span, taken from the frame timestamps rather
     // than a clock read: they share one epoch, and using them keeps the
