@@ -593,6 +593,18 @@ class _InspectorCard extends StatelessWidget {
                       maxLines: 1,
                       style: rowStyle.copyWith(color: AppColors.accent),
                     ),
+                  // How the tablet driver's stream started
+                  // (h61-wintab-sometimes-not-engaged-at-launch): the
+                  // service keeps it from launch, before this card opens,
+                  // and ⟲ does not clear it.
+                  for (final (i, step)
+                      in WintabPenService.instance.startRecord.indexed)
+                    EllipsisText(
+                      'wt $step',
+                      key: ValueKey<String>('input-inspector-wintab-start-$i'),
+                      maxLines: 1,
+                      style: rowStyle.copyWith(color: _inspectorSecondInk),
+                    ),
                   if (samples.isEmpty)
                     Text(
                       'waiting for input…',
@@ -654,13 +666,19 @@ class _InspectorCard extends StatelessWidget {
   }
 }
 
-/// What the tablet driver's queue said ([WintabPenService.heard]), as the
-/// strip says it.
+/// What the tablet driver's queue said ([WintabPenService.heard]) — or,
+/// while its context is still being opened, the tries and why the last
+/// refused ([WintabPenService.opening]) — as the strip says it.
 String _wintabHeard() {
-  final heard = WintabPenService.instance.heard();
-  return heard == null
+  final service = WintabPenService.instance;
+  final heard = service.heard();
+  if (heard != null) {
+    return ' wt gap=${heard.gapMs ?? '-'} over=${heard.overflowed}';
+  }
+  final opening = service.opening();
+  return opening == null
       ? ''
-      : ' wt gap=${heard.gapMs ?? '-'} over=${heard.overflowed}';
+      : ' wt open try=${opening.tries} ${opening.refusal?.name ?? '-'}';
 }
 
 /// What the point book lost ([QaPenPoints.lost]), by why, as the strip

@@ -547,26 +547,40 @@ pub(crate) fn device_name(out: Option<&mut [u16]>) -> Option<usize> {
     Some(length)
 }
 
+/// Why a context did not open — what `qat_open` answers in its place
+/// (h61-wintab-sometimes-not-engaged-at-launch: a run whose pen never came
+/// in through Wintab is read off the input inspector by this).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// wintab32 did not load, or no driver answered.
+    NoDriver = 0,
+    /// This process shows no app window yet ([`display::app_window`]).
+    NoWindow = -1,
+    /// The driver gave no default system context.
+    NoSystemContext = -2,
+    /// The driver gave no context for the one asked.
+    NotOpened = -3,
+}
+
 /// Opens the polling context, a packet giving a mouse move its pressure
-/// `within` ms of it. Idempotent. False with no driver, or no app window
-/// yet.
-pub(crate) fn open(within: u32) -> bool {
+/// `within` ms of it. Idempotent.
+pub(crate) fn open(within: u32) -> Result<(), Refusal> {
     open_drained_every(within, DRAIN_EVERY)
 }
 
 /// [`open`], the receiver draining the queue `every` so long
 /// when nothing wakes it sooner ([`readings_at`]).
-pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
+pub(crate) fn open_drained_every(within: u32, every: Duration) -> Result<(), Refusal> {
     let mut tablet = tablet();
     if tablet.opened.is_some() {
-        return true;
+        return Ok(());
     }
     let Some(driver) = tablet.available() else {
-        return false;
+        return Err(Refusal::NoDriver);
     };
     // Wintab wants a window to scope the context to: the app's.
     let Some(window) = display::app_window() else {
-        return false;
+        return Err(Refusal::NoWindow);
     };
     // A SYSTEM context is what "observe alongside the OS" actually MEANS in
     // Wintab, and the default to clone is WTI_DEFSYSCTX. The driver keeps
@@ -583,7 +597,7 @@ pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
     let mut context: LogContext = unsafe { std::mem::zeroed() };
     // SAFETY: room for a LOGCONTEXTW, what WTI_DEFSYSCTX answers.
     if unsafe { (driver.info)(WTI_DEFSYSCTX, 0, (&raw mut context).cast()) } == 0 {
-        return false;
+        return Err(Refusal::NoSystemContext);
     }
     context.options |= CXO_SYSTEM;
     context.packet_data = PACKET_DATA;
@@ -592,7 +606,7 @@ pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
     // SAFETY: the app's window and the context just filled in.
     let opened = unsafe { (driver.open)(window, &raw mut context, true.into()) };
     if opened.is_null() {
-        return false;
+        return Err(Refusal::NotOpened);
     }
     if let Some(queue_size_set) = driver.queue_size_set {
         // 🚨A REFUSED SIZE LEAVES NO QUEUE AT ALL: WTQueueSizeSet deletes the
@@ -618,7 +632,7 @@ pub(crate) fn open_drained_every(within: u32, every: Duration) -> bool {
     *drain_lock() = Some(Drain { driver, context: opened, room, held: Vec::new() });
     EVERY.store(u64::try_from(every.as_micros()).unwrap_or(u64::MAX), Ordering::Relaxed);
     receiver::now(Work::Drain, every);
-    true
+    Ok(())
 }
 
 /// Hands `out` the newest of the packets heard and not handed yet

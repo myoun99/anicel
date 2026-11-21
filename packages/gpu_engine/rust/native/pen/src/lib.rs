@@ -6,7 +6,7 @@
 //! and what its HID report says (Raw Input — `qpr_*`), which Dart's bridge
 //! (lib/src/native/qa_tablet_bridge.dart) binds there alone, in the GPU
 //! engine's library that carries this crate. Each half keeps the C's ABI —
-//! `qat_abi_version` 3, `qpr_abi_version` 3 — the one the bridge reads
+//! `qat_abi_version` 4, `qpr_abi_version` 3 — the one the bridge reads
 //! (tests.rs holds them to its).
 //!
 //! On Apple: the PEN LEDGER (`qa_pen_ledger_*`, H43) — what UIKit or AppKit
@@ -52,11 +52,12 @@ mod wintab;
 /// v2 (F-176-Q9): a packet's record carries the twist, so it is eight
 /// floats where it was six; v3: `qat_open` takes the window a packet gives
 /// a mouse move its pressure within, and the queue says how it went
-/// (`qat_overflowed` · `qat_clock_gap`).
+/// (`qat_overflowed` · `qat_clock_gap`); v4: `qat_open` says why a context
+/// did not open, a refusal of its own for each.
 #[cfg(windows)]
 #[unsafe(no_mangle)]
 pub extern "C" fn qat_abi_version() -> i32 {
-    3
+    4
 }
 
 /// 1 when wintab32 loads AND it reports an installed driver and device.
@@ -82,12 +83,17 @@ pub unsafe extern "C" fn qat_device_name(out: *mut u16, cap: i32) -> i32 {
 }
 
 /// Opens the observe-only polling context, a packet giving a mouse move its
-/// pressure `within_ms` of it (none below 0). 1 on success; idempotent. 0
-/// with no driver, or no app window yet.
+/// pressure `within_ms` of it (none below 0). 1 on success; idempotent.
+/// Otherwise why not ([`wintab::Refusal`]): 0 with no driver, -1 with no
+/// app window yet, -2 with no default system context, -3 when the driver
+/// opened none.
 #[cfg(windows)]
 #[unsafe(no_mangle)]
 pub extern "C" fn qat_open(within_ms: i32) -> i32 {
-    i32::from(wintab::open(within_ms.max(0) as u32))
+    match wintab::open(within_ms.max(0) as u32) {
+        Ok(()) => 1,
+        Err(refusal) => refusal as i32,
+    }
 }
 
 /// Hands `out` the newest packets heard and not handed yet — the receiver

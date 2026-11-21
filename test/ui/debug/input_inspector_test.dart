@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
@@ -71,6 +72,44 @@ void main() {
         tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
     expect(said('input-inspector-wintab'), 'wt p=0.40');
     expect(said('input-inspector-touch-count'), endsWith(' wt gap=7 over=3'));
+    // The poll timer must die before the binding's pending-timer check.
+    service.debugReset();
+  });
+
+  testWidgets('h61-wintab-sometimes-not-engaged-at-launch: the card shows '
+      'how the driver\'s stream started — kept from before it opened, and '
+      'not cleared by ⟲ — and, while the context is still refused, the '
+      'tries and why', (tester) async {
+    final service = WintabPenService.instance;
+    addTearDown(service.debugReset);
+    WintabPenService.debugClockOverride = () => DateTime(2026);
+    service.debugBridge = FakeTabletBridge()
+      ..refusals.addAll([QaTabletOpen.noWindow, QaTabletOpen.noWindow]);
+    service.apply(const AppInputSettings(tabletService: TabletService.wintab));
+    service.freshPacket();
+    service.freshPacket();
+    InputInspector.visible.value = true;
+    await tester.pumpWidget(harness());
+
+    String said(String key) =>
+        tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
+    final steps = [
+      'wt +0ms APPLY wintab running=false',
+      'wt +0ms START timer',
+      'wt +0ms OPEN no try=1 noWindow',
+    ];
+    expect([for (var i = 0; i < 3; i += 1) said(_startStep(i))], steps);
+    expect(find.byKey(ValueKey<String>(_startStep(3))), findsNothing);
+    expect(
+      said('input-inspector-touch-count'),
+      endsWith(' wt open try=2 noWindow'),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('input-inspector-clear')),
+    );
+    await tester.pump();
+    expect([for (var i = 0; i < 3; i += 1) said(_startStep(i))], steps);
     // The poll timer must die before the binding's pending-timer check.
     service.debugReset();
   });
@@ -224,3 +263,6 @@ void main() {
     expect(line, contains('(10,20)'));
   });
 }
+
+/// The key of the start record's [i]th step on the card.
+String _startStep(int i) => 'input-inspector-wintab-start-$i';

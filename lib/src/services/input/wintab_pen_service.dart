@@ -75,6 +75,32 @@ class WintabPenService {
   /// survive the restart that would otherwise reopen the dead context.
   void Function(AppInputSettings settings)? persistSettings;
 
+  /// How the service started, step by step, for the input inspector.
+  ///
+  /// 🗣️h61-wintab-sometimes-not-engaged-at-launch (관제 2026-11-21, from
+  /// 브러시/렌더링 11-18): some runs right after launch heard no packet at
+  /// all though the setting said Wintab — switching to standard and back
+  /// brought it in — and nothing kept how the service had started, so a
+  /// run that failed could not be told from one that did not. So each step
+  /// is kept from the first apply on, `+ms` after it: a change of the
+  /// setting applied (`APPLY`), the start or why it gave up (`START`), an
+  /// open refused and why — again only when the why changes — (`OPEN no`),
+  /// the try it opened at (`OPEN ok`), the first packet heard after
+  /// (`HEARD`), a stop (`STOP`) and a safety demotion (`DEMOTE`).
+  ///
+  /// ⚠️Kept whether or not the inspector is shown, as its `seen` is: the
+  /// launch is over before anyone opens it. The first [startRecordRoom]
+  /// steps are kept — the launch is what this record is for.
+  final List<String> startRecord = [];
+
+  static const int startRecordRoom = 16;
+
+  DateTime? _startRecordSince;
+  TabletService? _lastApplied;
+  int _openTries = 0;
+  QaTabletOpen? _lastRefusal;
+  bool _heardSinceStart = false;
+
   QaTabletBridge? _bridge;
   Timer? _timer;
   bool _opened = false;
@@ -117,7 +143,12 @@ class WintabPenService {
   /// meaning what it says, and one way of opening it cut the driver's cursor
   /// once (08-06, since fixed).
   void apply(AppInputSettings settings) {
-    if (settings.tabletService == TabletService.wintab) {
+    final service = settings.tabletService;
+    if (service != _lastApplied) {
+      _lastApplied = service;
+      _remember('APPLY ${service.name} running=$running');
+    }
+    if (service == TabletService.wintab) {
       start();
     } else {
       stop();
@@ -129,15 +160,30 @@ class WintabPenService {
       return;
     }
     _bridge ??= debugBridge ?? QaTabletBridge.instanceOrNull;
-    if (debugPollOverride == null && (_bridge == null || !_bridge!.available)) {
-      return; // No driver — stay idle (the standard graceful absence).
+    if (debugPollOverride == null) {
+      // No driver — stay idle (the standard graceful absence).
+      if (_bridge == null) {
+        _remember('START no bridge');
+        return;
+      }
+      if (!_bridge!.available) {
+        _remember('START no driver');
+        return;
+      }
     }
     _packetsWithoutPointer = 0;
     _sawPointerEvent = false;
+    _openTries = 0;
+    _lastRefusal = null;
+    _heardSinceStart = false;
+    _remember('START timer');
     _timer = Timer.periodic(pollInterval, (_) => _pump());
   }
 
   void stop() {
+    if (_timer != null) {
+      _remember('STOP');
+    }
     _timer?.cancel();
     _timer = null;
     if (_opened) {
@@ -162,6 +208,7 @@ class WintabPenService {
   /// Puts the setting back to the standard path and persists it — the one
   /// caller is the dead-path guard in [_pump].
   void _demoteForSafety() {
+    _remember('DEMOTE packets=$_packetsWithoutPointer');
     autoDemoted.value = true;
     stop();
     final demoted = AppInput.settings.value.copyWith(
@@ -184,21 +231,17 @@ class WintabPenService {
       packets = override();
     } else {
       final bridge = _bridge;
-      if (bridge == null) {
+      if (bridge == null || !_opens(bridge)) {
         return;
-      }
-      if (!_opened) {
-        // The context needs the app window — retry until the runner
-        // window exists (first frames of app start).
-        _opened = bridge.open(within: freshWindow);
-        if (!_opened) {
-          return;
-        }
       }
       packets = bridge.poll();
     }
     if (packets.isEmpty) {
       return;
+    }
+    if (!_heardSinceStart) {
+      _heardSinceStart = true;
+      _remember('HEARD first packet');
     }
     _lastPacketAt = _now();
     latest.value = packets.last;
@@ -211,6 +254,41 @@ class WintabPenService {
     _packetsWithoutPointer += packets.length;
     if (_packetsWithoutPointer >= deadPathPacketBudget) {
       _demoteForSafety();
+    }
+  }
+
+  /// Whether the context is open — opened now if not: it needs the app
+  /// window, so it is tried again until the runner's window shows (first
+  /// frames of app start).
+  bool _opens(QaTabletBridge bridge) {
+    if (_opened) {
+      return true;
+    }
+    _openTries += 1;
+    final open = bridge.open(within: freshWindow);
+    _opened = open == QaTabletOpen.opened;
+    if (_opened) {
+      _remember('OPEN ok try=$_openTries');
+    } else if (open != _lastRefusal) {
+      _lastRefusal = open;
+      _remember('OPEN no try=$_openTries ${open.name}');
+    }
+    return _opened;
+  }
+
+  /// While the service runs and its context has not opened: how many times
+  /// it was tried, and why it last refused — null otherwise. The input
+  /// inspector shows it beside the start record ([startRecord]).
+  ({int tries, QaTabletOpen? refusal})? opening() => running && !_opened
+      ? (tries: _openTries, refusal: _lastRefusal)
+      : null;
+
+  /// One step of [startRecord], `+ms` after its first.
+  void _remember(String step) {
+    final now = _now();
+    final since = _startRecordSince ??= now;
+    if (startRecord.length < startRecordRoom) {
+      startRecord.add('+${now.difference(since).inMilliseconds}ms $step');
     }
   }
 
@@ -291,5 +369,11 @@ class WintabPenService {
     _lastPacketAt = DateTime.fromMillisecondsSinceEpoch(0);
     _packetsWithoutPointer = 0;
     _sawPointerEvent = false;
+    startRecord.clear();
+    _startRecordSince = null;
+    _lastApplied = null;
+    _openTries = 0;
+    _lastRefusal = null;
+    _heardSinceStart = false;
   }
 }
