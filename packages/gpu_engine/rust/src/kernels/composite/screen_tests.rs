@@ -8,11 +8,12 @@ use super::{Camera, Screen, affine, meets, row};
 use crate::device::{Engine, gpu_engine_waits_here};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
-use crate::kernels::composite::kept::tests::{A_REST_S_FOLDS, kept_bytes, moved, rested_on};
+use crate::kernels::composite::kept::tests::{kept_bytes, moved, rested, rested_on, resting};
 use crate::kernels::composite::kept::{Film, Kept, Tiles, plan};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on, texel};
 use crate::kernels::composite::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
 use crate::kernels::fold::{Fold, SUBMITS_NOTHING};
+use crate::kernels::pool::folded_tests::told_within;
 use crate::kernels::pool::{Pictures, Weighs};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
@@ -1014,11 +1015,12 @@ fn a_hand_at_work_stops_a_rest_s_folds_behind_their_batch() {
     let screen = screen_of(kept_in(&pictures, &laid(&pages, &set)));
     let (names, bytes) = (named(&screen), canvas_bytes(&screen));
     engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
-    engine.on_thread(|| {
-        pictures.rests(engine);
+    let rest = engine.on_thread(|| {
+        let rest = resting(engine, &pictures);
         pictures.hand_at_work();
+        rest
     });
-    assert!(pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
+    assert_eq!(rested(rest), Some(false), "ended by the hand at work, the pictures unweighed");
     assert_eq!(moved(&pictures, &names), 4, "the batch handed over before the hand was at work, and no more");
     assert!(canvas_bytes(&screen) == bytes);
     rested_on(engine, &pictures);
@@ -1061,11 +1063,12 @@ fn a_rest_s_folds_through_tell_what_weighs_by_the_pictures_to_weigh_again() {
     let told = told_to_weigh_by(&pictures);
     let times = || told.0.load(Ordering::Relaxed);
     engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
-    engine.on_thread(|| {
-        pictures.rests(engine);
+    let rest = engine.on_thread(|| {
+        let rest = resting(engine, &pictures);
         pictures.hand_at_work();
+        rest
     });
-    assert!(pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
+    assert_eq!(rested(rest), Some(false), "the rest is told so: ended, the pictures unweighed");
     assert_eq!((moved(&pictures, &names), times()), (4, 0), "a hand at work ended them: tiles moved, none told");
     rested_on(engine, &pictures);
     assert_eq!((moved(&pictures, &names), times()), (15, 1), "through, the hand at rest");
@@ -1152,8 +1155,7 @@ fn a_rest_folds_nothing_before_the_fold_s_kernels_are_compiled() {
     let kept = Kept::made_in(&engine, &composite, &laid(&pages, &set), PAGE, None, &pictures, composite.widest());
     let screen = screen_of(kept.expect("kept"));
     let names = named(&screen);
-    pictures.rests(&engine);
-    assert!(pictures.rested_within(A_REST_S_FOLDS));
+    assert_eq!(rested(resting(&engine, &pictures)), Some(false), "told all the same: nothing folded, none weighed");
     engine.on_thread(|| ());
     assert_eq!(moved(&pictures, &names), 0, "folded with no kernel compiled for it");
     rested_on(&engine, &pictures);
@@ -1178,14 +1180,14 @@ fn a_fold_refused_as_it_is_handed_over_ends_the_rest_and_holds_no_thread() {
     let names = named(&screen);
     engine.on_thread(|| Fold::new(&engine)).expect("the fold's kernels");
     engine.on_thread(|| SUBMITS_NOTHING.set(true));
-    pictures.rests(&engine);
-    let ended = pictures.rested_within(Duration::from_secs(20));
-    if !ended {
+    let ended = told_within(resting(&engine, &pictures), Duration::from_secs(20));
+    if ended.is_none() {
         // The engine's thread stands with the books: nothing of this test
         // is let go on it.
         std::mem::forget((screen, pictures, composite, engine));
         panic!("the rest's folds never ended: the engine's thread holds the books");
     }
+    assert_eq!(ended, Some(false), "a rest a fold failed in weighs nothing");
     assert_eq!(moved(&pictures, &names), 0, "a tile of a fold refused lies off its slot");
     engine.on_thread(|| SUBMITS_NOTHING.set(false));
     rested_on(&engine, &pictures);

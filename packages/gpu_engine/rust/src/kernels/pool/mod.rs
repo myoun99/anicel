@@ -1298,12 +1298,17 @@ struct Shelf {
     /// made ([`Pictures::rests`], [`Pictures::fresh`]) — the folds of a
     /// rest go on while it stands where that rest left it.
     turn: AtomicU64,
-    /// How many rests' folds are under way: each from its rest till a
-    /// step of it hands no batch over ([`Pictures::folds_on`]).
-    folding: AtomicU64,
     /// What weighs itself by the pool's tiles, each till it is dropped
     /// ([`Pictures::weighed_by`]).
     weighing: Mutex<Vec<Weak<dyn Weighs>>>,
+}
+
+/// A rest's folds under way ([`Pictures::rests`]): the kernels they run
+/// by, and what tells the rest's caller once they are through — whether
+/// the pictures were weighed again by then ([`Weighs`]).
+struct Rest {
+    fold: Fold,
+    told: FoldTold,
 }
 
 /// What weighs itself by the pictures' tiles ([`Pictures::bytes_of`]) and
@@ -1700,22 +1705,32 @@ impl Pictures {
     ///
     /// Nothing where the engine has the fold's kernels compiled not yet
     /// ([`Fold::compiled`]): the next rest asks again.
-    pub(crate) fn rests(&self, engine: &Engine) {
+    ///
+    /// `told` IS CALLED ONCE THE REST'S FOLDS ARE THROUGH, once — on the
+    /// engine's thread, or here where no kernel was compiled and none
+    /// began —: whether the pictures were weighed again
+    /// ([`Weighs`]) — true where they ended with the hand at rest still;
+    /// false where a hand at work ended them, a fold failed, or no
+    /// kernel was compiled. What the pictures weigh is the room their
+    /// keepers have (the app's playback line), and a keeper resting for
+    /// want of room looks again by this — no reader of a weight is told
+    /// by the weight (`gpu_engine_screen_bytes` is read, not heard).
+    pub(crate) fn rests(&self, engine: &Engine, told: FoldTold) {
         let Some(fold) = Fold::compiled(engine) else {
+            told(false);
             return;
         };
         let turn = self.0.turn.fetch_add(1, Ordering::Relaxed) + 1;
-        self.0.folding.fetch_add(1, Ordering::Relaxed);
-        self.steps_on(engine, Arc::new(fold), turn);
+        self.steps_on(engine, Arc::new(Rest { fold, told }), turn);
     }
 
     /// Hands the engine's thread the next step of a rest's folds
     /// ([`Self::folds_on`]), its caller waiting for none of it — run
     /// where it stands, on that thread already ([`Engine::posted`]).
-    fn steps_on(&self, engine: &Engine, fold: Arc<Fold>, turn: u64) {
+    fn steps_on(&self, engine: &Engine, rest: Arc<Rest>, turn: u64) {
         let (pictures, handed) = (self.clone(), engine.clone());
         engine.posted(move || {
-            pictures.folds_on(&handed, &fold, turn);
+            pictures.folds_on(&handed, &rest, turn);
             Some(())
         });
     }
@@ -1725,20 +1740,6 @@ impl Pictures {
     #[cfg(test)]
     pub(crate) fn hand_at_work(&self) {
         self.0.turn.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Test seam: whether the folds of the last rest are through within
-    /// `limit` — none under way, and what they folded settled.
-    #[cfg(test)]
-    pub(crate) fn rested_within(&self, limit: std::time::Duration) -> bool {
-        let asked = std::time::Instant::now();
-        while self.0.folding.load(Ordering::Relaxed) > 0 {
-            if asked.elapsed() > limit {
-                return false;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        true
     }
 
     /// Settles what the folds told have folded, and — while the hand
@@ -1758,25 +1759,25 @@ impl Pictures {
     /// this thread runs where it stands, and a fold that submits
     /// nothing tells at once, there (`fold::sized_then`) — gone on from
     /// the telling, it would take the books this ask still holds.
-    fn folds_on(&self, engine: &Engine, fold: &Arc<Fold>, mut turn: u64) {
+    fn folds_on(&self, engine: &Engine, rest: &Arc<Rest>, mut turn: u64) {
         loop {
             let asked = Arc::new(AtomicU8::new(FoldAsk::ASKING));
-            if self.folded_on(engine, fold, turn, &asked) == 0 {
+            if self.folded_on(engine, rest, turn, &asked) == 0 {
                 // No batch is out, and none tells: this rest's folds
                 // are through, and what they moved is weighed as it
-                // lies ([`Weighs`]) — before the folds read as
-                // through, so what waits for them reads the weights
-                // told.
+                // lies ([`Weighs`]) — before the rest is told, so what
+                // hears it reads the weights told.
                 //
                 // 🔢Not where a hand at work ended them (브러시/렌더링
                 // 2026-11-21, said on F-610; no rule of the user's): the
                 // walk is every picture's own tiles on this thread, where
                 // the dab of the stroke that ended them waits — and the
                 // next rest's folds, through, weigh all the same.
-                if self.0.turn.load(Ordering::Relaxed) == turn {
+                let weighed = self.0.turn.load(Ordering::Relaxed) == turn;
+                if weighed {
                     self.weighs_again();
                 }
-                self.0.folding.fetch_sub(1, Ordering::Relaxed);
+                (rest.told)(weighed);
                 return;
             }
             let returned = (FoldAsk::ASKING, FoldAsk::RETURNED, Ordering::AcqRel, Ordering::Acquire);
@@ -1795,7 +1796,7 @@ impl Pictures {
 
     /// [`Self::folds_on`]'s one step: how many tiles it handed over,
     /// their telling `asked`'s to say where the step has not returned.
-    fn folded_on(&self, engine: &Engine, fold: &Arc<Fold>, turn: u64, asked: &Arc<AtomicU8>) -> usize {
+    fn folded_on(&self, engine: &Engine, rest: &Arc<Rest>, turn: u64, asked: &Arc<AtomicU8>) -> usize {
         let mut kept = self.kept();
         let Some(pool) = kept.pool.as_mut() else {
             return 0;
@@ -1804,7 +1805,7 @@ impl Pictures {
         if self.0.turn.load(Ordering::Relaxed) != turn {
             return 0;
         }
-        let (pictures, engine_then, fold_then) = (self.clone(), engine.clone(), Arc::clone(fold));
+        let (pictures, engine_then, rest_then) = (self.clone(), engine.clone(), Arc::clone(rest));
         let asked = Arc::clone(asked);
         let told: FoldTold = Arc::new(move |worked| {
             let said = if worked { FoldAsk::TOLD_IT_WORKED } else { FoldAsk::TOLD_IT_FAILED };
@@ -1816,11 +1817,11 @@ impl Pictures {
             // engine's thread, in its turn — from a thread of the
             // engine's waits, where the GPU's answer is told.
             let turn = if worked { turn } else { 0 };
-            pictures.steps_on(&engine_then, Arc::clone(&fold_then), turn);
+            pictures.steps_on(&engine_then, Arc::clone(&rest_then), turn);
         });
-        // SAFETY: `told` keeps the kernels alive till it is called and
-        // let go of, and is any thread's to call.
-        unsafe { pool.folds_next_unwaited(engine, Arc::as_ptr(fold), FOLD_BATCH, told) }
+        // SAFETY: `told` keeps the rest, and the kernels with it, alive
+        // till it is called and let go of, and is any thread's to call.
+        unsafe { pool.folds_next_unwaited(engine, &raw const rest.fold, FOLD_BATCH, told) }
     }
 
     /// The bytes of the tiles named at `places`, each held — a tile's

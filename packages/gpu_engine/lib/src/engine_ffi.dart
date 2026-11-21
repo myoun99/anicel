@@ -1262,8 +1262,18 @@ external int picturesUnownedBytes(Pointer<Engine> engine);
 )
 external void picturesGiveBack(Pointer<Engine> engine, int mostIdle);
 
-@Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_pictures_rest')
-external void picturesRest(Pointer<Engine> engine);
+@Native<
+  Void Function(
+    Pointer<Engine>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_pictures_rest')
+external void picturesRest(
+  Pointer<Engine> engine,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
 
 @Native<
   Void Function(

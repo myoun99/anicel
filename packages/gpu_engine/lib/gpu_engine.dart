@@ -11,7 +11,8 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, Listenable, visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'src/engine_ffi.dart' as rust;
@@ -374,8 +375,41 @@ class GpuEngine {
       return;
     }
     _atRest?.cancel();
-    _atRest = Timer(rest, () => rust.picturesRest(_engine));
+    _atRest = Timer(rest, _rests);
   }
+
+  /// The hand rests ([_composed]): the engine lets go of what its
+  /// composes kept and folds its pictures' tiles, and tells this isolate
+  /// once those folds are through ([_rested]).
+  void _rests() =>
+      rust.picturesRest(_engine, _rested.told, _rested.kept(this));
+
+  /// The rests on their way ([_rests]), each told by its number once its
+  /// folds are through, and whether the engine's pictures were weighed
+  /// again by then — not where a hand at work ended the folds, nor where
+  /// none ran (rust/src/kernels/pool/mod.rs, `Pictures::rests`).
+  static final _rested = _Told<GpuEngine>((_, _, weighed) {
+    if (weighed) {
+      _picturesWeighedAgain.tick();
+    }
+  });
+
+  static final _picturesWeighedAgain = _Ticks();
+
+  /// Ticks each time a rest has weighed an engine's pictures again, each
+  /// tile as it lies ([GpuScreen.bytes]) — any engine's of this isolate.
+  ///
+  /// WHAT THE PICTURES WEIGH IS THE ROOM THEIR KEEPERS HAVE: a screen's
+  /// bytes are read, not heard, and folded at a rest they read lighter
+  /// with nothing told — one that keeps pictures within a line, and rests
+  /// for want of room, looks again by this (the app's playback line).
+  static Listenable get picturesWeighedAgain => _picturesWeighedAgain;
+
+  /// Test seam: whether anyone hears [picturesWeighedAgain] — what a
+  /// keeper let go of must not: the ticks outlive every keeper.
+  @visibleForTesting
+  static bool get debugPicturesWeighedAgainIsHeard =>
+      _picturesWeighedAgain.isHeard;
 
   /// Test seam: whether a rest is on its way ([_composed]).
   @visibleForTesting
@@ -4949,6 +4983,13 @@ final _putsOnTheirWay = _Told<void Function()>((_, unput, put) {
     unput();
   }
 });
+
+/// What ticks, and says whether anyone hears it.
+final class _Ticks extends ChangeNotifier {
+  void tick() => notifyListeners();
+
+  bool get isHeard => hasListeners;
+}
 
 /// What a thread of the engine's tells this isolate by a number — a
 /// wait ended, a copy written, a picture put — and whether it went well:

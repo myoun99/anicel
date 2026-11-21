@@ -1051,9 +1051,10 @@ fn a_screen_is_weighed_as_its_tiles_lie_once_a_rest_s_folds_are_through() {
         done_here(&engine).expect("composed");
         let weighed = || screens.map(|screen| gpu_engine_screen_bytes(screen));
         assert_eq!(weighed(), [2 * TILE_BYTES, 0], "the premise: as they were made");
-        gpu_engine_pictures_rest(&engine);
-        done_here(&engine).expect("the rest is asked");
-        assert!(engine.pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
+        let rest = folded_tests::numbered();
+        gpu_engine_pictures_rest(&engine, folded_tests::told, rest);
+        let told = folded_tests::told_within(rest, A_REST_S_FOLDS);
+        assert_eq!(told, Some(true), "the rest tells its caller the pictures were weighed again");
         let folded = engine.pictures.held_bytes();
         assert!(folded < TILE_BYTES, "the premise: both fold small, their page away — {folded}");
         assert_eq!(weighed(), [folded, 0], "told by the rest, no body come to it");

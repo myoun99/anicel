@@ -342,6 +342,9 @@ class EditorSessionManager extends ChangeNotifier
     // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
     // 걸린다」) — the app's one list, so every open project hears it.
     this.fxPlugins.addListener(notifyListeners);
+    // The pictures weighed lighter at a rest are room on the playback's
+    // line that nothing else tells of ([playbackLineMoved]).
+    EnginePictures.weighedAgain.addListener(playbackLineMoved);
   }
 
   /// What follows the playhead — the cut a run plays, the cut under it and
@@ -527,6 +530,12 @@ class EditorSessionManager extends ChangeNotifier
   /// The playback line moved — the allowance, or a memory warning lifted as
   /// the app came back to the front (F-504) — so a warmer resting for want
   /// of room looks again, and a line that rose fills while nothing plays.
+  ///
+  /// And where the line stands but what it holds weighs less: the engine
+  /// folds the pictures' tiles at a rest and weighs them as they lie
+  /// ([EnginePictures.weighedAgain]; F-610, 2026-11-21) — room that came
+  /// back with the playhead standing, which no other channel of the
+  /// warmer's tells of.
   void playbackLineMoved() => playbackRig.prerenderScheduler.wake();
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
@@ -1967,6 +1976,7 @@ class EditorSessionManager extends ChangeNotifier
     () => TilesStoodOn.app.standDown(editingCanvas),
     // …and its store is told of no rest ([TilesAtRest]).
     () => TilesAtRest.app.forgets(editingCanvas),
+    () => EnginePictures.weighedAgain.removeListener(playbackLineMoved),
     canvasStroke.dispose,
     historyManager.dispose,
   ];

@@ -7,7 +7,8 @@ use crate::device::Engine;
 use crate::kernels::composite::TileAt;
 use crate::kernels::composite::tests::rig;
 use crate::kernels::fold::Fold;
-use crate::kernels::pool::Pictures;
+use crate::kernels::pool::folded_tests::{numbered, told, told_within};
+use crate::kernels::pool::{Pictures, told_by};
 use std::time::Duration;
 
 /// A kept picture's tiles, read back one after another, row after row:
@@ -33,11 +34,26 @@ pub(crate) fn moved(pictures: &Pictures, names: &[TileAt]) -> usize {
 /// of 15 tiles passed 120 s — both green in debug an hour before.
 pub(crate) const A_REST_S_FOLDS: Duration = Duration::from_secs(600);
 
+/// The hand rests on `pictures` ([`Pictures::rests`]): the number its
+/// rest is told by once its folds are through ([`rested`]).
+pub(crate) fn resting(engine: &Engine, pictures: &Pictures) -> u64 {
+    let number = numbered();
+    pictures.rests(engine, told_by(told, number));
+    number
+}
+
+/// What the rest told by `number` told once its folds were through —
+/// whether the pictures were weighed again —, none where they are not
+/// through within [`A_REST_S_FOLDS`].
+pub(crate) fn rested(number: u64) -> Option<bool> {
+    told_within(number, A_REST_S_FOLDS)
+}
+
 /// The hand rests on `engine`, its fold's kernels compiled: `pictures`'
 /// tiles folded a batch behind another till none is next, the last told
-/// and settled.
+/// and settled, and the pictures weighed again.
 pub(crate) fn rested_on(engine: &Engine, pictures: &Pictures) {
     engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
-    pictures.rests(engine);
-    assert!(pictures.rested_within(A_REST_S_FOLDS), "the rest's folds never ended");
+    let told = rested(resting(engine, pictures));
+    assert_eq!(told, Some(true), "the rest's folds never ended, or ended unweighed");
 }

@@ -3,7 +3,7 @@ import 'dart:convert' show LineSplitter;
 import 'dart:ui' show RootIsolateToken;
 
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, ValueListenable, visibleForTesting;
+    show ChangeNotifier, Listenable, ValueListenable, visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../services/persistence/app_support_path.dart';
@@ -145,6 +145,11 @@ abstract final class EnginePictures {
   /// ([GpuEngine.givePicturesBackPast]).
   static void giveBackPast(int mostIdle) =>
       _its.engine?.givePicturesBackPast(mostIdle);
+
+  /// Ticks each time a rest has weighed the pictures again, each tile as
+  /// it lies ([GpuEngine.picturesWeighedAgain]): what they weigh is the
+  /// room a line that keeps them has.
+  static Listenable get weighedAgain => GpuEngine.picturesWeighedAgain;
 }
 
 /// Lets go of the app's engine, its device gone ([appGpuEngineIsGone]) —

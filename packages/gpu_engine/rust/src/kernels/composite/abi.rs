@@ -29,7 +29,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::kernels::pool::{Lying, Pool, Stamps, Taken, Weighs};
+use crate::kernels::pool::{Lying, Pool, Stamps, Taken, Weighs, told_by};
 use crate::kernels::shared::{Counted, ResampleMap, ResampleMode, words_buffer};
 use crate::platform::surface_format;
 
@@ -1606,18 +1606,30 @@ pub unsafe extern "C" fn gpu_engine_pictures_give_back(engine: *const Engine, mo
 /// law and its words are at the head of spares.rs. When a hand rests is
 /// its caller's to say (`GpuEngine.restsAfter`).
 ///
+/// `told` is called with `number` once the folds of this rest are
+/// through, on the engine's thread: true where the pictures were weighed
+/// again as they lie — a screen's bytes read lighter from then
+/// ([`gpu_engine_screen_bytes`]), and what keeps pictures within a line
+/// has more room than it had —, false where they were not
+/// (`Pictures::rests`).
+///
 /// # Safety
 /// `engine` is live, and till what is handed here has run — as what a
-/// compose is handed is ([`gpu_engine_screen_compose`]).
+/// compose is handed is ([`gpu_engine_screen_compose`]). `told` is one any
+/// thread may call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_pictures_rest(engine: *const Engine) {
+pub unsafe extern "C" fn gpu_engine_pictures_rest(
+    engine: *const Engine,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
     let handed = Sent(engine);
     // SAFETY: see the function's contract.
     unsafe { &*engine }.posted(move || {
         // SAFETY: live till this has run (the function's contract).
         let engine = unsafe { &*handed.taken() };
         engine.spares.rest();
-        engine.pictures.rests(engine);
+        engine.pictures.rests(engine, told_by(told, number));
         Some(())
     });
 }
