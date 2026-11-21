@@ -356,6 +356,28 @@ void main() {
     expect(rendered.last.debugDisposed, isFalse, reason: 'the one held');
   });
 
+  testWidgets('🚨what a cut\'s pictures are made of: a lane twirled on a '
+      'row leaves it, an eye turned off changes it — what a surface built '
+      'again with the new cut repaints by (11-22)', (tester) async {
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, _, _, _) async => tinyImage(),
+    );
+    addTearDown(store.dispose);
+    final madeOf = store.thumbnails.madeOf;
+    final before = cut();
+    final twirled = before.copyWith(
+      layers: [
+        for (final layer in before.layers)
+          layer.copyWith(lanesExpanded: !layer.lanesExpanded),
+      ],
+    );
+    expect(twirled, isNot(same(before)), reason: '⛔premise: a new cut');
+
+    expect(madeOf(twirled), madeOf(before));
+    expect(madeOf(cut(layerVisible: false)), isNot(madeOf(before)));
+  });
+
   testWidgets('hub brush-frame events invalidate the cut', (tester) async {
     var renderCount = 0;
     final hub = EditorCacheInvalidationHub();

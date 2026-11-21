@@ -164,8 +164,15 @@ int? conteSeatOf(Cut cut, LayerId layerId) {
 
 /// The row at [seat] of [cut]'s conte group; null where the cut holds none
 /// there.
-Layer? conteRowAtSeat(Cut cut, int seat) {
-  for (final entry in conteGroupOf(cut)) {
+Layer? conteRowAtSeat(Cut cut, int seat) =>
+    conteRowAtSeatOf(conteGroupOf(cut), seat);
+
+/// The row at [seat] of a conte [group] ([conteGroupOf]) — the question
+/// asked of the group itself, by a reader that holds a cut's group and not
+/// the cut (the film view's conte row, which is kept by the groups it is
+/// laid from).
+Layer? conteRowAtSeatOf(List<ConteSeat> group, int seat) {
+  for (final entry in group) {
     if (entry.seat == seat) {
       return entry.row;
     }
@@ -211,6 +218,17 @@ List<int> conteSeatsOf(Iterable<Cut> cuts) {
 /// [conteHeadAt]'s row alone.
 Layer? conteHeadRowAt(Iterable<Cut> cuts, int seat) =>
     conteHeadAt(cuts, seat)?.row;
+
+/// [conteHeadRowAt] asked of the cuts' conte [groups], in the cuts' order.
+Layer? conteHeadRowAmong(Iterable<List<ConteSeat>> groups, int seat) {
+  for (final group in groups) {
+    final row = conteRowAtSeatOf(group, seat);
+    if (row != null) {
+      return row;
+    }
+  }
+  return null;
+}
 
 /// The rows of [cuts] that wear ONE head, family by family: the rows that
 /// sit at one seat of their cuts' conte groups — top seat first.

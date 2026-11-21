@@ -1,8 +1,6 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show listEquals;
-
 import '../core/signed_memo.dart';
 import '../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../models/conte_group.dart';
@@ -119,20 +117,71 @@ Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut(
 /// its row by identity: each build repainted the whole film's conte cells
 /// and said every one of them again to a screen reader (🔬the largest cost
 /// of a crossing's frame on the AMMI OP). So the row is kept on the
-/// track's id for the cuts as last laid, and handed back while they are
-/// laid alike — the same cuts at the same places, by the one law the
-/// storyboard's rows are kept by ([StoryboardTimelineLayoutEntry.==]).
+/// track's id for what it was last laid from, and handed back while that
+/// is the same ([_ConteLaying]): each cut's place and length, and the very
+/// rows of its conte group.
+///
+/// ↩️Kept for the very CUTS ([StoryboardTimelineLayoutEntry.==]) until
+/// 11-22: every edit inside a cut makes a new cut, so a lane twirled on
+/// the camera row — one flag of a layer no conte row reads — laid the
+/// whole film's conte row again, and the row painter painted it again
+/// (card a-twirl-repaints-the-film-views-cut-band; 🔬the test VM, three
+/// cuts: four twirls, the band four times, an image each).
 Layer trackConteRowShown(
   TrackId trackId,
   Iterable<StoryboardTimelineLayoutEntry> entries, {
   int seat = 0,
 }) {
-  final laid = [...entries];
+  final laid = <_ConteLaying>[
+    for (final entry in entries)
+      (
+        startFrame: entry.startFrame,
+        duration: entry.duration,
+        group: conteGroupOf(entry.cut),
+      ),
+  ];
   return _conteRowsShownAt(seat).resolve(
     trackId,
     laid,
     () => _conteRowLaid(trackId, laid, seat),
   );
+}
+
+/// WHAT A TRACK'S CONTE ROW IS LAID FROM, a cut: where the cut starts on
+/// the track, how long it is, and its conte group ([conteGroupOf]).
+///
+/// 🚨The row's memo is kept by a list of these AND the row is made from
+/// that list alone ([_conteRowLaid] takes no cut): what the making reads
+/// is what the keeping compares, so a row can not be handed back stale for
+/// something the key forgot.
+typedef _ConteLaying = ({int startFrame, int duration, List<ConteSeat> group});
+
+/// Whether two layings lay the same row: the same places and lengths, and
+/// the very same rows at the same seats.
+///
+/// The rows by IDENTITY, as every kept row knows its model (a layer's deep
+/// `==` walks every frame of it): a row of the group edited is a new
+/// layer, and a layer outside the group is not asked.
+bool _laidAlike(List<_ConteLaying> kept, List<_ConteLaying> asked) {
+  if (kept.length != asked.length) {
+    return false;
+  }
+  for (var index = 0; index < kept.length; index += 1) {
+    final a = kept[index];
+    final b = asked[index];
+    if (a.startFrame != b.startFrame ||
+        a.duration != b.duration ||
+        a.group.length != b.group.length) {
+      return false;
+    }
+    for (var seat = 0; seat < a.group.length; seat += 1) {
+      if (a.group[seat].seat != b.group[seat].seat ||
+          !identical(a.group[seat].row, b.group[seat].row)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 /// The conte rows last shown of each track, a memo per seat — each on the
@@ -142,54 +191,49 @@ Layer trackConteRowShown(
 /// ⚠️By seat in a MAP: a seat is any number — the rows riding below the
 /// conte sit at negative ones ([conteGroupOf]), where a list indexed from
 /// 0 throws building the rail.
-final Map<int, SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer>>
-_conteRowsShown = {};
+final Map<int, SignedMemo<List<_ConteLaying>, Layer>> _conteRowsShown = {};
 
-SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer> _conteRowsShownAt(
-  int seat,
-) => _conteRowsShown.putIfAbsent(
-  seat,
-  () => SignedMemo('conte rows shown', same: listEquals),
-);
+SignedMemo<List<_ConteLaying>, Layer> _conteRowsShownAt(int seat) =>
+    _conteRowsShown.putIfAbsent(
+      seat,
+      () => SignedMemo('conte rows shown', same: _laidAlike),
+    );
 
 /// [trackConteRowShown] made from [laid].
-Layer _conteRowLaid(
-  TrackId trackId,
-  List<StoryboardTimelineLayoutEntry> laid,
-  int seat,
-) {
+Layer _conteRowLaid(TrackId trackId, List<_ConteLaying> laid, int seat) {
   final timeline = SplayTreeMap<int, TimelineExposure>();
   final frames = <Frame>[];
-  for (final entry in laid) {
-    final cells = _conteCellsOf(entry, seat);
+  for (final laying in laid) {
+    final cells = _conteCellsOf(laying, seat);
     if (cells == null) {
       continue;
     }
     frames.addAll(cells.row.frames);
     for (final MapEntry(key: conteFrame, value: block)
         in cells.blocks.entries) {
-      timeline[entry.startFrame + conteFrame] = block;
+      timeline[laying.startFrame + conteFrame] = block;
     }
   }
-  final cuts = [for (final entry in laid) entry.cut];
+  final groups = [for (final laying in laid) laying.group];
   return Layer(
     id: trackConteRowId(trackId, seat: seat),
-    name: trackConteRowName(cuts, seat: seat),
+    name: conteRowNameAmong(groups, seat: seat),
     kind: LayerKind.storyboard,
-    mark: conteHeadRowAt(cuts, seat)?.mark ?? LayerMark.none,
+    mark: conteHeadRowAmong(groups, seat)?.mark ?? LayerMark.none,
     frames: frames,
     timeline: timeline,
   );
 }
 
-/// [entry]'s row at [seat] and its blocks counted in the CONTE's frames —
+/// A cut's row at [seat] and its blocks counted in the CONTE's frames —
 /// 0 at the cut's start on the track; null where the cut holds no row
-/// there, or nothing of it to show.
+/// there, or nothing of it to show. Read off the cut's [laying] alone.
 ({Layer row, Map<int, TimelineExposure> blocks})? _conteCellsOf(
-  StoryboardTimelineLayoutEntry entry,
+  _ConteLaying laying,
   int seat,
 ) {
-  final base = storyboardLayerForCut(entry.cut);
+  // The cut's conte — its group's base ([storyboardLayerForCut]).
+  final base = conteRowAtSeatOf(laying.group, 0);
   if (base == null) {
     return null;
   }
@@ -197,7 +241,7 @@ Layer _conteRowLaid(
   if (seat == 0) {
     final tiled = storyboardTimelineFilledToCover(
       timeline: base.timeline,
-      cutDuration: entry.duration,
+      cutDuration: laying.duration,
       conteStart: conteStart,
     );
     return tiled == null
@@ -211,14 +255,19 @@ Layer _conteRowLaid(
             },
           );
   }
-  final row = conteRowAtSeat(entry.cut, seat);
+  final row = conteRowAtSeatOf(laying.group, seat);
   if (row == null) {
     return null;
   }
   // The row as the timeline's rows show it: a synced attach row its mirror
   // of the conte, and a 공정 folder its BAND — the union of the rows it
   // files (I-99), the display clone the timeline draws a folder's row with.
-  final layers = entry.cut.layers;
+  //
+  // Both are asked of the GROUP's rows, in the cut's stack order (the
+  // group lists them top row first): an attach row's base is the conte,
+  // and a folder of the group files only the conte's attach rows
+  // ([attachGroupBaseOf]) — every row either reads is in the group.
+  final layers = [for (final seated in laying.group.reversed) seated.row];
   final shown = row.kind.groupsLayers
       ? folderBandOf(row, layers.subtreeMembersOf(row.id))
       : attachedRowAsShown(row, layers);
@@ -227,7 +276,7 @@ Layer _conteRowLaid(
     blocks: captureTimelineRun(
       timeline: shown.timeline,
       index: conteStart,
-      count: entry.duration,
+      count: laying.duration,
     ).exposures,
   );
 }
@@ -281,7 +330,13 @@ String trackCameraRowName(Iterable<Cut> cuts, {required CutId? standingIn}) {
 /// empty name, so a film with no conte layer yet named the row on its rail
 /// and left it nameless in the flip window (🧪2026-10-08, before it landed).
 String trackConteRowName(Iterable<Cut> cuts, {int seat = 0}) =>
-    conteHeadRowAt(cuts, seat)?.name ?? conteRowBornName;
+    conteRowNameAmong(cuts.map(conteGroupOf), seat: seat);
+
+/// [trackConteRowName] asked of the cuts' conte groups — the one answer,
+/// for the row as drawn, which holds the groups it is laid from and not
+/// the cuts ([trackConteRowShown]).
+String conteRowNameAmong(Iterable<List<ConteSeat>> groups, {int seat = 0}) =>
+    conteHeadRowAmong(groups, seat)?.name ?? conteRowBornName;
 
 /// The frame of [entry]'s cut — in the CUT's own frames, its rows' keys —
 /// that the track's frame [globalFrame] shows on a conte row, held inside
