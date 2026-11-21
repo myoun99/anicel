@@ -340,13 +340,18 @@ List<List<String>> timedBatches(
 /// shards (tool/test_shard.dart) — and nothing in it is left to chance, so
 /// every shard that deals the same files by the same weights holds the
 /// same piles.
+///
+/// [loadedWith]: what each pile holds before the first file — the work a
+/// shard does before its tests that the others do not
+/// (tool/test_shard.dart `--behind-ms`). None by default.
 List<List<String>> dealt(
   List<String> ordered,
   int count,
-  int Function(String file) weightOf,
-) {
+  int Function(String file) weightOf, {
+  List<int>? loadedWith,
+}) {
   final piles = [for (var i = 0; i < count; i++) <String>[]];
-  final load = List.filled(count, 0);
+  final load = [for (var i = 0; i < count; i++) loadedWith?[i] ?? 0];
   for (final file in ordered) {
     var least = 0;
     for (var i = 1; i < count; i++) {

@@ -18,6 +18,15 @@ inputs:
       deal. Empty leaves out nothing.
     required: false
     default: ''
+  behind-ms:
+    description: >
+      The test time some shards spend before their tests that the others
+      do not, as `<index>=<milliseconds>` pairs joined by commas — what
+      the deal loads those shards with before the first file
+      (tool/test_shard.dart `--behind-ms`). The same for every shard of
+      a run, or the shards deal different piles. Empty: none.
+    required: false
+    default: ''
   times-artifact:
     description: >
       The artifact this run's scope job left the record of CI's last run in
@@ -92,9 +101,14 @@ runs:
         fi
         # ${a[@]+"${a[@]}"}: an empty array is "unbound" to the Mac's bash
         # 3.2 under set -u (apple-nightly runs this too).
+        behind=()
+        if [ -n "${{ inputs.behind-ms }}" ]; then
+          behind=(--behind-ms "${{ inputs.behind-ms }}")
+        fi
         dart tool/test_shard.dart deal \
           --total "${{ inputs.total }}" --index "${{ inputs.index }}" \
           ${times[@]+"${times[@]}"} ${leave[@]+"${leave[@]}"} \
+          ${behind[@]+"${behind[@]}"} \
           > "$RUNNER_TEMP/shard_tests.txt"
         shard_files=$(wc -l < "$RUNNER_TEMP/shard_tests.txt")
         echo "shard ${{ inputs.index }} of ${{ inputs.total }}:" \
