@@ -2280,29 +2280,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return true;
   }
 
-  /// Where [region] stands once the open box has had its way with it.
-  CanvasSelectionRegion _regionThroughOpenBox(CanvasSelectionRegion region) {
-    final warp = floatWarp;
-    // R20-D3: a warped region collapses to its boundary polygon: the mesh
-    // maps the LIFTED pixels, so what is selected afterwards is the warped
-    // outline, not the old step list.
-    final meshPoints = warp.meshPoints;
-    if (meshPoints != null) {
-      return CanvasSelectionRegion.shape(
-        CanvasSelectionShape(warp.meshBoundary(meshPoints)),
-      );
-    }
-    // R20-D2: an open quad carries the outline through its homography.
-    final warpCorners = warp.warpCorners;
-    if (warpCorners != null) {
-      final base = warp.baseCorners();
-      final h = base == null ? null : solveHomography(base, warpCorners);
-      return h == null
-          ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
-          : region.mapped((point) => applyHomography(h, point));
-    }
-    return region.mapped(_box!.affine.apply);
-  }
+  /// Where [region] stands once the open box has had its way with it: where
+  /// its pixels go, by the same carry ([StampCarry.regionThrough]).
+  ///
+  /// ↩️Each warp was asked here, and again for the ants ([_shownBy]): the
+  /// mesh made the selection its grid's outer ring (R20-D3, 07-14 — 「the
+  /// mesh maps the LIFTED pixels, so what is selected afterwards is the
+  /// warped outline」, nobody's order), and a quad too degenerate to warp
+  /// through made it the quad, where neither moved a pixel so.
+  CanvasSelectionRegion _regionThroughOpenBox(CanvasSelectionRegion region) =>
+      floatWarp.carry?.regionThrough(region) ??
+      // Nothing to resample: at most a move, which the pixels make whole —
+      // the box's anchor, which no carry holds (TransformValues.isIdentity).
+      switch (_box) {
+        null => region,
+        final box => region.mapped(box.affine.apply),
+      };
 
   /// Escape: discards the open transform. A session under it reverts
   /// whole — the picture returns byte-exactly.
@@ -4226,44 +4219,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// a region made anew.
   final _shown = IdentityMemo<CanvasSelectionRegion?>();
 
+  /// The selection the ants go round as the box stands: where the confirm
+  /// will put it ([_regionThroughOpenBox]). ↩️The ants asked each warp
+  /// themselves, and a mesh drew its grid's outer ring — with no selection
+  /// at all as well, where the affine and the quad drew none.
   CanvasSelectionRegion? _displayShape(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners) {
-    final base = floatWarp.baseCorners();
-    final meshPoints = floatWarp.meshPoints;
-    CanvasSelectionRegion? shown() =>
-        _shownBy(transform, region, warpCorners, base, meshPoints);
+    if (region == null) {
+      return null;
+    }
     const none = <CanvasPoint>[];
-    return region == null
-        ? shown()
-        : _shown.resolve(
-            identity: region,
-            key: (
-              transform?.pivot,
-              transform?.values,
-              ByList(warpCorners ?? none),
-              ByList(base ?? none),
-              ByList(meshPoints ?? none),
-            ),
-            build: shown,
-          );
-  }
-
-  CanvasSelectionRegion? _shownBy(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners, List<CanvasPoint>? base, List<CanvasPoint>? meshPoints) {
-    var displayShape = transform != null && region != null
-        ? region.mapped(transform.apply)
-        : region;
-    if (warpCorners != null && region != null) {
-      final h = base == null ? null : solveHomography(base, warpCorners);
-      displayShape = h == null
-          ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
-          : region.mapped((point) => applyHomography(h, point));
-    }
-    if (meshPoints != null) {
-      // Mesh session: the ants trace the grid's warped boundary.
-      displayShape = CanvasSelectionRegion.shape(
-        CanvasSelectionShape(floatWarp.meshBoundary(meshPoints)),
-      );
-    }
-    return displayShape;
+    return _shown.resolve(
+      identity: region,
+      key: (
+        transform?.pivot,
+        transform?.values,
+        ByList(warpCorners ?? none),
+        ByList(floatWarp.baseCorners() ?? none),
+        ByList(floatWarp.meshPoints ?? none),
+      ),
+      build: () => _regionThroughOpenBox(region),
+    );
   }
 
   Offset _mapCanvasToViewportOffset(CanvasPoint point) =>

@@ -6,6 +6,7 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/services/stamp_carry.dart';
 
@@ -101,6 +102,35 @@ void main() {
   }
 
   double apart(CanvasPoint a, CanvasPoint b) => a.distanceTo(b);
+
+  /// The 6×6 block [stampOver] inks about [spot], as a selection.
+  CanvasSelectionRegion blockAt(CanvasPoint spot) {
+    final (x, y) = (spot.x.roundToDouble(), spot.y.roundToDouble());
+    return CanvasSelectionRegion.shape(
+      CanvasSelectionShape([
+        CanvasPoint(x: x - 3, y: y - 3),
+        CanvasPoint(x: x + 3, y: y - 3),
+        CanvasPoint(x: x + 3, y: y + 3),
+        CanvasPoint(x: x - 3, y: y + 3),
+      ]),
+    );
+  }
+
+  /// Every outline of [region], as its points.
+  List<List<CanvasPoint>> ringsOf(CanvasSelectionRegion region) => [
+    for (final step in region.steps)
+      if (step is CanvasSelectionCopies)
+        for (final shape in step.shapes) shape.points,
+  ];
+
+  /// The mean of [region]'s one outline's points.
+  CanvasPoint middleOf(CanvasSelectionRegion region) {
+    final [ring] = ringsOf(region);
+    return CanvasPoint(
+      x: ring.map((point) => point.x).reduce((a, b) => a + b) / ring.length,
+      y: ring.map((point) => point.y).reduce((a, b) => a + b) / ring.length,
+    );
+  }
 
   void sameStamp(BrushDab got, BrushDab want, String why) {
     expect(got.center, want.center, reason: '$why — where it stands');
@@ -415,6 +445,88 @@ void main() {
       ).through(standing);
 
       expect(identical(still, standing), isTrue);
+    });
+
+    // 🚨A selection goes where its pixels go (card a-mesh-warp-turns-the-
+    // selection-into-its-box, 2026-11-21): ↩️it became the grid's outer
+    // ring, holding pixels the mesh never moved.
+    test('🚨a selection goes where the mesh takes its pixels — a block of '
+        'ink in each half of the cells around the node pulled', () {
+      // Each block within one triangle of its cell, so its outline is its
+      // four corners still: (top left, top right, bottom left) of the cell
+      // or (top right, bottom right, bottom left).
+      final spots = [
+        CanvasPoint(x: 120, y: 115),
+        CanvasPoint(x: 132, y: 132),
+        CanvasPoint(x: 165, y: 125),
+        CanvasPoint(x: 140, y: 175),
+        CanvasPoint(x: 160, y: 160),
+      ];
+      final carried = bulge.through(float(ink: spots));
+      final selected = [
+        for (final spot in spots) middleOf(bulge.regionThrough(blockAt(spot))),
+      ];
+
+      expect(
+        [for (final (at, spot) in spots.indexed) apart(selected[at], spot) > 2],
+        [false, true, true, true, true],
+        reason: '⛔premise: the pull moves all but the first',
+      );
+      for (final (at, spot) in spots.indexed) {
+        expect(
+          // Near enough to read this block's ink alone, not a neighbour's
+          // the pull brought closer.
+          apart(inkNear(carried, selected[at], reach: 6), selected[at]),
+          lessThan(0.6),
+          reason: 'the ink of $spot and its selection',
+        );
+      }
+    });
+
+    test('🚨an edge is cut where it crosses a diagonal of the cells, and '
+        'bends there as the pixels do', () {
+      final corner = MeshCarry(
+        (
+          base: (left: 0, top: 0, width: 10, height: 10),
+          columns: 1,
+          rows: 1,
+          points: [
+            CanvasPoint(x: 0, y: 0),
+            CanvasPoint(x: 10, y: 0),
+            CanvasPoint(x: 0, y: 10),
+            CanvasPoint(x: 10, y: 20),
+          ],
+        ),
+        mode: mode,
+      );
+
+      final through = corner.regionThrough(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape([
+            CanvasPoint(x: 0, y: 4),
+            CanvasPoint(x: 10, y: 4),
+            CanvasPoint(x: 10, y: 6),
+            CanvasPoint(x: 0, y: 6),
+          ]),
+        ),
+      );
+
+      // Cut at (6,4) and (4,6), on the diagonal: the bottom right corner
+      // pulled 10 down bends each edge there, and moves nothing on its top
+      // left.
+      final want = [
+        CanvasPoint(x: 0, y: 4),
+        CanvasPoint(x: 6, y: 4),
+        CanvasPoint(x: 10, y: 8),
+        CanvasPoint(x: 10, y: 12),
+        CanvasPoint(x: 4, y: 6),
+        CanvasPoint(x: 0, y: 6),
+      ];
+      final [ring] = ringsOf(through);
+      expect(ring.length, want.length, reason: '$ring');
+      for (final (at, point) in want.indexed) {
+        expect(apart(ring[at], point), lessThan(1e-9), reason: '$ring');
+      }
     });
   });
 

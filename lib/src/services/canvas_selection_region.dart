@@ -130,7 +130,11 @@ sealed class CanvasSelectionStep {
   /// The operand when it IS one polygon; null otherwise.
   CanvasSelectionShape? get _loneShape;
 
-  CanvasSelectionStep mapped(CanvasPoint Function(CanvasPoint) map);
+  /// The operand with each of its outlines through [map], a ring at a time
+  /// ([CanvasSelectionRegion.ringsThrough]).
+  CanvasSelectionStep ringsThrough(
+    List<CanvasPoint> Function(List<CanvasPoint> ring) map,
+  );
 
   /// The operand cut at [wall], as a step under [mode] — null when nothing
   /// of it is left inside ([CanvasSelectionRegion.clippedTo] reads that as
@@ -189,11 +193,11 @@ final class CanvasSelectionCopies extends CanvasSelectionStep {
       shapes.length == 1 ? shapes.first : null;
 
   @override
-  CanvasSelectionStep mapped(CanvasPoint Function(CanvasPoint) map) =>
-      CanvasSelectionCopies([
-        for (final shape in shapes)
-          CanvasSelectionShape([for (final point in shape.points) map(point)]),
-      ], mode);
+  CanvasSelectionStep ringsThrough(
+    List<CanvasPoint> Function(List<CanvasPoint> ring) map,
+  ) => CanvasSelectionCopies([
+    for (final shape in shapes) CanvasSelectionShape(map(shape.points)),
+  ], mode);
 
   /// A copy with nothing inside drops out, and the rest stay one act.
   @override
@@ -280,8 +284,9 @@ final class CanvasSelectionNested extends CanvasSelectionStep {
   CanvasSelectionShape? get _loneShape => null;
 
   @override
-  CanvasSelectionStep mapped(CanvasPoint Function(CanvasPoint) map) =>
-      CanvasSelectionNested(region.mapped(map), mode);
+  CanvasSelectionStep ringsThrough(
+    List<CanvasPoint> Function(List<CanvasPoint> ring) map,
+  ) => CanvasSelectionNested(region.ringsThrough(map), mode);
 
   /// Through the same door as the top: a nested selection that selects
   /// nothing once cut is as good as no operand.
@@ -630,7 +635,17 @@ class CanvasSelectionRegion {
   ui.Rect? _foldedPathBoundsCache;
 
   CanvasSelectionRegion mapped(CanvasPoint Function(CanvasPoint) map) =>
-      CanvasSelectionRegion([for (final step in steps) step.mapped(map)]);
+      ringsThrough((ring) => [for (final point in ring) map(point)]);
+
+  /// This selection with each outline of every step through [map], a ring
+  /// of points at a time: a mapping that bends a straight edge lays points
+  /// along it where it bends ([MeshCarry.regionThrough]), which one point
+  /// at a time cannot.
+  CanvasSelectionRegion ringsThrough(
+    List<CanvasPoint> Function(List<CanvasPoint> ring) map,
+  ) => CanvasSelectionRegion([
+    for (final step in steps) step.ringsThrough(map),
+  ]);
 
   CanvasSelectionRegion translated({required double dx, required double dy}) =>
       mapped((point) => CanvasPoint(x: point.x + dx, y: point.y + dy));
