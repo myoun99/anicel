@@ -669,8 +669,15 @@ sealed class GpuTarget implements _OfAnEngine {
   ///
   /// 📍On the target, not kept beside it: a draw that knows nothing of it
   /// — another kernel's, on a texture two share — cannot leave it
-  /// standing.
-  Object? kept;
+  /// standing. And said of a target that holds no frame ([_holdsItsFrame])
+  /// it is not kept at all.
+  Object? get kept => _kept;
+  set kept(Object? said) => _kept = _holdsItsFrame ? said : null;
+  Object? _kept;
+
+  /// Whether what is drawn on the target stands on it till the next draw
+  /// — what [kept] can be said of.
+  bool get _holdsItsFrame;
 
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
@@ -703,6 +710,9 @@ class GpuSurface extends GpuTarget {
 
   @override
   Pointer<rust.Texture> get _texture => rust.surfaceTexture(_surface);
+
+  @override
+  bool get _holdsItsFrame => true;
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
   /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
@@ -5961,6 +5971,14 @@ class GpuWindow extends GpuTarget {
   /// Whether the kernels store straight into the window's images; when
   /// not, each present copies the engine's own texture into one.
   bool get direct => rust.windowDirect(_window);
+
+  /// ⛔NOT WHERE THE KERNELS STORE STRAIGHT INTO ITS IMAGES: the next is
+  /// another of its swapchain's each frame, holding a frame older than
+  /// the last by how many it keeps — which nothing here is told. Where
+  /// they write the engine's own texture, that one texture is each
+  /// frame's (rust/src/platform/android.rs, `Window::target`).
+  @override
+  bool get _holdsItsFrame => !direct;
 
   /// The window's next image — [present] shows what a kernel wrote there.
   @override

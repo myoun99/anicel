@@ -191,9 +191,9 @@ final class EngineStackScreen {
   /// of 1080×2424, read off an emulator (2026-11-22) —, each by a thread
   /// of the composite's walk, a stroke's step as a zoom's.
   ///
-  /// ⛔Not on a window's image ([GpuWindow], Android's): its next is
-  /// another of its swapchain's each frame, holding a frame older than
-  /// the last by how many it keeps — which nothing here is told.
+  /// ⛔Not on a window whose images the kernels store straight into
+  /// (Android's, [GpuWindow.direct]): what is said of it is not kept
+  /// ([GpuTarget.kept]), and every frame of it is drawn whole.
   void show(
     GpuTarget target,
     (int, int) size, {
@@ -236,9 +236,7 @@ final class EngineStackScreen {
         mode: mode,
       ));
     }
-    if (target is GpuSurface) {
-      target.kept = (of: this, lay: _lays.last, through: through);
-    }
+    target.kept = (of: this, lay: _lays.last, through: through);
   }
 
   /// The texels of a target a show [through] a camera is to draw — [left,
