@@ -2,6 +2,7 @@ import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
 
 import 'package:anicel/main.dart';
 import 'package:anicel/src/native/screen_texture.dart';
@@ -9,6 +10,7 @@ import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/pointer_clock.dart';
+import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// Repaints whenever its notifier ticks, so a test can make a bake happen
@@ -717,6 +719,47 @@ void main() {
         expect(
           find.textContaining(RegExp('^ show .*  $said\$')),
           findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets('says what the newest frame was drawn as — its texels, the '
+        'display\'s scale and the mode —, on the line of its draw', (
+      tester,
+    ) async {
+      MeasurementMode.frameStats.value = true;
+      addTearDown(ScreenAsked.debugForget);
+      ScreenAsked.debugForget();
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.textContaining(RegExp(r'^ draw .*\d\s*$')),
+        findsOneWidget,
+        reason: 'no screen was shown: the line ends on its figures',
+      );
+
+      for (final (asked, said) in const [
+        (
+          (columns: 2560, rows: 1536, scale: 0.9712, mode: GpuSampling.blend),
+          '2560x1536  x0.97  blend',
+        ),
+        (
+          (columns: 640, rows: 1408, scale: 1.88, mode: GpuSampling.nearest),
+          '640x1408  x1.88  nearest',
+        ),
+      ]) {
+        ScreenAsked.shown(asked);
+        FrameStats.publish();
+        await tester.pump();
+
+        expect(
+          find.textContaining(RegExp('^ draw .*  ${RegExp.escape(said)}\$')),
+          findsOneWidget,
+          reason: said,
         );
       }
     });

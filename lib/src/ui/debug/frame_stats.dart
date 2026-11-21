@@ -8,6 +8,7 @@ import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
 import 'measurement_mode.dart';
 import 'pointer_clock.dart';
+import 'screen_asked.dart';
 
 /// One publication of the frame clock: percentiles over a rolling window,
 /// plus the two numbers nobody in this app had ever read.
@@ -53,6 +54,7 @@ class FrameStatsSnapshot {
     required this.screenShowP50,
     required this.screenShowP95,
     required this.windowsAreCopied,
+    required this.screenAsked,
     required this.pointsPerSecond,
     required this.packetsPerSecond,
     required this.pointerP50,
@@ -160,6 +162,11 @@ class FrameStatsSnapshot {
   /// `ScreenTexture.windowsAreCopied`: null where no window was opened —
   /// every platform but Android.
   final bool? windowsAreCopied;
+
+  /// What the newest show of a canvas's screen asked of the engine
+  /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and
+  /// in which mode. Null till a screen is shown.
+  final ScreenAsk? screenAsked;
 
   /// The pointer packets the platform handed over (`PointerClock`): the
   /// points and the packets a second, how long a packet took to be dealt
@@ -556,6 +563,7 @@ abstract final class FrameStats {
       screenShowP50: _percentileMillis(upShows, 0.50),
       screenShowP95: _percentileMillis(upShows, 0.95),
       windowsAreCopied: ScreenTexture.windowsAreCopied,
+      screenAsked: ScreenAsked.last,
       pointsPerSecond: aSecond(counted.points, before?.points),
       packetsPerSecond: aSecond(counted.packets, before?.packets),
       pointerP50: _percentileMillis(packets, 0.50),

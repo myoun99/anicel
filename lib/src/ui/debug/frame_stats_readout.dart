@@ -126,8 +126,18 @@ class FrameStatsReadout extends StatelessWidget {
                     '${stats.screensUpPerSecond.toStringAsFixed(1)}/s  '
                     'behind '
                     '${stats.screensBehindPerSecond.toStringAsFixed(1)}/s',
+                // What the newest frame was drawn as beside it
+                // ([FrameStatsSnapshot.screenAsked]): its texels, the
+                // display's scale and the mode by it.
                 ' draw   p50${_ms(stats.screenDrawP50)}  '
-                    'p95${_ms(stats.screenDrawP95)}',
+                    'p95${_ms(stats.screenDrawP95)}'
+                    '${switch (stats.screenAsked) {
+                      null => '',
+                      final asked =>
+                        '  ${asked.columns}x${asked.rows}  '
+                            'x${asked.scale.toStringAsFixed(2)}  '
+                            '${asked.mode.name}',
+                    }}',
                 ' finish p50${_ms(stats.screenFinishP50)}  '
                     'p95${_ms(stats.screenFinishP95)}',
                 ' show   p50${_ms(stats.screenShowP50)}  '

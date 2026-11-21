@@ -22,6 +22,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/composite_tree_plan.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../helpers/a_shown_surface.dart';
@@ -411,5 +412,39 @@ void main() {
 
     await screen.compose(frameOf(cel(5, over: const [0, 1])));
     expect(screen.bytes, 2 * tile, reason: 'another world');
+  });
+
+  // What a show asked is told for the frame statistics ([ScreenAsked]):
+  // the target's texels, the display's scale — the zoom by the device's
+  // ratio — and the mode the display's law picks by it, Blend under 100%
+  // and Nearest from it.
+  test('a show tells what it asked of the engine: its texels, the '
+      'display\'s scale and the mode by it', () async {
+    final screen = EngineStackScreen(engine.composite, engine.letters);
+    addTearDown(screen.free);
+    addTearDown(ScreenAsked.debugForget);
+    await screen.compose(frameOf(cel(3)));
+    ScreenAsked.debugForget();
+    expect(ScreenAsked.last, isNull, reason: 'none shown yet');
+
+    for (final (zoom, ratio, size, mode) in const [
+      (0.5, 1.5, (96, 40), GpuSampling.blend),
+      (0.5, 2.0, (40, 96), GpuSampling.nearest),
+    ]) {
+      final (width, height) = size;
+      final target = shownSurfaceOf(width, height);
+      addTearDown(target.free);
+      screen.show(
+        target,
+        size,
+        viewport: CanvasViewport(zoom: zoom),
+        devicePixelRatio: ratio,
+      );
+
+      expect(
+        ScreenAsked.last,
+        (columns: width, rows: height, scale: zoom * ratio, mode: mode),
+      );
+    }
   });
 }

@@ -62,6 +62,7 @@ import '../../native/engine_row_pose.dart'
     show gpuRowInverse, gpuSamplingOf;
 import '../../native/engine_tile_ledger.dart';
 import '../../native/screen_texture.dart';
+import '../debug/screen_asked.dart';
 import 'fx_plugin_stages.dart';
 
 part 'layer_stack/layer_stack_engine_screen.dart';
