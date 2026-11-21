@@ -65,6 +65,10 @@ void main() {
     'test/services/persistence/'
             'a_compacting_save_keeps_every_cel_readable_test.dart':
         (1, 'opens what a compacting save wrote'),
+    'test/services/persistence/a_parked_cel_is_saved_as_its_park_test.dart': (
+      1,
+      'opens what a real save of a parked cel wrote',
+    ),
     'test/services/persistence/a_photo_index_survives_every_save_test.dart': (
       2,
       'opens what each save wrote',
