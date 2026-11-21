@@ -554,55 +554,65 @@ void main() {
     });
 
     test('🚨an edge is cut where it crosses a side between two cells, and '
-        'bends there as the pixels do', () {
+        'bends there as the pixels do — the cells side by side, or one '
+        'over the other', () {
       // Two cells side by side, the node at the bottom of the side between
-      // them pulled 10 down.
-      final twoCells = MeshCarry(
-        (
-          base: (left: 0, top: 0, width: 20, height: 10),
-          columns: 2,
-          rows: 1,
-          points: [
-            CanvasPoint(x: 0, y: 0),
-            CanvasPoint(x: 10, y: 0),
-            CanvasPoint(x: 20, y: 0),
-            CanvasPoint(x: 0, y: 10),
-            CanvasPoint(x: 10, y: 20),
-            CanvasPoint(x: 20, y: 10),
-          ],
-        ),
-        mode: mode,
-      );
+      // them pulled 10 down; and the same laid the other way, each point's
+      // x and y swapped — which the cells' diagonals are swapped onto.
+      for (final sideBySide in [true, false]) {
+        CanvasPoint at(double x, double y) => sideBySide
+            ? CanvasPoint(x: x, y: y)
+            : CanvasPoint(x: y, y: x);
+        final nodes = [
+          [at(0, 0), at(10, 0), at(20, 0)],
+          [at(0, 10), at(10, 20), at(20, 10)],
+        ];
+        final twoCells = MeshCarry(
+          (
+            base: sideBySide
+                ? (left: 0, top: 0, width: 20, height: 10)
+                : (left: 0, top: 0, width: 10, height: 20),
+            columns: sideBySide ? 2 : 1,
+            rows: sideBySide ? 1 : 2,
+            points: sideBySide
+                ? [for (final row in nodes) ...row]
+                : [
+                    for (var column = 0; column < 3; column += 1)
+                      for (final row in nodes) row[column],
+                  ],
+          ),
+          mode: mode,
+        );
 
-      final through = twoCells.regionThrough(
-        CanvasSelectionRegion.shape(
-          CanvasSelectionShape([
-            CanvasPoint(x: 2, y: 6),
-            CanvasPoint(x: 18, y: 6),
-            CanvasPoint(x: 18, y: 7),
-            CanvasPoint(x: 2, y: 7),
-          ]),
-        ),
-      );
+        final through = twoCells.regionThrough(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape([at(2, 6), at(18, 6), at(18, 7), at(2, 7)]),
+          ),
+        );
 
-      // The long edges cut on the side (x 10) and on each cell's diagonal
-      // (x 4 and 14 at the top, 13 and 3 at the bottom).
-      final want = [
-        CanvasPoint(x: 2, y: 6),
-        CanvasPoint(x: 4, y: 6),
-        CanvasPoint(x: 10, y: 12),
-        CanvasPoint(x: 14, y: 12),
-        CanvasPoint(x: 18, y: 8),
-        CanvasPoint(x: 18, y: 9),
-        CanvasPoint(x: 13, y: 14),
-        CanvasPoint(x: 10, y: 14),
-        CanvasPoint(x: 3, y: 7),
-        CanvasPoint(x: 2, y: 7),
-      ];
-      final [ring] = ringsOf(through);
-      expect(ring.length, want.length, reason: '$ring');
-      for (final (at, point) in want.indexed) {
-        expect(apart(ring[at], point), lessThan(1e-9), reason: '$ring');
+        // The long edges cut on the side (10 along) and on each cell's
+        // diagonal (4 and 14 along the first, 13 and 3 along the second).
+        final want = [
+          at(2, 6),
+          at(4, 6),
+          at(10, 12),
+          at(14, 12),
+          at(18, 8),
+          at(18, 9),
+          at(13, 14),
+          at(10, 14),
+          at(3, 7),
+          at(2, 7),
+        ];
+        final [ring] = ringsOf(through);
+        expect(ring.length, want.length, reason: '$sideBySide: $ring');
+        for (final (index, point) in want.indexed) {
+          expect(
+            apart(ring[index], point),
+            lessThan(1e-9),
+            reason: '$sideBySide: $ring',
+          );
+        }
       }
     });
 
