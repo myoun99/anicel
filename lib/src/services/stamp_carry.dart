@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
 
+import '../core/point_bounds.dart';
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
 import 'canvas_selection.dart';
@@ -283,19 +285,15 @@ StampRect? _boundsOf(List<CanvasPoint> ring) {
   if (ring.isEmpty) {
     return null;
   }
-  var (left, top, right, bottom) = (
-    double.infinity,
-    double.infinity,
-    double.negativeInfinity,
-    double.negativeInfinity,
+  final bounds = pointsBounds([
+    for (final point in ring) Offset(point.x, point.y),
+  ]);
+  return (
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
   );
-  for (final point in ring) {
-    left = math.min(left, point.x);
-    top = math.min(top, point.y);
-    right = math.max(right, point.x);
-    bottom = math.max(bottom, point.y);
-  }
-  return (left: left, top: top, width: right - left, height: bottom - top);
 }
 
 /// [from] and the points past it on the way to [to] where the edge crosses
