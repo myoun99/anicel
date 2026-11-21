@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -645,6 +646,45 @@ void main() {
           reason: 'the ink of $spot and its selection',
         );
       }
+    });
+
+    // Past the box a point is carried by the cell it is in, and a grid
+    // grown by one cell carries the second cell's points by the first's —
+    // so the grid is grown by ALL of the outline, as a stamp's is by all of
+    // the stamp.
+    test('🚨an outline reaching two cells past the box carries its far '
+        'side where a block there carries it', () {
+      // The box's right side is at 200 and its cells are 50 wide: the
+      // outline starts in the first cell past it and ends in the second.
+      final corner = CanvasPoint(x: 288, y: 137);
+      final outline = CanvasSelectionRegion.shape(
+        CanvasSelectionShape([
+          CanvasPoint(x: 207, y: 137),
+          corner,
+          CanvasPoint(x: 288, y: 143),
+          CanvasPoint(x: 207, y: 143),
+        ]),
+      );
+      // A block at the far end, its outline starting at the same corner —
+      // the first point of a carried outline is its first point carried.
+      final block = CanvasSelectionRegion.shape(
+        CanvasSelectionShape([
+          corner,
+          CanvasPoint(x: 288, y: 143),
+          CanvasPoint(x: 282, y: 143),
+          CanvasPoint(x: 282, y: 137),
+        ]),
+      );
+      final [carried] = ringsOf(bulge.regionThrough(outline));
+      final [there] = ringsOf(bulge.regionThrough(block));
+      final want = there.first;
+
+      expect(
+        carried.map((point) => apart(point, want)).reduce(math.min),
+        lessThan(1e-9),
+        reason: 'the far corner of the outline goes where the same corner '
+            'of a block there goes',
+      );
     });
   });
 
