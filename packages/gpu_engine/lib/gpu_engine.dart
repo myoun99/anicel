@@ -672,15 +672,15 @@ sealed class GpuTarget implements _OfAnEngine {
   ///
   /// 📍On the target, not kept beside it: a draw that knows nothing of it
   /// — another kernel's, on a texture two share — cannot leave it
-  /// standing. And said of a target that holds no frame ([_holdsItsFrame])
-  /// it is not kept at all.
-  Object? get kept => _kept;
-  set kept(Object? said) => _kept = _holdsItsFrame ? said : null;
-  Object? _kept;
-
-  /// Whether what is drawn on the target stands on it till the next draw
-  /// — what [kept] can be said of.
-  bool get _holdsItsFrame;
+  /// standing.
+  ///
+  /// ↩️NOT KEPT OF A WINDOW WHOSE IMAGES THE KERNELS STORED STRAIGHT INTO
+  /// (Android's, on the way builds 1095 to 1097 showed one by): its next
+  /// was another of its swapchain's each frame, holding a frame older
+  /// than the last by how many it keeps. Every target is one texture of
+  /// the engine's own now, a window's too
+  /// (rust/src/platform/android.rs, `Window`).
+  Object? kept;
 
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
@@ -713,9 +713,6 @@ class GpuSurface extends GpuTarget {
 
   @override
   Pointer<rust.Texture> get _texture => rust.surfaceTexture(_surface);
-
-  @override
-  bool get _holdsItsFrame => true;
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
   /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
@@ -5963,7 +5960,9 @@ int crc32Update(int running, Uint8List bytes, int length) {
 const int _crcSlice = 1 << 20;
 
 /// A Flutter texture the engine presents into: a SurfaceProducer's window,
-/// whose images Flutter shows without a copy (Android).
+/// whose images Flutter shows without a copy (Android). Drawn on and
+/// presented with no wait for the engine's thread
+/// (rust/src/platform/android.rs, `Window`).
 class GpuWindow extends GpuTarget {
   GpuWindow._(super._engine, this._window, this.textureId);
 
@@ -5972,35 +5971,19 @@ class GpuWindow extends GpuTarget {
   /// What a `Texture` widget shows the window by.
   final int textureId;
 
-  /// Whether the kernels store straight into the window's images; when
-  /// not, each present copies the engine's own texture into one.
-  bool get direct => rust.windowDirect(_window);
-
-  /// ⛔NOT WHERE THE KERNELS STORE STRAIGHT INTO ITS IMAGES: the next is
-  /// another of its swapchain's each frame, holding a frame older than
-  /// the last by how many it keeps — which nothing here is told. Where
-  /// they write the engine's own texture, that one texture is each
-  /// frame's (rust/src/platform/android.rs, `Window::target`).
+  /// What the kernels write for the window, one texture for its life —
+  /// [present] shows what a kernel wrote there. What is drawn on it
+  /// stands till the next draw, as on a surface ([kept]).
   @override
-  bool get _holdsItsFrame => !direct;
+  Pointer<rust.Texture> get _texture => rust.windowTarget(_window);
 
-  /// The window's next image — [present] shows what a kernel wrote there.
-  @override
-  Pointer<rust.Texture> get _texture {
-    final target = rust.windowTarget(_window);
-    if (target == nullptr) {
-      throw GpuRefused(_lastError());
-    }
-    return target;
-  }
-
-  /// Hands the image a kernel last wrote ([fill], [GpuScreen.show]) to
-  /// Flutter.
-  void present() {
-    if (!rust.windowPresent(_engine._engine, _window)) {
-      throw GpuRefused(_lastError());
-    }
-  }
+  /// Hands what a kernel last wrote ([fill], [GpuScreen.show]) to
+  /// Flutter: copied onto the window's next image and put up once the GPU
+  /// has finished the copy, this isolate waiting for none of it. Asked
+  /// once the GPU has finished what was written ([GpuEngine.done]), as a
+  /// screen's frame is (`ScreenTexture.present`); where it fails, the
+  /// next done fails by it.
+  void present() => rust.windowPresent(_engine._engine, _window);
 
   /// Frees the swapchain, then Flutter's producer: the window it presents
   /// into must outlive it.

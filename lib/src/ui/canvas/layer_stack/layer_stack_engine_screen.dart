@@ -190,10 +190,6 @@ final class EngineStackScreen {
   /// room to pan and what its sides' step spares: 1536×3072 for a window
   /// of 1080×2424, read off an emulator (2026-11-22) —, each by a thread
   /// of the composite's walk, a stroke's step as a zoom's.
-  ///
-  /// ⛔Not on a window whose images the kernels store straight into
-  /// (Android's, [GpuWindow.direct]): what is said of it is not kept
-  /// ([GpuTarget.kept]), and every frame of it is drawn whole.
   void show(
     GpuTarget target,
     (int, int) size, {

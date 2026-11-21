@@ -20,11 +20,11 @@ typedef _Frame = ({int asked, Object? drawnFor});
 
 /// 🔬What a frame of a screen took on its way up, in microseconds
 /// ([ScreenTexture.upMicros]): its [draw] — handing it to the engine, on the
-/// thread that builds the app's frames, which on Android waits there for
-/// the window's next image (rust/src/platform/android.rs) —, the GPU
-/// [finish]ing it and this isolate hearing so, and its [show] — the hand
-/// to Flutter, on that thread again, which on Android waits there for the
-/// present.
+/// thread that builds the app's frames —, the GPU [finish]ing it and this
+/// isolate hearing so, and its [show] — the hand to Flutter, on that
+/// thread again. ↩️On Android that thread waited in the draw for the
+/// window's next image and in the show for the present, on the way builds
+/// 1095 to 1097 showed a window by (rust/src/platform/android.rs).
 typedef ScreenUp = ({int draw, int finish, int show});
 
 /// What the canvas view shows the engine's screen on: a texture of the
@@ -79,9 +79,12 @@ sealed class ScreenTexture {
   static int _upsBehindCounted = 0;
 
   /// 🔬Whether a window's frame is copied onto its image as it is put up
-  /// — Android's, where the swapchain's images take no stores
-  /// ([GpuWindow.direct]): one GPU copy of the whole screen a frame, in
-  /// its [ScreenUp.show] —, and null where no window has been opened.
+  /// — Android's, every window's: its kernels write a texture of the
+  /// engine's own, and a present copies it onto the next image on the
+  /// engine's thread (rust/src/platform/android.rs, `Window`) —, and
+  /// null where no window has been opened. ↩️False where a device's
+  /// images took stores, on the way builds 1095 to 1097 showed a window
+  /// by: a readout of those says `direct` where this says `copied`.
   static bool? get windowsAreCopied => _windowsAreCopied;
   static bool? _windowsAreCopied;
 
@@ -465,16 +468,19 @@ final class _SurfaceTexture extends ScreenTexture {
 }
 
 /// Android's: the engine presents into a SurfaceProducer's window, whose
-/// images Flutter shows without a copy — its swapchain keeps the image
-/// drawn on apart from the one shown.
+/// images Flutter shows without a copy — a frame is drawn on a texture of
+/// the engine's own and copied onto the window's next image as it is put
+/// up, this isolate waiting for the engine's thread at neither
+/// (rust/src/platform/android.rs, `Window`).
 final class _WindowTexture extends ScreenTexture {
-  // ⚠️Two is the image drawn on and the one shown, the least it can be: how
-  // many its queue keeps is Android's, and the census does not read a
-  // texture there (`texturesAreInTheRamFigure`).
+  // ⚠️Three is the texture drawn on, the image it is copied onto and the
+  // one shown, the least it can be: how many its queue keeps is Android's,
+  // and the census does not read a texture there
+  // (`texturesAreInTheRamFigure`).
   _WindowTexture(this._window, int width, int height, GpuEngine engine)
     : _id = ValueNotifier(_window.textureId),
-      super(width, height, surfaces: 2, done: engine.done) {
-    ScreenTexture._windowsAreCopied = !_window.direct;
+      super(width, height, surfaces: 3, done: engine.done) {
+    ScreenTexture._windowsAreCopied = true;
   }
 
   final GpuWindow _window;
