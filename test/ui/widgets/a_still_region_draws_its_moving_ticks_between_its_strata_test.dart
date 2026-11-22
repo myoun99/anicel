@@ -682,6 +682,32 @@ void main() {
     expect(region.debugCaptureCount, taken + 1, reason: 'the shortest again');
   });
 
+  testWidgets('a stay grows to sixteen times the shortest and no further — '
+      'as far past it as a region\'s wait goes past its own', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(tester, _regionWith(at));
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+    const shortest = StillRaster.maxStillFrames;
+    // Taken back and moved at once, over and over: it stays twice as long
+    // each time — and the last time no longer than the time before.
+    for (final stay in const [1, 2, 4, 8, 16, 16]) {
+      await _frames(tester, shortest * stay + 2);
+      await tester.binding.delayed(_longGap);
+      await _frame(tester);
+      expect(
+        region.debugLiveTicks,
+        isEmpty,
+        reason: 'taken back after $stay times the shortest stay',
+      );
+      at.value = (at.value + 1) % 180;
+      await tester.pump();
+      await _moveUntilStill(tester, at);
+      expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+    }
+  });
+
   testWidgets('🚨something painted after a tick but beside it lets the region '
       'be still, and is drawn UNDER the tick — which is drawn first shows '
       'only where two things overlap — so the image holds the region once', (
