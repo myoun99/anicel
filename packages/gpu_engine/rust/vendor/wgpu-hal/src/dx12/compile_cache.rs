@@ -218,7 +218,8 @@ impl CompileCache {
                     self.waited[made as usize].fetch_add(1, Ordering::Relaxed);
                     if !said && started.elapsed() >= TURN_SAID {
                         said = true;
-                        self.say_waiting(made, &turn, started.elapsed(), "and waits on");
+                        let how = alloc::format!("{}, and waits on", whose(&turn));
+                        self.say_waiting(made, &turn, started.elapsed(), &how);
                     }
                     std::thread::sleep(TURN_LOOK);
                 }
@@ -231,8 +232,9 @@ impl CompileCache {
             }
         };
         if said {
-            let then = if held.is_some() { "and took it" } else { "and compiles past it" };
-            self.say_waiting(made, &turn, started.elapsed(), then);
+            // ⛔Not whose it is again: a turn taken is this one's own by now.
+            let how = if held.is_some() { "and took it" } else { "and compiles past it" };
+            self.say_waiting(made, &turn, started.elapsed(), how);
         }
         // Kept by the turn's last holder: handed, and the turn let go here.
         match self.read(made, asked) {
@@ -290,19 +292,13 @@ impl CompileCache {
     }
 
     /// Says on stderr that this process has waited `waited` for the turn at
-    /// `path`, `then` what it does: whose the turn is, as its holder wrote
-    /// it, and how long ago that was ([`TURN_SAID`]).
-    fn say_waiting(&self, made: Made, path: &Path, waited: Duration, then: &str) {
-        let holder = fs::read_to_string(path).unwrap_or_default();
-        let holder = if holder.trim().is_empty() { "unsaid" } else { holder.trim() };
-        let taken = fs::metadata(path).and_then(|meta| meta.modified()).ok();
-        let age = taken.and_then(|taken| taken.elapsed().ok());
+    /// `path`, and `how` it stands ([`TURN_SAID`]).
+    fn say_waiting(&self, made: Made, path: &Path, waited: Duration, how: &str) {
         std::eprintln!(
-            "anicel compile cache: process {} waited {:.1} s for the turn {:?}, held by process {holder} {} ago, {then}",
+            "anicel compile cache: process {} waited {:.1} s for the turn {:?}, {how}",
             std::process::id(),
             waited.as_secs_f64(),
             path.file_name().unwrap_or_default(),
-            age.map_or_else(|| "gone".into(), |age| alloc::format!("{:.1} s", age.as_secs_f64())),
         );
         self.said[made as usize].fetch_add(1, Ordering::Relaxed);
     }
@@ -347,6 +343,18 @@ fn held_for(path: &Path, stands: Duration) -> bool {
         return true;
     };
     taken.elapsed().map_or(true, |age| age < stands)
+}
+
+/// Whose the turn at `path` is, as its holder wrote it, and how long ago
+/// it was taken.
+fn whose(path: &Path) -> alloc::string::String {
+    let holder = fs::read_to_string(path).unwrap_or_default();
+    let holder = if holder.trim().is_empty() { "unsaid" } else { holder.trim() };
+    let taken = fs::metadata(path).and_then(|meta| meta.modified()).ok();
+    match taken.and_then(|taken| taken.elapsed().ok()) {
+        Some(age) => alloc::format!("held by process {holder}, taken {:.1} s ago", age.as_secs_f64()),
+        None => alloc::format!("held by process {holder}"),
+    }
 }
 
 /// Deletes the files of `folder` used longest ago till it holds no more
