@@ -948,6 +948,7 @@ class _StoryboardRailRows {
       return const [];
     }
     return _projectionLaneLabels(
+      track,
       _cameraProjection(track),
       (stood: head, shown: shown, lanes: _cameraLanes(track)),
       // F-195: a value scrubbed here, or a key range slid, shows as the
@@ -986,6 +987,7 @@ class _StoryboardRailRows {
       return const [];
     }
     return _projectionLaneLabels(
+      track,
       _conteProjection(track, seat),
       (stood: stood, shown: shown, lanes: _conteLanes(track, seat)),
       // F-195: as the timeline's row gate follows its row.
@@ -1013,11 +1015,16 @@ class _StoryboardRailRows {
   /// ([_ProjectionLanes.rowId]), their groups twirled with the timeline's —
   /// read on the row's layer of the cut the session stands in
   /// ([labels]' `stood`): valued at the frame of its own that cut is on,
-  /// edited, walked and switched there as the timeline's lanes are, and
-  /// following an edit in flight there ([follow]). With nothing stood in —
-  /// a gap, or a cut that holds no layer there — their names alone, on the
-  /// layer [labels] shows.
+  /// edited and switched there as the timeline's lanes are, and following
+  /// an edit in flight there ([follow]). With nothing stood in — a gap, or
+  /// a cut that holds no layer there — their names alone, on the layer
+  /// [labels] shows.
+  ///
+  /// Their ARROWS walk the film ([_filmKeyWalks], F-625), stood in a cut or
+  /// not. ↩️They walked the keys of the cut stood in, as the timeline's do
+  /// (I-73 ④ⓔ): an arrow was dark while the next key stood in another cut.
   List<Widget> _projectionLaneLabels(
+    Track track,
     _ProjectionLanes projection,
     ({
       ({Cut cut, Layer layer})? stood,
@@ -1038,6 +1045,7 @@ class _StoryboardRailRows {
     final setBasis = _state.widget.onSetLaneGroupBasis;
     final rasterize = _state.widget.onRasterizeLaneGroup;
     final reset = _state.widget.onResetLaneGroup;
+    final walks = _filmKeyWalks(track, projection, labels.lanes);
     final rows = _state._rows.laneLabels(
       carrier: wornByRow(labels.shown, projection.rowId),
       lanes: labels.lanes,
@@ -1059,6 +1067,7 @@ class _StoryboardRailRows {
       onSelectFrame: stood == null || seek == null
           ? null
           : (frame) => seek(stood.cut.id, frame),
+      keyWalkOf: (lane) => walks[lane.laneId],
       // I-89 ①: by the row's own id, which this rail keys its graphs by.
       graphVerbs: _laneGraphVerbs,
       // The verbs and [follow] edit and seek the layer and the cut stood in.
@@ -1070,6 +1079,119 @@ class _StoryboardRailRows {
       rows,
       chainId: stood?.layer.id,
     );
+  }
+
+  /// THE FILM'S KEYS a projection row's lane arrows walk, by lane id
+  /// ([LaneKeyWalk]): the track frames the row draws a key of the lane at
+  /// over every cut of [track] ([FilmLaneKeys.framesOf] — the frames its
+  /// strip marks), about where the playhead stands on the film
+  /// ([_standingOnFilm]), and the way to one ([_goToFilmKey]). None where
+  /// the host hands no playhead or no seek.
+  ///
+  /// 🗣️F-625 (유저 2026-11-21): 「콘티패널에선 로컬트랙이더라도 키 < >
+  /// 누를수있는 판정이나 이동이 글로벌로 작동하도록 … 글로벌로 판정해서
+  /// 다른컷에 키 있거나 해도 보이게 … 로컬은 지금대로 컷 내에서 < > 판정」.
+  /// The S and V rows' arrows were the track's already — their lanes are
+  /// (R4b); these are the rows whose lanes are a cut's.
+  ///
+  /// ⚠️A key past its cut's own frames is not one of them: the strip does
+  /// not draw it, and the film has another cut's frames there. The
+  /// timeline's arrows walk it, inside its cut.
+  Map<String, LaneKeyWalk> _filmKeyWalks(
+    Track track,
+    _ProjectionLanes projection,
+    List<PropertyLaneRow> lanes,
+  ) {
+    final reaches = _reachesNow(track);
+    final standing = _standingOnFilm(reaches);
+    if (standing == null || _state.widget.onSeekCutFrame == null) {
+      return const {};
+    }
+    final keys = _filmKeysOf(track, projection);
+    final trackId = track.id;
+    final rowId = projection.rowId;
+    return {
+      for (final lane in lanes)
+        if (!lane.isGroupHeader)
+          lane.laneId: (
+            cursor: standing.cursor,
+            offset: standing.offset,
+            last: standing.last,
+            frames: keys.framesOf(lane.laneId, reaches),
+            // The track and the row as they stand at the press: a kept
+            // label outlives the pass it was built in.
+            onSelectFrame: (frame) =>
+                _goToFilmKey(trackId, rowId, lane.laneId, frame),
+          ),
+    };
+  }
+
+  /// WHERE THE PLAYHEAD STANDS ON THE FILM, among [reaches]' cuts — one
+  /// track's — as a walk over the film's keys reads it ([LaneKeyWalk]):
+  /// stood in one of them, the frame of the cut's own, where the cut draws
+  /// it on the track ([CameraRowReach.trackFrameOf]) and no further than
+  /// its last; in a gap, or stood in a cut of another track, the playhead's
+  /// track frame. Null where the host hands no playhead.
+  ///
+  /// ⛔Not the storyboard playhead's frame for a cut stood in: that one is
+  /// held to the cut's PLACE (`TrackFrameAxis.clampedToCutGlobalOf`), and
+  /// a cut's own frames an O.L draws before its place all stand on its
+  /// first there — a walk from a key in them would find that key before
+  /// it again, and never leave.
+  ({ValueListenable<int?> cursor, int offset, int? last})? _standingOnFilm(
+    List<CameraRowReach> reaches,
+  ) {
+    final own = _state.widget.cutFrameCursor;
+    if (own != null) {
+      for (final reach in reaches) {
+        if (reach.entry.cutId == _in.activeCutId) {
+          return (
+            cursor: own,
+            offset: reach.mediaStart,
+            last: reach.mediaEnd - 1,
+          );
+        }
+      }
+    }
+    final playhead = _state.widget.playheadFrame;
+    return playhead == null
+        ? null
+        : (cursor: playhead, offset: 0, last: null);
+  }
+
+  /// [projection]'s keys on the film, kept with the rail's lane lists.
+  FilmLaneKeys _filmKeysOf(Track track, _ProjectionLanes projection) =>
+      _lanes.filmKeys(track, projection.rowId, (
+        layerOf: projection.layerOf,
+        lanesOf: projection.lanesOf,
+      ));
+
+  /// Stands on the key the film draws at [trackFrame] of the lane [laneId]
+  /// of [trackId]'s projection row [rowId]: in the cut that holds it, at
+  /// the frame of that cut's own — the cut stood in where it is one of two
+  /// an O.L joins there ([filmKeyHolderAt]).
+  void _goToFilmKey(
+    TrackId trackId,
+    LayerId rowId,
+    String laneId,
+    int trackFrame,
+  ) {
+    final track = _trackNamed(trackId);
+    final projection = track == null ? null : _projectionOf(track, rowId);
+    final seek = _state.widget.onSeekCutFrame;
+    if (track == null || projection == null || seek == null) {
+      return;
+    }
+    final keys = _filmKeysOf(track, projection);
+    final holder = filmKeyHolderAt(
+      _reachesNow(track),
+      (cut) => keys.ownKeysOf(cut, laneId),
+      trackFrame,
+      stoodIn: _in.activeCutId,
+    );
+    if (holder != null) {
+      seek(holder.cutId, holder.ownFrame);
+    }
   }
 
   /// [build] with [cut]'s camera track as the drag channel shows it — a key

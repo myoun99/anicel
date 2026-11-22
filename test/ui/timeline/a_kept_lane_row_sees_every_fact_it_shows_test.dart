@@ -360,6 +360,10 @@ void main() {
     final standingB = ValueNotifier<TimelineRowAddress?>(null);
     final spanA = ValueNotifier<TimelineLaneSelection?>(null);
     final spanB = ValueNotifier<TimelineLaneSelection?>(null);
+    // F-625: the frames a lane's arrows walk, where they are not its own.
+    final walkCursorA = ValueNotifier<int?>(0);
+    final walkCursorB = ValueNotifier<int?>(0);
+    final walkFramesA = [4, 9];
     const seat = TimelineGraphSeat(
       groupKey: 'row|transform-group',
       graph: LaneGraph(),
@@ -390,6 +394,10 @@ void main() {
       ValueListenable<TimelineDragPreview?>? dragPreview,
       ValueListenable<TimelineRowAddress?>? standing,
       ValueListenable<TimelineLaneSelection?>? span,
+      ValueListenable<int?>? walkCursor,
+      int walkOffset = 0,
+      int? walkLast,
+      List<int>? walkFrames,
       bool linked = false,
       Set<String> without = const {},
     }) {
@@ -401,6 +409,15 @@ void main() {
           metrics: metrics,
           frameCursor: cursor ?? cursorA,
           onSelectFrame: has('onSelectFrame') ? (_) {} : null,
+          keyWalk: has('keyWalk')
+              ? (
+                  cursor: walkCursor ?? walkCursorA,
+                  offset: walkOffset,
+                  last: walkLast,
+                  frames: walkFrames ?? walkFramesA,
+                  onSelectFrame: (_) {},
+                )
+              : null,
           laneEdit: has('laneEdit')
               ? PropertyLaneEditCallbacks(
                   onToggleKeyAt: (_, _, _) {},
@@ -468,6 +485,7 @@ void main() {
 
     const verbs = {
       'onSelectFrame',
+      'keyWalk',
       'laneEdit',
       'onToggleLaneGroup',
       'onToggleLaneGroupEnabled',
@@ -525,6 +543,14 @@ void main() {
       'dragPreview': () => facts(dragPreview: previewB),
       'currentRow': () => facts(standing: standingB),
       'laneSpan': () => facts(span: spanB),
+      'keyWalk.cursor': () => facts(walkCursor: walkCursorB),
+      // Where the cursor's frame stands among the walk's: another cut's
+      // own frames begin elsewhere on the film, and end elsewhere.
+      'keyWalk.offset': () => facts(walkOffset: 18),
+      'keyWalk.last': () => facts(walkLast: 47),
+      // The same frames in another list: a key came or went somewhere the
+      // walk goes, and its host handed a new list for it.
+      'keyWalk.frames': () => facts(walkFrames: [4, 9]),
       'laneEdit.valueLink': () => facts(linked: true),
       for (final verb in verbs) 'whether there is $verb': () =>
           facts(without: {verb}),

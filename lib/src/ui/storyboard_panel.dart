@@ -39,6 +39,7 @@ import '../models/timeline_coverage.dart'
         coveringDrawingBlockAt,
         drawingBlocks;
 import '../models/camera_row_reach.dart';
+import '../models/lane_key_walk.dart' show filmKeyHolderAt;
 import '../models/track.dart';
 import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_camera_row.dart';
@@ -130,6 +131,7 @@ import 'timeline/timeline_row_span_resolver.dart'
         resolveSelectionSpanOverAddresses;
 import 'timeline/timeline_lane_rows.dart'
     show
+        LaneKeyWalk,
         TimelineLaneControlsRow,
         TimelineLaneFrameRow,
         TimelineLaneKeysLine,

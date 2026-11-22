@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../../models/fx_basis.dart';
 import '../../models/key_mark.dart' show KeyMark;
+import '../../models/lane_key_walk.dart' show keysAbout;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
@@ -161,6 +162,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     required this.metrics,
     this.frameCursor,
     this.onSelectFrame,
+    this.keyWalk,
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
@@ -194,6 +196,13 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// their layer row's content.
   final double leadingInset;
   final ValueChanged<int>? onSelectFrame;
+
+  /// Where the navigator's ARROWS walk, where it is not the lane's own keys
+  /// about [frameCursor] ([LaneKeyWalk]): the conte's projection rows walk
+  /// every cut's keys on the film (F-625). Null walks the lane's own — the
+  /// timeline's, where a cut's keys are walked inside the cut. The ◆ and
+  /// the value stay the lane's, at [frameCursor], either way.
+  final LaneKeyWalk? keyWalk;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Group headers: tapping the CHEVRON twirls its member lanes open/closed
@@ -321,10 +330,19 @@ class TimelineLaneControlsRow extends StatefulWidget {
     // What the row listens to itself: the frame it reads its value at and
     // the row stood on.
     frameCursor: ByIdentity(frameCursor),
+    // And the frames its arrows walk, where they are not the lane's, with
+    // where the walk stands among them.
+    keyWalk: (
+      ByIdentity(keyWalk?.cursor),
+      keyWalk?.offset,
+      keyWalk?.last,
+      ByIdentity(keyWalk?.frames),
+    ),
     laneSpan: ByIdentity(laneSpan),
     currentRow: ByIdentity(currentRowHooks?.currentRow),
     verbs: (
       onSelectFrame != null,
+      keyWalk != null,
       laneEdit != null,
       laneEdit?.valueLink != null,
       onToggleLaneGroup != null,
@@ -361,22 +379,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   /// The lane's keys about [frame] as its key buttons show them: whether
-  /// one stands on it, and the nearest before and after.
+  /// one stands on it, and the nearest before and after — of the lane's
+  /// own, or of the frames its [TimelineLaneControlsRow.keyWalk] walks,
+  /// about the frame that walk stands on. ONE search ([keysAbout]).
   _KeysAround _keysAround(int frame) {
-    int? previous;
-    int? next;
-    for (final keyed in lane.keyedFrames) {
-      if (keyed < frame && (previous == null || keyed > previous)) {
-        previous = keyed;
-      }
-      if (keyed > frame && (next == null || keyed < next)) {
-        next = keyed;
-      }
-    }
+    final keyed = lane.keyedFrames;
+    final walk = widget.keyWalk;
+    final about = walk == null
+        ? keysAbout(keyed, frame)
+        : keysAbout(walk.frames, laneKeyWalkFrame(walk));
     return (
-      keyed: lane.keyedFrames.contains(frame),
-      previous: previous,
-      next: next,
+      keyed: keyed.contains(frame),
+      previous: about.previous,
+      next: about.next,
     );
   }
 
@@ -471,13 +486,17 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget _navigator(ColorScheme colorScheme) => _onTheFrame(
     _keysAround,
     (context, keys) => _keyButtons(colorScheme, keys),
+    // The arrows read the frame their walk stands on, where they have one.
+    also: widget.keyWalk?.cursor,
   );
 
   Widget _keyButtons(ColorScheme colorScheme, _KeysAround keys) {
     final keyedNow = keys.keyed;
     final previousKey = keys.previous;
     final nextKey = keys.next;
-    final onSelectFrame = widget.onSelectFrame;
+    // The arrows go where their walk goes — the lane's own keys otherwise.
+    final onSelectFrame =
+        widget.keyWalk?.onSelectFrame ?? widget.onSelectFrame;
     final laneEdit = widget.laneEdit;
 
     // R10 R6: stood up with the rest of the x-sheet header. The three
@@ -856,14 +875,17 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// reads [_frame] itself, as it lands.
   Widget _onTheFrame<S>(
     S Function(int frame) slice,
-    Widget Function(BuildContext context, S shown) builder,
-  ) {
+    Widget Function(BuildContext context, S shown) builder, {
+    Listenable? also,
+  }) {
     final cursor = widget.frameCursor;
-    if (cursor == null) {
+    if (cursor == null && also == null) {
       return builder(context, slice(_frame));
     }
     return SlicedListenableBuilder<S>(
-      listenable: cursor,
+      listenable: cursor == null || also == null
+          ? (cursor ?? also)!
+          : Listenable.merge([cursor, also]),
       slice: () => slice(_frame),
       stillWhile: PlaybackStillness.of(context),
       builder: builder,
@@ -1628,6 +1650,35 @@ typedef _StoodShows = ({
 /// A lane's keys about the cursor's frame
 /// ([_TimelineLaneControlsRowState._keysAround]).
 typedef _KeysAround = ({bool keyed, int? previous, int? next});
+
+/// THE FRAMES A LANE'S KEY ARROWS WALK, where they are not the lane's own
+/// ([TimelineLaneControlsRow.keyWalk]): [frames], where the walk stands
+/// among them ([laneKeyWalkFrame]), and the way to one ([onSelectFrame]).
+///
+/// It stands on [cursor]'s frame — which the row listens to itself —
+/// [offset] further along [frames]' axis, and no further than [last]: a
+/// cut's own frame on the film, held to the cut's own frames, past which
+/// the film shows another cut's. A walk that stands on [frames]' own axis
+/// has no offset and no last.
+///
+/// Every part is a FACT of the row, [frames] by identity: a host hands
+/// the same list back while it holds the same frames, and a new one when
+/// a key came or went anywhere it walks — the arrows are asked again
+/// then, where the lane itself did not change.
+typedef LaneKeyWalk = ({
+  ValueListenable<int?> cursor,
+  int offset,
+  int? last,
+  List<int> frames,
+  ValueChanged<int> onSelectFrame,
+});
+
+/// The frame [walk] stands on now, on its frames' axis.
+int laneKeyWalkFrame(LaneKeyWalk walk) {
+  final at = laneRowFrame(walk.cursor) + walk.offset;
+  final last = walk.last;
+  return last == null || at < last ? at : last;
+}
 
 /// What a lane's cell shows of the current row
 /// ([_TimelineLaneControlsRowState._shownOf]).
