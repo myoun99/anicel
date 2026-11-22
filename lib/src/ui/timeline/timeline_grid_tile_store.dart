@@ -7,7 +7,6 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/keyed_notices.dart';
 import '../../core/once_a_microtask.dart';
-import '../../core/signed_memo.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
@@ -2072,55 +2071,11 @@ class _TileEntry {
     if (identical(layer, next)) {
       return true;
     }
-    final differs = _agreementOf(layer, next);
+    // Every span of the row asks it of the same two instances, and the
+    // agreement keeps the pair asked last.
+    final differs = firstCellThatMayDiffer(layer, next);
     return differs == null || spanEndIndexExclusive < differs;
   }
-}
-
-/// [firstCellThatMayDiffer] of the pair a row's tiles ask about together —
-/// every span of the row asks it of the same two instances.
-int? _agreementOf(Layer baked, Layer next) => _agreements.resolve(
-  baked,
-  next,
-  () => firstCellThatMayDiffer(baked, next),
-);
-
-final SignedMemo<Layer, int?> _agreements = SignedMemo(
-  'tile agreement',
-  same: identical,
-);
-
-/// A row's layer told apart BY THE CELLS IT SHOWS: the same as another
-/// instance that shows the same cells everywhere ([firstCellThatMayDiffer])
-/// — the question the row's tiles ask of the same two instances
-/// ([_agreementOf]), so who holds it is painted again exactly where a tile
-/// of its row would be baked again.
-///
-/// 🚨FOR THE PAINTER THAT LAYS THE ROW'S TILES DOWN (card
-/// a-rows-own-twirl-retakes-its-band-on-the-timeline, 11-22). ↩️It told its
-/// layer apart by identity. A lane twirled is an edit of its row
-/// (`Layer.lanesExpanded`, F-360) that no cell reads ([Layer.foldsLike]):
-/// the tiles stayed, and the painter over them was painted again and its
-/// row's image taken once more — 🔬the whole workspace, the timeline view:
-/// every press of a ▸ let the row's own 2802×28 image go.
-/// ⛔Not the row as a page prints it (`rowAsPrinted` under `AsPrinted`): it
-/// copies a row whose folds are not at rest to compare it — 🔬604 µs for a
-/// row of 2400 cels with its lanes open, each time it is another object
-/// (the test VM) — and it is the pages' question, not the one this row's
-/// tiles are kept by.
-final class ByItsCells {
-  const ByItsCells(this.layer);
-
-  final Layer layer;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ByItsCells &&
-      (identical(other.layer, layer) ||
-          _agreementOf(layer, other.layer) == null);
-
-  @override
-  int get hashCode => layer.id.hashCode;
 }
 
 /// Emits the SUBSTRATE op stream for [painter]'s cells in

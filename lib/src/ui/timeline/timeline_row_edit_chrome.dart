@@ -460,11 +460,19 @@ class TimelineRowChromeResolver {
   TimelineFrameGeometry? _lastGeometry;
   TimelineRowEditChromeModel? _lastModel;
 
-  /// Whether [other] would resolve the same models — the widget-level
-  /// "do I need a new resolver" test.
+  /// Whether [other] would resolve the same models — what the painter of
+  /// the row's paper asks before it draws the grips again
+  /// ([TimelineRowPaperGrips]).
+  ///
+  /// 🚨THE LAYERS BY THE CELLS THEY SHOW ([ByItsCells]), as the row's tiles
+  /// and the painter over them ask (card
+  /// a-rows-own-twirl-retakes-its-band-on-the-timeline, 11-22): the runs
+  /// and their edges are read off the blocks, and no fold of the row's.
+  /// ↩️By identity: an S row's own lanes twirled made its layer anew, and
+  /// its paper — grips and all — was painted again over tiles that stayed.
   bool matches(TimelineRowChromeResolver other) =>
-      identical(other.layer, layer) &&
-      identical(other.baseLayer, baseLayer) &&
+      ByItsCells(other.layer) == ByItsCells(layer) &&
+      ByItsCells(other.baseLayer) == ByItsCells(baseLayer) &&
       listEquals(other.gripBlocks, gripBlocks) &&
       other.gripIdScope == gripIdScope &&
       other.crossAxisExtent == crossAxisExtent &&
@@ -586,10 +594,14 @@ class TimelineRowPaperGrips {
       other.resolver.matches(resolver) &&
       identical(other.state, state) &&
       other.gripGround == gripGround &&
-      other.gripRow == gripRow;
+      // What of the row its blocks' look reads, as the chrome's own
+      // painter compares it — the row's record compared its layer whole,
+      // folds and all.
+      timelineBlockRowFacts(other.gripRow) == timelineBlockRowFacts(gripRow);
 
   @override
-  int get hashCode => Object.hash(state, gripGround, gripRow);
+  int get hashCode =>
+      Object.hash(state, gripGround, timelineBlockRowFacts(gripRow));
 }
 
 /// Holds a row's [TimelineRowGripState] for as long as the row stands: its

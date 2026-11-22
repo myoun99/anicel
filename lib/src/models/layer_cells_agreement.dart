@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import '../core/signed_memo.dart';
 import 'attached_layer_resolve.dart';
 import 'folder_band_rows.dart';
 import 'layer.dart';
@@ -37,10 +38,21 @@ import 'layer.dart';
 /// ⚠️What a row reads from outside its layer is not in here — the cels'
 /// pixels (their own revision) and the camera row's track (its cells are
 /// not its timeline's). A reader asks this beside those, never instead.
-int? firstCellThatMayDiffer(Layer a, Layer b) {
-  if (identical(a, b)) {
-    return null;
-  }
+///
+/// KEPT for the pair asked last of [a] ([SignedMemo]): everything that
+/// draws a row asks it of the same two instances — every span of its
+/// tiles, the painter that lays them down, the grips on its paper — and
+/// the walk is made once.
+int? firstCellThatMayDiffer(Layer a, Layer b) => identical(a, b)
+    ? null
+    : _agreements.resolve(a, b, () => _firstCellThatMayDiffer(a, b));
+
+final SignedMemo<Layer, int?> _agreements = SignedMemo(
+  'row cells agreement',
+  same: identical,
+);
+
+int? _firstCellThatMayDiffer(Layer a, Layer b) {
   if (!a.sameBesideTimeline(b) || !_sameCelNames(a, b)) {
     return 0;
   }
