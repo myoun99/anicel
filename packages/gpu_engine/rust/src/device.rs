@@ -510,9 +510,13 @@ impl Engine {
     }
 
     /// Opens on the platform's first adapter: the tests', cargo's and
-    /// `flutter test`'s alike, where no Flutter names one.
+    /// `flutter test`'s alike, where no Flutter names one — and asking of
+    /// the limits the kernels' sources fix only what they use ([`used`]).
+    /// A kernel that comes to use more than the engine says they do is so
+    /// refused by its own test's device, on whatever adapter that runs, as
+    /// an adapter that gave only that much would refuse the app's.
     pub(crate) fn open_first() -> Option<Self> {
-        Self::first_within(most_storage)
+        Self::first_within(|most| asked(most).map(used))
     }
 
     /// [`Self::open_first`], one binding holding no more than `room` bytes:
@@ -522,17 +526,23 @@ impl Engine {
     /// found a plane bound past it, and every device here binds more).
     #[cfg(test)]
     pub(crate) fn open_first_binding(room: u64) -> Option<Self> {
-        Self::first_within(|adapter| wgpu::Limits {
-            max_storage_buffer_binding_size: room,
-            ..most_storage(adapter)
+        Self::first_within(|most| {
+            Some(wgpu::Limits {
+                max_storage_buffer_binding_size: room,
+                ..used(asked(most)?)
+            })
         })
     }
 
-    fn first_within(limits: impl FnOnce(&wgpu::Adapter) -> wgpu::Limits) -> Option<Self> {
+    /// On the platform's first adapter, within what `limits` makes of the
+    /// most that adapter gives.
+    fn first_within(
+        limits: impl FnOnce(&wgpu::Limits) -> Option<wgpu::Limits>,
+    ) -> Option<Self> {
         let instance = platform::instance();
         match platform::adapters(&instance).into_iter().next() {
             Some(adapter) => {
-                let limits = limits(&adapter);
+                let limits = limits(&adapter.limits())?;
                 Self::within(instance, adapter, limits)
             }
             None => fail("no adapter"),
@@ -540,7 +550,7 @@ impl Engine {
     }
 
     pub(crate) fn on(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
-        let limits = most_storage(&adapter);
+        let limits = asked(&adapter.limits())?;
         Self::within(instance, adapter, limits)
     }
 
@@ -1315,19 +1325,90 @@ impl<Then: FnOnce(Result<(), String>)> Drop for Told<Then> {
     }
 }
 
-/// The defaults, but with the most `adapter` gives of the three limits a
-/// pool's pages are bounded by: storage buffers a stage, the size of one
-/// binding, the size of one buffer. That is 1a's ④ (브러시/렌더링,
-/// gpu-canonical-store 2026-11-05 13:19), which names these three. The
-/// composite reads `device.limits()`, and a bigger limit only means fewer
-/// passes, never other bytes (its tests pin every page count).
-fn most_storage(adapter: &wgpu::Adapter) -> wgpu::Limits {
-    let most = adapter.limits();
-    wgpu::Limits {
+/// What the engine asks of an adapter that gives `most` — or nothing,
+/// where that is too little for the kernels ([`short`]).
+///
+/// The defaults, no more of any than the adapter gives, but with the most
+/// it gives of the three limits a pool's pages are bounded by: storage
+/// buffers a stage, the size of one binding, the size of one buffer. That
+/// is 1a's ④ (브러시/렌더링, gpu-canonical-store 2026-11-05 13:19), which
+/// names these three. The composite reads `device.limits()`, and a bigger
+/// limit only means fewer passes, never other bytes (its tests pin every
+/// page count).
+///
+/// ↩️Till 2026-11-22 the rest were the defaults whatever the adapter gave,
+/// and wgpu refused the open on one that gave less of any — of one no
+/// kernel comes near, too: 🔬the Android emulator's software Vulkan
+/// (SwiftShader, 2026-11-22) gives a uniform binding 16384 bytes against
+/// the default's 65536, the biggest the engine binds is 84, and the canvas
+/// never opened there. What the kernels cannot do with less of is
+/// [`used`]'s to say, not the defaults' (관제 2026-11-22 17:56,
+/// the-user-travels-ten-days-from-11-21: 「엔진이 실제로 쓰는 만큼만 묻게」).
+fn asked(most: &wgpu::Limits) -> Option<wgpu::Limits> {
+    let too_little = short(most);
+    if !too_little.is_empty() {
+        let named = too_little.join(", ");
+        return fail(format!("the adapter gives the kernels too little: {named}"));
+    }
+    Some(wgpu::Limits {
         max_storage_buffers_per_shader_stage: most.max_storage_buffers_per_shader_stage,
         max_storage_buffer_binding_size: most.max_storage_buffer_binding_size,
         max_buffer_size: most.max_buffer_size,
-        ..wgpu::Limits::default()
+        ..wgpu::Limits::default().or_worse_values_from(most)
+    })
+}
+
+/// Every limit an adapter that gives `most` gives the kernels too little
+/// of ([`used`]), each by its name with what it gives of what they use —
+/// all of them at once: wgpu's own refusal of an open names one of however
+/// many, the last it checked (wgpu-core 30, `request_device`).
+fn short(most: &wgpu::Limits) -> Vec<String> {
+    let mut short = Vec::new();
+    used(most.clone()).check_limits_with_fail_fn(most, false, |name, uses, gives| {
+        short.push(format!("{name} {gives} of {uses}"));
+    });
+    short
+}
+
+/// `rest`, but of the limits the kernels' own sources fix only what the
+/// kernel that uses most of each does, whatever the device (🔬every shader
+/// read, 2026-11-22: 68 files' 72 entry points and the plugins' prelude):
+/// - one bind group, and in it a stage binds one uniform buffer — 84 bytes
+///   the biggest: the composite's pass, the cel pixel verbs' and the lens
+///   gather's —, one storage texture and one sampled one (the timeline's
+///   grid and wave), and no sampler;
+/// - a workgroup 256 across (the fold, the write, the Gaussian), 256 down
+///   and one deep, of 256 invocations — a plugin's may be any shape of so
+///   many (`fx_wgsl::MOST_INVOCATIONS`), the engine's own go 16 down —
+///   sharing 16384 bytes (the Gaussian's window, gaussian.wgsl; a
+///   plugin's, fx_wgsl's `MOST_SHARED_BYTES`).
+///
+/// The storage buffers a stage binds are not among them: a kernel takes its
+/// pages from what the device gives past its own (pages.rs), and the tests'
+/// device gives all its adapter does, as the app's ([`asked`]). Four a
+/// stage is the least any kernel runs on — the flood's round and the
+/// colour mix bind four of their own, a paged kernel three and a page.
+///
+/// [`asked`] refuses an adapter that gives less of one of these, and the
+/// tests' device asks no more of them ([`Engine::open_first`]) — which is
+/// what holds each number to the kernels. ⚠️A kernel that comes to use
+/// more is refused in its own test, by wgpu and by the limit's name, and
+/// the number goes up here with it: one more device the app does not open
+/// on, so it is the kernel's to weigh first.
+fn used(rest: wgpu::Limits) -> wgpu::Limits {
+    wgpu::Limits {
+        max_bind_groups: 1,
+        max_uniform_buffers_per_shader_stage: 1,
+        max_uniform_buffer_binding_size: 84,
+        max_storage_textures_per_shader_stage: 1,
+        max_sampled_textures_per_shader_stage: 1,
+        max_samplers_per_shader_stage: 0,
+        max_compute_workgroup_size_x: 256,
+        max_compute_workgroup_size_y: 256,
+        max_compute_workgroup_size_z: 1,
+        max_compute_invocations_per_workgroup: 256,
+        max_compute_workgroup_storage_size: 16384,
+        ..rest
     }
 }
 
@@ -2632,7 +2713,7 @@ pub unsafe extern "C" fn gpu_engine_apart_held(engine: *const Engine) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Apart, Engine, gpu_engine_close, opened};
+    use super::{Apart, Engine, asked, gpu_engine_close, opened, used};
     use crate::testing::{a_device_of_its_own, done_here, first_engine};
     use crate::{fail, last_error};
 
@@ -3845,8 +3926,92 @@ mod tests {
         assert_eq!(last_error(), "no adapter here");
     }
 
+    /// An adapter that gives more of one limit than the defaults, less of
+    /// another, and its own of the three a pool's pages are bounded by: the
+    /// engine asks the default of the first, no more than is given of the
+    /// second, and all of the three.
     #[test]
-    fn the_device_has_the_most_storage_the_adapter_gives() {
+    fn asks_the_defaults_no_more_than_given_and_all_the_storage() {
+        let most = wgpu::Limits {
+            max_texture_dimension_2d: 16384,
+            max_uniform_buffer_binding_size: 16384,
+            max_storage_buffers_per_shader_stage: 30,
+            max_storage_buffer_binding_size: 1 << 30,
+            max_buffer_size: 1 << 31,
+            ..wgpu::Limits::default()
+        };
+        let asks = wgpu::Limits {
+            max_texture_dimension_2d: wgpu::Limits::default().max_texture_dimension_2d,
+            ..most.clone()
+        };
+        assert_eq!(asked(&most), Some(asks));
+    }
+
+    #[test]
+    fn an_adapter_short_of_what_the_kernels_use_is_refused_by_every_such_limit() {
+        let most = wgpu::Limits {
+            max_uniform_buffer_binding_size: 80,
+            max_compute_invocations_per_workgroup: 128,
+            max_compute_workgroup_size_x: 128,
+            ..wgpu::Limits::default()
+        };
+        assert_eq!(asked(&most), None);
+        assert_eq!(
+            last_error(),
+            "the adapter gives the kernels too little: \
+             max_uniform_buffer_binding_size 80 of 84, \
+             max_compute_invocations_per_workgroup 128 of 256, \
+             max_compute_workgroup_size_x 128 of 256",
+        );
+    }
+
+    /// Each number of [`used`], by the adapter that gives one less of it —
+    /// refused by that limit alone — and the one that gives just it.
+    #[test]
+    fn each_limit_the_kernels_use_is_the_least_an_adapter_may_give() {
+        type Put = fn(&mut wgpu::Limits, u32);
+        let uses: [(&str, u32, Put); 10] = [
+            ("max_bind_groups", 1, |most, n| most.max_bind_groups = n),
+            ("max_uniform_buffers_per_shader_stage", 1, |most, n| {
+                most.max_uniform_buffers_per_shader_stage = n;
+            }),
+            ("max_uniform_buffer_binding_size", 84, |most, n| {
+                most.max_uniform_buffer_binding_size = n.into();
+            }),
+            ("max_storage_textures_per_shader_stage", 1, |most, n| {
+                most.max_storage_textures_per_shader_stage = n;
+            }),
+            ("max_sampled_textures_per_shader_stage", 1, |most, n| {
+                most.max_sampled_textures_per_shader_stage = n;
+            }),
+            ("max_compute_workgroup_size_x", 256, |most, n| most.max_compute_workgroup_size_x = n),
+            ("max_compute_workgroup_size_y", 256, |most, n| most.max_compute_workgroup_size_y = n),
+            ("max_compute_workgroup_size_z", 1, |most, n| most.max_compute_workgroup_size_z = n),
+            ("max_compute_invocations_per_workgroup", 256, |most, n| {
+                most.max_compute_invocations_per_workgroup = n;
+            }),
+            ("max_compute_workgroup_storage_size", 16384, |most, n| {
+                most.max_compute_workgroup_storage_size = n;
+            }),
+        ];
+        for (name, least, put) in uses {
+            let mut most = wgpu::Limits::default();
+            put(&mut most, least);
+            assert!(asked(&most).is_some(), "{name} {least}");
+            put(&mut most, least - 1);
+            assert_eq!(asked(&most), None, "{name} {}", least - 1);
+            let why = format!("the adapter gives the kernels too little: {name} {} of {least}", least - 1);
+            assert_eq!(last_error(), why);
+        }
+        let no_sampler = wgpu::Limits { max_samplers_per_shader_stage: 0, ..wgpu::Limits::default() };
+        assert!(asked(&no_sampler).is_some());
+    }
+
+    /// The tests' device: all its adapter's storage, as the app's, and of
+    /// the limits the kernels' sources fix only what they use — so every
+    /// kernel's own test holds [`used`] to it.
+    #[test]
+    fn the_tests_device_asks_all_the_storage_and_only_what_the_kernels_use() {
         let engine = first_engine();
         let (most, got) = (engine.adapter.limits(), engine.device.limits());
         println!(
@@ -3856,8 +4021,6 @@ mod tests {
             got.max_storage_buffer_binding_size,
             got.max_buffer_size,
         );
-        assert_eq!(got.max_storage_buffers_per_shader_stage, most.max_storage_buffers_per_shader_stage);
-        assert_eq!(got.max_storage_buffer_binding_size, most.max_storage_buffer_binding_size);
-        assert_eq!(got.max_buffer_size, most.max_buffer_size);
+        assert_eq!(Some(got), asked(&most).map(used));
     }
 }

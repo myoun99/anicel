@@ -44,9 +44,9 @@ pub(crate) fn holds_barrier(block: &Block) -> bool {
 }
 
 /// The most bytes a group's shared memory may hold, the host's word
-/// included: the engine's device asks wgpu's default for this limit
-/// (src/device.rs `most_storage`), and each variable counts rounded up to
-/// 16 bytes, as WebGPU's pipeline rule counts it.
+/// included: wgpu's default for this limit, which the engine opens on no
+/// device that gives less of (src/device.rs `used`), and each variable
+/// counts rounded up to 16 bytes, as WebGPU's pipeline rule counts it.
 pub(crate) const MOST_SHARED_BYTES: u32 = 16384;
 
 /// The host's own word in shared memory: prelude.wgsl's
