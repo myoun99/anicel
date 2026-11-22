@@ -543,19 +543,19 @@ fn a_gather_in_chunks_puts_what_it_puts_in_one() {
 /// within the budget at their whole share — the plug-ins' law
 /// (`Pace::chunk`) —, and the chunks put every group of the picture once:
 /// counted from what the engine noted of its submits (submits.rs), on a
-/// device of the test's own so no other test's are among them.
+/// device of the test's own so no other test's are among them. No fringe:
+/// what a chunk holds is cut by the same law with one (`gather_share`),
+/// and 관제 kept new fringed runs off this machine's GPU during the user's
+/// trip (lens-blur-sends-every-band-in-one-submit, 2026-11-22).
 #[test]
 fn a_gather_goes_in_submits_the_budget_holds() {
     let turn = a_device_of_its_own();
     let engine = turn.engine();
     let blur = LensBlur::new(&engine);
-    let lens = Lens {
-        fringe: 250.0,
-        ..lens(3.0)
-    };
+    let lens = lens(3.0);
     let picture = LEDGER_TILES.pixels();
     let pace = chunking(&lens, 500);
-    let most = pace.chunk(gather_share(3, true), GROUP * GROUP);
+    let most = pace.chunk(gather_share(3, false), GROUP * GROUP);
     let tiles = tiles(&engine, LEDGER_TILES, pattern);
     let before = engine.queue.submits.kept_now().last().map_or(0, |submit| submit.number);
     let out = blur.run_in(&engine, &tiles, LEDGER_TILES, picture, (&lens, None), (room(&engine), pace));
