@@ -14,17 +14,22 @@ import '../../helpers/repaint_strays.dart';
 import '../../helpers/storyboard_host.dart';
 import '../timeline/timeline_row_chrome_probe.dart';
 
-/// 🚨THE V ROW'S GRIPS ARE PAINTED AGAIN WHERE ITS BLOCKS ARE, AND NOWHERE
-/// ELSE (card a-twirl-repaints-the-film-views-cut-band, 11-22 — its second
-/// half).
+/// 🚨A LANE TWIRLED IN THE STORYBOARD PAINTS NO ROW OF THE FILM AGAIN (card
+/// a-twirl-repaints-the-film-views-cut-band, 11-22 — its second half).
 ///
-/// The triangles at a cut's two ends read what they stand on off the blocks
-/// under them — a band in the cut's label, a picture. They told two readers
-/// apart by identity, and the row hands them a new one every time it is
-/// built: the blocks had stopped repainting for a lane twirled on the
-/// camera row, and the grips over them went on — one layer of the row
-/// painted again, and the row's image taken again (🔬the whole workspace,
-/// three cuts: four twirls, the V row four times).
+/// A twirl is an edit of the row it is pressed on — a new layer, a new cut
+/// — and the film's rows are built again with it. Two of what they draw
+/// still told the old from the new by identity:
+///
+/// - the V row's GRIPS, the triangles at a cut's two ends. They read what
+///   they stand on off the blocks under them, through a reader the row
+///   hands them new at every build: the blocks had stopped repainting for a
+///   lane twirled on the camera row, and the grips over them went on (🔬the
+///   whole workspace, three cuts: four twirls, the V row's image taken
+///   four times);
+/// - an S row's NUMBERS, each block's length, compared by their layer: the
+///   S row's own lanes twirled printed every number of the track again
+///   (🔬four twirls, the row's image four times).
 ///
 /// 🪦The first half's pins stood on a panel handed no edge callbacks — a row
 /// with no grips on it — and read nothing waiting there. These stand on the
@@ -32,21 +37,25 @@ import '../timeline/timeline_row_chrome_probe.dart';
 /// pressed.
 const _track = 'default-track';
 
-final _vRow = find.byKey(
-  const ValueKey<String>('storyboard-track-timeline-area-$_track'),
-);
-final _conteRow = find.byKey(
-  const ValueKey<String>('storyboard-conte-row-$_track'),
-);
+/// Every row of the film — the transition row, the S rows, the V row and
+/// the conte row.
+final _filmRows = find.byWidgetPredicate((widget) {
+  final key = widget.key;
+  return key is ValueKey<String> &&
+      (key.value.startsWith('storyboard-transition-row-') ||
+          key.value.startsWith('storyboard-se-row-') ||
+          key.value.startsWith('storyboard-track-timeline-area-') ||
+          key.value.startsWith('storyboard-conte-row-'));
+});
 final _blocks = find.byKey(
   const ValueKey<String>('storyboard-cut-blocks-$_track'),
 );
 final _grips = timelineRowChromeFinder(_track, prefix: 'storyboard-plate');
 
-/// The lane toggle of the camera row in the rail — the row of the cut the
-/// conte stands in.
-final _cameraToggle = find.namedWhere(
-  (name) => name.contains('-lane-toggle-') && name.endsWith('-camera'),
+/// The lane toggle of the row whose id ends [row] — the camera row of the
+/// cut the conte stands in, an S row.
+Finder _toggleOf(String row) => find.namedWhere(
+  (name) => name.contains('-lane-toggle-') && name.endsWith(row),
 );
 
 /// A film of three cuts in the storyboard tab.
@@ -60,20 +69,38 @@ Future<EditorSessionManager> _film(WidgetTester tester) async {
     hasLength(6),
     reason: '⛔premise: the V row wears its grips — two a cut',
   );
+  expect(
+    _filmRows,
+    findsNWidgets(5),
+    reason: '⛔premise: the transition row, two S rows, the V row and the '
+        'conte row',
+  );
   return session;
 }
 
 List<Cut> _cuts(EditorSessionManager session) =>
     session.repository.requireProject().tracks.single.cuts;
 
-/// The row [toggle] twirls, as the film holds it.
+/// The row [toggle] twirls, as the film holds it — a cut's row or the
+/// track's.
 Layer _rowOf(EditorSessionManager session, Finder toggle) {
   final name = nameOf(toggle.evaluate().single)!;
   final id = name.substring(name.indexOf('-lane-toggle-') + 13);
   return [
+    ...session.repository.requireProject().tracks.single.seLayers,
     for (final cut in _cuts(session)) ...cut.layers,
   ].singleWhere((layer) => layer.id.value == id);
 }
+
+CustomPainter _gripsPainter(WidgetTester tester) =>
+    timelineRowChromePainter(tester, _track, prefix: 'storyboard-plate')!;
+
+/// The painter of the first S row's numbers — its blocks' lengths.
+CustomPainter _numbersPainterOfS1(WidgetTester tester) => tester
+    .widget<CustomPaint>(
+      find.byKey(const ValueKey<String>('storyboard-run-labels-$_track-se-1')),
+    )
+    .foregroundPainter!;
 
 StoryboardCutBlocksPainter _blocksPainter(WidgetTester tester) =>
     tester.widget<CustomPaint>(_blocks).painter! as StoryboardCutBlocksPainter;
@@ -83,49 +110,51 @@ StoryboardCutBlocksPainter _blocksPainter(WidgetTester tester) =>
 bool _waits(WidgetTester tester, Finder painted) =>
     tester.renderObject(painted).debugNeedsPaint;
 
-/// The boundaries under [rows] waiting to repaint, by the row.
-List<String> _waitingUnder(WidgetTester tester, List<Finder> rows) => [
-  for (final row in rows)
-    for (final stray in repaintStrays(
-      tester.renderObject(row),
-      allowed: const {},
-    ))
-      '${row.evaluate().single.widget.key}: ${nameOfBoundary(stray, depth: 6)}',
+/// The boundaries under the film's rows waiting to repaint, by the row.
+List<String> _rowsWaiting(WidgetTester tester) => [
+  for (final row in _filmRows.evaluate())
+    for (final stray in repaintStrays(row.renderObject!, allowed: const {}))
+      '${row.widget.key}: ${nameOfBoundary(stray, depth: 6)}',
 ];
 
 void main() {
-  testWidgets('🚨a lane twirled on the camera row, the rail\'s own toggle '
-      'pressed: the film\'s rows are built again with the cut as it is, and '
-      'neither the V row — its blocks, the grips over them — nor the conte '
-      'row is painted again', (tester) async {
-    final session = await _film(tester);
-    expect(_cameraToggle, findsOneWidget, reason: '⛔premise');
-    final twirledBefore = _rowOf(session, _cameraToggle).lanesExpanded;
-    final gripsBefore = timelineRowChromePainter(
-      tester,
-      _track,
-      prefix: 'storyboard-plate',
-    );
+  // Each with what is built again for it: the camera row is a cut's, and
+  // the V row is built with the cut; an S row is the track's, and only its
+  // own row is built with it.
+  for (final (row, id, builtWithIt) in [
+    ('the camera row', '-camera', _gripsPainter),
+    ('an S row', '-se-1', _numbersPainterOfS1),
+  ]) {
+    testWidgets('🚨a lane twirled on $row, the rail\'s own toggle pressed: '
+        'the film\'s rows are built again with the row as it is, and none '
+        'of them is painted again — the V row\'s blocks and the grips over '
+        'them, an S row\'s numbers', (tester) async {
+      final session = await _film(tester);
+      final toggle = _toggleOf(id);
+      expect(toggle, findsOneWidget, reason: '⛔premise');
+      final rowBefore = _rowOf(session, toggle);
+      final builtBefore = builtWithIt(tester);
 
-    await tester.tap(_cameraToggle);
-    await tester.pump(null, EnginePhase.layout);
-    final waiting = _waitingUnder(tester, [_vRow, _conteRow]);
-    final gripsWait = _waits(tester, _grips);
-    await tester.pump();
+      await tester.tap(toggle);
+      await tester.pump(null, EnginePhase.layout);
+      final waiting = _rowsWaiting(tester);
+      final gripsWait = _waits(tester, _grips);
+      await tester.pump();
 
-    expect(
-      _rowOf(session, _cameraToggle).lanesExpanded,
-      !twirledBefore,
-      reason: '⛔premise: the press twirled the row — its cut is another cut',
-    );
-    expect(
-      timelineRowChromePainter(tester, _track, prefix: 'storyboard-plate'),
-      isNot(same(gripsBefore)),
-      reason: '⛔premise: the V row was built again',
-    );
-    expect(gripsWait, isFalse, reason: 'the grips');
-    expect(waiting, isEmpty);
-  });
+      expect(
+        _rowOf(session, toggle).lanesExpanded,
+        !rowBefore.lanesExpanded,
+        reason: '⛔premise: the press twirled the row — it is another row',
+      );
+      expect(
+        builtWithIt(tester),
+        isNot(same(builtBefore)),
+        reason: '⛔premise: the row that reads it was built again',
+      );
+      expect(gripsWait, isFalse, reason: 'the grips');
+      expect(waiting, isEmpty);
+    });
+  }
 
   testWidgets('a cut given a colour label paints its grips again with its '
       'blocks — the bands they stand on wear it', (tester) async {
