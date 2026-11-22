@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -65,7 +66,10 @@ class _RenderLamp extends RenderBox {
   /// How many times the sheet drew the lamp's look.
   int drawnBySheet = 0;
 
-  late final LaidLook<Color> laid = LaidLook<Color>(this, (canvas, color) {
+  late final LaidLook<Color> laid = LaidLook<Color>(this, () => _color, (
+    canvas,
+    color,
+  ) {
     drawnBySheet += 1;
     canvas.drawRect(Offset.zero & size, Paint()..color = color);
   });
@@ -84,26 +88,19 @@ class _RenderLamp extends RenderBox {
   set color(Color? value) {
     _color = value;
     if (attached) {
-      // Laid again, equal or not: what `lay` makes of an equal look is
-      // the sheet's to say.
-      laid.lay(value);
+      // Said again, equal or not: what the sheet makes of an equal look
+      // is the sheet's to say.
+      laid.changed();
       markNeedsPaint();
     }
   }
 
-  void wear(LiveLooks? looks) {
-    laid.wear(looks);
-    if (attached) {
-      laid.lay(_color);
-    }
-  }
+  void wear(LiveLooks? looks) => laid.wear(looks);
 
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    laid
-      ..attached()
-      ..lay(_color);
+    laid.attached();
   }
 
   @override
@@ -470,6 +467,37 @@ void main() {
       expect(at(tester, bytes, const Offset(115, 15)), _red);
       expect(at(tester, bytes, const Offset(15, 15)), isNot(_red));
     });
+
+    testWidgets('stands on its sheet still where the sheet is kept through '
+        'a move with it', (tester) async {
+      // One widget, so nothing under it is built again: the lamp hears of
+      // the move only by leaving the tree and coming back into it.
+      final sheet = LiveSheet(
+        key: GlobalKey(),
+        child: const Align(alignment: Alignment.topLeft, child: _Lamp(_red)),
+      );
+      Widget surface({required bool moved}) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 100, height: 100, child: moved ? null : sheet),
+          SizedBox(width: 100, height: 100, child: moved ? sheet : null),
+        ],
+      );
+      await pump(tester, surface(moved: false));
+      final lamp = lampOf(tester);
+      expect(lamp.laid.onSheet, isTrue);
+      expect(
+        at(tester, await captureBytes(tester), const Offset(15, 15)),
+        _red,
+      );
+
+      await pump(tester, surface(moved: true));
+      expect(lampOf(tester), same(lamp), reason: 'the box is kept');
+      expect(lamp.laid.onSheet, isTrue, reason: 'its sheet came with it');
+      final bytes = await captureBytes(tester);
+      expect(at(tester, bytes, const Offset(115, 15)), _red);
+      expect(at(tester, bytes, const Offset(15, 15)), isNot(_red));
+    });
   });
 
   group('a look is painted in place', () {
@@ -572,8 +600,9 @@ void main() {
       return mouse;
     }
 
-    testWidgets('🎯lights the pixels it lights in place — under the '
-        'pointer, and pressed', (tester) async {
+    /// A button of [icon] lights on the sheet the pixels it lights in
+    /// place: at rest, under the pointer, and pressed.
+    Future<void> lightsAsInPlace(WidgetTester tester, Widget icon) async {
       final mouse = await mouseOf(tester);
       Widget surface(Widget Function(Widget child) sheet) => sheet(
         Align(
@@ -583,7 +612,7 @@ void main() {
             child: AppIconButton(
               keyValue: 'lit',
               tooltip: 'Lit',
-              icon: const Icon(Icons.draw),
+              icon: icon,
               onPressed: () {},
             ),
           ),
@@ -618,6 +647,73 @@ void main() {
         reason: 'under the pointer',
       );
       expectSame(tester, onSheet.pressed, inPlace.pressed, reason: 'pressed');
+    }
+
+    // Both faces an icon button wears (`AppIconButton` says which icon is
+    // which): the glyph it draws itself, and the box around a widget.
+    testWidgets(
+      '🎯lights the pixels it lights in place — under the pointer, and '
+      'pressed',
+      (tester) => lightsAsInPlace(tester, const Icon(Icons.draw)),
+    );
+
+    testWidgets(
+      '🎯and so does the face around an icon that is a widget',
+      (tester) => lightsAsInPlace(tester, const Icon(Icons.draw, size: 18)),
+    );
+
+    testWidgets('🎯shows the keyboard\'s focus on the sheet it comes to with '
+        'it, as in place', (tester) async {
+      final kept = GlobalKey();
+      Widget surface(Widget Function(Widget child) sheet) => sheet(
+        Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: AppIconButton(
+              key: kept,
+              keyValue: 'focused',
+              tooltip: 'Focused',
+              icon: const Icon(Icons.draw),
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      Widget inPlace(Widget child) => LiveSheet.inPlace(child: child);
+      Widget onSheet(Widget child) => LiveSheet(child: child);
+
+      await pump(tester, surface(inPlace));
+      final rest = await captureBytes(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.pump();
+      final focused = await captureBytes(tester);
+      expect(
+        apart(tester, rest, focused).over,
+        greaterThan(100),
+        reason: 'the focus is seen',
+      );
+
+      // The same button with its focus, on a sheet now: neither its hover
+      // nor its spec changed, and the sheet is to draw what it shows.
+      await pump(tester, surface(onSheet));
+      await tester.pump();
+      expectSame(
+        tester,
+        await captureBytes(tester),
+        focused,
+        reason: 'focused, come to a sheet',
+      );
+
+      await pump(tester, surface(inPlace));
+      await tester.pump();
+      expectSame(
+        tester,
+        await captureBytes(tester),
+        focused,
+        reason: 'focused, in place again',
+      );
     });
 
     testWidgets('lights as it is told to while the pointer is on it — '
@@ -851,6 +947,36 @@ void main() {
         reason: 'a band near a hand as it comes into the tree shows',
       );
       expectSame(tester, onSheet.born, inPlace.born, reason: 'born near');
+    });
+
+    testWidgets('is in one picture: its box paints none of it while the '
+        'sheet draws it', (tester) async {
+      final nearby = ValueNotifier<bool>(true);
+      addTearDown(nearby.dispose);
+      Widget surface(Widget Function(Widget child) sheet) => sheet(
+        Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox.square(
+            dimension: 40,
+            child: LiftingGripBand<String>(
+              gripKey: const ValueKey<String>('grip'),
+              data: 'lifted',
+              chip: const [(icon: Icons.draw, label: 'lifted')],
+              nearby: nearby,
+              shape: AppShapes.control(40),
+            ),
+          ),
+        ),
+      );
+      // One box, met once for every element it is the box of.
+      RenderGripBand band() =>
+          tester.allRenderObjects.whereType<RenderGripBand>().toSet().single;
+
+      await pump(tester, surface((child) => LiveSheet.inPlace(child: child)));
+      expect(band(), isNot(paintsNothing), reason: 'in place, the box paints');
+
+      await pump(tester, surface((child) => LiveSheet(child: child)));
+      expect(band(), paintsNothing);
     });
   });
 }

@@ -269,7 +269,7 @@ class RenderGripBand extends RenderBox {
     }
     _band = value;
     if (_laid.onSheet) {
-      _lay();
+      _laid.changed();
     } else {
       markNeedsPaint();
     }
@@ -277,24 +277,17 @@ class RenderGripBand extends RenderBox {
 
   late final LaidLook<GripBandSpec> _laid = LaidLook<GripBandSpec>(
     this,
+    // A band with no ink lays nothing.
+    () => _band.color.a == 0 ? null : _band,
     (canvas, band) => _paint(canvas, Offset.zero & size, band),
   );
 
-  void wearSheet(LiveLooks? looks) {
-    _laid.wear(looks);
-    if (attached) {
-      _lay();
-    }
-  }
-
-  /// A band with no ink lays nothing.
-  void _lay() => _laid.lay(_band.color.a == 0 ? null : _band);
+  void wearSheet(LiveLooks? looks) => _laid.wear(looks);
 
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _laid.attached();
-    _lay();
   }
 
   @override

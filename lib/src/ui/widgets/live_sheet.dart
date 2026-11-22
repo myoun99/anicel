@@ -209,12 +209,22 @@ final class LiveLooks extends ChangeNotifier {
 /// sheet is under the box it lays nothing, and the box paints its look in
 /// its own picture ([onSheet]).
 ///
+/// 🚨THE BOX SAYS WHAT ITS LOOK IS, AND THIS ASKS: as the box says it may
+/// be another ([changed]), as the box comes into the tree, and as it comes
+/// to stand over another layer. ↩️Each box laid its look again after those
+/// two itself until 2026-11-22, and a face did not — one that came to a
+/// sheet with the keyboard's focus on it showed that focus in no picture
+/// (`live_sheet_test`, a face moved onto a sheet).
+///
 /// One code for both that lay one: a light face's state layer
 /// (`PressFace`) and a grip's band (`LiftingGripBand`).
 final class LaidLook<L extends Object> {
-  LaidLook(this._box, this._paint);
+  LaidLook(this._box, this._look, this._paint);
 
   final RenderBox _box;
+
+  /// What the box's look is now — null where it shows none.
+  final L? Function() _look;
 
   /// Paints a look in the box's own coordinates.
   final void Function(Canvas canvas, L look) _paint;
@@ -228,7 +238,6 @@ final class LaidLook<L extends Object> {
 
   /// The layer the box is built over, as its widget reads it building the
   /// box and building it again ([LiveSheet.underOf], [LiveSheet.overOf]).
-  /// The box lays its look again after.
   void wear(LiveLooks? looks) {
     if (identical(looks, _looks)) {
       return;
@@ -240,13 +249,14 @@ final class LaidLook<L extends Object> {
     }
   }
 
-  /// The box came into the tree. It lays its look again after.
+  /// The box came into the tree.
   void attached() {
     final onSheet = _looks?._holds(_box) ?? false;
     if (onSheet != _onSheet) {
       _onSheet = onSheet;
       _box.markNeedsPaint();
     }
+    changed();
   }
 
   /// The box left the tree.
@@ -255,10 +265,10 @@ final class LaidLook<L extends Object> {
     _onSheet = false;
   }
 
-  /// The box's look is [look] now — null where it shows none. Equal looks
-  /// are one look: laid again, nothing is drawn again.
-  void lay(L? look) {
-    final shown = _onSheet ? look : null;
+  /// The box's look may be another now. Equal looks are one look: said
+  /// again, nothing is drawn again.
+  void changed() {
+    final shown = _onSheet ? _look() : null;
     if (shown == _laid) {
       return;
     }

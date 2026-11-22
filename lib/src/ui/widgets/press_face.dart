@@ -106,6 +106,7 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   late final LaidLook<ShapeDecoration> _laidStateLayer =
       LaidLook<ShapeDecoration>(
         this,
+        _stateLayerOnTheSheet,
         (canvas, layer) => _stateLayerPaint.paint(
           canvas,
           Offset.zero & size,
@@ -139,25 +140,23 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
     _stateLayerPaint.paint(canvas, rect, layer, pressTextDirection);
   }
 
-  /// Lays on the sheet what the state layer is now — nothing while it
-  /// shows nothing — and says whether the sheet draws it: where not, the
-  /// face paints it itself ([paintStateLayer]).
+  /// What the sheet under the face draws of the state layer now — nothing
+  /// while it shows nothing.
   ///
   /// 🚨A layer with no ink is no look: a face at rest lays nothing, and a
   /// sheet with nothing laid asks nothing of any frame ([LiveSheet]) — the
   /// frames of a stroke among them.
-  bool _layStateLayer() {
+  ShapeDecoration? _stateLayerOnTheSheet() {
     final layer = stateLayer;
-    final drawn = _sheetDraws(layer);
-    final ink = layer?.color;
-    _laidStateLayer.lay(drawn && ink != null && ink.a > 0 ? layer : null);
-    return drawn;
+    return _sheetDraws(layer) && layer?.color != null ? layer : null;
   }
 
   /// The hover or the press changed: the state layer is laid again — on
   /// the sheet, or by the face painting itself.
   void _lookChanged() {
-    if (!_layStateLayer() && stateLayer != null) {
+    _laidStateLayer.changed();
+    final layer = stateLayer;
+    if (layer != null && !_sheetDraws(layer)) {
       markNeedsPaint();
     }
     pressLookChanged();
@@ -166,7 +165,6 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   @override
   void wearPlace(BuildContext context) {
     super.wearPlace(context);
-    // A face new to its place is at rest ([detach]): nothing to lay.
     _laidStateLayer.wear(LiveSheet.underOf(context));
   }
 
@@ -191,7 +189,7 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
     }
     markNeedsSemanticsUpdate();
     // What it lays is its spec's too — its ink, its shape, its focus.
-    _layStateLayer();
+    _laidStateLayer.changed();
   }
 
   /// The do-nothing tap entered into the arena on every enabled press —
