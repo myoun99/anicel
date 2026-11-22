@@ -1394,7 +1394,9 @@ fn short(most: &wgpu::Limits) -> Vec<String> {
 /// what holds each number to the kernels. ⚠️A kernel that comes to use
 /// more is refused in its own test, by wgpu and by the limit's name, and
 /// the number goes up here with it: one more device the app does not open
-/// on, so it is the kernel's to weigh first.
+/// on, so it is the kernel's to weigh first. ⛔But the shared bytes: wgpu
+/// 30 holds no shader to that limit, and the number stands by
+/// gaussian.wgsl's own ⛔ (a window of the least a device gives).
 fn used(rest: wgpu::Limits) -> wgpu::Limits {
     wgpu::Limits {
         max_bind_groups: 1,
