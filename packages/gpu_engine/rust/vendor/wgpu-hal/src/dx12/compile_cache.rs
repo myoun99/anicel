@@ -64,7 +64,8 @@ const TURN_STANDS: Duration = Duration::from_secs(30);
 const TURN_LOOK: Duration = Duration::from_millis(10);
 
 /// How long a compile waits for another's turn before it says so on stderr
-/// ([`say_waiting`]) — once a turn, and again as the wait ends.
+/// ([`CompileCache::say_waiting`]) — once a turn, and again as the wait
+/// ends.
 ///
 /// 🧭an-engine-setup-hangs-in-a-batch (2026-11-23): an engine test's setUpAll
 /// stood twelve minutes in a bundled run, its own CPU next to idle while
@@ -128,6 +129,9 @@ pub(super) struct CompileCache {
     /// How many looks of a compile of each [`Made`] found another's turn
     /// held and waited ([`Self::turn`]).
     waited: [AtomicU64; 2],
+    /// How many lines a compile of each [`Made`] has said on stderr of its
+    /// wait for another's turn ([`Self::say_waiting`]).
+    said: [AtomicU64; 2],
 }
 
 impl CompileCache {
@@ -204,8 +208,8 @@ impl CompileCache {
                 .open(&turn);
             match taken {
                 Ok(mut held) => {
-                    // Whose it is, for whoever waits on it (`say_waiting`).
-                    let _ = held.write_all(std::process::id().to_string().as_bytes());
+                    // Whose it is, for whoever waits on it (`Self::say_waiting`).
+                    let _ = held.write_all(alloc::format!("{}", std::process::id()).as_bytes());
                     break Some(held);
                 }
                 Err(error)
@@ -214,7 +218,7 @@ impl CompileCache {
                     self.waited[made as usize].fetch_add(1, Ordering::Relaxed);
                     if !said && started.elapsed() >= TURN_SAID {
                         said = true;
-                        say_waiting(&turn, started.elapsed(), "and waits on");
+                        self.say_waiting(made, &turn, started.elapsed(), "and waits on");
                     }
                     std::thread::sleep(TURN_LOOK);
                 }
@@ -228,7 +232,7 @@ impl CompileCache {
         };
         if said {
             let then = if held.is_some() { "and took it" } else { "and compiles past it" };
-            say_waiting(&turn, started.elapsed(), then);
+            self.say_waiting(made, &turn, started.elapsed(), then);
         }
         // Kept by the turn's last holder: handed, and the turn let go here.
         match self.read(made, asked) {
@@ -284,6 +288,30 @@ impl CompileCache {
     pub(super) fn waited(&self, made: Made) -> u64 {
         self.waited[made as usize].load(Ordering::Relaxed)
     }
+
+    /// Says on stderr that this process has waited `waited` for the turn at
+    /// `path`, `then` what it does: whose the turn is, as its holder wrote
+    /// it, and how long ago that was ([`TURN_SAID`]).
+    fn say_waiting(&self, made: Made, path: &Path, waited: Duration, then: &str) {
+        let holder = fs::read_to_string(path).unwrap_or_default();
+        let holder = if holder.trim().is_empty() { "unsaid" } else { holder.trim() };
+        let taken = fs::metadata(path).and_then(|meta| meta.modified()).ok();
+        let age = taken.and_then(|taken| taken.elapsed().ok());
+        std::eprintln!(
+            "anicel compile cache: process {} waited {:.1} s for the turn {:?}, held by process {holder} {} ago, {then}",
+            std::process::id(),
+            waited.as_secs_f64(),
+            path.file_name().unwrap_or_default(),
+            age.map_or_else(|| "gone".into(), |age| alloc::format!("{:.1} s", age.as_secs_f64())),
+        );
+        self.said[made as usize].fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many lines compiles of `made` have said on stderr of their waits
+    /// for another's turn, since the device opened.
+    pub(super) fn said(&self, made: Made) -> u64 {
+        self.said[made as usize].load(Ordering::Relaxed)
+    }
 }
 
 fn head(asked: &[u8], made: &[u8]) -> [u8; HEAD] {
@@ -319,23 +347,6 @@ fn held_for(path: &Path, stands: Duration) -> bool {
         return true;
     };
     taken.elapsed().map_or(true, |age| age < stands)
-}
-
-/// Says on stderr that this process has waited `waited` for the turn at
-/// `path`, `then` what it does: whose the turn is, as its holder wrote it,
-/// and how long ago that was ([`TURN_SAID`]).
-fn say_waiting(path: &Path, waited: Duration, then: &str) {
-    let holder = fs::read_to_string(path).unwrap_or_default();
-    let holder = if holder.trim().is_empty() { "unsaid" } else { holder.trim() };
-    let taken = fs::metadata(path).and_then(|meta| meta.modified()).ok();
-    let age = taken.and_then(|taken| taken.elapsed().ok());
-    std::eprintln!(
-        "anicel compile cache: process {} waited {:.1} s for the turn {:?}, held by process {holder} {} ago, {then}",
-        std::process::id(),
-        waited.as_secs_f64(),
-        path.file_name().unwrap_or_default(),
-        age.map_or_else(|| "gone".into(), |age| alloc::format!("{:.1} s", age.as_secs_f64())),
-    );
 }
 
 /// Deletes the files of `folder` used longest ago till it holds no more

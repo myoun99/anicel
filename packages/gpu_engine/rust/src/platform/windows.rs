@@ -870,25 +870,86 @@ fn main() { out[0] = 7u; }
 
     /// What an engine keeping its shaders in `folder` makes of
     /// `WRITES_SEVEN` on a thread of its own, the main thread running
-    /// `then` once that compile waits on another's turn, before it hears:
-    /// (the compiles the folder answered, what the kernel wrote).
+    /// `then` once that compile waits on another's turn — and `till` holds
+    /// of it — before it hears: (the engine, what the kernel wrote).
     ///
     /// 🧪IN TURN, NOT IN TIME (board a-kernel-wait-test-goes-red-under-load,
     /// 11-18): ↩️the main thread slept 500 ms and ran `then`, and on a
     /// machine under load the compile might not have looked by then — a
     /// pin of a wait that need not have waited.
-    fn seven_beside(turn: &DeviceTurn, folder: &std::path::Path, then: impl FnOnce()) -> (u64, u32) {
+    fn seven_beside(
+        turn: &DeviceTurn,
+        folder: &std::path::Path,
+        till: impl Fn(&crate::device::Engine) -> bool,
+        then: impl FnOnce(),
+    ) -> (crate::device::Engine, u32) {
         let engine = keeping(turn, folder);
-        std::thread::scope(|scope| {
+        let word = std::thread::scope(|scope| {
             let compiling = scope.spawn(|| pipeline(&engine, &[WRITES_SEVEN], "main"));
-            while waited(&engine) == 0 {
+            while waited(&engine) == 0 || !till(&engine) {
                 assert!(!compiling.is_finished(), "the compile ended without waiting on the turn");
                 std::thread::yield_now();
             }
             then();
             let compiled = compiling.join().expect("the compile");
-            (found(&engine), first_word(&engine, &compiled))
-        })
+            first_word(&engine, &compiled)
+        });
+        (engine, word)
+    }
+
+    /// No more than the wait: [`seven_beside`] runs `then` as soon as the
+    /// compile waits.
+    fn at_once(_: &crate::device::Engine) -> bool {
+        true
+    }
+
+    fn said(engine: &crate::device::Engine) -> u64 {
+        // SAFETY: only reads a count.
+        unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_said()
+    }
+
+    // 🧭an-engine-setup-hangs-in-a-batch (2026-11-23): a turn waited for
+    // past `TURN_SAID` is said on stderr — once as the wait goes on, once
+    // as it ends — and a wait shorter is said nowhere
+    // (`a_kernel_another_compiles_now_is_waited_for`). A test's engine
+    // compiles on the test's isolate, so a wait for a turn stands where no
+    // Dart timeout speaks, and stderr is what such a run leaves.
+    #[test]
+    fn a_turn_waited_for_long_is_said_as_it_goes_on_and_as_it_ends() {
+        let turn = a_device_of_its_own();
+        let (kept_as, _) = seven_as_kept(&turn, "said_made");
+        let kept = kept_in("said");
+        let folder = kept.path();
+        let held = a_turn_on_seven(&folder, &kept_as);
+        let (engine, word) = seven_beside(&turn, &folder, |engine| said(engine) > 0, || {
+            std::fs::remove_file(&held).expect("the other lets go");
+        });
+        assert_eq!(said(&engine), 2, "said as it went on, and as it took the turn");
+        assert_eq!((found(&engine), word), (0, 7), "compiled here");
+    }
+
+    // 🧭an-engine-setup-hangs-in-a-batch: a turn says whose it is — the
+    // process that holds it — for whoever waits on it to say.
+    #[test]
+    fn a_turn_says_whose_it_is() {
+        let turn = a_device_of_its_own();
+        let kept = kept_in("whose");
+        let folder = kept.path();
+        let engine = keeping(&turn, &folder);
+        let slowly = seven_slowly();
+        let whose = std::thread::scope(|scope| {
+            let compiling = scope.spawn(|| pipeline(&engine, &[slowly.as_str()], "main"));
+            loop {
+                let whose = kept_files(&folder, "turn")
+                    .into_iter()
+                    .find_map(|(path, _)| std::fs::read_to_string(path).ok().filter(|it| !it.is_empty()));
+                if whose.is_some() || compiling.is_finished() {
+                    break whose;
+                }
+                std::thread::yield_now();
+            }
+        });
+        assert_eq!(whose, Some(std::process::id().to_string()));
     }
 
     // 🚨A kernel another process compiles now is waited for — what it
@@ -901,14 +962,15 @@ fn main() { out[0] = 7u; }
         let kept = kept_in("waited");
         let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
-        let (found, word) = seven_beside(&turn, &folder, || {
+        let (engine, word) = seven_beside(&turn, &folder, at_once, || {
             let beside = folder.join("beside.tmp");
             std::fs::write(&beside, &bytes).expect("kept by the other");
             std::fs::rename(&beside, folder.join(&kept_as)).expect("under its name");
             std::fs::remove_file(&held).expect("the other lets go");
         });
-        assert_eq!(found, 1, "handed what the other kept, not compiled again");
+        assert_eq!(found(&engine), 1, "handed what the other kept, not compiled again");
         assert_eq!(word, 7);
+        assert_eq!(said(&engine), 0, "a wait shorter than `TURN_SAID` is said nowhere");
     }
 
     /// `WRITES_SEVEN` after a long run of sums: a kernel DXC takes a while
@@ -985,10 +1047,10 @@ fn main() {{
         let kept = kept_in("let_go");
         let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
-        let (found, word) = seven_beside(&turn, &folder, || {
+        let (engine, word) = seven_beside(&turn, &folder, at_once, || {
             std::fs::remove_file(&held).expect("let go");
         });
-        assert_eq!((found, word), (0, 7), "compiled here");
+        assert_eq!((found(&engine), word), (0, 7), "compiled here");
         let kept = kept_files(&folder, "dxil").into_iter().map(|(path, _)| path).collect::<Vec<_>>();
         assert_eq!(kept, [folder.join(&kept_as)], "kept");
         assert_eq!(kept_files(&folder, "turn"), [], "and the turns gone with their holder");

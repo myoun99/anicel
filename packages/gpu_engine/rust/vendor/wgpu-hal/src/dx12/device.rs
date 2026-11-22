@@ -490,6 +490,14 @@ impl super::Device {
         self.compile_cache.waited(Made::Dxil)
     }
 
+    /// ANICEL — not wgpu's: how many lines this device's compiles of DXIL
+    /// have said on stderr of waiting long for another's turn — one as each
+    /// such wait goes on, one as it ends (`super::compile_cache`,
+    /// `TURN_SAID`).
+    pub fn dxil_said(&self) -> u64 {
+        self.compile_cache.said(Made::Dxil)
+    }
+
     /// ANICEL — not wgpu's: how many pipelines of this device the folder
     /// [`Self::keep_shaders_in`] names has answered, the driver making none
     /// of them again.
