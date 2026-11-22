@@ -256,9 +256,12 @@ void main() {
   /// A film crossing into its next cut takes the session's cut with it, and
   /// the whole panel is built again from above around the bar.
   ///
-  /// The second cut stands two frames after the first — the conte's pull
-  /// has slack on it and none on the first, the one thing its bar reads
-  /// off the cut stood on.
+  /// The second cut stands two frames after the first — from inside the
+  /// first the conte's pull has those two to close, and from inside the
+  /// second nothing after it: the one thing its bar reads off where the
+  /// playhead stands. ↩️Pushed from wherever the new cut was stood in — the
+  /// cut row is shoved from a FRAME now (F-626), so it is pushed from its
+  /// first one.
   Future<void> aFilmCrossingACutLeavesTheBar(
     WidgetTester tester, {
     required bool storyboard,
@@ -272,8 +275,15 @@ void main() {
       isNot(first),
       reason: 'premise: a new cut is the one stood on',
     );
+    session.selectFrameIndex(0);
+    await tester.pumpAndSettle();
     session.cutShift.pushCuts(2);
     await tester.pumpAndSettle();
+    expect(
+      session.activeCutOrNull!.leadingGapFrames,
+      2,
+      reason: 'premise: two frames of nothing stand between the cuts',
+    );
     session.selectCut(first);
     session.selectFrameIndex(16);
     await tester.pumpAndSettle();

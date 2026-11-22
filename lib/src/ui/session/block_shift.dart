@@ -329,10 +329,11 @@ class BlockShift {
     return currentRow is TrackRowAddress;
   }
 
+  /// A cut row is always in scope: its anchor is a frame, and it has one
+  /// wherever the playhead stands (F-626). ↩️It asked [CutShift] for a cut
+  /// to anchor on, and in empty space there was none.
   bool canPushBlocks({TimelineRowAddress? currentRow}) =>
-      _shiftAimsAtCuts(currentRow)
-      ? _cutShift.canPushCuts
-      : canPushFrames(currentRow: currentRow);
+      _shiftAimsAtCuts(currentRow) || canPushFrames(currentRow: currentRow);
 
   int blockPullSlack({TimelineRowAddress? currentRow}) =>
       _shiftAimsAtCuts(currentRow)

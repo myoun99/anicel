@@ -198,19 +198,25 @@ void main() {
     session.selectGlobalFrame(400);
     await tester.pumpAndSettle();
     final afterRelease = _bar(tester);
-    // ⚠️Two buttons legitimately wait for the release. The shift pair is
-    // anchored on the ACTIVE CUT, and a scrub is a preview that has not
-    // taken a cut yet. Its answer is about what a press would do RIGHT
-    // NOW, so it must not move until the seek commits — measured, not
-    // assumed (`canPushCuts` reads `_cutShiftScope`, which asks for the
-    // active cut and never for the parked frame).
-    // F-455 added the second, for the same reason: the storyboard's 복제
-    // copies the active cut (F-455-Q1), so it asks for that cut too.
+    // ⚠️One button legitimately waits for the release: the storyboard's 복제
+    // copies the ACTIVE CUT (F-455-Q1), and a scrub in empty space is a
+    // preview that has not let go of the cut yet. Its answer is about what
+    // a press would do RIGHT NOW, so it must not move until the seek
+    // commits — measured, not assumed.
+    // ↩️The shift pair waited with it: it was anchored on the active cut
+    // too, and went dark at the release — in empty space there was no cut
+    // to anchor on. It is anchored on the playhead's FRAME now (F-626,
+    // `CutShift`), so it reads the drag's, as the rest of the bar does.
     final movedOnRelease = [
       for (final key in afterRelease.keys)
         if (afterRelease[key] != duringDrag[key]) key,
     ];
-    expect(movedOnRelease, ['push-blocks-button', 'shared-duplicate-button']);
+    expect(movedOnRelease, ['shared-duplicate-button']);
+    expect(
+      afterRelease['push-blocks-button'],
+      isTrue,
+      reason: 'F-626: the cut row is pushed from empty space too',
+    );
   });
 
   /// The fold, measured against itself: same panel, same drag, folded and
