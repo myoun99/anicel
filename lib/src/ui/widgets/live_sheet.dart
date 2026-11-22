@@ -35,7 +35,9 @@ import 'still_raster.dart' show TickSceneLayer;
 /// opaque may lie between the sheet and a face that lays a look under —
 /// the tool strips' ground is their dock's, painted around the region —
 /// and what something is painted over in place stands aside
-/// ([LiveSheet.inPlace]).
+/// ([LiveSheet.inPlace]). ⏳The canvas capsules and the dock panels paint
+/// their ground in their own region, and stand on none yet (card
+/// a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-again).
 ///
 /// ⚠️WHAT A LOOK KEEPS OF ITS BOX: where it stands, how large, and the
 /// clips it is painted in. Not what is laid over the box's picture as a
@@ -162,6 +164,10 @@ final class LiveLooks extends ChangeNotifier {
 
   /// The sheet's host, while it is in the tree.
   _RenderHost? _host;
+
+  /// How many looks are laid — for tests.
+  @visibleForTesting
+  int get debugLaid => _laid.length;
 
   /// Whether [box] stands in what the sheet lies under and over in the
   /// render tree too. A thing built there and drawn elsewhere — an

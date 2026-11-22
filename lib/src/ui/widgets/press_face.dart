@@ -142,10 +142,15 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   /// Lays on the sheet what the state layer is now — nothing while it
   /// shows nothing — and says whether the sheet draws it: where not, the
   /// face paints it itself ([paintStateLayer]).
+  ///
+  /// 🚨A layer with no ink is no look: a face at rest lays nothing, and a
+  /// sheet with nothing laid asks nothing of any frame ([LiveSheet]) — the
+  /// frames of a stroke among them.
   bool _layStateLayer() {
     final layer = stateLayer;
     final drawn = _sheetDraws(layer);
-    _laidStateLayer.lay(drawn && layer!.color != null ? layer : null);
+    final ink = layer?.color;
+    _laidStateLayer.lay(drawn && ink != null && ink.a > 0 ? layer : null);
     return drawn;
   }
 
@@ -161,10 +166,8 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   @override
   void wearPlace(BuildContext context) {
     super.wearPlace(context);
+    // A face new to its place is at rest ([detach]): nothing to lay.
     _laidStateLayer.wear(LiveSheet.underOf(context));
-    if (attached) {
-      _layStateLayer();
-    }
   }
 
   /// The face now wears [value] in place of [old]: unchanged, nothing is
@@ -299,7 +302,6 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _laidStateLayer.attached();
-    _layStateLayer();
   }
 
   @override

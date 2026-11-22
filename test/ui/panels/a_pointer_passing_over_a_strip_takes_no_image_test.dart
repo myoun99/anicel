@@ -134,6 +134,35 @@ void main() {
     expect(taken[_right], lessThanOrEqualTo(2));
   });
 
+  testWidgets('🎯a strip no pointer is on has no look laid — its sheets '
+      'ask nothing of a frame', (tester) async {
+    final mouse = await pumpPage(tester);
+    final onStrips = [
+      for (final face
+          in find.byType(RailGlyphButton, skipOffstage: true).evaluate())
+        if (LiveSheet.underOf(face) != null) face,
+    ];
+    expect(onStrips.length, greaterThan(12), reason: 'the strips hold tools');
+    int laidAround(Element face) =>
+        LiveSheet.underOf(face)!.debugLaid + LiveSheet.overOf(face)!.debugLaid;
+    for (final face in onStrips) {
+      expect(laidAround(face), 0, reason: 'at rest');
+    }
+
+    // The count sees a look: one under the face a pointer is on.
+    final tool = onStrips.first;
+    final box = tool.renderObject! as RenderBox;
+    await mouse.moveTo(box.localToGlobal(box.size.center(Offset.zero)));
+    await frames(tester, 2);
+    expect(LiveSheet.underOf(tool)!.debugLaid, 1);
+
+    await mouse.moveTo(_away);
+    await frames(tester, 2);
+    for (final face in onStrips) {
+      expect(laidAround(face), 0, reason: 'the pointer left');
+    }
+  });
+
   testWidgets('every button on a strip lights where it stands', (tester) async {
     final mouse = await pumpPage(tester);
 

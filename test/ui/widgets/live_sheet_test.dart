@@ -33,6 +33,7 @@ const double _height = 220;
 class _Lamp extends LeafRenderObjectWidget {
   const _Lamp(
     this.color, {
+    super.key,
     this.over = false,
     this.size = const Size(40, 30),
   });
@@ -414,6 +415,63 @@ void main() {
     });
   });
 
+  group('a box kept through a move in the tree', () {
+    testWidgets('lays its look on the sheet it comes to stand in, and '
+        'paints it itself where it leaves one', (tester) async {
+      final kept = GlobalKey();
+      Widget surface({required bool onSheet}) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            height: 100,
+            child: LiveSheet(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: onSheet ? _Lamp(_red, key: kept) : null,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 100,
+            height: 100,
+            child: LiveSheet.inPlace(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: onSheet ? null : _Lamp(_red, key: kept),
+              ),
+            ),
+          ),
+        ],
+      );
+      await pump(tester, surface(onSheet: false));
+      final lamp = lampOf(tester);
+      expect(lamp.laid.onSheet, isFalse);
+      expect(
+        at(tester, await captureBytes(tester), const Offset(115, 15)),
+        _red,
+      );
+
+      await pump(tester, surface(onSheet: true));
+      expect(lampOf(tester), same(lamp), reason: 'the box is kept');
+      expect(lamp.laid.onSheet, isTrue);
+      expect(lamp.drawnBySheet, greaterThan(0));
+      var bytes = await captureBytes(tester);
+      expect(at(tester, bytes, const Offset(15, 15)), _red);
+      expect(at(tester, bytes, const Offset(115, 15)), isNot(_red));
+
+      await pump(tester, surface(onSheet: false));
+      expect(lampOf(tester), same(lamp));
+      expect(lamp.laid.onSheet, isFalse);
+      final drawn = lamp.drawnBySheet;
+      await tester.pump();
+      expect(lamp.drawnBySheet, drawn, reason: 'the sheet it left draws none');
+      bytes = await captureBytes(tester);
+      expect(at(tester, bytes, const Offset(115, 15)), _red);
+      expect(at(tester, bytes, const Offset(15, 15)), isNot(_red));
+    });
+  });
+
   group('a look is painted in place', () {
     testWidgets('where its box stands aside, over a ground painted in the '
         'sheet — which covers a look laid under', (tester) async {
@@ -562,6 +620,56 @@ void main() {
       expectSame(tester, onSheet.pressed, inPlace.pressed, reason: 'pressed');
     });
 
+    testWidgets('lights as it is told to while the pointer is on it — '
+        'selected under the pointer', (tester) async {
+      final mouse = await mouseOf(tester);
+      Widget surface(
+        Widget Function(Widget child) sheet, {
+        required bool selected,
+      }) => sheet(
+        Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: AppIconButton(
+              keyValue: 'lit',
+              tooltip: 'Lit',
+              icon: const Icon(Icons.draw),
+              isSelected: selected,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      Future<({ByteData before, ByteData after})> toldUnderThePointer(
+        Widget Function(Widget child) sheet,
+      ) async {
+        await mouse.moveTo(const Offset(400, 280));
+        await pump(tester, surface(sheet, selected: false));
+        await mouse.moveTo(tester.getCenter(find.byType(AppIconButton)));
+        await tester.pump();
+        await tester.pump();
+        final before = await captureBytes(tester);
+        await pump(tester, surface(sheet, selected: true));
+        await tester.pump();
+        return (before: before, after: await captureBytes(tester));
+      }
+
+      final inPlace = await toldUnderThePointer(
+        (child) => LiveSheet.inPlace(child: child),
+      );
+      final onSheet = await toldUnderThePointer(
+        (child) => LiveSheet(child: child),
+      );
+      expect(
+        apart(tester, inPlace.before, inPlace.after).over,
+        greaterThan(0),
+        reason: 'selected is seen',
+      );
+      expectSame(tester, onSheet.before, inPlace.before, reason: 'before');
+      expectSame(tester, onSheet.after, inPlace.after, reason: 'selected');
+    });
+
     testWidgets('an outlined face paints its own inside, over the ground '
         'it stands on', (tester) async {
       final mouse = await mouseOf(tester);
@@ -646,9 +754,8 @@ void main() {
         ),
       );
 
-      Future<({ByteData away, ByteData near, ByteData under})> looksOf(
-        Widget surface,
-      ) async {
+      Future<({ByteData away, ByteData near, ByteData under, ByteData born})>
+      looksOf(Widget surface) async {
         nearby.value = false;
         await mouse.moveTo(const Offset(400, 280));
         await pump(tester, surface);
@@ -663,7 +770,13 @@ void main() {
         await tester.pump();
         await tester.pump();
         final under = await captureBytes(tester);
-        return (away: away, near: near, under: under);
+        // Near a hand as it comes into the tree.
+        await mouse.moveTo(const Offset(400, 280));
+        await pump(tester, const SizedBox());
+        await pump(tester, surface);
+        await tester.pump();
+        final born = await captureBytes(tester);
+        return (away: away, near: near, under: under, born: born);
       }
 
       final inPlace = await looksOf(
@@ -689,6 +802,12 @@ void main() {
       expectSame(tester, onSheet.away, inPlace.away, reason: 'no hand near');
       expectSame(tester, onSheet.near, inPlace.near, reason: 'a hand near');
       expectSame(tester, onSheet.under, inPlace.under, reason: 'under a hand');
+      expect(
+        at(tester, inPlace.born, const Offset(40, 21)),
+        isNot(_blue),
+        reason: 'a band near a hand as it comes into the tree shows',
+      );
+      expectSame(tester, onSheet.born, inPlace.born, reason: 'born near');
     });
   });
 }
