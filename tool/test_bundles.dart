@@ -211,10 +211,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'the_linked_paste_asks_before_it_joins (3 of 21 tests red); green '
       'alone.',
-  'test/ui/timeline/a_label_plate_is_one_box_test.dart':
-      'census 11-21 reversed: red 9/9 in a bundle, after '
-      'a_traded_picture_shows_on_the_canvas — a test never ended; green '
-      'alone.',
   'test/ui/timeline/a_row_paints_its_substrate_and_its_glyphs_test.dart':
       'census 11-20 forward: red 5/9 in a bundle, after no_import_cycles (1 '
       'red) — with the engine on and the store COLD, a span waiting for its '
