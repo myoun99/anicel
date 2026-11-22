@@ -38,6 +38,7 @@ const SUBSAMPLE: u32 = 15;
 const WALK: u32 = 16;
 const DIV_FLOOR: u32 = 17;
 const ISQRT: u32 = 18;
+const BY_U32: u32 = 19;
 
 /// The device and the compiled cases every test here runs on, and the warp
 /// that runs R1 over a picture.
@@ -196,6 +197,9 @@ fn sums_and_products_are_the_machines() {
         low((u64::from(a as u32) * u64::from(b as u32)) as i64)
     });
     check(&pairs(MUL, |_| 0), |a, b, _| low(a.wrapping_mul(b)));
+    check(&pairs(BY_U32, |_| 0), |a, b, _| {
+        low((a as u64).wrapping_mul(u64::from(b as u32)) as i64)
+    });
     check(&pairs(MUL128, |_| 0), |a, b, _| i128::from(a) * i128::from(b));
     // The one carry no random pair reached (11-05 mutant): 2·0x55555555 +
     // 0x55555555 fills the third column, and the second carries into it.
@@ -844,6 +848,32 @@ fn a_tent_weight_on_a_half_rounds_up() {
     across.put(1, 0, blue);
     let map = one_map(affine(1.0, 0.0, nudge, 0.0, 1.0, 0.0), ResampleMode::Blend, (1, 1));
     assert_eq!(window(&map, &across, (1, 1), (0, 0)), [0xff01_00fe]);
+}
+
+#[test]
+fn a_tent_at_its_ceiling_lays_what_the_taps_alike_weighed() {
+    // Sixteen times smaller, the radius at its ceiling: u = v = 23.5, so
+    // sources 8..=39 weigh 256k + 128 an axis (k = 0..=15 out from the
+    // centre, twice) — 65536 an axis, 2^32 in all, the most a tent holds.
+    // One opaque word over another, halved at row 24: the taps read the
+    // upper alone for sixteen rows of them, 2^31 of the weight, before the
+    // first that reads the lower — where what they weighed is laid down as
+    // the upper's, sums past a word (its alpha's 255·2^31, a channel's that
+    // by its byte). A half each, every channel is the two's mean:
+    //   red c0 and 40 → 80, green 40 and 80 → 60, blue 20 and 60 → 40.
+    // Across, the one reads alone for sixteen taps of the first row only.
+    let (upper, lower) = (0xff20_40c0u32, 0xff60_8040u32);
+    let map = one_map(affine(16.0, 0.0, 16.0, 0.0, 16.0, 16.0), ResampleMode::Blend, (1, 1));
+    let mut down = Picture::filled(48, 48, upper);
+    let mut across = Picture::filled(48, 48, upper);
+    for at in 0..48 {
+        for far in 24..48 {
+            down.put(at, far, lower);
+            across.put(far, at, lower);
+        }
+    }
+    assert_eq!(window(&map, &down, (1, 1), (0, 0)), [0xff40_6080]);
+    assert_eq!(window(&map, &across, (1, 1), (0, 0)), [0xff40_6080]);
 }
 
 /// Opaque word `n` of a run no two of which match.

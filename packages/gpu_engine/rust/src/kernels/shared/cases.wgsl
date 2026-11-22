@@ -32,6 +32,7 @@ const RUN_SUBSAMPLE: u32 = 15u;
 const RUN_WALK: u32 = 16u;
 const RUN_DIV_FLOOR: u32 = 17u;
 const RUN_ISQRT: u32 = 18u;
+const RUN_BY_U32: u32 = 19u;
 
 fn low(a: Wide) -> Wide128 {
   return Wide128(a, 0u, 0u);
@@ -68,6 +69,9 @@ fn run_wide(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     case RUN_MUL: {
       out = low(wide_mul(a, b));
+    }
+    case RUN_BY_U32: {
+      out = low(wide_by_u32(a, b.x));
     }
     case RUN_MUL128: {
       out = wide_mul128(a, b);
