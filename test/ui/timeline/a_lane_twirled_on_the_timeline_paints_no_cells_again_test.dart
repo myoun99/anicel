@@ -137,4 +137,25 @@ void main() {
     expect(_cellsWaiting(tester), ['$_cells${row.id.value}']);
     await tester.pumpAndSettle();
   });
+
+  testWidgets('🚨a row twirled and THEN changed is painted again — what was '
+      'laid down before the twirl is asked about the row as it is now, not '
+      'answered as the twirl was', (tester) async {
+    final session = await _timeline(tester);
+    final row = session.activeLayer!;
+    session.selectFrameIndex(0);
+    await tester.pumpAndSettle();
+    await tester.tap(find.named('$_toggle${row.id.value}'));
+    await tester.pumpAndSettle();
+    expect(
+      session.activeLayer!.lanesExpanded,
+      isNot(row.lanesExpanded),
+      reason: '⛔premise: the twirl turned',
+    );
+
+    session.blockShift.pushFrames(1);
+    await tester.pump(null, EnginePhase.layout);
+    expect(_cellsWaiting(tester), ['$_cells${row.id.value}']);
+    await tester.pumpAndSettle();
+  });
 }
