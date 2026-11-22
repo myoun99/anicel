@@ -734,6 +734,26 @@ class EditorTopStrip extends StatelessWidget {
             MeasurementMode.frameStats.value = !MeasurementMode.frameStats.value;
           },
         ),
+        // The engine's work place by place, under the statistics' lines
+        // (`EngineStages`). ⏳Asked for, it brings the statistics up: its
+        // lines are lines of that readout and show nowhere else, and a
+        // photograph of a tablet out of reach with one switch forgotten
+        // is a build's round lost (브러시/렌더링 2026-11-22, the user away
+        // — theirs to overturn). Turned off, it leaves them up.
+        _item(
+          id: 'edit-engine-stages',
+          label: editorActionLabel(EditorActionIds.engineStages),
+          shortcuts: const [EditorActionIds.engineStages],
+          icon: Icons.stacked_bar_chart_outlined,
+          checked: MeasurementMode.engineStages.value,
+          onPressed: () {
+            MeasurementMode.engineStages.value =
+                !MeasurementMode.engineStages.value;
+            if (MeasurementMode.engineStages.value) {
+              MeasurementMode.frameStats.value = true;
+            }
+          },
+        ),
         // Krita ships `KisRepaintDebugger` in production and Blender tints
         // every drawn region under `debug_value == 888`, both for the same
         // reason this program keeps rediscovering: a panel paying full price

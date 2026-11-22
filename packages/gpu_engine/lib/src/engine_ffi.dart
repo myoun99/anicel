@@ -277,6 +277,18 @@ external int engineUnfinished(
   int capacity,
 );
 
+@Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_timed')
+external void engineTimed(Pointer<Engine> engine, bool timed);
+
+@Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_took',
+)
+external int engineTook(
+  Pointer<Engine> engine,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
+
 @Native<
   Void Function(
     Pointer<Engine>,

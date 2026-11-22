@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use crate::kernels::shared::{Counted, built_here, put_built_here};
 use crate::submits::Submits;
+use crate::took::Took;
 use crate::{copy_out, fail, last_error, platform, put_last_error, take_last_error};
 
 /// How long a wait for the GPU is waited out before it is answered that the
@@ -399,6 +400,11 @@ pub(crate) struct Queue {
     /// Every submit through here, and whether the GPU said it finished it
     /// ([`Submits`]).
     pub(crate) submits: Arc<Submits>,
+    /// What a submit is waited out by while the engine is timed
+    /// ([`Took`]): the engine's thread for polls, and the device it
+    /// polls.
+    polls: EngineThread,
+    device: wgpu::Device,
 }
 
 impl Queue {
@@ -406,20 +412,36 @@ impl Queue {
     /// caller writes next goes after them, as on one thread. A thread that
     /// is gone is the next wait's error. Noted, where its caller made it,
     /// until the GPU says it finished it ([`Submits`]).
+    ///
+    /// While the engine is timed it returns once the GPU has finished
+    /// them, too: waited out on the engine's thread, so that what the GPU
+    /// took of this submit is told of the place it was made and of no
+    /// other ([`Took`] has what that makes of a frame).
     #[track_caller]
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
-        let (submits, number) = (self.submits.clone(), self.submits.note(Location::caller()));
+        let by = Location::caller();
+        let (submits, made) = (self.submits.clone(), self.submits.note(by));
+        let took = &self.thread.took;
+        let timed = took.timed().then(|| (took.clone(), self.polls.clone(), self.device.clone()));
         #[cfg(test)]
-        let by = self.thread.number;
+        let thread = self.thread.number;
         let _ = self.thread.run(move || {
-            // The tests' shared device waits here while a test's own is up
-            // (`testing::a_device_of_its_own`) — on the engine's thread,
-            // where no caller waits for it with that turn in hand.
-            #[cfg(test)]
-            let _turn = crate::testing::submitting(by);
-            queue.submit(buffers);
-            queue.on_submitted_work_done(move || submits.done(number));
+            {
+                // The tests' shared device waits here while a test's own is
+                // up (`testing::a_device_of_its_own`) — on the engine's
+                // thread, where no caller waits for it with that turn in
+                // hand.
+                #[cfg(test)]
+                let _turn = crate::testing::submitting(thread);
+                queue.submit(buffers);
+                queue.on_submitted_work_done(move || submits.done(made.number));
+            }
+            if let Some((took, polls, device)) = timed {
+                let since = Instant::now();
+                Poll::asked_of(&polls, &device).through();
+                took.waited(by, since.elapsed(), made.groups);
+            }
         });
     }
 
@@ -556,6 +578,8 @@ impl Engine {
                         queue,
                         thread: thread.clone(),
                         submits: Arc::default(),
+                        polls: polls.clone(),
+                        device: device.clone(),
                     },
                     thread,
                     polls,
@@ -648,9 +672,7 @@ impl Engine {
     /// test's own comes up (`testing::a_device_of_its_own`).
     #[cfg(test)]
     pub(crate) fn through_with_all_submitted(&self) {
-        if let Ok(answer) = self.poll().answer {
-            let _ = answer.recv_timeout(WAIT_LIMIT);
-        }
+        self.poll().through();
     }
 
     /// What `work` answers, run on the engine's thread while the caller
@@ -667,6 +689,7 @@ impl Engine {
     /// thrown out (관제 2026-11-14 01:21): the stage where a verb hands its
     /// body here and waits for none of it, each family's bodies written
     /// again as it goes — through [`Self::posted`].
+    #[track_caller]
     pub(crate) fn on_thread<T>(&self, work: impl FnOnce() -> T) -> T {
         self.thread.run_lent(work)
     }
@@ -730,6 +753,7 @@ impl Engine {
     /// screen's frame is put up by the done its screen asks
     /// (`ScreenTexture.present`), in the turn it is shown — 🗣️관제
     /// 2026-11-15 05:20 asked that turn pinned.
+    #[track_caller]
     pub(crate) fn posted(&self, body: impl FnOnce() -> Option<()> + Send + 'static) {
         let (caller, refused) = (std::thread::current().id(), self.posted_refused.clone());
         let counted = POSTED_HERE.with(Arc::clone);
@@ -1167,6 +1191,15 @@ impl Poll {
         Self { asked: Instant::now(), answer }
     }
 
+    /// Waits for it — till [`WAIT_LIMIT`], and no longer — and for nothing
+    /// else of a wait's: no failure named, and no refusal told, which the
+    /// next wait is to fail by. A timed submit's ([`Queue::submit`]).
+    fn through(self) {
+        if let Ok(answer) = self.answer {
+            let _ = answer.recv_timeout(WAIT_LIMIT);
+        }
+    }
+
     /// Waits for it till `limit` from when it was asked, and fails by name
     /// past that — the poll in the driver still, and whoever asks next
     /// behind it —, by wgpu's word where it ended on one, and by what the
@@ -1542,6 +1575,11 @@ pub(crate) struct EngineThread {
     asked: Arc<Mutex<mpsc::Receiver<Job>>>,
     /// Which of its threads take them ([`Turns`]).
     turns: Arc<(Mutex<Turns>, Condvar)>,
+    /// How long the bodies handed here took, each by where it was handed
+    /// over ([`Self::run_lent`], [`Self::posts`]), and the submits they
+    /// made — while it is timed, and it is the thread the bodies run on
+    /// that is ([`Took`], `gpu_engine_timed`).
+    took: Arc<Took>,
 }
 
 /// The turns at an [`EngineThread`]'s jobs — as many as the threads it was
@@ -1716,6 +1754,7 @@ impl EngineThread {
             ended: Arc::default(),
             asked: Arc::new(Mutex::new(asked)),
             turns: Arc::default(),
+            took: Arc::default(),
         };
         for _ in 0..count {
             if let Err(error) = started.works(Turn::Held) {
@@ -1874,15 +1913,19 @@ impl EngineThread {
     /// Run even where the driver's own work has ended the thread
     /// ([`Self::ended`]), as a body is: it is run nowhere else. A panic of
     /// it ends the thread as the driver's own work does — no caller is
-    /// left to take the panic ([`Self::lets_go`]).
+    /// left to take the panic ([`Self::lets_go`]). Timed as a body is,
+    /// by where it was handed over ([`Took`]).
+    #[track_caller]
     fn posts(&self, work: impl FnOnce() + Send + 'static) {
         if self.is_here() {
             return work();
         }
-        let ended = Arc::clone(&self.ended);
+        let (ended, took, by) = (Arc::clone(&self.ended), Arc::clone(&self.took), Location::caller());
         let job = move || {
             POSTED.set(true);
+            let begun = took.begun();
             let panicked = catch_unwind(AssertUnwindSafe(work)).is_err();
+            took.ended(begun, by);
             POSTED.set(false);
             if panicked {
                 ended.store(true, Ordering::Release);
@@ -1904,11 +1947,14 @@ impl EngineThread {
     /// the caller's thread keeps for itself, which goes over with it and
     /// comes back ([`Callers`]) — and a panic of `work`'s the caller's, as
     /// it was on the caller's thread. On this thread already, it runs where
-    /// it is.
+    /// it is — a part of the body it is in, and timed as that ([`Took`]):
+    /// a body is timed by where it was handed over from another thread.
+    #[track_caller]
     fn run_lent<T>(&self, work: impl FnOnce() -> T) -> T {
         if self.is_here() {
             return work();
         }
+        let by = Location::caller();
         let callers = Callers::taken();
         let mut worked = None;
         let (through, waited) = mpsc::channel::<()>();
@@ -1919,7 +1965,9 @@ impl EngineThread {
                 // go on.
                 let _through = through;
                 callers.put();
+                let begun = self.took.begun();
                 let answer = catch_unwind(AssertUnwindSafe(work));
+                self.took.ended(begun, by);
                 *worked = Some((answer, Callers::taken()));
                 // Before `_through` goes ([`Turns::back`] has why).
                 Turns::back(&self.turns);
@@ -2056,6 +2104,7 @@ unsafe fn taken<T>(handed: *mut T) -> Option<(EngineThread, Box<Handed<T>>)> {
 ///
 /// # Safety
 /// `handed` came from [`Engine::hands`], and is let go of once.
+#[track_caller]
 pub(crate) unsafe fn let_go<T>(handed: *mut T) {
     // SAFETY: see the function's contract.
     if let Some((thread, whole)) = unsafe { taken(handed) } {
@@ -2080,6 +2129,7 @@ pub(crate) unsafe fn let_go<T>(handed: *mut T) {
 ///
 /// # Safety
 /// `handed` came from [`Engine::hands`], and is live.
+#[track_caller]
 pub(crate) unsafe fn on_thread_of<T, Made>(handed: *const T, work: impl FnOnce() -> Made) -> Made {
     // SAFETY: by the contract, the first field of a live `Handed<T>`.
     let thread = unsafe { &(*handed.cast::<Handed<T>>()).thread };
@@ -2114,6 +2164,7 @@ pub(crate) unsafe fn on_thread_of<T, Made>(handed: *const T, work: impl FnOnce()
 ///
 /// # Safety
 /// `handed` came from [`Engine::hands`], and is live.
+#[track_caller]
 pub(crate) unsafe fn posted_of<T>(handed: *const T, work: impl FnOnce() + Send + 'static) {
     // SAFETY: by the contract, the first field of a live `Handed<T>`.
     let thread = unsafe { &(*handed.cast::<Handed<T>>()).thread };
@@ -2381,6 +2432,39 @@ pub unsafe extern "C" fn gpu_engine_unfinished(
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     copy_out(&engine.queue.submits.told(), buffer, capacity)
+}
+
+/// Times `engine` from here on, or no longer ([`Took::times`]): while it
+/// is, each body handed to its thread and each submit is timed by where
+/// it was made, and a submit is waited out there — so a timed engine is
+/// slower by what it no longer does beside the GPU's work. Asks nothing
+/// of the engine's thread or the device.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_timed(engine: *const Engine, timed: bool) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.thread.took.times(timed);
+}
+
+/// Copies what each place of `engine` took since this was last asked
+/// ([`Took::told`]) into `buffer` (UTF-8) and returns its full length —
+/// nothing while it is not timed (`gpu_engine_timed`). Asks nothing of
+/// the engine's thread or the device.
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_took(
+    engine: *const Engine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    copy_out(&engine.thread.took.told(), buffer, capacity)
 }
 
 /// [`Engine::done_then`] across the boundary: a thread of the engine's

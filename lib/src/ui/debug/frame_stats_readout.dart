@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'engine_stages.dart';
 import 'frame_stats.dart';
 import 'measurement_mode.dart';
 
@@ -168,6 +169,11 @@ class FrameStatsReadout extends StatelessWidget {
                     '${stats.bakesPerSecond.toStringAsFixed(1)}/s'
                     '${stats.blockedSurfaces == 0 ? '' : '\nblocked ${stats.blockedSurfaces} surfaces  '
                               '${(stats.blockedArea / 1000).toStringAsFixed(0)}k px²'}',
+                // The engine's work place by place, while it is timed
+                // ([EngineStages]) — read as this window is published,
+                // of the frames it keeps itself.
+                if (MeasurementMode.engineStages.value)
+                  ...EngineStages.lines(EngineStages.summary),
               ];
         return DecoratedBox(
           decoration: const BoxDecoration(color: Color(0xE6101112)),
