@@ -690,10 +690,23 @@ void main() {
     await _moveUntilStill(tester, at);
     final region = _region(tester);
     const shortest = StillRaster.maxStillFrames;
+    const short = 12;
     // Taken back and moved at once, over and over: it stays twice as long
     // each time — and the last time no longer than the time before.
     for (final stay in const [1, 2, 4, 8, 16, 16]) {
-      await _frames(tester, shortest * stay + 2);
+      final taken = region.debugCaptureCount;
+      // Short of that stay a gap takes nothing.
+      await _frames(tester, shortest * stay - short);
+      await tester.binding.delayed(_longGap);
+      await _frame(tester);
+      expect(
+        region.debugCaptureCount,
+        taken,
+        reason: 'live yet short of $stay times the shortest stay',
+      );
+      expect(region.debugLiveTicks, hasLength(1));
+      // Past it the next gap takes it back.
+      await _frames(tester, short + 2);
       await tester.binding.delayed(_longGap);
       await _frame(tester);
       expect(
