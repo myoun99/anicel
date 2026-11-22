@@ -128,7 +128,8 @@ void main() {
     (236, 296, green),
   ];
 
-  /// A grid of [row], 60 × 10 at (10, 20) — of none where it is null —,
+  /// A grid of [row], 60 × 10 at (10, 20) — [long] across where that is
+  /// named, of none where it is null —,
   /// [content] across inside a scroll driven by [scroll]: a viewport
   /// [viewport] across, 20 in from the view's left edge, so what is shown
   /// stands where the viewport's clip puts it, not the view's. The row is
@@ -145,6 +146,7 @@ void main() {
     double content = 400,
     double left = 20,
     double top = 20,
+    double long = 60,
     Axis axis = Axis.horizontal,
   }) {
     final slotted = TimelineGridScreenSlot(
@@ -176,7 +178,7 @@ void main() {
                         Positioned(
                           left: 10,
                           top: top,
-                          width: 60,
+                          width: long,
                           height: 10,
                           child: padded
                               ? Padding(
@@ -1033,16 +1035,30 @@ void main() {
     surfaces.add(bigger);
     surface = bigger;
     opening.complete(ScreenTexture.debugOnSurface(bigger));
-    await tester.pump();
+    // It has come before the frame: a pump draws one at once.
+    await tester.idle();
     await tester.pump();
 
-    expect(row.laidLast, isTrue);
+    expect(row.laidLast, isTrue, reason: 'in the frame after it came');
+    await tester.pump();
     expect(
       bigger.fingerprint(),
       fingerprintBytes(
         screenOf([(652, 712, red), (712, 772, green)], width: 1024),
       ),
     );
+  });
+
+  // The app's rows: a band as long as its cut, of which the view shows a
+  // window.
+  testWidgets('a row that goes on past what the view shows lays on a screen '
+      'that has what the view shows of it', (tester) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row, long: 380));
+    await tester.pump();
+
+    expect(row.laidLast, isTrue);
   });
 
   // Card the-first-lanes-opened-retake-the-rows-already-there (11-22): the
@@ -1222,6 +1238,31 @@ void main() {
       held.fingerprint(),
       fingerprintBytes(screenOf([(246, 306, red), (306, 366, green)])),
     );
+  });
+
+  testWidgets('a row that drew its cells itself and went is asked no more', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final (first, second) = (_Row(() => tile), _Row(() => tile));
+    await tester.pumpWidget(rowsIn(100, [(10, first)]));
+    await tester.pump();
+    debugOpenEngineScreen = (_, _, _) => Completer<ScreenTexture>().future;
+    await tester.pumpWidget(rowsIn(300, [(10, first), (220, second)]));
+    await tester.pump();
+    expect(second.laidLast, isFalse, reason: '⛔premise: past the one held');
+    final painted = first.paints;
+
+    // The grid as it was, the row gone: what is shown is held again.
+    await tester.pumpWidget(rowsIn(100, [(10, first)]));
+    await tester.pump();
+    await tester.pump();
+
+    expect(first.paints, painted);
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 
   testWidgets('a frame that moves nothing lays nothing while a bigger '
