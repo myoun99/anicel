@@ -57,6 +57,19 @@ List<GpuWaveView> engineWaveViewsOf(
   required EngineWaveAxis on,
   required Color ink,
 }) {
+  // 🚨A SOUND WITH NO BUCKET HAS NO BAND — no view, so no place hands its
+  // peaks to the engine, which takes none of no lane or of an empty one
+  // (`WavePeaks::new`: 「a sound with no lane has no waveform」) and
+  // refuses in the paint that asked. A take being recorded is such a
+  // sound till its first chunk says how many channels it has and fills
+  // a bucket (`EditorVoiceRecording`, its live peaks). 🔬2026-11-23: its
+  // row's tile threw in the first paints of every recording — seen where
+  // `voice_record_preview_test` ran in a bundle behind a file that had
+  // opened the engine; it opened none itself, and the Flutter pass draws
+  // nothing of such a sound (`WaveformPainter`).
+  if (sound.peaks.peaks.isEmpty) {
+    return const [];
+  }
   final along = on.along;
   final dpr = on.devicePixelRatio;
   final soundEnd = sound.startFrame + sound.audibleFrames;

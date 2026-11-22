@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart'
     show AudioPeaks;
@@ -27,6 +28,14 @@ TrackSeDisplay trackSeDisplayOf(EditorSessionManager session) =>
     session.trackSe;
 
 void main() {
+  // The rows these tests watch are drawn on the GPU engine, which the app
+  // always has: a row's tile bakes its sounds' waves there. ↩️This file
+  // opened none, so 「the REAL row pipeline」 below was the Flutter pass
+  // — and the tile's threw in a take's first paints, unseen (2026-11-23,
+  // `engineWaveViewsOf`; red in a bundle behind a file that had opened
+  // the engine).
+  setUpAll(openAppGpuEngine);
+
   EditorSessionManager session() => EditorSessionManager(
     initialProject: createDefaultProject(),
     audioConformStore: AudioConformStore(
