@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OffsetLayer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
@@ -190,6 +194,28 @@ void main() {
       await frame(tester);
     }
     fail('rows still drawn live after 600 frames');
+  }
+
+  /// The pixels the last frame painted inside [region], RGBA, row by row.
+  Future<Uint8List> pixelsOf(WidgetTester tester, RenderBox region) async {
+    final view = tester.binding.renderViews.first;
+    final scale = view.configuration.devicePixelRatio;
+    final rect = region.localToGlobal(Offset.zero) & region.size;
+    final layer = view.debugLayer! as OffsetLayer;
+    final pixels = await tester.runAsync(() async {
+      final shot = await layer.toImage(
+        Rect.fromLTRB(
+          (rect.left * scale).roundToDouble(),
+          (rect.top * scale).roundToDouble(),
+          (rect.right * scale).roundToDouble(),
+          (rect.bottom * scale).roundToDouble(),
+        ),
+      );
+      final bytes = await shot.toByteData();
+      shot.dispose();
+      return bytes!.buffer.asUint8List();
+    });
+    return pixels!;
   }
 
   /// The rows each family of lane labels is carried by on the conte: the
@@ -387,10 +413,15 @@ void main() {
       'standing as they were — the rows below move with their images', (
     tester,
   ) async {
-    await pumpConte(tester);
+    final session = await pumpConte(tester);
     final before = await untilEveryRowIsAnImage(tester);
     final taken = [for (final row in before) row.region.debugCaptureCount];
     expectEveryLaneFamily(before);
+    const s1Strip = 'storyboard-se-paper-t0-S1-150';
+    RenderStillRaster stripAmong(
+      List<({String name, RenderStillRaster region})> rows,
+    ) => rows.singleWhere((row) => row.name == s1Strip).region;
+    final shownBefore = await pixelsOf(tester, stripAmong(before));
 
     await tester.tap(find.named('storyboard-lane-toggle-t0-S1'));
     await tester.pump();
@@ -401,13 +432,15 @@ void main() {
         if (region.attached && region.debugCaptureCount != taken[index])
           name,
     ];
+    // ↩️Its own strip (`storyboard-se-paper-t0-S1-150`) drew again with
+    // it, until the strip told its numbers apart by what they read of
+    // the layer (🔬card a-twirl-repaints-the-film-views-cut-band, 11-22):
+    // a twirl moves none of them.
     expect(
       drawnAgain,
-      unorderedEquals([
-        'storyboard-se-label-t0-1',
-        'storyboard-se-paper-t0-S1-150',
-      ]),
-      reason: 'S1 folded, and no other row shows it',
+      unorderedEquals(['storyboard-se-label-t0-1']),
+      reason: 'S1 folded: its label shows it, and no strip does — its '
+          'own least',
     );
     expect(
       [
@@ -420,6 +453,47 @@ void main() {
         'storyboard-lane-stand-cell-t0-S1-name-tag-group',
       ]),
       reason: '⛔premise: S1 folded its own lanes away, and only those',
+    );
+
+    // 🗣️관제 2026-11-22: 「새 핀은 「다시 안 그린다」만이 아니라 「트월 뒤
+    // 띠의 그림이 트월 전과 같다」를 잰다」 — and a kept image is the same
+    // as itself whatever it should show, so the strip left standing is
+    // held against one a conte OPENED on the folded S1 draws anew.
+    final kept = await pixelsOf(tester, stripAmong(before));
+    expect(
+      kept.toSet().length,
+      greaterThan(2),
+      reason: '⛔premise: the strip shows its sound, not one flat colour',
+    );
+    expect(listEquals(kept, shownBefore), isTrue);
+    final folded = EditorSessionManager(
+      initialProject: session.repository.requireProject(),
+    );
+    addTearDown(folded.dispose);
+    await pumpStoryboardHostOn(
+      tester,
+      folded,
+      surface: const Size(1400, 2600),
+      pixelsPerFrame: cell,
+    );
+    final anew = await untilEveryRowIsAnImage(tester);
+    expect(
+      stripAmong(anew),
+      isNot(same(stripAmong(before))),
+      reason: '⛔premise: another conte, its strip drawn for the first time',
+    );
+    expect(
+      anew.where((row) => row.name.startsWith(
+        'storyboard-lane-stand-cell-t0-S1-',
+      )),
+      isEmpty,
+      reason: '⛔premise: it opened with S1 folded',
+    );
+    expect(
+      listEquals(await pixelsOf(tester, stripAmong(anew)), kept),
+      isTrue,
+      reason: 'the strip a twirl leaves standing shows what the folded '
+          'row draws',
     );
     await tester.pumpAndSettle();
   });
