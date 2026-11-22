@@ -138,6 +138,30 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('⛔premise: a cel renamed — a word its cells print, and '
+      'nothing its grips or its numbers read — paints its row\'s cells '
+      'again', (tester) async {
+    final session = await _timeline(tester);
+    final row = session.activeLayer!;
+    session.selectFrameIndex(0);
+    await tester.pumpAndSettle();
+
+    expect(session.frameVerbs.renameSelectedFrame('Z9'), isNull);
+    await tester.pump(null, EnginePhase.layout);
+    expect(
+      session.activeLayer!.frames.single.name,
+      'Z9',
+      reason: '⛔premise: the cel took the name',
+    );
+    expect(
+      session.activeLayer!.timeline,
+      row.timeline,
+      reason: '⛔premise: no block moved',
+    );
+    expect(_cellsWaiting(tester), ['$_cells${row.id.value}']);
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('🚨a row twirled and THEN changed is painted again — what was '
       'laid down before the twirl is asked about the row as it is now, not '
       'answered as the twirl was', (tester) async {
