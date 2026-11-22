@@ -54,19 +54,21 @@ abstract final class RasterWatch {
   static ValueListenable<RasterStood?> get stood => _stood;
   static final ValueNotifier<RasterStood?> _stood = ValueNotifier(null);
 
-  static bool _installed = false;
-
-  /// Watches every frame, for the app's lifetime: `main`, once — a
-  /// persistent frame callback cannot be removed.
-  static void install() {
-    if (_installed) {
-      return;
-    }
-    _installed = true;
+  /// The binding asked to say its frames — once an isolate, by what a
+  /// static is: a persistent frame callback cannot be removed.
+  static final bool _asked = () {
     SchedulerBinding.instance
       ..addPersistentFrameCallback(_built)
       ..addTimingsCallback(_drawn);
-  }
+    return true;
+  }();
+
+  /// Whether what the binding says is heard: what [debugForget] ends, the
+  /// asking being for good.
+  static bool _hears = false;
+
+  /// Watches every frame, for the app's lifetime: `main`, once.
+  static void install() => _hears = _asked;
 
   /// The newest frame handed over, and when; the newest said drawn.
   static int _handedOver = -1;
@@ -90,11 +92,18 @@ abstract final class RasterWatch {
 
   /// After the binding's own callback, which hands the frame's scene
   /// over.
-  static void _built(Duration _) => handedOver(
-    SchedulerBinding.instance.platformDispatcher.frameData.frameNumber,
-  );
+  static void _built(Duration _) {
+    if (_hears) {
+      handedOver(
+        SchedulerBinding.instance.platformDispatcher.frameData.frameNumber,
+      );
+    }
+  }
 
   static void _drawn(List<FrameTiming> timings) {
+    if (!_hears) {
+      return;
+    }
     var newest = _saidDrawn;
     for (final timing in timings) {
       if (timing.frameNumber > newest) {
@@ -145,9 +154,11 @@ abstract final class RasterWatch {
     );
   }
 
-  /// Test seam: a run in which no frame was handed over.
+  /// Test seam: a run in which no frame was handed over, and none is
+  /// heard till installed — a test leaves the next no wait of its frames.
   @visibleForTesting
   static void debugForget() {
+    _hears = false;
     _waiting?.cancel();
     _waiting = null;
     _handedOver = -1;
