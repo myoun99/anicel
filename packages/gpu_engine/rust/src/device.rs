@@ -1373,7 +1373,8 @@ fn short(most: &wgpu::Limits) -> Vec<String> {
 /// `rest`, but of the limits the kernels' own sources fix only what the
 /// kernel that uses most of each does, whatever the device (🔬every shader
 /// read, 2026-11-22: 68 files' 72 entry points and the plugins' prelude):
-/// - one bind group, and in it a stage binds one uniform buffer — 84 bytes
+/// - one bind group, and in it a stage binds two uniform buffers (a blur
+///   effect's held words and its pass's: held.wgsl with its own) — 84 bytes
 ///   the biggest: the composite's pass, the cel pixel verbs' and the lens
 ///   gather's —, one storage texture and one sampled one (the timeline's
 ///   grid and wave), and no sampler;
@@ -1400,7 +1401,7 @@ fn short(most: &wgpu::Limits) -> Vec<String> {
 fn used(rest: wgpu::Limits) -> wgpu::Limits {
     wgpu::Limits {
         max_bind_groups: 1,
-        max_uniform_buffers_per_shader_stage: 1,
+        max_uniform_buffers_per_shader_stage: 2,
         max_uniform_buffer_binding_size: 84,
         max_storage_textures_per_shader_stage: 1,
         max_sampled_textures_per_shader_stage: 1,
@@ -3974,7 +3975,7 @@ mod tests {
         type Put = fn(&mut wgpu::Limits, u32);
         let uses: [(&str, u32, Put); 10] = [
             ("max_bind_groups", 1, |most, n| most.max_bind_groups = n),
-            ("max_uniform_buffers_per_shader_stage", 1, |most, n| {
+            ("max_uniform_buffers_per_shader_stage", 2, |most, n| {
                 most.max_uniform_buffers_per_shader_stage = n;
             }),
             ("max_uniform_buffer_binding_size", 84, |most, n| {
