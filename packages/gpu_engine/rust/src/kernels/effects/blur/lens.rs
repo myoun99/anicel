@@ -39,11 +39,15 @@ const GATHER_WORDS: usize = 22;
 /// is sized by, its invocations each reading every row of the table's
 /// reach, twice where a fringe weighs the core.
 ///
-/// ⏳Measured on the main PC at a radius it has drawn (lens-blur-sends-
-/// every-band-in-one-submit, 관제 11-22: ≤150 alone on the GPU during the
-/// trip, a larger one taken as more rows of the same) — till then a value
-/// of nothing measured; ⛔do not land it so.
-const ROW_CHARGES: u32 = 32;
+/// 🔬Measured on the main PC (2026-11-23 04:29, `a_row_of_the_iris_charges`
+/// three times — a new project's canvas at radii 75 and 150, no fringe):
+/// 1089, 1156 and 1052 charges; the most of them, as a larger one only
+/// makes chunks smaller. A radius it has drawn alone (관제 11-22,
+/// lens-blur-sends-every-band-in-one-submit: ≤150 on the GPU during the
+/// user's trip): a larger one is the same rows, more of them. ⚠️A ratio of
+/// that device's — a row read against a division turned —: one whose
+/// memory lags its arithmetic more may spend more per charge on a row.
+const ROW_CHARGES: u32 = 1156;
 /// sums.wgsl's SUMS_RUN.
 const RUN: u32 = 64;
 /// A pixel's sum's bytes: four channels of two words.
