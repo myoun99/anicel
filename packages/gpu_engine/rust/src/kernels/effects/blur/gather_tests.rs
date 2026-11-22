@@ -5,16 +5,19 @@
 //! pixels about a pixel (its half side 1.06), or 3 out: 5 × 5, its core
 //! (2.4 out) 3 × 3.
 
+use std::ffi::OsStr;
+use std::path::Path;
 use std::sync::OnceLock;
 
-use super::super::TileRect;
 use super::super::iris::{Focus, Iris};
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles};
-use super::{BlurMap, Lens, LensBlur, Light, MOST_FRINGE, MapChannel, sums_bytes};
+use super::super::{GROUP, TileRect};
+use super::{BlurMap, Lens, LensBlur, Light, MOST_FRINGE, MapChannel, gather_share, sums_bytes};
 use crate::device::Engine;
 use crate::kernels::effects::tests::rgba;
+use crate::kernels::plugin::{CHUNK_BUDGET, Pace};
 use crate::kernels::shared::room;
-use crate::testing::{assert_pinned, first_engine};
+use crate::testing::{a_device_of_its_own, assert_pinned, first_engine};
 
 struct Rig {
     engine: &'static Engine,
@@ -69,16 +72,17 @@ fn blurred(
     pixel: impl Fn(i32, i32) -> u32,
     map: Option<Map>,
 ) -> Option<Blurred> {
-    blurred_in(rect, picture, (lens, map), pixel, room(rig().engine))
+    blurred_in(rect, picture, (lens, map), pixel, (room(rig().engine), quick()))
 }
 
-/// `blurred`, its sums in bands a binding of `room` bytes holds.
+/// `blurred`, its sums in bands a binding of `room` bytes holds and its
+/// gather in the chunks `pace` cuts.
 fn blurred_in(
     rect: TileRect,
     picture: [i32; 4],
     (lens, map): (&Lens, Option<Map>),
     pixel: impl Fn(i32, i32) -> u32,
-    room: u64,
+    (room, pace): (u64, Pace),
 ) -> Option<Blurred> {
     let Rig { engine, blur } = rig();
     let map_tiles = map.map(|(pixel, _, _)| tiles(engine, rect, pixel));
@@ -88,8 +92,22 @@ fn blurred_in(
         focus,
     });
     let tiles = tiles(engine, rect, pixel);
-    let out = blur.run_in(engine, &tiles, rect, picture, (lens, map), room)?;
+    let out = blur.run_in(engine, &tiles, rect, picture, (lens, map), (room, pace))?;
     Some(Blurred::read(engine, rect, &out))
+}
+
+/// A device so quick a band's gather is one chunk.
+fn quick() -> Pace {
+    Pace::new(0.0, 0.0)
+}
+
+/// A device whose pace cuts a gather by `lens` into chunks of `most`
+/// workgroups, each invocation at its whole share: half a group more than
+/// `most` take the budget, so the cut lands on it.
+fn chunking(lens: &Lens, most: u64) -> Pace {
+    let share = gather_share(lens.radius.floor() as u32, lens.fringe > 0.0);
+    let group = f64::from(GROUP * GROUP);
+    Pace::new(0.0, CHUNK_BUDGET.as_secs_f64() / (f64::from(share) * group * (most as f64 + 0.5)))
 }
 
 /// `rect`'s whole tiles blurred.
@@ -457,7 +475,7 @@ fn a_picture_in_bands_is_blurred_as_it_is_whole() {
         let map = map.map(|(channel, focus)| (read, channel, focus));
         let whole = blurred(LEDGER_TILES, picture, &lens, pattern, map).expect("whole");
         let room = sums_bytes(picture)[0] / 3;
-        let banded = blurred_in(LEDGER_TILES, picture, (&lens, map), pattern, room);
+        let banded = blurred_in(LEDGER_TILES, picture, (&lens, map), pattern, (room, quick()));
         assert!(
             banded.expect("bands").words == whole.words,
             "{picture:?}: the bands put the whole's bytes"
@@ -484,7 +502,7 @@ fn a_map_past_a_binding_is_refused() {
     let bytes = map_tiles.size();
     for (room, kept) in [(bytes, true), (bytes - 1, false)] {
         let lens = (&lens(1.5), Some(map));
-        let out = blur.run_in(engine, &picture_tiles, ONE_TILE, ONE_TILE.pixels(), lens, room);
+        let out = blur.run_in(engine, &picture_tiles, ONE_TILE, ONE_TILE.pixels(), lens, (room, quick()));
         assert_eq!(out.is_some(), kept, "a binding of {room}");
     }
 }
@@ -493,5 +511,111 @@ fn a_map_past_a_binding_is_refused() {
 #[test]
 fn a_picture_no_band_of_one_row_fits_is_refused() {
     let picture = ONE_TILE.pixels();
-    assert!(blurred_in(ONE_TILE, picture, (&lens(1.5), None), pattern, 0).is_none());
+    assert!(blurred_in(ONE_TILE, picture, (&lens(1.5), None), pattern, (0, quick())).is_none());
+}
+
+// ---- Chunks ----
+
+/// The ledger's pictures blurred a chunk of the gather at a time — rows of
+/// groups where a chunk holds a row, runs along a row where it does not —
+/// are the pictures blurred in one, byte for byte
+/// (lens-blur-sends-every-band-in-one-submit): a chunk puts its own
+/// groups' pixels, from its first column and row, and no other's.
+#[test]
+fn a_gather_in_chunks_puts_what_it_puts_in_one() {
+    let read: &dyn Fn(i32, i32) -> u32 = &|x, y| pattern(y, x);
+    for (picture, lens, map) in scenes() {
+        let map = map.map(|(channel, focus)| (read, channel, focus));
+        let one = blurred(LEDGER_TILES, picture, &lens, pattern, map).expect("one");
+        let across = u64::from(((picture[2] - picture[0]) as u32).div_ceil(GROUP));
+        for most in [across * 5, across - 7] {
+            let room = room(rig().engine);
+            let chunked = blurred_in(LEDGER_TILES, picture, (&lens, map), pattern, (room, chunking(&lens, most)));
+            assert!(
+                chunked.expect("chunks").words == one.words,
+                "{picture:?} in chunks of {most} groups, {across} a row: the chunks put the one's bytes"
+            );
+        }
+    }
+}
+
+/// Every submit of a gather holds no more groups than the device finishes
+/// within the budget at their whole share — the plug-ins' law
+/// (`Pace::chunk`) —, and the chunks put every group of the picture once:
+/// counted from what the engine noted of its submits (submits.rs), on a
+/// device of the test's own so no other test's are among them.
+#[test]
+fn a_gather_goes_in_submits_the_budget_holds() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let blur = LensBlur::new(&engine);
+    let lens = Lens {
+        fringe: 250.0,
+        ..lens(3.0)
+    };
+    let picture = LEDGER_TILES.pixels();
+    let pace = chunking(&lens, 500);
+    let most = pace.chunk(gather_share(3, true), GROUP * GROUP);
+    let tiles = tiles(&engine, LEDGER_TILES, pattern);
+    let before = engine.queue.submits.kept_now().last().map_or(0, |submit| submit.number);
+    let out = blur.run_in(&engine, &tiles, LEDGER_TILES, picture, (&lens, None), (room(&engine), pace));
+    assert!(out.is_some(), "the blur ran");
+    let gathers: Vec<u64> = engine
+        .queue
+        .submits
+        .kept_now()
+        .iter()
+        .filter(|submit| submit.number > before && submit.dispatches == 1)
+        .filter(|submit| Path::new(submit.by.file()).file_name() == Some(OsStr::new("lens.rs")))
+        .map(|submit| submit.groups)
+        .collect();
+    let groups = |edge: i32| u64::from((edge as u32).div_ceil(GROUP));
+    let all = groups(picture[2] - picture[0]) * groups(picture[3] - picture[1]);
+    assert_eq!(most, 500, "⛔전제: the pace cuts chunks of 500");
+    assert!(gathers.len() > 1, "a gather of {all} groups in chunks of {most}: {gathers:?}");
+    assert!(gathers.iter().all(|&groups| groups <= most), "{gathers:?}");
+    assert_eq!(gathers.iter().sum::<u64>(), all, "{gathers:?}");
+}
+
+/// 🔬What a row of the iris costs a gather on this device, in its pace's
+/// charges ([`super::ROW_CHARGES`]) — run by hand:
+/// `cargo test a_row_of_the_iris_charges -- --ignored --nocapture`. A new
+/// project's canvas (2340 × 1654, the app's brush_canvas_defaults.dart) at
+/// radii 75 and 150, each the quickest of three, its gather in one: what
+/// the 150 rows more cost over its pixels, against the pace. ⛔No more
+/// radius and no fringe on this machine's GPU during the user's trip
+/// (관제 2026-11-22, lens-blur-sends-every-band-in-one-submit: a radius it
+/// has drawn).
+#[test]
+#[ignore = "measures the device: run by hand"]
+fn a_row_of_the_iris_charges() {
+    let Rig { engine, blur } = rig();
+    let pace = Pace::of(engine).expect("the pace");
+    let picture = [0, 0, 2340, 1654];
+    let tile = crate::kernels::composite::TILE;
+    let rect = TileRect {
+        x0: 0,
+        y0: 0,
+        columns: 2340u32.div_ceil(tile),
+        rows: 1654u32.div_ceil(tile),
+    };
+    let tiles = tiles(engine, rect, pattern);
+    let took = |radius: f64| {
+        let run = || {
+            let started = std::time::Instant::now();
+            let lens = (&lens(radius), None);
+            let out = blur.run_in(engine, &tiles, rect, picture, lens, (room(engine), quick()));
+            let out = out.expect("blur");
+            crate::testing::done_here(engine).expect("done");
+            drop(out);
+            started.elapsed().as_secs_f64()
+        };
+        (0..3).map(|_| run()).fold(f64::MAX, f64::min)
+    };
+    let (near, far) = (took(75.0), took(150.0));
+    let per_row = (far - near) / (2340.0 * 1654.0 * 150.0);
+    println!(
+        "pace {pace:?} · radius 75 {near:.4} s · 150 {far:.4} s · a row {per_row:e} s a pixel · {:.2} charges",
+        per_row / pace.pixel()
+    );
 }

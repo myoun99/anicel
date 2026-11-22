@@ -3,6 +3,8 @@
 //! 11-11 11:25 ⑤): a chunk holds as many workgroups as finish within
 //! [`CHUNK_BUDGET`] were every invocation of them to spend its whole
 //! share, so no submit keeps the device past it however a plugin spends.
+//! A camera lens blur's gather is chunked by the same pace and budget
+//! (blur/lens.rs, lens-blur-sends-every-band-in-one-submit 2026-11-22).
 //!
 //! 🗣️관제 2026-11-11 11:25: measured on the device the app opened at the
 //! first plugin run of that run of the app — ⛔never as the app starts
@@ -26,7 +28,7 @@ use crate::fail;
 /// The longest one chunk keeps the device: a value no picture shows, so
 /// the host's (16:44 ①) — what else the device draws waits no longer, and
 /// it is far under Windows' ~2 s reset.
-pub(super) const CHUNK_BUDGET: Duration = Duration::from_millis(100);
+pub(crate) const CHUNK_BUDGET: Duration = Duration::from_millis(100);
 
 /// The most chunks one batch takes, however quick they come back: a run
 /// whose spend leaps from next to nothing to its whole share keeps the
@@ -131,7 +133,7 @@ pub(crate) struct Pace {
 
 impl Pace {
     /// The engine's, measured at the first ask.
-    pub(super) fn of(engine: &Engine) -> Option<Self> {
+    pub(crate) fn of(engine: &Engine) -> Option<Self> {
         if let Some(&pace) = engine.plugin_pace.get() {
             return Some(pace);
         }
@@ -155,7 +157,7 @@ impl Pace {
     /// invocation may spend `share`: as many as finish within
     /// [`CHUNK_BUDGET`] — or within the time one lane takes to spend it,
     /// where that is longer — and one at least.
-    pub(super) fn chunk(&self, share: u32, group: u32) -> u64 {
+    pub(crate) fn chunk(&self, share: u32, group: u32) -> u64 {
         let share = f64::from(share.max(1));
         let within = CHUNK_BUDGET.as_secs_f64().max(share * self.lane);
         let groups = within / (share * self.pixel * f64::from(group.max(1)));
@@ -163,8 +165,15 @@ impl Pace {
     }
 
     #[cfg(test)]
-    pub(super) fn new(lane: f64, pixel: f64) -> Self {
+    pub(crate) fn new(lane: f64, pixel: f64) -> Self {
         Self { lane, pixel }
+    }
+
+    /// Its charge over a pixel of a full device — what a kernel's own cost
+    /// is measured against (lens.rs's `ROW_CHARGES`).
+    #[cfg(test)]
+    pub(crate) fn pixel(&self) -> f64 {
+        self.pixel
     }
 }
 

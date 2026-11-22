@@ -154,6 +154,31 @@ pub(crate) fn bands(
     Some(bands)
 }
 
+/// The chunks a dispatch of `groups` — across, down — is cut into, `most`
+/// workgroups each at most: rows of the groups across where `most` holds a
+/// row, runs along a row where it does not. Each is its first group and
+/// its groups across and down; every group lies in one of them.
+///
+/// 🚨ONE LAW FOR WHAT ONE SUBMIT HOLDS (🗣️an-endless-plugin-stalls-the-app
+/// -Q19, 유저 2026-11-10 「그리기를 덩어리로 나눠 넘긴다」): a chunk is a
+/// submit of its own, as many groups as the device finishes within the
+/// budget at their whole share (`plugin::Pace::chunk`) — a plug-in's run
+/// and a camera lens blur's gather alike (lens-blur-sends-every-band-in-one
+/// -submit, 2026-11-22). ↩️A plug-in's own till then.
+pub(crate) fn chunks([across, down]: [u32; 2], most: u64) -> Vec<([u32; 2], [u32; 2])> {
+    if across == 0 || down == 0 {
+        return Vec::new();
+    }
+    let wide = u32::try_from(most.clamp(1, u64::from(across))).expect("no more than across");
+    let high = u32::try_from((most / u64::from(wide)).clamp(1, u64::from(down))).expect("no more than down");
+    (0..down)
+        .step_by(high as usize)
+        .flat_map(|top| {
+            (0..across).step_by(wide as usize).map(move |left| ([left, top], [wide.min(across - left), high.min(down - top)]))
+        })
+        .collect()
+}
+
 /// Whether the device makes a buffer of `bytes` — none, with why, where
 /// not. A plane only made, copied or bound a part at a time asks this,
 /// not [`fits`]: a buffer holds more than one binding of it does (board

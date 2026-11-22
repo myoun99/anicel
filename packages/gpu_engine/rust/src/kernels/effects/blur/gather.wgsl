@@ -16,8 +16,10 @@
 // [left, top, right, bottom); whether the paper repeats its edge; the
 // fringe's share (Q.16, to 1); the table's reach, rows and levels; what of
 // a blur map's pixel names its level (MAP_*); the first row the sums hold
-// — of the picture's columns, every row the band's gather reads —; and the
-// band's rows this gather puts, [put_top, put_bottom) (lens.rs's `bands`).
+// — of the picture's columns, every row the band's gather reads —; and
+// where the chunk of the band this gather puts begins, its first column
+// and row, and the band's end, [put_top, put_bottom) its rows (lens.rs's
+// `bands`; a chunk a submit of its own, the shared `chunks`).
 struct Gather {
   light: Light,
   picture_left: i32,
@@ -35,6 +37,7 @@ struct Gather {
   levels: u32,
   channel: u32,
   sums_top: i32,
+  put_left: i32,
   put_top: i32,
   put_bottom: i32,
 }
@@ -133,13 +136,14 @@ fn gather_run(level: u32, k: u32, row: u32) -> vec2<i32> {
 
 @compute @workgroup_size(8, 8, 1)
 fn iris_gather(@builtin(global_invocation_id) id: vec3<u32>) {
-  let x = gather.picture_left + i32(id.x);
+  let x = gather.put_left + i32(id.x);
   let y = gather.put_top + i32(id.y);
   // Only the paper is drawn — the picture, where none repeats: the tiles
   // out hold nothing past it already —, of the band's rows. For the work
   // alone, the rows: past them the band after puts its own, and the sums a
   // row there would read are past the band's (mutant b26, 11-07 — no value
-  // tells the guard from its absence).
+  // tells the guard from its absence). A chunk's groups end where the next
+  // chunk's begin, so none of them is put twice.
   let on_paper = x >= gather.paper_left && x < gather.paper_right
     && y >= gather.paper_top && y < gather.paper_bottom;
   if (!on_paper || y >= gather.put_bottom) {
