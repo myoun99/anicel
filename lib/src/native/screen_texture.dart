@@ -91,6 +91,21 @@ sealed class ScreenTexture {
   static bool get windowsAreCopied => _windowsAreCopied;
   static bool _windowsAreCopied = false;
 
+  /// 🔬What the newest window open says of itself, a line each
+  /// ([GpuWindow.said]): what the device said of an AHardwareBuffer's
+  /// image — empty where no window is open, every platform but Android.
+  /// The frame statistics show it under the stages (`EngineStages`).
+  static String get windowSaid =>
+      _debugWindowSays?.call() ?? _newestWindow?._window.said ?? '';
+  static _WindowTexture? _newestWindow;
+  static String Function()? _debugWindowSays;
+
+  /// Test seam: a window open that says what [says] answers — or none,
+  /// as `flutter test` opens none.
+  @visibleForTesting
+  static void debugWindowSays(String Function()? says) =>
+      _debugWindowSays = says;
+
   /// Test seam: a window opened, its frames [copied] — or none opened,
   /// as `flutter test` opens none.
   @visibleForTesting
@@ -514,6 +529,7 @@ final class _WindowTexture extends ScreenTexture {
     : _id = ValueNotifier(_window.textureId),
       super(width, height, surfaces: 3, done: engine.done, engine: engine) {
     ScreenTexture._windowsAreCopied = true;
+    ScreenTexture._newestWindow = this;
   }
 
   final GpuWindow _window;
@@ -530,6 +546,9 @@ final class _WindowTexture extends ScreenTexture {
 
   @override
   Future<void> _free() async {
+    if (identical(ScreenTexture._newestWindow, this)) {
+      ScreenTexture._newestWindow = null;
+    }
     _id.dispose();
     await _window.free();
   }

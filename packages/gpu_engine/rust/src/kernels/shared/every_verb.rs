@@ -155,6 +155,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_grid_kept_bytes",
             "gpu_engine_grid_most_side",
             "gpu_engine_window_target",
+            "gpu_engine_window_said",
             "gpu_engine_surface_texture",
             "gpu_engine_surface_handle",
         ],

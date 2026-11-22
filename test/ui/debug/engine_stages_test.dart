@@ -207,6 +207,17 @@ void main() {
     expect(lines[1], contains('a:20 '), reason: 'the one that took most');
   });
 
+  test('what a window says is shown a line each, and nothing where none '
+      'says anything', () {
+    expect(
+      EngineStages.windowLines(
+        'ahb storage no  color yes\nanother line\n',
+      ),
+      [' ahb storage no  color yes', ' another line'],
+    );
+    expect(EngineStages.windowLines(''), isEmpty);
+  });
+
   test('with no frame up yet the lines say so', () {
     expect(EngineStages.lines(null), ['STAGES  timed, no frame yet']);
     expect(EngineStages.summary, isNull);
@@ -293,6 +304,13 @@ void main() {
     await tester.pump();
 
     expect(line('STAGES  1f'), findsOneWidget);
+    expect(line('ahb storage'), findsNothing, reason: 'no window is open');
+
+    ScreenTexture.debugWindowSays(() => 'ahb storage no  color yes\n');
+    addTearDown(() => ScreenTexture.debugWindowSays(null));
+    FrameStats.publish();
+    await tester.pump();
+    expect(line('ahb storage no  color yes'), findsOneWidget);
     expect(line('composite/screen:412'), findsNWidgets(2));
     expect(line('SLOWEST'), findsOneWidget);
 
@@ -300,5 +318,6 @@ void main() {
     FrameStats.publish();
     await tester.pump();
     expect(line('STAGES'), findsNothing);
+    expect(line('ahb storage'), findsNothing);
   });
 }

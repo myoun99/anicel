@@ -6047,6 +6047,18 @@ class GpuWindow extends GpuTarget {
   /// next done fails by it.
   void present() => rust.windowPresent(_engine._engine, _window);
 
+  /// 🔬What the window says of itself, a line each
+  /// (rust/src/platform/android.rs, `Window::said`): what the device said,
+  /// as the window was made, of an image made of an AHardwareBuffer —
+  /// `ahb storage … color …`. Read with no hand on the device.
+  String get said => using((arena) {
+    const capacity = 1024;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.windowSaid(_window, buffer, capacity);
+    final count = length < capacity ? length : capacity;
+    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  });
+
   /// Frees the swapchain, then Flutter's producer: the window it presents
   /// into must outlive it.
   Future<void> free() async {
