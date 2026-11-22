@@ -157,7 +157,7 @@ impl PostedRefused {
 /// the last save all that was left).
 ///
 /// So an error no scope catches is NOTED here, and the next wait fails by
-/// it ([`Engine::wait`]) — the law a submit on a thread that is gone
+/// it ([`Engine::wait_within`]) — the law a submit on a thread that is gone
 /// already keeps ([`Queue::submit`]). A device that is gone fails every
 /// wait from then on. ⚠️What ends without a wait is told nothing: the
 /// tests' engine panics as wgpu did (`testing::first_engine`), and the
@@ -2694,7 +2694,7 @@ pub unsafe extern "C" fn gpu_engine_done_failure(
 }
 
 /// How many waits for the GPU the thread that asks has made
-/// ([`Engine::wait`]) — its bodies handed over unwaited among them, as far
+/// ([`Engine::wait_within`]) — its bodies handed over unwaited among them, as far
 /// as they have run ([`POSTED_HERE`]): what a test holds at none on the
 /// thread an app's frames are built on, over work that is to wait there for
 /// nothing ([`Engine::map_then`]).
@@ -2737,8 +2737,9 @@ pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool
 
 /// Test seam: a wait on `engine` ended past its limit, as a poll the GPU
 /// does not answer ends one ([`Refusals::past`]) — which no test waits
-/// out ([`WAIT_LIMIT`]). Answers whether it finished: it did not, and the
-/// caller's last error says so.
+/// out ([`WAIT_LIMIT`]). On the engine's thread, where a verb's wait
+/// ends ([`Engine::wait_within`]). Answers whether it finished: it did
+/// not, and the caller's last error says so.
 ///
 /// # Safety
 /// `engine` is live.
@@ -2746,7 +2747,7 @@ pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool
 pub unsafe extern "C" fn gpu_engine_wait_late(engine: *const Engine) -> bool {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    engine.refusals.past(Duration::ZERO).is_some()
+    engine.on_thread(|| engine.refusals.past(Duration::ZERO).is_some())
 }
 
 /// Test seam: `engine`'s thread stands still for `millis` ms in its turn,

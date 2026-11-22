@@ -29,13 +29,25 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 15] = [
+const ON_THEIR_CALLERS: [(&str, &str); 16] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
         "asks the OS of the adapter's memory (DXGI) and the adapter of its kind, not the device",
     ),
-    ("gpu_engine_gone", "reads the engine's own word of its device (`Refusals`)"),
+    (
+        "gpu_engine_gone",
+        "reads the engine's own word of its device (`Refusals`), and asks whether its driver \
+         took it of D3D12's own device, by a hold of its own that waits on no GPU \
+         (`platform::asking_the_driver_of`): wgpu's device is in no hand here",
+    ),
+    (
+        "gpu_engine_late",
+        "the engine's own count of its waits past their limit, under a lock of its own \
+         (`Refusals::late`): no device is asked, and the app reads it on the UI's thread as \
+         it hears a refusal — behind a body that waits for a GPU long at one job, a turn of \
+         the engine's thread would stand that wait out",
+    ),
     ("gpu_engine_noted", "takes the engine's own word of its device (`Refusals`)"),
     (
         "gpu_engine_done_then",
