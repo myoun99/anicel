@@ -180,8 +180,8 @@ void main() {
       expect(ProviderDocuments.workingCopyOf(uri), isNull);
     });
 
-    test('a document whose provider gave no size tells the bar nothing — '
-        'never a number the app cannot know', () async {
+    test('a document whose provider gives no size, picked or asked, tells '
+        'the bar nothing — never a number the app cannot know', () async {
       final uri = await projectDocument('Sizeless.anicel');
       final copied = <double>[];
 
@@ -191,6 +191,56 @@ void main() {
         isCancelled: () => false,
         onCopied: copied.add,
       );
+
+      expect(provider.calls, contains('describeDocument'));
+      expect(copied, isEmpty);
+    });
+
+    /// Board recent-drive-document-opens-without-percent (F-608): a new run
+    /// reopening a document from Recents knows it by its name alone.
+    test('🎯a document known by its name alone — a Recent row in a new run — '
+        'has its size ASKED of the provider, and the bar follows the copy '
+        'all the same', () async {
+      final uri = await projectDocument('Recent.anicel');
+      provider.sizes[uri] = 4;
+      provider.holdCopy = Completer<void>();
+      final copied = <double>[];
+      var told = 0;
+
+      final opening = FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        step: const Duration(milliseconds: 5),
+        onWaiting: (_, {required fromTheCloud}) => told += 1,
+        isCancelled: () => told >= 3,
+        onCopied: copied.add,
+      );
+
+      await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
+      expect(
+        copied,
+        containsAllInOrder([0, 0.25]),
+        reason: 'one byte of the four the provider said, from 0',
+      );
+      provider.holdCopy!.complete();
+    });
+
+    test('⚠️a size answered after the copy is over says nothing — the read\'s '
+        'half of the bar may have begun', () async {
+      final uri = await projectDocument('Late.anicel');
+      provider
+        ..sizes[uri] = 4
+        ..holdSize = Completer<void>();
+      final copied = <double>[];
+
+      await FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        isCancelled: () => false,
+        onCopied: copied.add,
+      );
+      provider.holdSize!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(copied, isEmpty);
     });
@@ -567,6 +617,13 @@ class _FakeProvider {
   /// Bytes moved so far, by local path.
   final Map<String, int> moved = {};
 
+  /// The size the provider says of each URI it is asked about; none for
+  /// the rest.
+  final Map<String, int> sizes = {};
+
+  /// Holds the provider's answer about a document while it is open.
+  Completer<void>? holdSize;
+
   final Set<String> cancelled = {};
 
   bool refuseWrites = false;
@@ -621,6 +678,10 @@ class _FakeProvider {
             {'uri': uri},
           ],
         };
+      case 'describeDocument':
+        await holdSize?.future;
+        final uri = arguments['uri']! as String;
+        return {'uri': uri, 'size': sizes[uri]};
       case 'documentTransferred':
         return {'value': moved[arguments['path']] ?? 0};
     }

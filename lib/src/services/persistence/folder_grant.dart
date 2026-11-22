@@ -1057,25 +1057,50 @@ abstract final class FolderPicker {
       // ⚠️Bytes a provider holds back till it has them all — fetched where
       // the app cannot see — read as 0 till then: never a number it cannot
       // know.
-      final length = copy.length;
-      final told = length == null ? null : onCopied;
-      told?.call(0);
+      // The size is ANSWERED, not awaited: a provider asked it now answers
+      // beside the copy, under the wait and its cancel, and the bar starts
+      // once it has (board recent-drive-document-opens-without-percent).
+      // ⚠️An answer that comes after the copy is over says nothing: the
+      // read's half of the bar may have begun.
+      int? length;
+      var over = false;
+      final told = onCopied;
+      unawaited(
+        copy.length.then((size) {
+          if (over) {
+            return;
+          }
+          length = size;
+          if (size != null) {
+            told?.call(0);
+          }
+        }),
+      );
       try {
         final done = await wait.outlast(
           copy.done,
           between: told == null
               ? null
-              : () async => told(doneShare(await copy.moved(), length!)),
+              : () async {
+                  final of = length;
+                  if (of != null) {
+                    told(doneShare(await copy.moved(), of));
+                  }
+                },
         );
         if (!done) {
           throw FileSystemException('파일을 읽지 못했습니다', path);
         }
       } on Object {
+        over = true;
         copy.stop();
         rethrow;
       }
+      over = true;
       if (await copy.done) {
-        told?.call(1);
+        if (length != null) {
+          told?.call(1);
+        }
         return (path: copy.destination, staged: false);
       }
       throw FileSystemException('파일을 읽지 못했습니다', path);
