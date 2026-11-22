@@ -142,11 +142,7 @@ class FrameStatsReadout extends StatelessWidget {
                     'p95${_ms(stats.screenFinishP95)}',
                 ' show   p50${_ms(stats.screenShowP50)}  '
                     'p95${_ms(stats.screenShowP95)}'
-                    '${switch (stats.windowsAreCopied) {
-                      null => '',
-                      true => '  copied',
-                      false => '  direct',
-                    }}',
+                    '${stats.windowsAreCopied ? '  copied' : ''}',
                 // The pointer packets, dealt with between the frames
                 // ([FrameStatsSnapshot.pointsPerSecond]).
                 'POINTER ${stats.pointsPerSecond.toStringAsFixed(0)} pts/s  '

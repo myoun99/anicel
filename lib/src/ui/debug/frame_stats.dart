@@ -160,9 +160,9 @@ class FrameStatsSnapshot {
   final double screenShowP50;
   final double screenShowP95;
 
-  /// `ScreenTexture.windowsAreCopied`: null where no window was opened —
-  /// every platform but Android.
-  final bool? windowsAreCopied;
+  /// `ScreenTexture.windowsAreCopied`: false where no window was opened
+  /// — every platform but Android.
+  final bool windowsAreCopied;
 
   /// What the newest show of a canvas's screen asked of the engine
   /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and

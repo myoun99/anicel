@@ -81,17 +81,18 @@ sealed class ScreenTexture {
   /// 🔬Whether a window's frame is copied onto its image as it is put up
   /// — Android's, every window's: its kernels write a texture of the
   /// engine's own, and a present copies it onto the next image on the
-  /// engine's thread (rust/src/platform/android.rs, `Window`) —, and
-  /// null where no window has been opened. ↩️False where a device's
-  /// images took stores, on the way builds 1095 to 1097 showed a window
-  /// by: a readout of those says `direct` where this says `copied`.
-  static bool? get windowsAreCopied => _windowsAreCopied;
-  static bool? _windowsAreCopied;
+  /// engine's thread (rust/src/platform/android.rs, `Window`) —: false
+  /// where no window has been opened, every platform but Android.
+  /// ↩️Of three values while a window whose images took stores was
+  /// written straight, on the way builds 1095 to 1097 showed one by: a
+  /// readout of those says `direct` where this says `copied`.
+  static bool get windowsAreCopied => _windowsAreCopied;
+  static bool _windowsAreCopied = false;
 
-  /// Test seam: a window opened whose frames are [copied] or not, or none
-  /// opened (null) — `flutter test` opens none.
+  /// Test seam: a window opened, its frames [copied] — or none opened,
+  /// as `flutter test` opens none.
   @visibleForTesting
-  static void debugWindowsAre({required bool? copied}) =>
+  static void debugWindowsAre({required bool copied}) =>
       _windowsAreCopied = copied;
 
   static void _wentUp(ScreenUp up) {
