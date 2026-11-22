@@ -86,8 +86,8 @@ void main() {
         contains("@TestOn('vm')\n@Timeout(Duration(minutes: 5))\nlibrary;\n"
             "import 'package:flutter_test/flutter_test.dart';\n"),
       );
-      expect(source, contains("  group('test/a_test.dart', f0.main);"));
-      expect(source, contains("  group('test/b_test.dart', f1.main);"));
+      expect(source, contains("  group('test/a_test.dart', () {"));
+      expect(source, contains("  group('test/b_test.dart', () {"));
     });
 
     test('so a file shares an entry only with files of its own annotations',
@@ -173,6 +173,110 @@ void main() {
     });
   });
 
+  group("a binding once started is the isolate's", () {
+    const sources = {
+      'test/helpers/on_screen.dart':
+          "import 'package:flutter_test/flutter_test.dart';\n"
+          'void testOnScreen(String name) =>\n'
+          '    testWidgets(name, (tester) async {});',
+      'test/b/widget_test.dart':
+          "void main() { testWidgets('x', (tester) async {}); }",
+      'test/b/bound_test.dart':
+          'void main() { TestWidgetsFlutterBinding.ensureInitialized(); }',
+      'test/b/helped_test.dart': "import '../helpers/on_screen.dart';\n"
+          'void main() {}',
+      'test/b/bare_test.dart': '// testWidgets( is what a comment says\n'
+          "void main() { test('testWidgets(', () {}); }",
+    };
+    String read(String path) => sources[path] ??
+        (throw PathNotFoundException(path, const OSError('not there', 2)));
+
+    test('a file starts one by its own hand or through a test file it uses '
+        '— not by what a comment or a string says', () {
+      expect(startsABinding('test/b/widget_test.dart', read: read), isTrue);
+      expect(startsABinding('test/b/bound_test.dart', read: read), isTrue);
+      expect(startsABinding('test/b/helped_test.dart', read: read), isTrue);
+      expect(startsABinding('test/b/bare_test.dart', read: read), isFalse);
+    });
+
+    test('and is bundled only with files that start one too', () {
+      final cut = bundlesOf([
+        'test/b/widget_test.dart',
+        'test/b/bare_test.dart',
+        'test/b/bound_test.dart',
+        'test/b/helped_test.dart',
+      ], read: read);
+      expect(cut.alone, isEmpty);
+      expect(
+        cut.bundles.map((bundle) => bundle.toSet()),
+        unorderedEquals([
+          {
+            'test/b/widget_test.dart',
+            'test/b/bound_test.dart',
+            'test/b/helped_test.dart',
+          },
+          {'test/b/bare_test.dart'},
+        ]),
+      );
+    });
+  });
+
+  group('a bundled file starts from what a file alone starts from', () {
+    test('its group sets it again before its first test, by the code the '
+        'config sets it with', () {
+      const files = ['test/a_test.dart', 'test/b_test.dart'];
+      final source = entrySource(
+        files,
+        (path) => 'void main() {}',
+        toRoot: '../../..',
+      );
+      expect(
+        source,
+        contains("import '../../../test/flutter_test_config.dart' "
+            'show startATestFile;'),
+      );
+      for (final (i, file) in files.indexed) {
+        expect(
+          source,
+          contains("  group('$file', () {\n"
+              '    setUpAll(startATestFile);\n'
+              '    f$i.main();\n'
+              '  });'),
+        );
+      }
+    });
+
+    test('and the config sets nothing a file starts from but by that code',
+        () {
+      final config = File('test/flutter_test_config.dart')
+          .readAsStringSync()
+          .replaceAll('\r\n', '\n');
+      final head = config.indexOf('Future<void> testExecutable(');
+      final body = config.substring(head, config.indexOf('\n}\n', head));
+      expect(
+        [
+          for (final set in RegExp(
+            r'^  ([A-Za-z_][\w.]*)\s*=[^=>]',
+            multiLine: true,
+          ).allMatches(body))
+            set[1],
+        ],
+        ['_documents'],
+        reason: 'a value testExecutable sets is set once an entry — in a '
+            'bundle, the second file starts from what the first left. It '
+            "belongs in startATestFile; the run's own temp and the Documents "
+            "home in it are the run's, once",
+      );
+      expect(
+        body.indexOf('startATestFile();'),
+        allOf(
+          greaterThan(body.indexOf('giveTheRunItsOwnTemp()')),
+          lessThan(body.indexOf('await testMain()')),
+        ),
+      );
+    });
+  });
+
   group('a batch is cut into bundles', () {
     String sourceOf(String path) => path.contains('own')
         ? 'void main() { ScaledTestBinding.ensureInitialized(); }'
@@ -212,8 +316,8 @@ void main() {
       );
       expect(source, isNot(contains('library;')));
       expect(source, contains("import '../../../test/a_test.dart' as f0;"));
-      expect(source, contains("  group('test/a_test.dart', f0.main);"));
-      expect(source, contains("  group('test/b_test.dart', f1.main);"));
+      expect(source, contains("  group('test/a_test.dart', () {"));
+      expect(source, contains("  group('test/b_test.dart', () {"));
       expect(
         bundleConfigSource('../../..'),
         "export '../../../test/flutter_test_config.dart';\n",

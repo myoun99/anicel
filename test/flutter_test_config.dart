@@ -39,6 +39,138 @@ import '../tool/machine_cache.dart';
 import 'helpers/a_shown_surface.dart';
 import 'helpers/temp_dir.dart';
 
+Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
+  // (2026-10-08). FIRST, before anything below asks for a temp path: from
+  // here on `Directory.systemTemp` answers a folder of this file's own —
+  // see `giveTheRunItsOwnTemp` — and the last `tearDownAll` at the bottom
+  // asks what is still in it.
+  final temp = giveTheRunItsOwnTemp();
+  _documents = '${temp.path.replaceAll('\\', '/')}/qa_test_docs';
+  // What a file starts from ([startATestFile]) — and a bundle's entry sets
+  // it again as each of its files starts.
+  startATestFile();
+  // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
+  // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
+  // [OpenProjectFile], which keeps the `.anicel` open for the next read;
+  // on Windows that also stops the folder holding it from being deleted.
+  // In the app that IS the feature — the project cannot be pulled out
+  // from under the session drawing into it — and the release point is the
+  // whole-store swap that opening the next project performs. A test drops
+  // its store on the floor instead, and Dart has no destructor.
+  //
+  // 🚨**REGISTERED AS AN `addTearDown` FROM A `setUp`, AND THE ORDERING IS
+  // THE WHOLE POINT.** package:test runs every `addTearDown` callback
+  // before any `tearDown`. Written as a plain `tearDown` here this is the
+  // OUTERMOST one, so it ran dead last — after each suite's own
+  // `tearDown(() => deleteTempQuietly(directory))`, which is the
+  // exact line it exists to unblock (five suites failed that way with
+  // errno 32). Registered from `setUp` it lands in the earlier phase and
+  // gets there first.
+  //
+  // ⛔**What it still cannot reach**: a suite that registers its delete
+  // with `addTearDown` INSIDE the test. Those run in reverse registration
+  // order, so a later registration runs earlier, and ours — registered in
+  // `setUp`, before the body — is last again. That shape needs the release
+  // in the same callback: `deleteAfterSessionEnds` in
+  // `test/helpers/project_scratch_folder.dart`.
+  setUp(() => addTearDown(OpenProjectFile.instance.releaseAll));
+  // 🚨**AN ERROR THE DEVICE RAISED THAT NO JOB WAS REFUSED BY IS THE
+  // TEST'S** (🗣️관제 2026-11-11: 「기록된 오류가 남아 있으면 시험이 끝날 때
+  // 빨개지는 장치를 같이 둬라」). ↩️Till the device-loss lane such an error
+  // ended the process where it was raised — wgpu's own handler panics —
+  // and that was the alarm. The engine notes it now and fails the next job
+  // that waits (rust/src/device.rs, `Refusals`), so a test on a way that
+  // never waits would end green with it noted. Asked as each test ends,
+  // and TAKEN: the test that raised it is the red one, and the next test's
+  // first wait is not failed by it.
+  //
+  // ⚠️The first `tearDown` here, so the last one run — package:test runs
+  // them in reverse — and what the two below let go of is asked for too.
+  tearDown(() {
+    expect(
+      debugTakeAppGpuEngineNoted(),
+      isNull,
+      reason:
+          'the GPU device raised an error that no job of this test was '
+          'refused by: the way that raised it never waits for the device, '
+          'and the app would go on as if it had worked',
+    );
+  });
+  // 🚨**THE THREAD A TEST'S FRAMES ARE BUILT ON TAKES NO GPU DEVICE IN
+  // HAND** (🗣️유저 2026-11-13, H57-Q1: 「C · 합성 전체를 엔진 스레드로 — 이게
+  // 가장 근본/구조적인 해결같은데 맞나?」 · 「근본/구조적 해결을 원해. 작업이
+  // 크더라도」): a verb's body runs on the engine's thread, whatever
+  // thread calls the verb (rust/src/device.rs, `EngineThread`, has what
+  // the UI thread paid in the device: 🔬32–55 ms each time the allocator
+  // made a block under a buffer it asked for, Surface Pro 11). Asked of
+  // this thread as each test ends — every test's frames are built on it:
+  // a verb whose body is left on its caller's is red in the first test
+  // that calls it, and in no test after for that call.
+  var enteredBefore = 0;
+  tearDown(() {
+    final entered = debugDeviceEnteredHere - enteredBefore;
+    enteredBefore += entered;
+    expect(
+      entered,
+      0,
+      reason:
+          'this thread took the GPU device in hand: a verb of the '
+          'engine\'s ran its body here, not on the engine\'s thread',
+    );
+  });
+  // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test
+  // queued drained inside the NEXT test — against the earlier test's
+  // painter and resolvers, in the next test's zone (2026-09-26: a rows test
+  // failed on a raster the test before it had queued). A test ends with
+  // the store empty; the drain it scheduled then finds nothing.
+  tearDown(TimelineGridTileStore.instance.clear);
+  // So are the baked words, and a bake a test left in flight never lands
+  // in the next: its word stood waited for in every test after
+  // ([BakedWords.debugForgetEveryBake] has the measurement).
+  tearDown(BakedWords.instance.debugForgetEveryBake);
+  // The surfaces the grids' screens opened on ([startATestFile]) go as
+  // each test does.
+  tearDown(_freeScreenSurfaces);
+  // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
+  // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
+  // single test, so it is the root group's LAST `tearDownAll` — package:test
+  // runs them in reverse — and every cleanup a file wrote has run by then.
+  //
+  // First the run lets go the way the app does on a normal exit: the
+  // project file, then this run's room in the container
+  // (`SessionScratch.deleteThisRunsFolder` — its lock file is held open for
+  // the whole run, and Windows will not delete a folder with an open file
+  // in it). Then the two stand-ins this run made for the user's own folders
+  // go: the Documents home above, and the container
+  // (`testContainerFolder`). Whatever is still in the run's temp after that
+  // was left behind by a test or by the code it drove, and the file is red
+  // for it — after the folder is removed anyway, so a red run does not
+  // leave it on the machine either.
+  tearDownAll(() async {
+    OpenProjectFile.instance.releaseAll();
+    SessionScratch.deleteThisRunsFolder();
+    deleteTempQuietly(Directory(_documents));
+    deleteTempQuietly(Directory(testContainerFolder()));
+    final left = await whatTheRunLeftIn(temp);
+    deleteTempQuietly(temp);
+    expect(
+      left,
+      isEmpty,
+      reason:
+          'whatever this file — or the code its tests drive — makes under '
+          'Directory.systemTemp has to be gone when its tests are: delete '
+          'it with deleteTempQuietly or deleteAfterSessionEnds, and let go '
+          'of what still holds it first',
+    );
+  });
+  await testMain();
+}
+
+/// The Documents home a test stands in for the user's: in the run's own
+/// temp ([testExecutable]).
+late final String _documents;
+
 /// Corpus-wide input baseline (UI-R22F #1).
 ///
 /// The PRODUCT default is touch-scrolls-ON (finger pans scroll the
@@ -51,7 +183,18 @@ import 'helpers/temp_dir.dart';
 /// Tests that flip the value themselves must tearDown-reset to THIS
 /// baseline (`AppInputSettings.testCorpusBaseline`), not to the
 /// product default `AppInputSettings()`.
-Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+///
+/// 🎯WHAT A TEST FILE STARTS FROM, IN ONE CODE (card
+/// bundled-files-read-timeline-values-left-behind, 타임라인/콘티 →
+/// 보드/인프라 2026-11-23): set before a file declares a test, and in a
+/// bundle (tool/test_bundles.dart) again as each file's group starts —
+/// [testExecutable] wraps an entry once, and each file after the first had
+/// started from what the one before it left. 🔬A block warning's file was
+/// red behind a row file that ends on the product's input default — a
+/// touch drag scrolled — and green with the values set again.
+/// ⛔A value a file starts from is set here, not in [testExecutable]:
+/// there it is an entry's, once.
+void startATestFile() {
   // The GPU engine opens on the first adapter: no Flutter names one here.
   // ⛔Nothing opens it now — a file that never asks for the engine opens no
   // device (app_gpu_engine.dart) — and nothing stands in for it: a test that
@@ -103,12 +246,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // run's own container, as all did.
   final machine = machineCacheFolder(Platform.environment);
   debugAppShaderFolder = machine == null ? null : '$machine/test_shaders';
-  // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
-  // (2026-10-08). FIRST, before anything below asks for a temp path: from
-  // here on `Directory.systemTemp` answers a folder of this file's own —
-  // see `giveTheRunItsOwnTemp` — and the last `tearDownAll` at the bottom
-  // asks what is still in it.
-  final temp = giveTheRunItsOwnTemp();
   AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   // The program/notation languages live app-wide too (AppText), so a file
   // that flips them cannot leak into the next one. Tests that flip them
@@ -128,8 +265,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // deleted in a `finally` after `testMain` — which returns once the tests
   // are DECLARED, before one of them has run — so every file that went on
   // to ask for the home made it again, and left it (2026-10-08).
-  final documents = '${temp.path.replaceAll('\\', '/')}/qa_test_docs';
-  AppStorage.channelDocumentsPath = documents;
+  AppStorage.channelDocumentsPath = _documents;
   // PICK-2: the folder-picker seam is a static, so a file that installs one
   // and forgets to remove it would hand its fake to every file after it.
   // Cleared here rather than trusted to each suite's tearDown.
@@ -214,85 +350,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // anew as it is handed out here, and an input of a row the hand-on does
   // not name throws in whichever test moves it.
   debugCheckFilmRowsKept = true;
-  // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
-  // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
-  // [OpenProjectFile], which keeps the `.anicel` open for the next read;
-  // on Windows that also stops the folder holding it from being deleted.
-  // In the app that IS the feature — the project cannot be pulled out
-  // from under the session drawing into it — and the release point is the
-  // whole-store swap that opening the next project performs. A test drops
-  // its store on the floor instead, and Dart has no destructor.
-  //
-  // 🚨**REGISTERED AS AN `addTearDown` FROM A `setUp`, AND THE ORDERING IS
-  // THE WHOLE POINT.** package:test runs every `addTearDown` callback
-  // before any `tearDown`. Written as a plain `tearDown` here this is the
-  // OUTERMOST one, so it ran dead last — after each suite's own
-  // `tearDown(() => deleteTempQuietly(directory))`, which is the
-  // exact line it exists to unblock (five suites failed that way with
-  // errno 32). Registered from `setUp` it lands in the earlier phase and
-  // gets there first.
-  //
-  // ⛔**What it still cannot reach**: a suite that registers its delete
-  // with `addTearDown` INSIDE the test. Those run in reverse registration
-  // order, so a later registration runs earlier, and ours — registered in
-  // `setUp`, before the body — is last again. That shape needs the release
-  // in the same callback: `deleteAfterSessionEnds` in
-  // `test/helpers/project_scratch_folder.dart`.
-  setUp(() => addTearDown(OpenProjectFile.instance.releaseAll));
-  // 🚨**AN ERROR THE DEVICE RAISED THAT NO JOB WAS REFUSED BY IS THE
-  // TEST'S** (🗣️관제 2026-11-11: 「기록된 오류가 남아 있으면 시험이 끝날 때
-  // 빨개지는 장치를 같이 둬라」). ↩️Till the device-loss lane such an error
-  // ended the process where it was raised — wgpu's own handler panics —
-  // and that was the alarm. The engine notes it now and fails the next job
-  // that waits (rust/src/device.rs, `Refusals`), so a test on a way that
-  // never waits would end green with it noted. Asked as each test ends,
-  // and TAKEN: the test that raised it is the red one, and the next test's
-  // first wait is not failed by it.
-  //
-  // ⚠️The first `tearDown` here, so the last one run — package:test runs
-  // them in reverse — and what the two below let go of is asked for too.
-  tearDown(() {
-    expect(
-      debugTakeAppGpuEngineNoted(),
-      isNull,
-      reason:
-          'the GPU device raised an error that no job of this test was '
-          'refused by: the way that raised it never waits for the device, '
-          'and the app would go on as if it had worked',
-    );
-  });
-  // 🚨**THE THREAD A TEST'S FRAMES ARE BUILT ON TAKES NO GPU DEVICE IN
-  // HAND** (🗣️유저 2026-11-13, H57-Q1: 「C · 합성 전체를 엔진 스레드로 — 이게
-  // 가장 근본/구조적인 해결같은데 맞나?」 · 「근본/구조적 해결을 원해. 작업이
-  // 크더라도」): a verb's body runs on the engine's thread, whatever
-  // thread calls the verb (rust/src/device.rs, `EngineThread`, has what
-  // the UI thread paid in the device: 🔬32–55 ms each time the allocator
-  // made a block under a buffer it asked for, Surface Pro 11). Asked of
-  // this thread as each test ends — every test's frames are built on it:
-  // a verb whose body is left on its caller's is red in the first test
-  // that calls it, and in no test after for that call.
-  var enteredBefore = 0;
-  tearDown(() {
-    final entered = debugDeviceEnteredHere - enteredBefore;
-    enteredBefore += entered;
-    expect(
-      entered,
-      0,
-      reason:
-          'this thread took the GPU device in hand: a verb of the '
-          'engine\'s ran its body here, not on the engine\'s thread',
-    );
-  });
-  // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test
-  // queued drained inside the NEXT test — against the earlier test's
-  // painter and resolvers, in the next test's zone (2026-09-26: a rows test
-  // failed on a raster the test before it had queued). A test ends with
-  // the store empty; the drain it scheduled then finds nothing.
-  tearDown(TimelineGridTileStore.instance.clear);
-  // So are the baked words, and a bake a test left in flight never lands
-  // in the next: its word stood waited for in every test after
-  // ([BakedWords.debugForgetEveryBake] has the measurement).
-  tearDown(BakedWords.instance.debugForgetEveryBake);
   // `flutter test` registers no texture a frame grid's screen could be
   // shown by ([ScreenTexture.debugOnSurface]): where a file opens the GPU
   // engine, each grid's screen opens on a surface of its own, freed as the
@@ -318,40 +375,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // pictures open: no test but the one that fires it by hand is about that,
   // and one left armed outlives the tree.
   TimelineGridTileStore.instance.debugZoomTimer = (_, _) => const _NoStop();
-  tearDown(_freeScreenSurfaces);
-  // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
-  // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
-  // single test, so it is the root group's LAST `tearDownAll` — package:test
-  // runs them in reverse — and every cleanup a file wrote has run by then.
-  //
-  // First the run lets go the way the app does on a normal exit: the
-  // project file, then this run's room in the container
-  // (`SessionScratch.deleteThisRunsFolder` — its lock file is held open for
-  // the whole run, and Windows will not delete a folder with an open file
-  // in it). Then the two stand-ins this run made for the user's own folders
-  // go: the Documents home above, and the container
-  // (`testContainerFolder`). Whatever is still in the run's temp after that
-  // was left behind by a test or by the code it drove, and the file is red
-  // for it — after the folder is removed anyway, so a red run does not
-  // leave it on the machine either.
-  tearDownAll(() async {
-    OpenProjectFile.instance.releaseAll();
-    SessionScratch.deleteThisRunsFolder();
-    deleteTempQuietly(Directory(documents));
-    deleteTempQuietly(Directory(testContainerFolder()));
-    final left = await whatTheRunLeftIn(temp);
-    deleteTempQuietly(temp);
-    expect(
-      left,
-      isEmpty,
-      reason:
-          'whatever this file — or the code its tests drive — makes under '
-          'Directory.systemTemp has to be gone when its tests are: delete '
-          'it with deleteTempQuietly or deleteAfterSessionEnds, and let go '
-          'of what still holds it first',
-    );
-  });
-  await testMain();
 }
 
 /// A zoom's stop that does not come.

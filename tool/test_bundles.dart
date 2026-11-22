@@ -296,7 +296,37 @@ List<String> libraryAnnotations(String source) {
 /// Bundled with two files that load them, each of three that measure in the
 /// test font went red behind one and stayed green ahead of both, in either
 /// order — and green alone.
-bool loadsFonts(String file, {required String Function(String path) read}) {
+bool loadsFonts(String file, {required String Function(String path) read}) =>
+    _reaches(file, _loadsAFont, read);
+
+final _loadsAFont = RegExp(r'\b(FontLoader|loadFontFromList)\(');
+
+/// Whether [file] — or a test file it imports, at any depth — starts a
+/// test binding (a `testWidgets`, an `ensureInitialized`). [read] gives a
+/// file's source by its path from the checkout's root.
+///
+/// 🎯A BINDING ONCE STARTED IS THE ISOLATE'S, as a font is (card
+/// bundled-files-read-timeline-values-left-behind, 타임라인/콘티 →
+/// 보드/인프라 2026-11-23). A `testWidgets` starts it as it is declared, and
+/// in a bundle every file declares before any test runs. A file that never
+/// starts one takes the ways lib goes where there is no binding — a frame's
+/// wait at once, an image let go at once, a shadow painted — and three such
+/// files went red behind widget tests and green alone.
+bool startsABinding(
+  String file, {
+  required String Function(String path) read,
+}) =>
+    _reaches(file, _startsABinding, read);
+
+final _startsABinding = RegExp(r'\b(testWidgets|ensureInitialized)\(');
+
+/// Whether code [pattern] matches is in [file] or in a test file it
+/// imports, at any depth.
+bool _reaches(
+  String file,
+  RegExp pattern,
+  String Function(String path) read,
+) {
   final seen = {file};
   final next = [file];
   while (next.isNotEmpty) {
@@ -310,15 +340,13 @@ bool loadsFonts(String file, {required String Function(String path) read}) {
       // the whole batch's bundling.
       continue;
     }
-    if (_loadsAFont.hasMatch(codeOnly(source))) return true;
+    if (pattern.hasMatch(codeOnly(source))) return true;
     for (final imported in _testFilesUsed(path, source)) {
       if (seen.add(imported)) next.add(imported);
     }
   }
   return false;
 }
-
-final _loadsAFont = RegExp(r'\b(FontLoader|loadFontFromList)\(');
 
 /// The test files [source] — the file at [path] — imports or exports by a
 /// relative path, as paths from the checkout's root. Only its directives
@@ -353,8 +381,9 @@ Iterable<String> _testFilesUsed(String path, String source) sync* {
 /// A batch's [files] — longest first — as entries of at most
 /// [kFilesPerBundle], dealt in turn so each starts on a heavy file and the
 /// entries weigh about alike, a file only with files of its own library
-/// annotations ([entrySource] makes them the entry's) and with files that
-/// load fonts as it does or does not ([loadsFonts]); and the files that
+/// annotations ([entrySource] makes them the entry's), with files that
+/// load fonts as it does or does not ([loadsFonts]) and that start a
+/// binding as it does or does not ([startsABinding]); and the files that
 /// cannot share ([whyAlone], [kRunsAlone]) as they are. [reversed] runs
 /// each entry's files the other way round — the census's second order.
 ({List<List<String>> bundles, List<String> alone}) bundlesOf(
@@ -374,6 +403,7 @@ Iterable<String> _testFilesUsed(String path, String source) sync* {
       final kind = [
         ...libraryAnnotations(source),
         if (loadsFonts(file, read: readOnce)) 'loads fonts',
+        if (startsABinding(file, read: readOnce)) 'starts a binding',
       ];
       (alike[kind.join('\n')] ??= []).add(file);
     }
@@ -409,6 +439,13 @@ List<List<String>> _dealt(List<String> files) {
 /// Each group was handed its file's time limit and platform, and 74
 /// entries did not compile — their files ran alone, and were read as
 /// having lost their isolation.
+///
+/// 🎯EACH FILE STARTS FROM WHAT A FILE ALONE STARTS FROM (card
+/// bundled-files-read-timeline-values-left-behind, 2026-11-23): its group
+/// sets it again — `startATestFile` in test/flutter_test_config.dart, the
+/// code `testExecutable` sets it with — before its first test. The config
+/// wraps an entry once, and each file after the first had started from
+/// what the one before it left.
 String entrySource(
   List<String> files,
   String Function(String path) read, {
@@ -426,13 +463,20 @@ String entrySource(
       ..writeln()
       ..writeln('library;');
   }
-  source.writeln("import 'package:flutter_test/flutter_test.dart';");
+  source
+    ..writeln("import 'package:flutter_test/flutter_test.dart';")
+    ..writeln("import '$toRoot/test/flutter_test_config.dart' "
+        'show startATestFile;');
   for (var i = 0; i < files.length; i++) {
     source.writeln("import '$toRoot/${files[i]}' as f$i;");
   }
   source.writeln('void main() {');
   for (var i = 0; i < files.length; i++) {
-    source.writeln("  group('${files[i]}', f$i.main);");
+    source
+      ..writeln("  group('${files[i]}', () {")
+      ..writeln('    setUpAll(startATestFile);')
+      ..writeln('    f$i.main();')
+      ..writeln('  });');
   }
   source.writeln('}');
   return source.toString();
