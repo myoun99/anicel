@@ -55,6 +55,63 @@ void main() {
     );
   });
 
+  group("a PATH with no bash but WSL's alias (2026-11-23)", () {
+    // The alias is not on disk to Dart — a link it does not take for a
+    // file; a bare `bash` is what reached it, through Windows' own lookup.
+    const aliases = r'C:\Users\u\AppData\Local\Microsoft\WindowsApps';
+    const gitCmd = r'C:\Program Files\Git\cmd';
+    const gitMingw = r'C:\Program Files\Git\mingw64\bin';
+    const gitsShortcut = r'C:\Program Files\Git\bin\bash.exe';
+    bool installed(String path) =>
+        onDisk(path) ||
+        path == '$gitCmd\\git.exe' ||
+        path == '$gitMingw\\git.exe' ||
+        path == gitsShortcut;
+
+    test("🚨PowerShell's PATH: the bash of the Git install whose git it "
+        'names, not a bare `bash`', () {
+      expect(
+        bashOnPath(
+          [r'C:\Windows\System32', gitCmd, aliases, gitMingw],
+          windowsFolder: windows,
+          exists: installed,
+        ),
+        gitsShortcut,
+      );
+      expect(
+        bashOnPath(
+          [aliases, gitMingw],
+          windowsFolder: windows,
+          exists: installed,
+        ),
+        gitsShortcut,
+        reason: "git named only from the install's mingw64\\bin",
+      );
+    });
+
+    test('a bash on PATH still comes before the git walk', () {
+      expect(
+        bashOnPath(
+          [gitCmd, git],
+          windowsFolder: windows,
+          exists: installed,
+        ),
+        gits,
+      );
+    });
+
+    test('no git either — a bare `bash`, as before', () {
+      expect(
+        bashOnPath(
+          [r'C:\Windows\System32', aliases],
+          windowsFolder: windows,
+          exists: installed,
+        ),
+        'bash',
+      );
+    });
+  });
+
   test('⛔no tool starts a bare `bash` — they ask `bashExecutable`; a start '
       'through the shell keeps it', () {
     // Through the shell cmd walks PATH itself, and cuts a quoted path with a
