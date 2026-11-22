@@ -85,7 +85,7 @@ void main() {
       path,
       within: null,
       step: const Duration(milliseconds: 5),
-      onWaiting: (waited, _, {required fromTheCloud}) {
+      onWaiting: (waited, {required fromTheCloud}) {
         seen.add(waited);
         cloud.add(fromTheCloud);
       },
@@ -149,7 +149,7 @@ void main() {
       path,
       within: null,
       step: const Duration(seconds: 3),
-      onWaiting: (waited, _, {required fromTheCloud}) => seen.add(waited),
+      onWaiting: (waited, {required fromTheCloud}) => seen.add(waited),
       isCancelled: () => false,
     );
 
@@ -294,7 +294,7 @@ void main() {
         path,
         within: const Duration(milliseconds: 500),
         step: const Duration(milliseconds: 5),
-        onWaiting: (waited, _, {required fromTheCloud}) {
+        onWaiting: (waited, {required fromTheCloud}) {
           seen.add(waited);
           cloud.add(fromTheCloud);
         },

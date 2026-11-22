@@ -52,10 +52,14 @@ class ProviderDocumentRefused implements Exception {
 
 /// One document on its way into its working copy ([ProviderDocuments.copyIn]).
 class ProviderCopy {
-  ProviderCopy._(this.destination, this.done);
+  ProviderCopy._(this.destination, this.done, this.length);
 
   /// Where the working copy stands once [done] answers true.
   final String destination;
+
+  /// The document's size, when the provider gave it as it was picked
+  /// ([ProviderDocument.length]) — what [moved] is a share of.
+  final int? length;
 
   /// True once the whole document stands at [destination]; false when the
   /// provider refused it or the copy was stopped.
@@ -178,7 +182,7 @@ abstract final class ProviderDocuments {
       _documentOfCopy[destination] = uri;
       return true;
     });
-    return ProviderCopy._(destination, done);
+    return ProviderCopy._(destination, done, _known[uri]?.length);
   }
 
   /// [staged] — a whole project the picker has just poured into [document]

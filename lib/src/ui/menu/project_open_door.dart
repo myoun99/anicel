@@ -232,15 +232,18 @@ final class ProjectOpenDoor {
     CloudWait wait,
     void Function(double) report,
   ) async {
+    final passes = ReadPasses(report);
     final source = await FolderPicker.materializeOpenedFile(
       path,
       within: null,
       onWaiting: wait.report,
       isCancelled: wait.isCancelled,
+      onCopied: passes.copied,
     );
     // The materializer is done with the file. A drive that says nothing of
     // a file the cloud still holds (F-608 ①) brings it down inside the read
-    // that follows — so the bar is that read's bytes (F-608-Q2).
+    // that follows — so the bar is that read's bytes (F-608-Q2), after a
+    // provider document's copy where there was one.
     wait.ended();
     final read = await readProjectFile(
       source.path,
@@ -248,7 +251,7 @@ final class ProjectOpenDoor {
       // and a session reading its own file has nowhere else.
       bindTo: source.staged ? path : null,
       isCancelled: wait.isCancelled,
-      onRead: report,
+      onRead: passes.read,
     );
     final session = projects.prepare(read.project);
     try {

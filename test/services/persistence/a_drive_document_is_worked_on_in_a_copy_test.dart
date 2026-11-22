@@ -129,32 +129,39 @@ void main() {
       expect(session.projectFile.path, source.path);
     });
 
-    test('🚨the copy is ONE wait with the cloud\'s — it reports what has '
-        'come, and a Cancel stops the copy and registers nothing', () async {
+    test('🚨the copy is ONE wait with the cloud\'s — the bar follows the '
+        'bytes it has moved of the size the provider gave, and a Cancel '
+        'stops the copy and registers nothing', () async {
       final uri = await projectDocument('Slow.anicel');
+      // 🗣️F-608 (유저 2026-11-23, a Galaxy Tab: 「퍼센테이지도안뜨고」).
+      ProviderDocuments.remember(
+        ProviderDocument(uri: uri, name: 'Slow.anicel', length: 4),
+      );
       provider.holdCopy = Completer<void>();
-      final told = <({Duration waited, Duration quiet, bool cloud})>[];
+      final told = <({Duration waited, bool cloud})>[];
+      final copied = <double>[];
       var cancelled = false;
 
       final opening = FolderPicker.materializeOpenedFile(
         uri,
         within: null,
         step: const Duration(milliseconds: 5),
-        onWaiting: (waited, quiet, {required fromTheCloud}) {
-          told.add((waited: waited, quiet: quiet, cloud: fromTheCloud));
+        onWaiting: (waited, {required fromTheCloud}) {
+          told.add((waited: waited, cloud: fromTheCloud));
           if (told.length == 3) {
             cancelled = true;
           }
         },
         isCancelled: () => cancelled,
+        onCopied: copied.add,
       );
 
       await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
       expect(
-        [for (final beat in told) beat.quiet < beat.waited],
-        contains(true),
-        reason: 'the bytes the copy moved were counted as arriving, so the '
-            'quiet runs from them and not from the start (F-608 ①)',
+        copied,
+        containsAllInOrder([0, 0.25]),
+        reason: 'one byte of four moved is a quarter — from 0 before it had '
+            'moved any',
       );
       expect(
         [for (final beat in told) beat.cloud],
@@ -167,6 +174,41 @@ void main() {
       provider.holdCopy!.complete();
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(ProviderDocuments.workingCopyOf(uri), isNull);
+    });
+
+    test('a document whose provider gave no size tells the bar nothing — '
+        'never a number the app cannot know', () async {
+      final uri = await projectDocument('Sizeless.anicel');
+      final copied = <double>[];
+
+      await FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        isCancelled: () => false,
+        onCopied: copied.add,
+      );
+
+      expect(copied, isEmpty);
+    });
+
+    test('🎯a document read in whole is ONE bar across its two passes — the '
+        'copy fills the first half, the read the second, and it never runs '
+        'back', () async {
+      final uri = await projectDocument('Drive.tvpp');
+      final length = File(provider.files[uri]!).lengthSync();
+      ProviderDocuments.remember(
+        ProviderDocument(uri: uri, name: 'Drive.tvpp', length: length),
+      );
+      final told = <double>[];
+
+      final read = await FolderPicker.readOpenedFile(
+        uri,
+        isCancelled: () => false,
+        onRead: told.add,
+      );
+
+      expect(read.bytes, File(provider.files[uri]!).readAsBytesSync());
+      expectOneBar(told, [0, 0.5, 1]);
     });
 
     test('a document the provider will not give says it could not be read '

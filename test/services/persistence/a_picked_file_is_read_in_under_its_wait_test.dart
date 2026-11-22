@@ -38,12 +38,12 @@ void main() {
   Future<int> oneByte(RandomAccessFile file, List<int> into, int from) =>
       file.readInto(into, from, from + 1);
 
-  test('🚨the read that brings the bytes in IS the wait — a piece that '
-      'lands is an arrival, so the quiet runs from it', () async {
+  test('🚨the read that brings the bytes in IS the wait — the line speaks '
+      'while a piece is held, and says the app is reading', () async {
     final path = file('drive.tvpp', const [1, 2, 3, 4, 5, 6]);
     final held = Completer<void>();
     final spoke = Completer<void>();
-    final told = <({Duration waited, Duration quiet, bool cloud})>[];
+    final told = <({Duration waited, bool cloud})>[];
     FolderPicker.debugReadPiece = (file, into, from, to) async {
       if (from > 0) {
         await held.future;
@@ -53,8 +53,8 @@ void main() {
 
     final reading = FolderPicker.readOpenedFile(
       path,
-      onWaiting: (waited, quiet, {required fromTheCloud}) {
-        told.add((waited: waited, quiet: quiet, cloud: fromTheCloud));
+      onWaiting: (waited, {required fromTheCloud}) {
+        told.add((waited: waited, cloud: fromTheCloud));
         if (!spoke.isCompleted) {
           spoke.complete();
         }
@@ -67,12 +67,6 @@ void main() {
 
     expect(read.bytes, const [1, 2, 3, 4, 5, 6]);
     expect((read.path, read.staged), (path, false));
-    expect(
-      told.first.quiet,
-      lessThan(told.first.waited),
-      reason: 'the first piece landed before the wait spoke — the wait must '
-          'know it, or a file still coming down reads as one that is not',
-    );
     expect(
       [for (final beat in told) beat.cloud],
       everyElement(isFalse),
@@ -98,7 +92,7 @@ void main() {
 
     final reading = FolderPicker.readOpenedFile(
       path,
-      onWaiting: (_, _, {required fromTheCloud}) => stop = true,
+      onWaiting: (_, {required fromTheCloud}) => stop = true,
       isCancelled: () => stop,
     );
 
@@ -157,7 +151,7 @@ void main() {
 
     final read = await FolderPicker.readOpenedFile(
       path,
-      onWaiting: (waited, _, {required fromTheCloud}) => told.add(waited),
+      onWaiting: (waited, {required fromTheCloud}) => told.add(waited),
       isCancelled: () => false,
     );
 

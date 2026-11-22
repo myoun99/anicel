@@ -637,9 +637,6 @@ enum AppStrings {
   /// cloud, which would be a guess (F-621-Q2).
   String get openWaitingReadingTemplate => _s('openWaitingReadingTemplate');
 
-  /// '{sec}' is whole seconds waited. Said once the wait is long enough
-  /// to be worth a decision; the window's cancel is the decision.
-  String get openWaitingStalledTemplate => _s('openWaitingStalledTemplate');
   String get resizeProgressRunning => _s('resizeProgressRunning');
 
   /// The wait window over a bake — a movie's frames into cels, at placement
@@ -2708,7 +2705,6 @@ enum AppStrings {
     'openProgressRunning': 'Opening…',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
     'openWaitingReadingTemplate': 'Reading the file · {sec}s',
-    'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
     'bakeProgressRunning': 'Rasterizing…',
     'pasteProgressRunning': 'Pasting…',
@@ -4270,7 +4266,6 @@ enum AppStrings {
     'openProgressRunning': '読み込み中…',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
     'openWaitingReadingTemplate': 'ファイルを読み込み中 · {sec}秒',
-    'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
     'bakeProgressRunning': 'ラスタライズ中…',
     'pasteProgressRunning': 'ペースト中…',
@@ -6248,7 +6243,6 @@ enum AppStrings {
     'openProgressRunning': '여는 중…',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
     'openWaitingReadingTemplate': '파일을 읽는 중 · {sec}초',
-    'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
     'bakeProgressRunning': '래스터라이즈 중…',
     'pasteProgressRunning': '붙여넣는 중…',
@@ -10083,7 +10077,6 @@ enum AppStrings {
     'openProgressRunning': 'Ouverture…',
     'openWaitingCloudTemplate': 'Téléchargement depuis le cloud · {sec} s',
     'openWaitingReadingTemplate': 'Lecture du fichier · {sec} s',
-    'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
     'prefsDisplay': 'Affichage',
     'uiScaleLabel': "Taille de l'interface",
     'colorModeLabel': 'Apparence',
@@ -11967,7 +11960,6 @@ enum AppStrings {
     'openProgressRunning': '正在打开…',
     'openWaitingCloudTemplate': '正在从云端下载 · {sec} 秒',
     'openWaitingReadingTemplate': '正在读取文件 · {sec} 秒',
-    'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
     'prefsDisplay': '显示',
     'uiScaleLabel': '界面大小',
     'colorModeLabel': '外观',

@@ -43,7 +43,7 @@ import '../../services/import/raster_cel_import.dart'
 import '../../services/persistence/brush_drawing_binary_codec.dart'
     show AnicelLaidCel, freeLaidCel, laidCelSurface;
 import '../../services/persistence/folder_grant.dart'
-    show FolderPicker, MaterializeCancelled, WaitReport;
+    show FolderPicker, MaterializeCancelled, ReadPasses, WaitReport;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
@@ -104,15 +104,21 @@ Future<ClipProjectRead?> readClipProject({
   bool Function()? isCancelled,
   void Function(double fraction)? onRead,
 }) async {
+  final passes = ReadPasses(onRead);
   final source = await FolderPicker.materializeOpenedFile(
     clipPath,
     within: isCancelled == null ? const Duration(minutes: 10) : null,
     onWaiting: onWaiting,
     isCancelled: isCancelled,
+    onCopied: passes.copied,
   );
   final scratch = Directory(SessionScratch.volatileFolder())
     ..createSync(recursive: true);
-  final document = await _readStructure(source.path, scratch.path, onRead);
+  final document = await _readStructure(
+    source.path,
+    scratch.path,
+    passes.read,
+  );
   if (document == null) {
     unawaited(FolderPicker.letGoOfStagedCopy(source));
     return null;

@@ -99,9 +99,9 @@ void main() {
     expect(find.text('Opening…'), findsNothing);
 
     // And it keeps up: the same window says the newer thing.
-    run.status.value = '12초째 도착하지 않았습니다';
+    run.status.value = '클라우드에서 내려받는 중 · 12초';
     await tester.pump();
-    expect(find.text('12초째 도착하지 않았습니다'), findsOneWidget);
+    expect(find.text('클라우드에서 내려받는 중 · 12초'), findsOneWidget);
 
     // The bytes are here: the fixed line is back for the app's own read.
     run.status.value = '';

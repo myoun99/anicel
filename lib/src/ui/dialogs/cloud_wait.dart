@@ -30,16 +30,11 @@ class CloudWait {
 
   bool _cancelled = false;
 
-  /// The wait's word on the file: how long it has gone on, how long since
-  /// a byte of it last came, and whether the device says it is still
-  /// coming from the cloud.
-  void report(
-    Duration waited,
-    Duration quiet, {
-    required bool fromTheCloud,
-  }) {
+  /// The wait's word on the file: how long it has gone on, and whether the
+  /// device says it is still coming from the cloud.
+  void report(Duration waited, {required bool fromTheCloud}) {
     // The sentence is [cloudWaitLine]'s, for every door (F-141).
-    status.value = cloudWaitLine(waited, quiet, fromTheCloud: fromTheCloud);
+    status.value = cloudWaitLine(waited, fromTheCloud: fromTheCloud);
     waiting.value = true;
   }
 
