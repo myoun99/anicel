@@ -509,10 +509,7 @@ class _RenderGridScreen extends RenderBox {
     final window = EngineScreenTexture.windowOf(texture, shown);
     final again = [
       for (final slot in outgrown ? screen._slots : screen._unheld)
-        // A row no screen open answered asks as one opens ([_textureCame]).
-        if ((slot._lays || screen._unheld.contains(slot)) &&
-            slot._lays != _holdsOn(window, shown, slot, view))
-          slot,
+        if (slot._lays != _holdsOn(window, shown, slot, view)) slot,
     ];
     if (again.isEmpty) {
       return;
