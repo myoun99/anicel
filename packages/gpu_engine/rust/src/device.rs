@@ -1340,7 +1340,7 @@ impl<Then: FnOnce(Result<(), String>)> Drop for Told<Then> {
 /// and wgpu refused the open on one that gave less of any — of one no
 /// kernel comes near, too: 🔬the Android emulator's software Vulkan
 /// (SwiftShader, 2026-11-22) gives a uniform binding 16384 bytes against
-/// the default's 65536, the biggest the engine binds is 84, and the canvas
+/// the default's 65536, the biggest the engine binds is 88, and the canvas
 /// never opened there. What the kernels cannot do with less of is
 /// [`used`]'s to say, not the defaults' (관제 2026-11-22 17:56,
 /// the-user-travels-ten-days-from-11-21: 「엔진이 실제로 쓰는 만큼만 묻게」).
@@ -1374,10 +1374,11 @@ fn short(most: &wgpu::Limits) -> Vec<String> {
 /// kernel that uses most of each does, whatever the device (🔬every shader
 /// read, 2026-11-22: 68 files' 72 entry points and the plugins' prelude):
 /// - one bind group, and in it a stage binds two uniform buffers (a blur
-///   effect's held words and its pass's: held.wgsl with its own) — 84 bytes
-///   the biggest: the composite's pass, the cel pixel verbs' and the lens
-///   gather's —, one storage texture and one sampled one (the timeline's
-///   grid and wave), and no sampler;
+///   effect's held words and its pass's: held.wgsl with its own) — 88 bytes
+///   the biggest, the lens gather's (gather.wgsl, since a chunk of its band
+///   is a submit of its own and names its first column — 2026-11-22), the
+///   composite's pass and the cel pixel verbs' 84 —, one storage texture
+///   and one sampled one (the timeline's grid and wave), and no sampler;
 /// - a workgroup 256 across (the fold, the write, the Gaussian), 256 down
 ///   and one deep, of 256 invocations — a plugin's may be any shape of so
 ///   many (`fx_wgsl::MOST_INVOCATIONS`), the engine's own go 16 down —
@@ -1402,7 +1403,7 @@ fn used(rest: wgpu::Limits) -> wgpu::Limits {
     wgpu::Limits {
         max_bind_groups: 1,
         max_uniform_buffers_per_shader_stage: 2,
-        max_uniform_buffer_binding_size: 84,
+        max_uniform_buffer_binding_size: 88,
         max_storage_textures_per_shader_stage: 1,
         max_sampled_textures_per_shader_stage: 1,
         max_samplers_per_shader_stage: 0,
@@ -3962,7 +3963,7 @@ mod tests {
         assert_eq!(
             last_error(),
             "the adapter gives the kernels too little: \
-             max_uniform_buffer_binding_size 80 of 84, \
+             max_uniform_buffer_binding_size 80 of 88, \
              max_compute_invocations_per_workgroup 128 of 256, \
              max_compute_workgroup_size_x 128 of 256",
         );
@@ -3978,7 +3979,7 @@ mod tests {
             ("max_uniform_buffers_per_shader_stage", 2, |most, n| {
                 most.max_uniform_buffers_per_shader_stage = n;
             }),
-            ("max_uniform_buffer_binding_size", 84, |most, n| {
+            ("max_uniform_buffer_binding_size", 88, |most, n| {
                 most.max_uniform_buffer_binding_size = n.into();
             }),
             ("max_storage_textures_per_shader_stage", 1, |most, n| {
