@@ -120,6 +120,59 @@ void main() {
     });
   });
 
+  group("a font once loaded is the isolate's", () {
+    const sources = {
+      'test/helpers/faces.dart': "import 'package:flutter/services.dart';\n"
+          "Future<void> faces() => FontLoader('BIZ UDPGothic').load();",
+      'test/helpers/through.dart': "export 'faces.dart';",
+      'test/helpers/plain.dart': 'void nothing() {}',
+      'test/a/direct_test.dart': "void main() { FontLoader('x'); }",
+      'test/a/helped_test.dart': "import '../helpers/through.dart';\n"
+          'void main() {}',
+      'test/a/plain_test.dart': "import '../helpers/plain.dart';\n"
+          '// FontLoader( is what a comment says\n'
+          "void main() { print('FontLoader('); }",
+      'test/a/planted_test.dart': 'void main() {\n'
+          "  const planted = '''\n"
+          "import '../helpers/faces.dart';\n"
+          "import '../nowhere.dart';\n"
+          "''';\n"
+          '}',
+      'test/a/broken_test.dart': "import 'gone.dart';\nvoid main() {}",
+    };
+    String read(String path) => sources[path] ??
+        (throw PathNotFoundException(path, const OSError('not there', 2)));
+
+    test('a file loads one by its own hand or through a test file it uses, '
+        'at any depth — not by what a comment or a string says', () {
+      expect(loadsFonts('test/a/direct_test.dart', read: read), isTrue);
+      expect(loadsFonts('test/a/helped_test.dart', read: read), isTrue);
+      expect(loadsFonts('test/a/plain_test.dart', read: read), isFalse);
+    });
+
+    test('what it uses is what its directives name — not an import a scan '
+        'test plants in a string, nor a file that is not there', () {
+      expect(loadsFonts('test/a/planted_test.dart', read: read), isFalse);
+      expect(loadsFonts('test/a/broken_test.dart', read: read), isFalse);
+    });
+
+    test('and is bundled only with files that load one too', () {
+      final cut = bundlesOf([
+        'test/a/direct_test.dart',
+        'test/a/plain_test.dart',
+        'test/a/helped_test.dart',
+      ], read: read);
+      expect(cut.alone, isEmpty);
+      expect(
+        cut.bundles.map((bundle) => bundle.toSet()),
+        unorderedEquals([
+          {'test/a/direct_test.dart', 'test/a/helped_test.dart'},
+          {'test/a/plain_test.dart'},
+        ]),
+      );
+    });
+  });
+
   group('a batch is cut into bundles', () {
     String sourceOf(String path) => path.contains('own')
         ? 'void main() { ScaledTestBinding.ensureInitialized(); }'

@@ -16,6 +16,8 @@
 // alone — `affected_tests` runs every bundled red again alone, and names
 // those ([kRunsAlone] is where the census puts them).
 
+import 'dart:io' show FileSystemException;
+
 import 'source_brackets.dart';
 import 'test_seconds.dart' show SuiteRun, isBundleEntry;
 
@@ -38,12 +40,6 @@ String bundleConfigSource(String toRoot) =>
 /// error — and card the-wide-check-takes-five-hours lists those by area,
 /// to be read and mended there.
 const Map<String, String> kRunsAlone = {
-  'test/ui/text/a_vertical_column_is_one_box_test.dart':
-      "its settle waits for BakedWords' waiting words to drain, and in a "
-      'bundle (census 11-20, after confirm_is_one_verb_test) they never did: '
-      'every settle ran out its 60 s patience — 2 min a test, 37 s the file '
-      'alone. Card a-vertical-column-test-compares-letters-that-never-'
-      'settled.',
   'test/home_cut_switching_test.dart':
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'the_format_window_gives_cuts_their_camera_room (9 of 9 tests red); '
@@ -112,10 +108,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-21 reversed: red 8/8 in a bundle, after '
       'the_composite_and_the_landing_compile_off_this_isolate — a test never '
       'ended; green alone.',
-  'test/ui/brush/text_tool_settings_values_test.dart':
-      'census 11-20 forward: red 6/9 in a bundle, after '
-      'the_opened_project_is_held (1 red) — Expected: <17> / Actual: <11.0>; '
-      'green alone.',
   'test/ui/brush/the_eyedropper_swatch_keeps_its_place_test.dart':
       'census 11-20 forward and 11-21 reversed: red 5/10 in a bundle, after '
       'toolbar_buttons_do_not_fade (2 red) — Expected: Object or closure '
@@ -128,17 +120,6 @@ const Map<String, String> kRunsAlone = {
   'test/ui/canvas/an_overlay_holds_what_it_shows_test.dart':
       'census 11-20 forward and 11-22 reversed: red 4/10 in a bundle, after '
       'an_se_rows_box_is_a_layers (1 red) — Expected: true / Actual: <false>; '
-      'green alone.',
-  'test/ui/canvas/text/a_carried_text_shows_what_it_lands_as_test.dart':
-      'census 11-21 reversed: red 10/10 in a bundle, after '
-      'the_hand_holds_the_warmer (8 of 15 tests red); green alone.',
-  'test/ui/canvas/text/cel_text_chrome_test.dart':
-      'census 11-20 forward: red 8/10 in a bundle, after '
-      'a_fill_ramp_spreads_on_every_side (1 red) — Expected: <8> / Actual: '
-      '<5.0390625>; green alone.',
-  'test/ui/canvas/text/cel_text_session_test.dart':
-      'census 11-20 forward: red 5/10 in a bundle, after '
-      'editor_session_manager_camera_layer (1 red) — Bad state: No element; '
       'green alone.',
   'test/ui/canvas/the_canvas_marks_its_place_while_a_frame_waits_for_the_engine_test.dart':
       'census 11-20 forward: red 3/10 in a bundle, after '
@@ -176,50 +157,14 @@ const Map<String, String> kRunsAlone = {
       'census 11-20 forward: red 3/10 in a bundle, after export_preview_panel '
       '(1 red) — REC1-C: the timeline shows the growing take WITHOUT a '
       'session notify — the preview …; green alone.',
-  'test/ui/session/a_block_dragged_onto_a_synced_row_trades_test.dart':
-      'census 11-20 forward: red 3/10 in a bundle, after '
-      'a_zoom_bakes_its_tiles_once_it_stops (27 red) — Bad state: a tile of '
-      '256² — the engine stores 128²; green alone.',
   'test/ui/session/a_cut_crossed_in_the_storyboard_is_stood_on_like_a_press_test.dart':
       'census 11-20 forward and 11-21 reversed: red 9/10 in a bundle, after '
       'track_fx (3 red) — Expected: CutId:<cut-1> / Actual: CutId:<cut-2> / '
       'premise: playback crossed; green alone.',
-  'test/ui/session/a_drag_in_flight_shows_on_the_canvas_test.dart':
-      'census 11-20 forward: red 8/10 in a bundle, after '
-      'a_tile_block_is_freed_by_no_token (4 red) — Bad state: a tile of 8² — '
-      'the engine stores 128²; green alone.',
-  'test/ui/session/a_link_independent_cel_keeps_its_attach_pictures_test.dart':
-      'census 11-20 forward: red 7/10 in a bundle, after '
-      'the_export_mix_runs_off_the_ui (2 red) — Bad state: a tile of 256² — '
-      'the engine stores 128²; green alone.',
-  'test/ui/session/a_linked_paste_keeps_its_names_across_rows_test.dart':
-      'census 11-20 forward: red 7/9 in a bundle, after a_fill_gradient (15 '
-      'red) — Bad state: a tile of 256² — the engine stores 128²; green '
-      'alone.',
-  'test/ui/session/a_picture_rows_picture_is_cut_and_pasted_test.dart':
-      'census 11-20 forward: red 6/9 in a bundle, after '
-      'a_text_hands_the_engine_the_layers_it_paints (15 red) — Bad state: a '
-      'tile of 256² — the engine stores 128²; green alone.',
   'test/ui/session/a_save_after_the_device_is_gone_keeps_the_work_test.dart':
       'census 11-20 forward: red 9/10 in a bundle, after '
       'the_notices_say_what_the_app_does (1 red) — Expected: false / Actual: '
       '<true>; green alone.',
-  'test/ui/session/a_sound_row_and_a_picture_row_take_no_paste_of_each_other_test.dart':
-      'census 11-20 forward: red 10/10 in a bundle, after '
-      'the_engine_screen_shows_the_frame_it_keeps (5 red) — Bad state: a tile '
-      'of 256² — the engine stores 128²; green alone.',
-  'test/ui/session/a_synced_row_trades_its_pictures_test.dart':
-      'census 11-20 forward and 11-21 reversed: red 5/10 in a bundle, after '
-      'se_span_overflow (5 red) — Bad state: a tile of 256² — the engine '
-      'stores 128²; green alone.',
-  'test/ui/session/a_timeline_copy_is_its_own_test.dart':
-      'census 11-20 forward: red 8/9 in a bundle, after viewer_render_tier (3 '
-      'red) — Bad state: a tile of 256² — the engine stores 128²; green '
-      'alone.',
-  'test/ui/session/an_image_row_links_by_name_and_can_stand_empty_test.dart':
-      'census 11-20 forward: red 4/10 in a bundle, after tvp_import_session '
-      '(8 red) — Bad state: a tile of 256² — the engine stores 128²; green '
-      'alone.',
   'test/ui/sheet/a_sheet_image_is_read_as_large_as_it_is_shown_test.dart':
       'census 11-20 forward: red 5/9 in a bundle, after '
       'hidden_folder_is_hidden (2 red) — Expected: true / Actual: <false> / '
@@ -235,15 +180,18 @@ const Map<String, String> kRunsAlone = {
   'test/ui/storyboard_se_track_test.dart':
       'census 11-21 reversed: red 9/9 in a bundle, after '
       'a_run_edge_press_acts_on_the_band (1 of 5 tests red); green alone.',
-  'test/ui/text/cel_text_bake_test.dart':
-      'census 11-20 forward: red 4/10 in a bundle, after '
-      'a_strip_measures_as_it_lays_out (9 red) — Expected: '
-      'Set:[TileCoord:TileCoord(x: 1, y: 1), TileCoord:TileCoord(x: 2, y: 1)] '
-      '/ …; green alone.',
-  'test/ui/text/hard_letters_have_no_soft_edge_test.dart':
-      'census 11-20 forward: red 4/10 in a bundle, after '
-      'an_se_tag_is_laid_out_once (2 red) — Expected: a numeric value within '
-      '<2.2952156862745094> of <28.690196078431367> / Actual: …; green alone.',
+  'test/ui/text/a_text_draws_its_letters_narrower_test.dart':
+      "its first tests measure in flutter_test's test font, before its own "
+      "loadTheAppFaces(); a file ahead of it that loaded the app's faces "
+      'leaves them in the isolate — red behind one in either order of the '
+      'font loaders bundled together (census 11-22, card '
+      'bundled-files-measure-text-differently); green alone.',
+  'test/ui/text/cel_text_layout_test.dart':
+      "its first tests measure in flutter_test's test font, before its own "
+      "loadTheAppFaces(); a file ahead of it that loaded the app's faces "
+      'leaves them in the isolate — red behind one in either order of the '
+      'font loaders bundled together (census 11-22, card '
+      'bundled-files-measure-text-differently); green alone.',
   'test/ui/the_held_piece_is_counted_test.dart':
       'census 11-21 reversed: red 8/9 in a bundle, after '
       'a_cut_obeys_the_symmetry_guide (1 of 1 tests red); green alone.',
@@ -279,18 +227,10 @@ const Map<String, String> kRunsAlone = {
       'census 11-20 forward: red 4/10 in a bundle, after '
       'the_camera_row_carries_its_path_button (2 red) — a test that ends with '
       'its drain waiting and rasters queued…; green alone.',
-  'test/ui/timeline/an_independent_paste_brings_the_picture_test.dart':
-      'census 11-20 forward: red 5/9 in a bundle, after '
-      'every_block_prints_its_koma (7 red) — Bad state: a tile of 256² — the '
-      'engine stores 128²; green alone.',
   'test/ui/timeline/one_inbetween_mark_everywhere_test.dart':
       'census 11-20 forward and 11-21 reversed: red 6/10 in a bundle, after '
       'workspace_layout_store (1 red) — Expected: an object with length of '
       '<1> / Actual: WhereIterable<Rect>:[] / Which: has …; green alone.',
-  'test/ui/widgets/a_name_cell_is_one_face_test.dart':
-      'census 11-20 forward: red 6/10 in a bundle, after '
-      'a_cut_lane_is_drawn_over_its_own_frames (1 red) — a cell named 레이어 at '
-      '1.5x looks, measures and points as the InkWell did; green alone.',
 };
 
 /// The test bindings flutter_test starts itself; any other is a file's own.
@@ -349,10 +289,76 @@ List<String> libraryAnnotations(String source) {
   }
 }
 
+/// Whether [file] — or a test file it imports, at any depth — loads a font
+/// into its isolate (a `FontLoader`, `loadFontFromList`). [read] gives a
+/// file's source by its path from the checkout's root.
+///
+/// 🎯A FONT ONCE LOADED IS THE ISOLATE'S (card
+/// bundled-files-measure-text-differently, 보드/인프라 2026-11-22).
+/// flutter_test measures every glyph in its test font until a file loads
+/// the app's faces (test/helpers/app_faces.dart), and nothing unloads them.
+/// Bundled with two files that load them, each of three that measure in the
+/// test font went red behind one and stayed green ahead of both, in either
+/// order — and green alone.
+bool loadsFonts(String file, {required String Function(String path) read}) {
+  final seen = {file};
+  final next = [file];
+  while (next.isNotEmpty) {
+    final path = next.removeLast();
+    final String source;
+    try {
+      source = read(path);
+    } on FileSystemException {
+      // ⚠️A file a test uses that is not there is passed over: the test
+      // fails to compile alone and says so there — it is no reason to fail
+      // the whole batch's bundling.
+      continue;
+    }
+    if (_loadsAFont.hasMatch(codeOnly(source))) return true;
+    for (final imported in _testFilesUsed(path, source)) {
+      if (seen.add(imported)) next.add(imported);
+    }
+  }
+  return false;
+}
+
+final _loadsAFont = RegExp(r'\b(FontLoader|loadFontFromList)\(');
+
+/// The test files [source] — the file at [path] — imports or exports by a
+/// relative path, as paths from the checkout's root. Only its directives
+/// are read, before its first declaration: a scan test plants an `import`
+/// line in a string of its own (a_gone_device_is_asked_of_the_engine_begun_
+/// on_test), and that names no file.
+Iterable<String> _testFilesUsed(String path, String source) sync* {
+  final code = withoutComments(source);
+  final declared = RegExp(
+    r'^(?!(?:import|export|library|part)\b)[A-Za-z_]',
+    multiLine: true,
+  ).firstMatch(code);
+  final directives = code.substring(0, declared?.start ?? code.length);
+  final uses = RegExp(r'''\b(?:import|export)\s+['"]([^'"]+)['"]''');
+  for (final use in uses.allMatches(directives)) {
+    final target = use[1]!;
+    if (target.contains(':')) continue;
+    final parts = path.split('/')..removeLast();
+    for (final part in target.split('/')) {
+      if (part == '..') {
+        if (parts.isEmpty) break;
+        parts.removeLast();
+      } else if (part != '.') {
+        parts.add(part);
+      }
+    }
+    final used = parts.join('/');
+    if (used.startsWith('test/')) yield used;
+  }
+}
+
 /// A batch's [files] — longest first — as entries of at most
 /// [kFilesPerBundle], dealt in turn so each starts on a heavy file and the
 /// entries weigh about alike, a file only with files of its own library
-/// annotations ([entrySource] makes them the entry's); and the files that
+/// annotations ([entrySource] makes them the entry's) and with files that
+/// load fonts as it does or does not ([loadsFonts]); and the files that
 /// cannot share ([whyAlone], [kRunsAlone]) as they are. [reversed] runs
 /// each entry's files the other way round — the census's second order.
 ({List<List<String>> bundles, List<String> alone}) bundlesOf(
@@ -360,14 +366,20 @@ List<String> libraryAnnotations(String source) {
   required String Function(String path) read,
   bool reversed = false,
 }) {
+  final sources = <String, String>{};
+  String readOnce(String path) => sources[path] ??= read(path);
   final alone = <String>[];
   final alike = <String, List<String>>{};
   for (final file in files) {
-    final source = read(file);
+    final source = readOnce(file);
     if (kRunsAlone.containsKey(file) || whyAlone(source) != null) {
       alone.add(file);
     } else {
-      (alike[libraryAnnotations(source).join('\n')] ??= []).add(file);
+      final kind = [
+        ...libraryAnnotations(source),
+        if (loadsFonts(file, read: readOnce)) 'loads fonts',
+      ];
+      (alike[kind.join('\n')] ??= []).add(file);
     }
   }
   return (
