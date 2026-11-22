@@ -118,6 +118,8 @@ import 'session/editor_app_settings.dart';
 import 'lost_screen_evidence.dart';
 import 'lost_screen_restart.dart';
 import 'open_projects.dart';
+import 'raster_watch.dart';
+import 'screen_canary.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'workspace/workspace_bar_commands.dart';
@@ -642,6 +644,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     LostScreen.went.addListener(_keepTheWorkOfALostScreen);
     // Gone before this shell listened — a reset during the launch.
     scheduleMicrotask(_keepTheWorkOfALostScreen);
+    RasterWatch.stood.addListener(_noteTheRasterStood);
+    ScreenCanary.notSaid.addListener(_noteThePixelNotSaid);
     appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
     // A launch is held from before its first frame. `runApp` builds the
     // tree, then draws it: asked between the two — a microtask of that
@@ -1149,6 +1153,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  /// H63: the thread that draws the screen stood ([RasterWatch]) — what
+  /// the app was doing is written, and nothing is asked
+  /// ([LostScreenEvidence.noteTheRasterStoodOnce]).
+  void _noteTheRasterStood() =>
+      LostScreenEvidence.noteTheRasterStoodOnce(_projects.active);
+
+  /// And so is a pixel the screen's context did not say back
+  /// ([ScreenCanary], [LostScreenEvidence.noteThePixelNotSaidOnce]).
+  void _noteThePixelNotSaid() =>
+      LostScreenEvidence.noteThePixelNotSaidOnce(_projects.active);
+
   /// Whether the question stands now: asked once a loss — heard by the
   /// listener, or found by the launch's own look — and again at the app
   /// window's X once it was taken down ([_handleExitRequested]).
@@ -1222,6 +1237,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
     LostScreen.went.removeListener(_keepTheWorkOfALostScreen);
+    RasterWatch.stood.removeListener(_noteTheRasterStood);
+    ScreenCanary.notSaid.removeListener(_noteThePixelNotSaid);
     appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();

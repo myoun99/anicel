@@ -35,6 +35,8 @@ import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
+import 'src/ui/raster_watch.dart';
+import 'src/ui/screen_canary.dart';
 import 'src/ui/shortcuts/keyboard_ime_switch.dart';
 import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
@@ -222,6 +224,15 @@ Future<void> main(List<String> handedAtLaunch) async {
   // first frame (a-lost-gpu-leaves-the-window-unpainted): what the shell
   // does then reads it whenever the shell is up to.
   LostScreen.listen();
+  // And the thread that draws the screen standing in the driver, which no
+  // device says (a-real-gpu-reset-went-unheard-on-the-main-pc): every
+  // frame handed over is watched from the first. HERE for the reason of
+  // the installs above — its frame callback cannot be removed.
+  RasterWatch.install();
+  // And the screen's own context, asked for a pixel while the screen rests
+  // (Q1 of that card): what stops with no frame handed over is heard by
+  // neither of the two above.
+  ScreenCanary.install();
   // AWAITED, unlike every other settings restore. The rest land late and
   // the app repaints; this one decides how large the window's contents are
   // laid out, so restoring it after the first frame would show 100% and

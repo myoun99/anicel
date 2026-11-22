@@ -37,6 +37,10 @@ void main() {
     );
     expect(source, contains('kEnd[] = "${LostScreen.endMethod}";'));
     expect(
+      source,
+      contains('kScreenStands[] = "${LostScreen.standsMethod}";'),
+    );
+    expect(
       sourceBodyOf(source, 'bool FlutterWindow::OnCreate()'),
       contains('ListenForTheScreen();'),
     );
@@ -52,6 +56,8 @@ void main() {
       'StartAgainFor(GetHandle(), words)',
       'kEnd',
       'EndThisProcess();',
+      'kScreenStands',
+      'screen_watch_ != nullptr && screen_watch_->Stands()',
       'GetGraphicsAdapter(&adapter)',
       'kScreenWentMessage',
     ]) {
@@ -90,6 +96,13 @@ void main() {
         'UnixMillisecondsNow());',
       ]),
       reason: 'H63 ③: the moment the watch saw it, beside the reason',
+    );
+    // 🗣️a-real-gpu-reset-went-unheard-on-the-main-pc-Q1: what the app
+    // asks before it draws a pixel of its own is asked of the device then,
+    // not read from what the thread last heard.
+    expect(
+      sourceBodyOf(lost, 'bool ScreenWatch::Stands() const'),
+      contains('device_->GetDeviceRemovedReason() == S_OK'),
     );
     final again = sourceBodyOf(lost, 'bool StartAgainFor(');
     final letGo = again.indexOf('RemovePropW(window, kRunningWindowProp)');

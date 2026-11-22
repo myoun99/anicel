@@ -1,8 +1,10 @@
 #ifndef RUNNER_LOST_SCREEN_H_
 #define RUNNER_LOST_SCREEN_H_
 
+#include <d3d11.h>
 #include <dxgi.h>
 #include <windows.h>
+#include <wrl/client.h>
 
 #include <string>
 #include <thread>
@@ -36,7 +38,17 @@ class ScreenWatch {
   ScreenWatch(const ScreenWatch&) = delete;
   ScreenWatch& operator=(const ScreenWatch&) = delete;
 
+  // Whether the watch's device stands, asked of it NOW — what its thread
+  // last heard may be a tenth of a second old. The app asks this before it
+  // draws a pixel through Flutter's own context to read back
+  // (lib/src/ui/screen_canary.dart; 🗣️a-real-gpu-reset-went-unheard-on-the-
+  // main-pc-Q1, 유저 2026-11-22): on the Surface the first thing drawn after
+  // a reset ended the process (above). False where no device was opened:
+  // nothing vouches for the adapter there.
+  bool Stands() const;
+
  private:
+  Microsoft::WRL::ComPtr<ID3D11Device> device_;
   HANDLE stop_ = nullptr;
   std::thread thread_;
 };

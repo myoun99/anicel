@@ -82,15 +82,19 @@ std::wstring Quoted(const std::wstring& argument) {
 }  // namespace
 
 ScreenWatch::ScreenWatch(IDXGIAdapter* adapter, HWND window, UINT message) {
-  ComPtr<ID3D11Device> device = OpenOn(adapter);
-  if (!device) {
+  device_ = OpenOn(adapter);
+  if (device_ == nullptr) {
     return;
   }
   stop_ = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
   if (stop_ == nullptr) {
     return;
   }
-  thread_ = std::thread(Watch, device, stop_, window, message);
+  thread_ = std::thread(Watch, device_, stop_, window, message);
+}
+
+bool ScreenWatch::Stands() const {
+  return device_ != nullptr && device_->GetDeviceRemovedReason() == S_OK;
 }
 
 ScreenWatch::~ScreenWatch() {

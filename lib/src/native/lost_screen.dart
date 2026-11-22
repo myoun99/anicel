@@ -37,6 +37,7 @@ abstract final class LostScreen {
   static const askMethod = 'askWithWindows';
   static const startAgainMethod = 'startAgain';
   static const endMethod = 'end';
+  static const standsMethod = 'stands';
 
   /// The screen's device gone, once it went this run — null till then.
   static ValueListenable<ScreenGone?> get went => _went;
@@ -84,6 +85,18 @@ abstract final class LostScreen {
   /// Ends Anicel where it stands, nothing saved: the runner ends the
   /// process without the engine's teardown, which touches the gone device.
   static Future<void> end() => channel.invokeMethod<void>(endMethod);
+
+  /// Whether the device the runner's watch holds on the screen's adapter
+  /// stands, asked of it now and not as the watch last asked — false once
+  /// it went, and where the watch holds none; null where no runner
+  /// watches.
+  static Future<bool?> stands() async {
+    try {
+      return await channel.invokeMethod<bool>(standsMethod) ?? false;
+    } on MissingPluginException {
+      return null;
+    }
+  }
 
   /// Test seam: the screen's device gone, as the runner says it — seen
   /// [seenAt], or now.

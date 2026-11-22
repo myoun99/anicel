@@ -163,7 +163,9 @@ constexpr char kOpenHanded[] = "open";
 // gave and the moment the watch saw it, [int32, int64 ms since 1970 UTC]
 // (H63 ③) — and Dart asks the user with Windows' own windows and has the
 // runner start Anicel again for the files it saved
-// (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5).
+// (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5). And
+// Dart asks whether the watch's device stands, now, before it draws a pixel
+// of its own to read back (a-real-gpu-reset-went-unheard-on-the-main-pc-Q1).
 // test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
 // these literals.
 constexpr char kScreenChannel[] = "anicel/screen";
@@ -171,6 +173,7 @@ constexpr char kScreenWent[] = "went";
 constexpr char kAskWithWindows[] = "askWithWindows";
 constexpr char kStartAgain[] = "startAgain";
 constexpr char kEnd[] = "end";
+constexpr char kScreenStands[] = "stands";
 // Posted by the watch's thread: the channel speaks on this one.
 constexpr UINT kScreenWentMessage = WM_APP + 0x153;
 
@@ -530,6 +533,12 @@ void FlutterWindow::ListenForTheScreen() {
       [this](const flutter::MethodCall<flutter::EncodableValue>& call,
              std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
                  result) {
+        // No words: the watch's device, asked now (ScreenWatch::Stands).
+        if (call.method_name() == kScreenStands) {
+          result->Success(flutter::EncodableValue(
+              screen_watch_ != nullptr && screen_watch_->Stands()));
+          return;
+        }
         const auto* said =
             std::get_if<flutter::EncodableList>(call.arguments());
         std::vector<std::wstring> words;
