@@ -1063,14 +1063,15 @@ class StoryboardCutBlocksPainter extends CustomPainter
     );
   }
 
-  /// What [entry]'s block is drawn from, its pictures aside: its place,
-  /// the cut's name and colour label, and the cut's conte row — whose
-  /// blocks the strip is cut into panels by.
+  /// What [entry]'s block is drawn from, its pictures aside: its place —
+  /// where it starts and where it ends, which is its length too
+  /// ([_placedFor]; no block reads the entry's `duration`) — the cut's
+  /// name and colour label, and the cut's conte row — whose blocks the
+  /// strip is cut into panels by.
   Object _drawnOf(StoryboardTimelineLayoutEntry entry) => (
     entry.cutId,
     entry.startFrame,
     entry.endFrame,
-    entry.duration,
     entry.cut.name,
     entry.cut.metadata.mark,
     ByIdentity(storyboardLayerForCut(entry.cut)),

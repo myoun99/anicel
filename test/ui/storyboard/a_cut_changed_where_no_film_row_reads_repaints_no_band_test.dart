@@ -5,6 +5,8 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -31,15 +33,21 @@ import '../../helpers/repaint_strays.dart';
 const _cut1 = CutId('cut-1');
 const _conte = LayerId('cut-1-conte');
 
+const _cut2 = CutId('cut-2');
+
 /// [project] with [change] made to `cut-1` — a new cut, as every edit makes.
-Project _withCut1(Project project, Cut Function(Cut cut) change) {
+Project _withCut1(Project project, Cut Function(Cut cut) change) =>
+    _withCut(project, _cut1, change);
+
+/// [project] with [change] made to the cut [id].
+Project _withCut(Project project, CutId id, Cut Function(Cut cut) change) {
   final track = project.tracks.single;
   return project.copyWith(
     tracks: [
       track.copyWith(
         cuts: [
           for (final cut in track.cuts)
-            if (cut.id == _cut1) change(cut) else cut,
+            if (cut.id == id) change(cut) else cut,
         ],
       ),
     ],
@@ -264,6 +272,89 @@ void main() {
 
     expect(asked, contains(_cut1), reason: '⛔premise: the row was asked');
     expect(asked, isNot(contains(const CutId('far-59'))));
+  });
+
+  testWidgets('a cut given a colour label repaints the V row, which wears '
+      'it', (tester) async {
+    final film = await _film(tester);
+    final blocksBefore = _blocks(tester);
+
+    film.value = _withCut1(
+      film.value,
+      (cut) => cut.copyWith(
+        metadata: cut.metadata.copyWith(
+          mark: const LayerMark(process: LayerProcess.layout),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(_blocks(tester).shouldRepaint(blocksBefore), isTrue);
+  });
+
+  testWidgets('another cut in a cut\'s place repaints the V row — what a '
+      'block wears goes by its cut: the link glyph, the selection, the cut '
+      'stood on', (tester) async {
+    final film = await _film(tester);
+    final blocksBefore = _blocks(tester);
+
+    // The same name, place, rows and pictures; another cut.
+    film.value = _withCut(
+      film.value,
+      _cut2,
+      (cut) => cut.copyWith(id: const CutId('cut-2-again')),
+    );
+    await tester.pump();
+
+    expect(_blocks(tester).shouldRepaint(blocksBefore), isTrue);
+  });
+
+  testWidgets('a cut that starts elsewhere and ends where it did repaints '
+      'the V row — its block starts there', (tester) async {
+    final film = await _film(tester);
+    final blocksBefore = _blocks(tester);
+    final before = blocksBefore.entries.last;
+
+    // Two frames more of gap before it, two frames shorter.
+    film.value = _withCut(
+      film.value,
+      _cut2,
+      (cut) => cut.copyWith(
+        leadingGapFrames: cut.leadingGapFrames + 2,
+        duration: cut.duration - 2,
+      ),
+    );
+    await tester.pump();
+
+    final after = _blocks(tester).entries.last;
+    expect(
+      (after.startFrame, after.endFrame),
+      (before.startFrame + 2, before.endFrame),
+      reason: '⛔premise: only its start moved',
+    );
+    expect(_blocks(tester).shouldRepaint(blocksBefore), isTrue);
+  });
+
+  testWidgets('a cut that starts where it did and ends elsewhere repaints '
+      'the V row — its block ends there', (tester) async {
+    final film = await _film(tester);
+    final blocksBefore = _blocks(tester);
+    final before = blocksBefore.entries.last;
+
+    film.value = _withCut(
+      film.value,
+      _cut2,
+      (cut) => cut.copyWith(duration: cut.duration + 2),
+    );
+    await tester.pump();
+
+    final after = _blocks(tester).entries.last;
+    expect(
+      (after.startFrame, after.endFrame),
+      (before.startFrame, before.endFrame + 2),
+      reason: '⛔premise: only its end moved',
+    );
+    expect(_blocks(tester).shouldRepaint(blocksBefore), isTrue);
   });
 
   testWidgets('a panel made longer repaints both rows — the conte row\'s '

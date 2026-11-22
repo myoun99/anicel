@@ -267,6 +267,12 @@ Layer _conteRowLaid(TrackId trackId, List<_ConteLaying> laid, int seat) {
   // group lists them top row first): an attach row's base is the conte,
   // and a folder of the group files only the conte's attach rows
   // ([attachGroupBaseOf]) — every row either reads is in the group.
+  //
+  // Stack order because both take a stack, and for nothing laid here:
+  // the base is found by its id and a band is the UNION of its rows'
+  // blocks, so no order of these rows lays another row (🔬11-22: handed
+  // top row first, every pin of the row stays green — an equivalent
+  // mutant, not a missing pin).
   final layers = [for (final seated in laying.group.reversed) seated.row];
   final shown = row.kind.groupsLayers
       ? folderBandOf(row, layers.subtreeMembersOf(row.id))
