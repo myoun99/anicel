@@ -105,6 +105,18 @@ const _knownToPaintThrough = <String, String>{
   'panel:media':
       'yields to body:media inside the floor escape — the panel scrolls '
       'when squeezed, and its scrollers never unmount',
+  // 🆕2026-11-22 — card the-left-tool-strip-rebakes-on-every-hover. Not a
+  // yield: the colour group's button stands on a tick layer of the dock's
+  // still region (`TickLayer.heard`, editor_workspace.dart). What it shows
+  // moves on every step of a pick, and its well repaints for a hover it
+  // lays no ink for — drawn live between the region's strata, the strip
+  // keeps its image (`StillRaster`, which is what holds a strip's picture
+  // under Impeller: there a capture does not pay, and this surface is a
+  // zone either way). A tick's layer is a boundary, so where a capture
+  // does pay this strip paints through.
+  'edge-dock:tool-right':
+      "the colour group's button is a tick of the dock's still region — a "
+      'boundary by design; the region keeps the strip\'s image',
   // 🪦`body:Brush Settings` stood here from 2026-09-22 to 09-23, and it was
   // NOT a yield: Material's `Switch` always contains an `Opacity` —
   // `Opacity(opacity: onChanged == null ? disabledOpacity : 1)`,
