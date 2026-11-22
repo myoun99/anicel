@@ -9,6 +9,7 @@ import '../../tool/board_check.dart';
 import '../../tool/board_door.dart';
 import '../../tool/board_say.dart';
 import '../../tool/board_server.dart';
+import '../helpers/real_sockets.dart';
 import '../helpers/temp_dir.dart';
 
 /// 유저 2026-10-07 (card the-board-is-one-server-for-both-machines, 답 「집
@@ -26,6 +27,8 @@ import '../helpers/temp_dir.dart';
 /// treated as coming from another machine, which is the one thing a single
 /// process cannot arrange for real.
 void main() {
+  talkOverRealSockets();
+
   const secret = '0123456789abcdef0123456789abcdef';
   final started = DateTime.now();
   late Directory dir;

@@ -9,6 +9,7 @@ import '../../tool/board_me.dart';
 import '../../tool/board_model.dart';
 import '../../tool/board_say.dart';
 import '../../tool/board_server.dart';
+import '../helpers/real_sockets.dart';
 import '../helpers/temp_dir.dart';
 
 /// 유저 2026-10-07 (the-board-is-one-server-for-both-machines-Q2): 「글은
@@ -27,6 +28,8 @@ import '../helpers/temp_dir.dart';
 /// `session_letters_test.sh`, run by hand. The server it asks is real here —
 /// one for the file, bound on loopback (the_board_has_a_door_test says why).
 void main() {
+  talkOverRealSockets();
+
   const mine = '보드/통합';
   const theirs = '타임라인/콘티';
   final now = DateTime.parse('2026-10-07T15:00:00.000');

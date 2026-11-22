@@ -33,6 +33,10 @@ String bundleConfigSource(String toRoot) =>
 /// alone — each with what it leans on. They run as files of their own.
 /// 🧭The census fills it (전 파일을 묶어 정순 · 역순 두 번 + 파일별 대조,
 /// 관제 11-20); a file leaves it when its test stops leaning.
+/// Where what a file leans on is not read yet, its line says what the
+/// census saw — its place in the bundle, the file before it, the first
+/// error — and card the-wide-check-takes-five-hours lists those by area,
+/// to be read and mended there.
 const Map<String, String> kRunsAlone = {
   'test/ui/text/a_vertical_column_is_one_box_test.dart':
       "its settle waits for BakedWords' waiting words to drain, and in a "
@@ -40,6 +44,253 @@ const Map<String, String> kRunsAlone = {
       'every settle ran out its 60 s patience — 2 min a test, 37 s the file '
       'alone. Card a-vertical-column-test-compares-letters-that-never-'
       'settled.',
+  'test/home_cut_switching_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'the_format_window_gives_cuts_their_camera_room (9 of 9 tests red); '
+      'green alone.',
+  'test/native/a_test_runs_engine_keeps_its_shaders_with_the_machine_test.dart':
+      'census 11-20 forward: red 5/10 in a bundle, after '
+      'a_direction_block_is_its_span (1 red) — Expected: non-empty / Actual: '
+      'WhereTypeIterable<File>:[]; green alone.',
+  'test/native/a_word_goes_to_the_engine_as_it_is_laid_test.dart':
+      'census 11-20 forward: red 5/9 in a bundle, after '
+      'one_transparency_checker (1 red) — Expected: false / Actual: <true> / '
+      'premise: none asked yet; green alone.',
+  'test/native/the_blur_kernels_compile_off_this_isolate_test.dart':
+      'census 11-20 forward: red 5/5 in a bundle, after '
+      'the_cel_pixel_pass_compiles_off_this_isolate (1 red) — Expected: <0> / '
+      'Actual: <9> / still compiling; green alone.',
+  'test/native/the_composite_and_the_landing_compile_off_this_isolate_test.dart':
+      'census 11-21 reversed: red 7/8 in a bundle, after '
+      'unlinking_a_row_keeps_every_cuts_picture (2 of 8 tests red) — '
+      'Expected: null / Actual: <Instance of \'GpuComposite\'> / still '
+      'compiling; green alone.',
+  'test/native/the_grid_screen_shows_what_its_rows_lay_test.dart':
+      'census 11-20 forward: red 3/10 in a bundle, after '
+      'collapsed_overlay_takes_its_own_space (1 red) — the first screen there '
+      'is to lay on reads the faces its tiles\' words are set …; green alone.',
+  'test/services/a_selection_lifts_on_the_engine_test.dart':
+      'census 11-21 reversed: red 5/5 in a bundle, after '
+      'the_next_page_is_baked_while_the_page_before_plays (1 of 49 tests red) '
+      '— Expected: a value greater than <0> / Actual: <0>; green alone.',
+  'test/services/a_stamp_lands_on_the_engine_test.dart':
+      'census 11-20 forward: red 3/3 in a bundle, after '
+      'a_frame_on_screen_stands_again_on_the_next_engine (4 red) — Expected: '
+      '<255> / Actual: <128>; green alone.',
+  'test/services/a_tip_s_picture_is_made_once_the_engine_is_open_test.dart':
+      'census 11-20 forward: red 9/10 in a bundle, after '
+      'adjustment_layer_scope (1 red) — Expected: (Null, bool):<(null, '
+      'false)> / Actual: (Null, bool):<(null, true)> / nothing …; green '
+      'alone.',
+  'test/services/brush_stroke_blend_test.dart':
+      'census 11-20 forward: red 5/10 in a bundle, after '
+      'a_lay_the_gpu_did_not_lay_is_answered_with_why (4 red) — Bad state: '
+      'the graphics device is gone: Destroyed; green alone.',
+  'test/services/media/a_closed_movie_leaves_nothing_behind_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'the_canvas_draws_the_cameras_path (1 of 1 tests red) — two hundred '
+      'opens kept 44KB: Expected: a value less than <16384> / Actual: '
+      '<46024>; green alone.',
+  'test/services/memory_pressure_budget_test.dart':
+      'census 11-20 forward: red 10/10 in a bundle, after selection_span_rows '
+      '(2 red) — Expected: <268435456> / Actual: <1138111174> / desktop '
+      'default: four pages at the render …; green alone.',
+  'test/services/persistence/a_picked_file_is_read_in_under_its_wait_test.dart':
+      'census 11-21 reversed: red 5/9 in a bundle, after '
+      'the_keyboard_tilde_is_nanums (1 of 5 tests red) — Expected: a value '
+      'less than Duration:<0:00:00.334539> / Actual: '
+      'Duration:<0:00:00.334539>; green alone.',
+  'test/services/persistence/a_save_reads_the_next_cel_while_one_is_written_test.dart':
+      'census 11-21 reversed: red 8/10 in a bundle, after '
+      'the_edit_button_never_creates (2 of 2 tests red) — Bad state: the '
+      'graphics device is gone: Destroyed; green alone.',
+  'test/ui/a_drive_project_opens_in_a_tab_and_saves_back_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'every_sheet_takes_its_photo_with_the_tool (4 of 4 tests red); green '
+      'alone.',
+  'test/ui/a_pen_that_hovers_has_lifted_test.dart':
+      'census 11-21 reversed: red 8/8 in a bundle, after '
+      'the_composite_and_the_landing_compile_off_this_isolate — a test never '
+      'ended; green alone.',
+  'test/ui/brush/text_tool_settings_values_test.dart':
+      'census 11-20 forward: red 6/9 in a bundle, after '
+      'the_opened_project_is_held (1 red) — Expected: <17> / Actual: <11.0>; '
+      'green alone.',
+  'test/ui/brush/the_eyedropper_swatch_keeps_its_place_test.dart':
+      'census 11-20 forward and 11-21 reversed: red 5/10 in a bundle, after '
+      'toolbar_buttons_do_not_fade (2 red) — Expected: Object or closure '
+      'painting: / \'a circle with a mask filter\' / \'a circle with …; green '
+      'alone.',
+  'test/ui/canvas/a_frame_that_waits_for_its_plugins_holds_its_picture_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after rail_groups_gap — '
+      'TimeoutException after 0:10:00.000000: Test timed out after 10 '
+      'minutes; green alone.',
+  'test/ui/canvas/an_overlay_holds_what_it_shows_test.dart':
+      'census 11-20 forward and 11-22 reversed: red 4/10 in a bundle, after '
+      'an_se_rows_box_is_a_layers (1 red) — Expected: true / Actual: <false>; '
+      'green alone.',
+  'test/ui/canvas/text/a_carried_text_shows_what_it_lands_as_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'the_hand_holds_the_warmer (8 of 15 tests red); green alone.',
+  'test/ui/canvas/text/cel_text_chrome_test.dart':
+      'census 11-20 forward: red 8/10 in a bundle, after '
+      'a_fill_ramp_spreads_on_every_side (1 red) — Expected: <8> / Actual: '
+      '<5.0390625>; green alone.',
+  'test/ui/canvas/text/cel_text_session_test.dart':
+      'census 11-20 forward: red 5/10 in a bundle, after '
+      'editor_session_manager_camera_layer (1 red) — Bad state: No element; '
+      'green alone.',
+  'test/ui/canvas/the_canvas_marks_its_place_while_a_frame_waits_for_the_engine_test.dart':
+      'census 11-20 forward: red 3/10 in a bundle, after '
+      'you_stand_only_on_a_shown_row (1 red) — the canvas standing on a '
+      'frame, then parked on a track stack, marks the middle of what …; green '
+      'alone.',
+  'test/ui/canvas/the_pointer_that_moves_wears_the_cursor_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'an_se_tag_stands_in_the_shot (6 of 6 tests red); green alone.',
+  'test/ui/export/an_export_holds_two_frames_not_its_cut_test.dart':
+      'census 11-21 reversed: red 8/9 in a bundle, after '
+      'a_placed_carry_holds_its_bytes (35 of 35 tests red); green alone.',
+  'test/ui/export/an_output_looks_at_no_head_of_the_cut_test.dart':
+      'census 11-21 reversed: red 8/10 in a bundle, after '
+      'xsheet_reveals_the_selection (8 of 8 tests red); green alone.',
+  'test/ui/media/a_sound_stands_on_the_stage_as_its_face_test.dart':
+      'census 11-21 reversed: red 9/9 in a bundle, after '
+      'the_book_lies_one_page_under_another (1 of 17 tests red) — '
+      'TimeoutException after 0:12:00.000000: Test timed out after 12 '
+      'minutes; green alone.',
+  'test/ui/menu/a_dropped_project_opens_through_the_open_door_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'storyboard_end_line_is_live — a test never ended; green alone.',
+  'test/ui/playback/a_picture_is_weighed_by_what_it_is_made_as_test.dart':
+      'census 11-20 forward: red 4/9 in a bundle, after '
+      'finished_outputs_take_the_road_their_os_has (1 red) — a picture is '
+      'weighed ahead by the tiles its making comes to make — the tiles of …; '
+      'green alone.',
+  'test/ui/playback/a_warmer_handed_the_real_clock_ends_with_the_test_test.dart':
+      'census 11-20 forward: red 2/9 in a bundle, after '
+      'the_colour_edit_head_lights_with_its_block (1 red) — premise: the '
+      'engine makes a picture in the lent clock, and the walk lands it when '
+      'the …; green alone.',
+  'test/ui/playback/voice_record_preview_test.dart':
+      'census 11-20 forward: red 3/10 in a bundle, after export_preview_panel '
+      '(1 red) — REC1-C: the timeline shows the growing take WITHOUT a '
+      'session notify — the preview …; green alone.',
+  'test/ui/session/a_block_dragged_onto_a_synced_row_trades_test.dart':
+      'census 11-20 forward: red 3/10 in a bundle, after '
+      'a_zoom_bakes_its_tiles_once_it_stops (27 red) — Bad state: a tile of '
+      '256² — the engine stores 128²; green alone.',
+  'test/ui/session/a_cut_crossed_in_the_storyboard_is_stood_on_like_a_press_test.dart':
+      'census 11-20 forward and 11-21 reversed: red 9/10 in a bundle, after '
+      'track_fx (3 red) — Expected: CutId:<cut-1> / Actual: CutId:<cut-2> / '
+      'premise: playback crossed; green alone.',
+  'test/ui/session/a_drag_in_flight_shows_on_the_canvas_test.dart':
+      'census 11-20 forward: red 8/10 in a bundle, after '
+      'a_tile_block_is_freed_by_no_token (4 red) — Bad state: a tile of 8² — '
+      'the engine stores 128²; green alone.',
+  'test/ui/session/a_link_independent_cel_keeps_its_attach_pictures_test.dart':
+      'census 11-20 forward: red 7/10 in a bundle, after '
+      'the_export_mix_runs_off_the_ui (2 red) — Bad state: a tile of 256² — '
+      'the engine stores 128²; green alone.',
+  'test/ui/session/a_linked_paste_keeps_its_names_across_rows_test.dart':
+      'census 11-20 forward: red 7/9 in a bundle, after a_fill_gradient (15 '
+      'red) — Bad state: a tile of 256² — the engine stores 128²; green '
+      'alone.',
+  'test/ui/session/a_picture_rows_picture_is_cut_and_pasted_test.dart':
+      'census 11-20 forward: red 6/9 in a bundle, after '
+      'a_text_hands_the_engine_the_layers_it_paints (15 red) — Bad state: a '
+      'tile of 256² — the engine stores 128²; green alone.',
+  'test/ui/session/a_save_after_the_device_is_gone_keeps_the_work_test.dart':
+      'census 11-20 forward: red 9/10 in a bundle, after '
+      'the_notices_say_what_the_app_does (1 red) — Expected: false / Actual: '
+      '<true>; green alone.',
+  'test/ui/session/a_sound_row_and_a_picture_row_take_no_paste_of_each_other_test.dart':
+      'census 11-20 forward: red 10/10 in a bundle, after '
+      'the_engine_screen_shows_the_frame_it_keeps (5 red) — Bad state: a tile '
+      'of 256² — the engine stores 128²; green alone.',
+  'test/ui/session/a_synced_row_trades_its_pictures_test.dart':
+      'census 11-20 forward and 11-21 reversed: red 5/10 in a bundle, after '
+      'se_span_overflow (5 red) — Bad state: a tile of 256² — the engine '
+      'stores 128²; green alone.',
+  'test/ui/session/a_timeline_copy_is_its_own_test.dart':
+      'census 11-20 forward: red 8/9 in a bundle, after viewer_render_tier (3 '
+      'red) — Bad state: a tile of 256² — the engine stores 128²; green '
+      'alone.',
+  'test/ui/session/an_image_row_links_by_name_and_can_stand_empty_test.dart':
+      'census 11-20 forward: red 4/10 in a bundle, after tvp_import_session '
+      '(8 red) — Bad state: a tile of 256² — the engine stores 128²; green '
+      'alone.',
+  'test/ui/sheet/a_sheet_image_is_read_as_large_as_it_is_shown_test.dart':
+      'census 11-20 forward: red 5/9 in a bundle, after '
+      'hidden_folder_is_hidden (2 red) — Expected: true / Actual: <false> / '
+      'p1 was the oldest ask; green alone.',
+  'test/ui/sheet/every_sheet_takes_its_photo_with_the_tool_test.dart':
+      'census 11-21 reversed: red 9/10 in a bundle, after '
+      'an_output_looks_at_no_head_of_the_cut (6 of 6 tests red); green alone.',
+  'test/ui/storyboard_cut_thumbnail_store_test.dart':
+      'census 11-20 forward: red 3/9 in a bundle, after '
+      'a_cut_played_alone_plays_on_the_canvas (4 red) — holds at most its '
+      'budget: the least recently asked-for picture goes first, and comes …; '
+      'green alone.',
+  'test/ui/storyboard_se_track_test.dart':
+      'census 11-21 reversed: red 9/9 in a bundle, after '
+      'a_run_edge_press_acts_on_the_band (1 of 5 tests red); green alone.',
+  'test/ui/text/cel_text_bake_test.dart':
+      'census 11-20 forward: red 4/10 in a bundle, after '
+      'a_strip_measures_as_it_lays_out (9 red) — Expected: '
+      'Set:[TileCoord:TileCoord(x: 1, y: 1), TileCoord:TileCoord(x: 2, y: 1)] '
+      '/ …; green alone.',
+  'test/ui/text/hard_letters_have_no_soft_edge_test.dart':
+      'census 11-20 forward: red 4/10 in a bundle, after '
+      'an_se_tag_is_laid_out_once (2 red) — Expected: a numeric value within '
+      '<2.2952156862745094> of <28.690196078431367> / Actual: …; green alone.',
+  'test/ui/the_held_piece_is_counted_test.dart':
+      'census 11-21 reversed: red 8/9 in a bundle, after '
+      'a_cut_obeys_the_symmetry_guide (1 of 1 tests red); green alone.',
+  'test/ui/the_link_window_answers_for_cuts_and_rows_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'workspace_flip_axis_follows_the_timeline (1 of 17 tests red); green '
+      'alone.',
+  'test/ui/timeline/a_block_is_whole_across_a_tile_seam_test.dart':
+      'census 11-20 forward: red 4/9 in a bundle, after '
+      'a_graph_pen_lands_on_the_line (1 red) — TimeoutException after '
+      '0:12:00.000000: Test timed out after 12 minutes; green alone.',
+  'test/ui/timeline/a_block_warning_says_why_and_follows_the_hand_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'a_row_that_takes_no_strokes_draws_no_line (1 of 12 tests red); green '
+      'alone.',
+  'test/ui/timeline/a_drag_step_repaints_only_its_tick_layers_test.dart':
+      'census 11-21 reversed: red 10/10 in a bundle, after '
+      'the_linked_paste_asks_before_it_joins (3 of 21 tests red); green '
+      'alone.',
+  'test/ui/timeline/a_label_plate_is_one_box_test.dart':
+      'census 11-21 reversed: red 9/9 in a bundle, after '
+      'a_traded_picture_shows_on_the_canvas — a test never ended; green '
+      'alone.',
+  'test/ui/timeline/a_row_paints_its_substrate_and_its_glyphs_test.dart':
+      'census 11-20 forward: red 5/9 in a bundle, after no_import_cycles (1 '
+      'red) — with the engine on and the store COLD, a span waiting for its '
+      'tile paints the same …; green alone.',
+  'test/ui/timeline/a_row_reads_each_cell_once_a_pass_test.dart':
+      'census 11-21 reversed: red 5/5 in a bundle, after '
+      'a_tile_keeps_what_an_edit_left_alone (1 of 5 tests red) — Expected: '
+      'null / Actual: <Instance of \'TimelineGridTilePicture\'>; green alone.',
+  'test/ui/timeline/a_test_hands_the_next_an_empty_tile_store_test.dart':
+      'census 11-20 forward: red 4/10 in a bundle, after '
+      'the_camera_row_carries_its_path_button (2 red) — a test that ends with '
+      'its drain waiting and rasters queued…; green alone.',
+  'test/ui/timeline/an_independent_paste_brings_the_picture_test.dart':
+      'census 11-20 forward: red 5/9 in a bundle, after '
+      'every_block_prints_its_koma (7 red) — Bad state: a tile of 256² — the '
+      'engine stores 128²; green alone.',
+  'test/ui/timeline/one_inbetween_mark_everywhere_test.dart':
+      'census 11-20 forward and 11-21 reversed: red 6/10 in a bundle, after '
+      'workspace_layout_store (1 red) — Expected: an object with length of '
+      '<1> / Actual: WhereIterable<Rect>:[] / Which: has …; green alone.',
+  'test/ui/widgets/a_name_cell_is_one_face_test.dart':
+      'census 11-20 forward: red 6/10 in a bundle, after '
+      'a_cut_lane_is_drawn_over_its_own_frames (1 red) — a cell named 레이어 at '
+      '1.5x looks, measures and points as the InkWell did; green alone.',
 };
 
 /// The test bindings flutter_test starts itself; any other is a file's own.

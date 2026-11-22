@@ -8,6 +8,7 @@ import '../../tool/board_ack.dart';
 import '../../tool/board_check.dart';
 import '../../tool/board_door.dart';
 import '../../tool/board_server.dart';
+import '../helpers/real_sockets.dart';
 import '../helpers/temp_dir.dart';
 
 /// 카드 an-away-machine-cannot-ack-the-gate (서피스 저장 세션, 10-08): the
@@ -25,6 +26,8 @@ import '../helpers/temp_dir.dart';
 /// ⚠️ONE SERVER FOR THE WHOLE FILE, bound on loopback and treating every
 /// request as another machine's (the_board_has_a_door_test says why).
 void main() {
+  talkOverRealSockets();
+
   const secret = '0123456789abcdef0123456789abcdef';
   final now = DateTime.parse('2026-10-09T04:00:00.000');
   late Directory dir;

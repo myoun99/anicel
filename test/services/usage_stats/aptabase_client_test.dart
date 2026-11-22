@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/feedback/feedback_forms.dart';
 import 'package:anicel/src/services/usage_stats/aptabase_client.dart';
 
+import '../../helpers/real_sockets.dart';
+
 /// One POST the client made.
 typedef _Post = ({Uri endpoint, String appKey, String body});
 
@@ -37,6 +39,8 @@ const DeviceDescription _device = (
 /// region from the App Key, a JSON array of events, and a session id —
 /// whose turning over is ours (Q13).
 void main() {
+  talkOverRealSockets();
+
   late List<_Post> posts;
   late int status;
   late _Drawn random;

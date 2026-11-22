@@ -71,7 +71,12 @@ const _ghCacheSeconds = 20;
 /// find it without anyone writing a second record.
 const _koTrailer = 'Board-ko:';
 
-late final String _recordsPath;
+/// ⚠️NOT `final`, nor are [_ghPath] and [_gitRoot]: a test file makes its
+/// isolate the server of a board of its own ([boardIs]), and in a bundle
+/// (tool/test_bundles.dart) three such files share one isolate — the
+/// second died on 「has already been initialized」 (census 11-22, card
+/// the-wide-check-takes-five-hours).
+late String _recordsPath;
 
 /// ⚠️NOT `late final`, so the page can be drawn without a server behind it.
 /// `shotsFor` reads this on every card; as a `late` it threw the moment a
@@ -80,8 +85,8 @@ late final String _recordsPath;
 /// shots directory」 and [shotsFor] already answers that with `const []` —
 /// the same answer it gives for a directory that is not there yet.
 String _shotsDir = '';
-late final String _ghPath;
-late final String _gitRoot;
+late String _ghPath;
+late String _gitRoot;
 
 /// Where this server listens and whom it lets in — see [board_door.dart].
 BoardDoor _door = const LoopbackDoor();
