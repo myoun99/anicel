@@ -70,6 +70,13 @@ final class _TheAppsLedger implements CelShells {
   const _TheAppsLedger();
 
   @override
+  void lay(BitmapSurface surface, {required Object cel}) =>
+      EngineTileLedger.opened?.lay(surface, cel: cel);
+
+  @override
+  void restBeforeLong() => EngineTileLedger.opened?.restBeforeLong();
+
+  @override
   BitmapSurface? shellOf(
     BitmapSurface surface, {
     required BitmapSurface Function() readAgain,

@@ -267,15 +267,17 @@ void main() {
     });
 
     test('🚨the tiles the room lets go for are written down as the '
-        'cel\'s again — no shell made of it between, a canvas standing '
-        'on it: the edit after holds what it is kept as then for '
-        'them', () async {
+        'cel\'s again — no shell made of it between, the engine with no '
+        'room for what a rest lays: the edit after holds what it is kept '
+        'as then for them', () async {
       final shell = itsShell();
       final leftAlone = shell.tiles[left]!;
       drawOn(shell, 9);
       savedAs(cel(4, 9));
       waitsNoMore(shell.tiles[right]!);
-      store.setCelsStoodOn(() => [f]);
+      engine
+        ..holds = false
+        ..takes = false;
       store.letGoOfBytesTheEngineHolds();
       await ScratchFile.lettingGo;
       expect(store.keptBytesHeldOn, 0, reason: '⛔premise: let go');

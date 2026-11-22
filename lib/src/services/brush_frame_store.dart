@@ -1334,14 +1334,15 @@ class BrushFrameStore {
       ]);
   }
 
-  /// 🚨A HOT CEL THAT IS KEPT HOLDS NO BYTES HERE ONCE THE ENGINE HOLDS
-  /// ITS TILES — kept in the saved file, or parked in the run's room.
-  /// Asked as the engine's tiles come to rest (`TilesAtRest`): each
-  /// such cel with bytes here becomes its shell ([_becomesItsShell]) —
-  /// hot as it was and where it was in the line, a rest being no use
-  /// of it; the tiles the engine holds are the shell's from there on,
-  /// and one it holds none of yet stays as it is till a rest after it
-  /// comes there.
+  /// 🚨A HOT CEL THAT IS KEPT HOLDS NO BYTES HERE PAST A REST — kept in
+  /// the saved file, or parked in the run's room. Asked as the engine's
+  /// tiles come to rest (`TilesAtRest`): each such cel with bytes here
+  /// has its tiles laid on the engine ([CelShells.lay]) and becomes its
+  /// shell ([_becomesItsShell]) — hot as it was and where it was in the
+  /// line, a rest being no use of it; the tiles the engine holds are
+  /// the shell's from there on, and one it had no room for stays as it
+  /// is till a rest after. A rest is asked for as such bytes come here
+  /// ([_aRestLetsItsBytesGo]).
   ///
   /// 🗣️Card cel-originals-are-held-twice-in-ram-and-on-the-gpu: 유저
   /// 2026-11-19 on Q3 「놓는다」, 2026-11-21 02:55 on Q4 「최대한
@@ -1352,13 +1353,23 @@ class BrushFrameStore {
   /// byte here beside the same tiles on the engine, for as long as it
   /// was hot.
   ///
-  /// ⛔Not the cels a canvas stands on ([setCelsStoodOn]) —
-  /// 🔢브러시/렌더링's, no rule of the user's: the tree that canvas drew
-  /// holds their tiles till it is drawn again, so their bytes would
-  /// stay here uncounted, and a pen that comes down on one waits for no
-  /// read (저장's draft on the card, ②(3): 「편집하는 셀만 지금처럼 두
-  /// 벌」). The frame a full pool leaves its slots, for the same canvas
-  /// (`TilesStoodOn`); a rest after the canvas has moved on takes them.
+  /// ↩️TILL 2026-11-21 TWO KINDS OF CEL KEPT THEIR BYTES THROUGH A REST
+  /// (both 🔢브러시/렌더링's of 11-20 and 11-21, no rule of the user's):
+  /// one the engine held no tile of, which waited for a screen to lay
+  /// it, and the cels a canvas stood on ([setCelsStoodOn]) — for the
+  /// tree that canvas drew holding their tiles till it was drawn again,
+  /// and a pen coming down on one waiting for no read (저장's draft on
+  /// the card, ②(3): 「편집하는 셀만 지금처럼 두 벌」). 🔬The main PC,
+  /// a copy of S5_BA cut 352 opened from its file, played ten seconds
+  /// and left to rest, no window (k1947): 43.7 MiB of drawings in RAM
+  /// at that rest, all of it cels the file keeps — three of 14 MiB
+  /// each, thawed ahead of a step into the next cut
+  /// (`EditorSessionManager._thawTheCelsAStepLandsOn`) or stood on, with
+  /// no tile of their own on the engine: the screens showed them by
+  /// the pictures the band had made. 1.2 MiB at that rest with each of
+  /// them laid there and its shell (k1965). A pen that comes down on a shell
+  /// waits for no read either: what kept the cel is held on ahead as
+  /// the pen goes down ([holdOnAhead]).
   void letGoOfBytesTheEngineHolds() {
     final stood = _stoodOn();
     // What was held ahead of an edit that did not come ([holdOnAhead]).
@@ -1369,10 +1380,26 @@ class BrushFrameStore {
     }
     _letGoOfHeldBytes();
     for (final key in _bakedSurfaces.keys.toList()) {
-      if (!stood.contains(key)) {
+      final hot = _withBytesARestLetsGo(key);
+      if (hot != null) {
+        // ⛔The rest's alone, not the parking behind's ([_parkALane]):
+        // a cel parked away from the canvas goes to the room and leaves
+        // here, with nothing laid on the engine for it (🗣️유저
+        // 2026-11-21 on Q6: 「애초에 vram에 안두고 바로 그냥 디스크로
+        // 내리는건? 못내리면 vram이란느낌으로」).
+        _celShells.lay(hot, cel: key.cel);
         _becomesItsShell(key);
       }
     }
+  }
+
+  /// [key]'s hot surface where a rest lets go of bytes of it: the cel
+  /// kept, and bytes of it here.
+  BitmapSurface? _withBytesARestLetsGo(BrushFrameKey key) {
+    final hot = _bakedSurfaces[key];
+    return hot != null && hot.keptTileBytes > 0 && _kept(key) != null
+        ? hot
+        : null;
   }
 
   /// The hot cel [key] — kept, with bytes here — made its shell
@@ -1411,9 +1438,10 @@ class BrushFrameStore {
   Iterable<BrushFrameKey> Function()? _celsStoodOn;
 
   /// Has [stoodOn] say which cels a canvas stands on — a session's
-  /// word: a store knows no playhead. Those keep their bytes here
-  /// through a rest ([letGoOfBytesTheEngineHolds]) and through the
-  /// parking behind ([parkBehind]).
+  /// word: a store knows no playhead. What an edit of one was held
+  /// ahead for stays through a rest ([letGoOfBytesTheEngineHolds]),
+  /// and they keep their bytes here through the parking behind
+  /// ([parkBehind]).
   void setCelsStoodOn(Iterable<BrushFrameKey> Function()? stoodOn) {
     _celsStoodOn = stoodOn;
   }
@@ -1422,6 +1450,24 @@ class BrushFrameStore {
     for (final key in _celsStoodOn?.call() ?? const <BrushFrameKey>[])
       _canonicalize(key),
   };
+
+  /// 🚨A REST IS ASKED FOR AS BYTES COME TO BE HERE THAT ONE LETS GO OF
+  /// ([CelShells.restBeforeLong], [letGoOfBytesTheEngineHolds]): [key]'s
+  /// cel hot with bytes here, and kept. A cel thawed ([_keepThawed]), a
+  /// hot one parked ([_keepCold]), a hot one a save's file comes to keep
+  /// ([adoptSavedFile]) — none of them stores a tile on the engine,
+  /// which is what else brings its tiles to rest.
+  ///
+  /// 🔬The run [letGoOfBytesTheEngineHolds] tells of, the cels away
+  /// from the canvas let go at each rest for the measure (k1933): the
+  /// 15.2 MiB of the cels thawed once the playback had stopped stayed
+  /// through the seconds of rest after it — a rest is asked for by what
+  /// is stored or landed on the engine, and nothing was.
+  void _aRestLetsItsBytesGo(BrushFrameKey key) {
+    if (_withBytesARestLetsGo(key) != null) {
+      _celShells.restBeforeLong();
+    }
+  }
 
   /// 🚨A CEL'S FILE REF GOES THROUGH HERE, AND THE BYTES IT NAMED ARE
   /// HELD ON IN THE RUN'S ROOM FIRST — for every living tile a use took
@@ -1844,6 +1890,7 @@ class BrushFrameStore {
     _storeHot(key, surface);
     storeRebuiltDisplayCache(key: key, previewSurface: surface);
     _scheduleCooling();
+    _aRestLetsItsBytesGo(key);
   }
 
   /// [key]'s thaw made AHEAD, off the UI thread: what reading it at
@@ -2237,6 +2284,7 @@ class BrushFrameStore {
     if (previous != null) {
       _letGoUnlessKept(previous);
     }
+    _aRestLetsItsBytesGo(key);
   }
 
   /// Whether a cel keeps [ref]'s file — by the very ref, the one way a
@@ -2600,6 +2648,7 @@ class BrushFrameStore {
       }
       _dropCold(entry.key);
       _fileCels[entry.key] = entry.value;
+      _aRestLetsItsBytesGo(entry.key);
       // R27 #13: a ref landing on a key that held no tier at all is a
       // crossing (the cel emptied between the save snapshot and this
       // adoption), and this was the other silent tier move the timeline
@@ -2942,12 +2991,15 @@ class BrushFrameStore {
 
   // --- Parking behind (an unsaved cel's home in the room, made ahead) ---
 
-  /// 🚨THE UNSAVED CELS NO CANVAS STANDS ON ARE PARKED BEHIND — pressed
-  /// and written to the run's room several at once ([parksAtOnce]), at
-  /// no budget's asking — and kept from there as a cel the saved file
-  /// keeps is: one the engine holds every tile of is its shell for the
-  /// looks, any other cold ([_coolTheKept]), and neither holds a byte
-  /// here. Asked as an import lands a cel (`landImportedCel`).
+  /// 🚨THE UNSAVED CELS ARE PARKED BEHIND — pressed and written to the
+  /// run's room several at once ([parksAtOnce]), at no budget's asking
+  /// — and kept from there as a cel the saved file keeps is. One a
+  /// canvas stands on stays hot, its bytes here till the rest its park
+  /// asks for lays its tiles on the engine
+  /// ([letGoOfBytesTheEngineHolds]); of the others, one the engine
+  /// holds every tile of is its shell for the looks, any other cold
+  /// ([_coolTheKept]), and neither holds a byte here. Asked as an
+  /// import lands a cel (`landImportedCel`).
   ///
   /// 🗣️유저 2026-11-21 04:28 on Q6 (card
   /// cel-originals-are-held-twice-in-ram-and-on-the-gpu), 「disk 임시
@@ -2964,9 +3016,19 @@ class BrushFrameStore {
   /// let go, and a refusal stands the passes down with the cel hot — a
   /// room with no place leaves its cels the RAM's.
   ///
-  /// ⛔Not the cels a canvas stands on ([setCelsStoodOn]): the pen's.
-  /// Those are parked once the canvas has moved on and this is asked
-  /// again, or by the budget ([_coolLoop]).
+  /// ↩️TILL 2026-11-21 THE CELS A CANVAS STOOD ON WERE LEFT UNPARKED,
+  /// 「the pen's」 (🔢브러시/렌더링's of that morning, 6e0ab445c — no
+  /// rule of the user's, whose word above is of every cel an import
+  /// lands): the RAM's alone till the canvas had moved on and this was
+  /// asked again, or the budget asked. 🔬The .tvpp above, as it rests
+  /// once opened (main PC, no window, 2026-11-21; two runs before, three
+  /// after): the 15 cels its canvas stood on, 172.6 MiB here → 0.0, for
+  /// 12.6 MiB more in the room (97.8 → 110.4). ⚠️Not shown to bring the
+  /// process's RAM down: 1,038–1,147 MiB before, 921–1,106 after, run
+  /// to run. A pen that comes down on a parked cel waits for no read —
+  /// what kept the cel is held on ahead as it goes down ([holdOnAhead])
+  /// —, and an edit that lands while a cel is pressed wins over its
+  /// park ([_park]).
   void parkBehind() {
     // ⛔Not passes one at a time ([OnePassAtATime]): cels come one by
     // one, and a pass's lanes that found none waiting as it began would
@@ -2974,7 +3036,7 @@ class BrushFrameStore {
     // begun for each cel that waits while one is free.
     while (_parkingLanes.length < parksAtOnce &&
         !_coolingStoodDown &&
-        _nextToPark(_stoodOn()) != null) {
+        _nextToPark() != null) {
       late final Future<void> lane;
       lane = _parkALane().whenComplete(() {
         _parkingLanes.remove(lane);
@@ -2995,7 +3057,9 @@ class BrushFrameStore {
   /// four 20.4–20.6 s · eight 20.6 s. Past two a lane only takes turns
   /// the import's own workers would have had. What it buys: 1,543 MiB
   /// of cels here as it opened → 173 MiB (the 15 its canvas stood on),
-  /// 98 MiB in the room.
+  /// 98 MiB in the room — ↩️and those 15 are parked with the rest from
+  /// that evening: 0 MiB here once it rests, 110 MiB in the room
+  /// ([parkBehind]).
   /// ⚠️One file, one machine: a tablet's count is not measured.
   static int parksAtOnce = workersFor(
     Platform.numberOfProcessors,
@@ -3020,13 +3084,14 @@ class BrushFrameStore {
   Future<void> _parkALane() async {
     try {
       while (!_coolingStoodDown) {
-        final key = _nextToPark(_stoodOn());
+        final key = _nextToPark();
         if (key == null || !await _park(key)) {
           return;
         }
-        // Kept from here. A canvas that came to stand on it meanwhile
-        // keeps its bytes; else none stay: its shell where the engine
-        // holds its tiles, which the cooling leaves the looks.
+        // Kept from here. One a canvas stands on keeps its bytes till
+        // the rest its park asked for ([_aRestLetsItsBytesGo]); of
+        // another none stay: its shell where the engine holds its
+        // tiles, which the cooling leaves the looks.
         if (_kept(key) != null && !_stoodOn().contains(key)) {
           _becomesItsShell(key);
           _coolTheKept(key);
@@ -3041,12 +3106,10 @@ class BrushFrameStore {
   }
 
   /// The hot cel that waits longest to be parked behind: unsaved — kept
-  /// nowhere —, in no park's hand, and stood on by no canvas ([stood]).
-  BrushFrameKey? _nextToPark(Set<BrushFrameKey> stood) {
+  /// nowhere — and in no park's hand.
+  BrushFrameKey? _nextToPark() {
     for (final key in _bakedSurfaces.keys) {
-      if (_kept(key) == null &&
-          !_parks.isRunning(key) &&
-          !stood.contains(key)) {
+      if (_kept(key) == null && !_parks.isRunning(key)) {
         return key;
       }
     }

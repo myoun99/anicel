@@ -148,9 +148,9 @@ class EditingCanvas {
 
   /// The cels the frame at the playhead shows — each row's as the cut
   /// exposes it there ([resolveExposedFrameAt]): what this canvas
-  /// stands on, whose bytes its store keeps here through a rest and
-  /// through the parking behind (`BrushFrameStore.setCelsStoodOn`), and
-  /// whose tiles [hotTilesAtThePlayhead] answers.
+  /// stands on, whose bytes its store keeps here through the parking
+  /// behind (`BrushFrameStore.setCelsStoodOn`), and whose tiles
+  /// [hotTilesAtThePlayhead] answers.
   Iterable<BrushFrameKey> celsAtThePlayhead() sync* {
     final cut = _project.activeCutOrNull;
     if (cut == null) {

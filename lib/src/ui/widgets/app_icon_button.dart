@@ -610,7 +610,11 @@ class RenderIconButtonPressFace extends RenderShiftedBox
   String get tooltipMessage => _spec.tooltip;
 
   @override
-  void pressLookChanged() => markNeedsPaint();
+  ShapeDecoration get stateLayer => iconButtonLayerOf(
+    _spec.shape,
+    _spec.ink.overlay(_states),
+    ground: _spec.ground,
+  );
 
   /// The state layer painted right now — for tests.
   @visibleForTesting
@@ -693,20 +697,9 @@ class RenderIconButtonPressFace extends RenderShiftedBox
   double computeMaxIntrinsicHeight(double width) =>
       _spec.box.constrainHeight(super.computeMaxIntrinsicHeight(width));
 
-  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
-
   @override
   void paint(PaintingContext context, Offset offset) {
-    _layer.paint(
-      context.canvas,
-      offset & size,
-      iconButtonLayerOf(
-        _spec.shape,
-        _spec.ink.overlay(_states),
-        ground: _spec.ground,
-      ),
-      _spec.textDirection,
-    );
+    paintStateLayer(context.canvas, offset & size);
     super.paint(context, offset);
   }
 
@@ -718,11 +711,5 @@ class RenderIconButtonPressFace extends RenderShiftedBox
     // no, never "not focusable": the old `Semantics(focusable: enabled,
     // focused: hasFocus)` set both, and the second answer won.
     config.isFocused = _spec.focus != IconButtonFocus.away;
-  }
-
-  @override
-  void dispose() {
-    _layer.dispose();
-    super.dispose();
   }
 }

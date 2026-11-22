@@ -79,6 +79,11 @@ typedef StoryboardThumbnailResolver =
 /// heard [landed]: one conte row's eye re-rendered its track's pictures,
 /// and each landing repainted every track's V row — a capture of each.
 ///
+/// [madeOf] says what every picture of a cut is made of, as one value: a
+/// surface built again with a cut edited where no picture reads it — a new
+/// cut that answers as the old one did — has no picture to ask again
+/// (card a-twirl-repaints-the-film-views-cut-band, 11-22).
+///
 /// [landed] is told of every landing — for what waits on the whole store,
 /// never for a painter. [pending] says whether a picture a surface asked
 /// for is still to come. ⚠️Ask it once the surfaces have PAINTED: a landing
@@ -87,6 +92,7 @@ typedef StoryboardThumbnailResolver =
 /// for that one.
 typedef StoryboardThumbnails = ({
   StoryboardThumbnailResolver resolve,
+  Object Function(Cut cut) madeOf,
   Listenable Function(Iterable<CutId> cuts) noticesFor,
   Listenable landed,
   bool Function() pending,
@@ -235,6 +241,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// did, and whether one is still to come.
   late final StoryboardThumbnails thumbnails = (
     resolve: thumbnailFor,
+    madeOf: _signatureFor,
     noticesFor: noticesFor,
     landed: this,
     pending: () => pending,

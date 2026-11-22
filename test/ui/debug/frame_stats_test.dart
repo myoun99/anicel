@@ -696,7 +696,7 @@ void main() {
         );
       }
       expect(
-        find.textContaining(RegExp('copied|direct')),
+        find.textContaining('copied'),
         findsNothing,
         reason: 'no window was opened: every platform but Android',
       );
@@ -705,22 +705,20 @@ void main() {
     testWidgets('says whether a window\'s frame is copied onto its image, '
         'on the line of its show', (tester) async {
       MeasurementMode.frameStats.value = true;
-      addTearDown(() => ScreenTexture.debugWindowsAre(copied: null));
+      addTearDown(() => ScreenTexture.debugWindowsAre(copied: false));
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       await tester.pumpWidget(
         const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
       );
 
-      for (final (copied, said) in const [(true, 'copied'), (false, 'direct')]) {
-        ScreenTexture.debugWindowsAre(copied: copied);
-        FrameStats.publish();
-        await tester.pump();
+      ScreenTexture.debugWindowsAre(copied: true);
+      FrameStats.publish();
+      await tester.pump();
 
-        expect(
-          find.textContaining(RegExp('^ show .*  $said\$')),
-          findsOneWidget,
-        );
-      }
+      expect(
+        find.textContaining(RegExp(r'^ show .*  copied$')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('says what the newest frame was drawn as — its texels, the '

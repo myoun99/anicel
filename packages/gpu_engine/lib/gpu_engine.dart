@@ -296,6 +296,15 @@ class GpuEngine {
     return made;
   }
 
+  /// [target]'s texture, for a draw on this engine to write: what the
+  /// target was said to hold is forgotten ([GpuTarget.kept]). Every draw
+  /// reaches a target's texture through here.
+  Pointer<rust.Texture> _toDrawOn(GpuTarget target) {
+    final texture = _its(target)._texture;
+    target.kept = null;
+    return texture;
+  }
+
   String get adapterName => using((arena) {
     const capacity = 256;
     final buffer = arena<Uint8>(capacity);
@@ -652,10 +661,36 @@ sealed class GpuTarget implements _OfAnEngine {
   /// The texture the kernel writes.
   Pointer<rust.Texture> get _texture;
 
+  /// WHAT THE TARGET STILL HOLDS OF THE FRAME DRAWN ON IT LAST, as who drew
+  /// it says once it has — read back by who draws on it next, to draw
+  /// again only what differs (the app's `EngineStackScreen.show`). Null
+  /// where nothing is known of it: never drawn on; drawn on since, every
+  /// draw forgetting it as it reaches the texture
+  /// ([GpuEngine._toDrawOn]); or a frame drawn on it was given up (the
+  /// app's `ScreenTexture.present`) — what the GPU did of a frame it did
+  /// not finish is not known, so the next is drawn whole.
+  ///
+  /// 📍On the target, not kept beside it: a draw that knows nothing of it
+  /// — another kernel's, on a texture two share — cannot leave it
+  /// standing.
+  ///
+  /// ↩️NOT KEPT OF A WINDOW WHOSE IMAGES THE KERNELS STORED STRAIGHT INTO
+  /// (Android's, on the way builds 1095 to 1097 showed one by): its next
+  /// was another of its swapchain's each frame, holding a frame older
+  /// than the last by how many it keeps. Every target is one texture of
+  /// the engine's own now, a window's too
+  /// (rust/src/platform/android.rs, `Window`).
+  Object? kept;
+
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
   Duration fill(int seed) => _ran(
-    rust.fillRun(_engine._fillKernel, _engine._engine, _texture, seed),
+    rust.fillRun(
+      _engine._fillKernel,
+      _engine._engine,
+      _engine._toDrawOn(this),
+      seed,
+    ),
   );
 }
 
@@ -2363,6 +2398,24 @@ enum GpuSampling {
   const GpuSampling(this.id);
 
   final int id;
+
+  /// How far from the source pixel a pixel's centre lands in its read
+  /// reaches, in source pixels a side, at the most: none for [nearest],
+  /// which reads that one; for the others R1's ceiling, 16
+  /// (rust/src/kernels/shared/resample.wgsl `RESAMPLE_CEILING` — Blend's
+  /// radius, the square a flat reach is told by, and exact Pick's widest
+  /// preimage). What a source pixel changed can change of a picture laid
+  /// through a pose is read by it (`EngineStackScreen.show`).
+  ///
+  /// ⚠️The kernel's number said again, not read from it — and a bound,
+  /// not what a read reaches at a scale: Blend's tent is as wide as a
+  /// pixel spans, this at the most. The pin of a frame shown again where
+  /// it changed alone holds it by the texels drawn, and, told as none,
+  /// shows on the engine itself what is left undrawn at a half (the
+  /// app's `the_engine_screen_shows_the_frame_it_keeps_test.dart`).
+  /// 🔬Told as two, a tenth shows it too (2026-11-22, the half's count
+  /// of texels out of the way).
+  int get reach => this == nearest ? 0 : 16;
 }
 
 /// The channel a blur map is read through, by the engine's ids.
@@ -3249,7 +3302,7 @@ class GpuComposite implements _OfAnEngine {
         _engine._engine,
         _engine._its(pool)._pool,
         _engine._its(plan)._plan,
-        _engine._its(target)._texture,
+        _engine._toDrawOn(target),
         _edges(arena, rect),
       ),
     );
@@ -3430,7 +3483,7 @@ class GpuScreen implements _OfAnEngine {
         _engine._engine,
         _doubles(arena, inverse),
         sampling.id,
-        _engine._its(target)._texture,
+        _engine._toDrawOn(target),
         _edges(arena, rect),
       ),
     );
@@ -5645,7 +5698,7 @@ class GpuGridLay {
       rust.gridLay(
         _lay,
         _engine._engine,
-        _engine._its(target)._texture,
+        _engine._toDrawOn(target),
         edges,
         pictures,
         boxes,
@@ -5907,7 +5960,9 @@ int crc32Update(int running, Uint8List bytes, int length) {
 const int _crcSlice = 1 << 20;
 
 /// A Flutter texture the engine presents into: a SurfaceProducer's window,
-/// whose images Flutter shows without a copy (Android).
+/// whose images Flutter shows without a copy (Android). Drawn on and
+/// presented with no wait for the engine's thread
+/// (rust/src/platform/android.rs, `Window`).
 class GpuWindow extends GpuTarget {
   GpuWindow._(super._engine, this._window, this.textureId);
 
@@ -5916,27 +5971,19 @@ class GpuWindow extends GpuTarget {
   /// What a `Texture` widget shows the window by.
   final int textureId;
 
-  /// Whether the kernels store straight into the window's images; when
-  /// not, each present copies the engine's own texture into one.
-  bool get direct => rust.windowDirect(_window);
-
-  /// The window's next image — [present] shows what a kernel wrote there.
+  /// What the kernels write for the window, one texture for its life —
+  /// [present] shows what a kernel wrote there. What is drawn on it
+  /// stands till the next draw, as on a surface ([kept]).
   @override
-  Pointer<rust.Texture> get _texture {
-    final target = rust.windowTarget(_window);
-    if (target == nullptr) {
-      throw GpuRefused(_lastError());
-    }
-    return target;
-  }
+  Pointer<rust.Texture> get _texture => rust.windowTarget(_window);
 
-  /// Hands the image a kernel last wrote ([fill], [GpuScreen.show]) to
-  /// Flutter.
-  void present() {
-    if (!rust.windowPresent(_engine._engine, _window)) {
-      throw GpuRefused(_lastError());
-    }
-  }
+  /// Hands what a kernel last wrote ([fill], [GpuScreen.show]) to
+  /// Flutter: copied onto the window's next image and put up once the GPU
+  /// has finished the copy, this isolate waiting for none of it. Asked
+  /// once the GPU has finished what was written ([GpuEngine.done]), as a
+  /// screen's frame is (`ScreenTexture.present`); where it fails, the
+  /// next done fails by it.
+  void present() => rust.windowPresent(_engine._engine, _window);
 
   /// Frees the swapchain, then Flutter's producer: the window it presents
   /// into must outlive it.

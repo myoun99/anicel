@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/frame_census.dart';
 
 /// F-80 (유저 2026-09-16): 「잘라내기는 작동하게하고싶어서 선택한 도구마다
 /// 다르게하자. 작동가능한거면 해당 도구 작동시키고, 불가능하면 팬」.
@@ -165,4 +166,32 @@ void main() {
       expect(document.regionReads, isEmpty);
     });
   }
+
+  // a-tool-change-lets-the-sheet-panels-dock-image-go (11-22): with the
+  // page taking no ink, a tool change between one a sheet runs and one it
+  // does not built the viewer's panel again for the same answer — the
+  // sheets' law ([SheetCanvasPanel]), the viewer's own copy of it.
+  testWidgets('with the page taking no ink, a tool change builds and paints '
+      'nothing of the viewer', (tester) async {
+    tool.value = BrushToolState.defaults;
+    await pumpViewer(tester);
+    final viewer = tester.renderObject(find.byType(MediaViewerTabHost));
+
+    for (final next in [CanvasTool.eyedropper, CanvasTool.brush]) {
+      final census = await frameCensus(
+        tester,
+        () => tool.value = tool.value.copyWith(tool: next),
+      );
+      expect(
+        census.rebuilt,
+        isNot(contains(BrushCanvasPanel)),
+        reason: '$next',
+      );
+      expect(
+        paintedInside(census.painted, viewer),
+        isFalse,
+        reason: '$next: nothing of the viewer is painted again',
+      );
+    }
+  });
 }

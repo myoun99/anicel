@@ -21,10 +21,11 @@ import '../../helpers/tiles_on_the_engine.dart';
 /// CANVAS STANDS ON (card cel-originals-are-held-twice-in-ram-and-on-the-
 /// gpu — 유저 2026-11-21 on Q4 「최대한 사본안만드는게 중요」 and on Q6
 /// 「사본이나 ram에있는걸 최대한 없애고싶어서」): at a rest
-/// (`TilesAtRest`) its kept cels let go of the bytes the engine holds, and
-/// the cels an import lands are parked behind — every one but the frame's
-/// its canvas stands on, read where the playhead is then; and a project
-/// closed hears no more.
+/// (`TilesAtRest`) its kept cels let go of their bytes here — the frame's
+/// its canvas stands on as any other, and one no screen stored laid on
+/// the engine there —, and the cels an import lands are parked behind,
+/// every one — the frame's its canvas stands on hot still, read where the
+/// playhead is then; and a project closed hears no more.
 ///
 /// What the store does with each word is its own
 /// (a_hot_cel_that_is_kept_lets_its_bytes_go_at_a_rest_test.dart,
@@ -68,39 +69,41 @@ void main() {
       store.hotBakedSurfaceOrNull(key)!.tiles[origin]!.hasItsBytesHere;
 
   test('🚨at a rest of the engine\'s tiles a project\'s kept cels let go '
-      'of their bytes here — but the frame\'s its canvas stands on, till '
-      'it has moved on', () {
+      'of their bytes here — the frame\'s its canvas stands on as any '
+      'other, and one no screen stored as one shown', () {
     final (:session, :at0, :at3) = twoCels();
     addTearDown(session.dispose);
     final store = session.renderCaches.brushFrameStore;
     keepInAFile(store, {at0: drawn(session), at3: drawn(session)});
-    // Used and shown: their bytes here, and their tiles on the engine.
-    for (final key in [at0, at3]) {
-      final used = store.bakedSurfaceOrNull(key)!;
-      EngineTileLedger.instance.held(
-        (hold) => hold.slotsOf(EngineTileLedger.landedCel, [
-          ...used.tiles.values,
-        ]),
-      );
-    }
+    // The one stood on used and shown: its bytes here, and its tiles on
+    // the engine. The other used, and stored by no screen.
+    final shown = store.bakedSurfaceOrNull(at0)!;
+    EngineTileLedger.instance.held(
+      (hold) => hold.slotsOf(EngineTileLedger.landedCel, [
+        ...shown.tiles.values,
+      ]),
+    );
+    final unshown = store.bakedSurfaceOrNull(at3)!.tiles[origin]!;
     expect(
       [bytesHere(store, at0), bytesHere(store, at3)],
       [true, true],
       reason: '⛔premise: thawed, their bytes here',
     );
+    expect(
+      EngineTileLedger.instance.slotOf(unshown),
+      isNull,
+      reason: '⛔premise: on the engine by no screen',
+    );
 
-    TilesAtRest.app.rested();
-
-    expect([bytesHere(store, at0), bytesHere(store, at3)], [true, false]);
-
-    session.selectFrameIndex(3);
     TilesAtRest.app.rested();
 
     expect([bytesHere(store, at0), bytesHere(store, at3)], [false, false]);
+    expect(store.hotBakedBytes, 0);
   });
 
-  test('🚨the cels an import lands are parked behind — but the frame\'s '
-      'its canvas stands on, read where it stands then', () async {
+  test('🚨the cels an import lands are parked behind — the frame\'s its '
+      'canvas stands on too, which stays hot: read where it stands then',
+      () async {
     final (:session, :at0, :at3) = twoCels();
     addTearDown(session.dispose);
     final store = session.renderCaches.brushFrameStore;
@@ -111,7 +114,7 @@ void main() {
     await store.drainTiering();
 
     expect(store.hotBakedSurfaceOrNull(at3), isNotNull);
-    expect(store.isCelParked(at3), isFalse);
+    expect(store.isCelParked(at3), isTrue);
     expect(store.hotBakedSurfaceOrNull(at0), isNull);
     expect(store.isCelCold(at0), isTrue);
   });

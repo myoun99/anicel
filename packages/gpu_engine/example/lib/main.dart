@@ -202,9 +202,7 @@ class _ProbeAppState extends State<_ProbeApp> {
     report.writeln('\n== window ==');
     final written = _written(engine);
     final shot = await engine.window(_shotSide, _shotSide);
-    report.writeln(shot.direct
-        ? "the window's images take compute stores: no copy"
-        : "the window's images take no stores: one GPU copy a frame");
+    report.writeln("the window's images are copied onto: one GPU copy a frame");
     shot
       ..fill(_seed)
       ..present();

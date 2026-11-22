@@ -4,7 +4,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/native/tiles_at_rest.dart';
 
@@ -354,6 +357,55 @@ void main() {
       await theRestsPass(tester);
     });
 
+    // What a kept cel's store asks as bytes of it come here
+    // ([EngineTileLedger.restBeforeLong]): a thaw, a park and a save
+    // store nothing on the engine
+    // (a_hot_cel_that_is_kept_lets_its_bytes_go_at_a_rest_test.dart).
+    testWidgets('🚨a rest asked for where nothing was stored comes a rest '
+        'after the asking, and an asking since puts it off by nothing',
+        (tester) async {
+      answered.restBeforeLong();
+      await tester.pump(beat * 4);
+      expect(answered.asked, isEmpty, reason: 'a rest is five beats');
+
+      answered.restBeforeLong();
+      await tester.pump(beat);
+
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
+    // What a rest lays of a kept cel ([EngineTileLedger.lay]) is stored
+    // within the budget as it stands
+    // (a_shell_keeps_the_slots_its_cel_let_go_of_test.dart).
+    testWidgets('🚨what a rest lays on a full pool asks for no rest — it '
+        'would ask at each, for as long as the pool stayed full',
+        (tester) async {
+      answered = _Answered(engine, debugTilesAPage: aPage, byteBudget: 0);
+      for (var slot = 0; slot < aPage; slot++) {
+        aStore();
+      }
+      await tester.pump(EngineTileLedger.rest);
+      await told(tester, folded: false);
+      expect(answered.asked, hasLength(1), reason: '⛔premise: the stores\'');
+      final loose = aTileOfItsOwn();
+      kept.add(loose);
+
+      answered.lay(
+        BitmapSurface(
+          canvasSize: CanvasSize(width: gpuTileSide, height: gpuTileSide),
+          tileSize: gpuTileSide,
+          tiles: {TileCoord(x: 0, y: 0): loose},
+        ),
+        cel: 'a cel',
+      );
+      await tester.pump(EngineTileLedger.rest * 2);
+
+      expect(answered.slotOf(loose), isNull, reason: '⛔premise: no room');
+      expect(answered.asked, hasLength(1));
+      await theRestsPass(tester);
+    });
+
     // Who a ledger tells of its rests ([TilesAtRest]) — a project's
     // store, which lets go there of the bytes the engine holds
     // (a_session_lets_go_of_bytes_as_the_engine_s_tiles_rest_test.dart).
@@ -528,7 +580,12 @@ void main() {
 /// A ledger whose folds a test answers: each batch a rest asks for waits
 /// for its word, and folds nothing.
 class _Answered extends EngineTileLedger {
-  _Answered(super.engine, {super.debugTilesAPage, super.atRest});
+  _Answered(
+    super.engine, {
+    super.debugTilesAPage,
+    super.atRest,
+    super.byteBudget,
+  });
 
   final asked = <Completer<bool>>[];
 

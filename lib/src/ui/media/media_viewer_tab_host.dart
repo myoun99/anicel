@@ -1803,6 +1803,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ),
     );
     final brushTool = widget.brushTool;
+    // The page takes ink under the tool in hand: what the panel is built
+    // from, so all the slice asks of the tool besides the armed cut.
+    // ↩️The slice asked whether the tool alone was one a sheet runs, so a
+    // tool change with the ink off built the panel again for the same
+    // answer (a-tool-change-lets-the-sheet-panels-dock-image-go, 11-22 —
+    // the sheets' law, [SheetCanvasPanel]).
+    bool inksUnder(BrushToolState tool) => drawing && sheetRunsTool(tool.tool);
     final panel = brushTool == null
         ? panelWith(null)
         : SlicedValueListenableBuilder<
@@ -1810,8 +1817,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             (CanvasShapeKind?, bool)
           >(
             valueListenable: brushTool,
-            slice: (tool) => (armedCutShape(tool), sheetRunsTool(tool.tool)),
-            builder: (context, tool) => drawing && sheetRunsTool(tool.tool)
+            slice: (tool) => (armedCutShape(tool), inksUnder(tool)),
+            builder: (context, tool) => inksUnder(tool)
                 ? panelWith(brushTool, inks: true)
                 : panelWith(_toolFor(tool)),
           );

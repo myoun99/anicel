@@ -1063,11 +1063,51 @@ class StoryboardCutBlocksPainter extends CustomPainter
     );
   }
 
+  /// What [entry]'s block is drawn from, its pictures aside: its place —
+  /// where it starts and where it ends, which is its length too
+  /// ([_placedFor]; no block reads the entry's `duration`) — the cut's
+  /// name and colour label, and the cut's conte row — whose blocks the
+  /// strip is cut into panels by.
+  Object _drawnOf(StoryboardTimelineLayoutEntry entry) => (
+    entry.cutId,
+    entry.startFrame,
+    entry.endFrame,
+    entry.cut.name,
+    entry.cut.metadata.mark,
+    ByIdentity(storyboardLayerForCut(entry.cut)),
+  );
+
+  /// What the pictures a pass asks for are made of
+  /// ([StoryboardThumbnails.madeOf]) — of the cuts the window keeps, the
+  /// ones [_thumbnailsFor] is asked for. Two painters of one row read the
+  /// same live window, so it compares what the two would draw NOW.
+  List<Object> get _picturesMadeOf {
+    final thumbnails = this.thumbnails;
+    if (thumbnails == null) {
+      return const [];
+    }
+    final window = visibleFrameWindow();
+    return [
+      for (final entry in entries)
+        if (_placedFor(entry, window: window) != null)
+          thumbnails.madeOf(entry.cut),
+    ];
+  }
+
   @override
   // Geometry, selection, hover and a landed picture are absent on purpose —
   // they arrive through `repaint`.
+  //
+  // 🚨THE CUTS BY WHAT THE ROW DRAWS OF THEM, never by the cut (card
+  // a-twirl-repaints-the-film-views-cut-band, 11-22). ↩️`ByIdentity
+  // (entries)`: every edit inside a cut makes a new cut and the row is
+  // built again with it — as it must be, its presses and its pictures are
+  // asked with the cut as it is — so a lane twirled on the camera row
+  // painted every block of the film again (🔬the test VM, three cuts: four
+  // twirls, the band four times, an image each).
   Object get props => (
-    ByIdentity(entries),
+    ByList([for (final entry in entries) _drawnOf(entry)]),
+    ByList(_picturesMadeOf),
     BySet(linkedCutIds),
     BySet(syncedCutIds),
     drawsLinkGlyphs,

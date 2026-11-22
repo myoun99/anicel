@@ -17,9 +17,11 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/native/tile_blocks.dart';
+import 'package:anicel/src/native/tiles_at_rest.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/poll_until.dart';
 import '../helpers/tiles_on_the_engine.dart';
 
 /// 🚨Card let-go-cels-keep-their-gpu-tiles (유저 2026-11-16 03:10: 「지금
@@ -29,6 +31,14 @@ import '../helpers/tiles_on_the_engine.dart';
 /// and a shell's tile whose slot a full pool let go reads the cel's kept
 /// bytes again. When the store keeps a shell and hands it is the store's
 /// (a_cel_a_look_let_go_is_looked_at_again_as_its_shell_test.dart).
+///
+/// And what a rest lays of a kept cel before it makes its shell
+/// ([EngineTileLedger.lay] — card
+/// cel-originals-are-held-twice-in-ram-and-on-the-gpu, 유저 2026-11-21 on
+/// Q6 「사본이나 ram에있는걸 최대한 없애고싶어서」): the tiles no screen
+/// stored are stored there, so the shell holds no byte of the cel here.
+/// When a rest lays is the store's
+/// (a_hot_cel_that_is_kept_lets_its_bytes_go_at_a_rest_test.dart).
 void main() {
   // Cels by the name a painter gives one.
   const a = (2, 1);
@@ -248,6 +258,37 @@ void main() {
     expect(store.shells, hasLength(1));
   });
 
+  // A thaw stores nothing on the engine, which is what else brings its
+  // tiles to rest (the_ledger_folds_its_tiles_once_the_hand_rests_test.dart).
+  test('🚨a store given no keeper asks the app\'s ledger for the rest a '
+      'kept cel thawed is let go at', () async {
+    EngineTileLedger.foldsAtRest = true;
+    addTearDown(() => EngineTileLedger.foldsAtRest = false);
+    EngineTileLedger.instance;
+    final store = BrushFrameStore();
+    const key = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('l'),
+      frameId: FrameId('f'),
+    );
+    parkCold(store, {key: aCelOf({left: aTileOfItsOwn()})});
+    var rests = 0;
+    final told = Object();
+    TilesAtRest.app.tells(told, () => rests += 1);
+    addTearDown(() => TilesAtRest.app.forgets(told));
+
+    final thawed = store.bakedSurfaceOrNull(key)!;
+    expect(
+      thawed.tiles[left]!.hasItsBytesHere,
+      isTrue,
+      reason: '⛔premise: thawed, its bytes here',
+    );
+
+    expect(await pollUntil(() => rests > 0), isTrue);
+  });
+
   test('a shell kept from the ledger of an engine let go is whole no more '
       'on the next', () {
     final kept = EngineTileLedger(appGpuEngine);
@@ -437,5 +478,112 @@ void main() {
     ledger.held((hold) => hold.slotsOf(a, [kept]));
 
     expect(ledger.slotOf(kept), isNotNull);
+  });
+
+  group('what a rest lays —', () {
+    test('🚨a tile with bytes of its own and no slot is stored, and the '
+        'shell made next holds no byte of the cel here: each reads its '
+        'pixels from its slot', () async {
+      final ledger = EngineTileLedger(appGpuEngine);
+      final first = aTileMarked(1);
+      final second = aTileMarked(2);
+      final cel = aCelOf({left: first, right: second});
+      final count = ledger.slotCount;
+
+      ledger.lay(cel, cel: a);
+
+      expect(ledger.slotCount, count + 2);
+      await appGpuEngine.done();
+      final shell = ledger.shellOf(cel, readAgain: neverReadAgain)!;
+      expect(shell.keptTileBytes, 0);
+      expect(ledger.isWhole(shell), isTrue);
+      expect(shell.tiles[left]!.pixels, first.pixels);
+      expect(shell.tiles[right]!.pixels, second.pixels);
+    });
+
+    test('a tile of a colour and one with a slot stay as they are: no '
+        'slot more', () {
+      final ledger = EngineTileLedger(appGpuEngine);
+      final colour = BitmapTile.ofOneColour(
+        size: gpuTileSide,
+        word: 0xFF0000FF,
+      );
+      final stored = aTileOfItsOwn();
+      final [slot] = ledger.held((hold) => hold.slotsOf(a, [stored]));
+      final count = ledger.slotCount;
+
+      ledger.lay(aCelOf({left: colour, right: stored}), cel: a);
+
+      expect(ledger.slotCount, count);
+      expect(ledger.slotOf(colour), isNull);
+      expect(ledger.slotOf(stored), slot);
+    });
+
+    test('a shell\'s tile whose slot went is not stored again — it holds '
+        'no bytes here to lay, and nothing is read again for it', () {
+      final ledger = EngineTileLedger(
+        appGpuEngine,
+        byteBudget: 0,
+        roomBatch: 2,
+      );
+      final first = aTileOfItsOwn();
+      final second = aTileOfItsOwn();
+      ledger.held((hold) => hold.slotsOf(a, [first, second]));
+      final shell = ledger.shellOf(
+        aCelOf({left: first, right: second}),
+        readAgain: neverReadAgain,
+      )!;
+      theTwoOldestSlotsGo(ledger);
+      expect(ledger.isWhole(shell), isFalse, reason: '⛔premise');
+      final count = ledger.slotCount;
+
+      ledger.lay(shell, cel: a);
+
+      expect(ledger.slotCount, count);
+      expect(ledger.isWhole(shell), isFalse);
+    });
+
+    test('🚨within the budget as it stands: a full pool takes none of it, '
+        'lets go of no slot for it and makes no page', () {
+      final ledger = EngineTileLedger(
+        appGpuEngine,
+        byteBudget: 0,
+        roomBatch: 2,
+      );
+      final stored = aTileOfItsOwn();
+      ledger.held((hold) => hold.slotsOf(a, [stored]));
+      final slots = ledger.pool.bytes ~/ gpuTileBytes;
+      final rest = [for (var n = 1; n < slots; n++) aTileOfItsOwn()];
+      ledger.held((hold) => hold.slotsOf(a, rest));
+      final bytes = ledger.pool.bytes;
+      final count = ledger.slotCount;
+      final loose = aTileOfItsOwn();
+
+      ledger.lay(aCelOf({left: loose}), cel: b);
+
+      expect(ledger.slotOf(loose), isNull);
+      expect(ledger.slotCount, count);
+      expect(ledger.slotOf(stored), isNotNull, reason: 'none let go for it');
+      expect(ledger.pool.bytes, bytes);
+      expect(loose.hasItsBytesHere, isTrue);
+    });
+
+    test('a cel of tiles of another side than the engine\'s is not its '
+        'to lay', () {
+      final ledger = EngineTileLedger(appGpuEngine);
+      final small = aTileOfItsOwn(size: gpuTileSide ~/ 2);
+      final count = ledger.slotCount;
+
+      ledger.lay(
+        BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: gpuTileSide ~/ 2,
+          tiles: {left: small},
+        ),
+        cel: a,
+      );
+
+      expect(ledger.slotCount, count);
+    });
   });
 }

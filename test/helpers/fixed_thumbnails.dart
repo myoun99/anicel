@@ -7,6 +7,9 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 /// what is drawn, not when.
 StoryboardThumbnails fixedThumbnails(StoryboardThumbnailResolver resolve) => (
   resolve: resolve,
+  // The very cut: a new cut is new pictures, as it is for a test that
+  // asks what is drawn.
+  madeOf: (cut) => cut,
   noticesFor: (_) => _nothingLands,
   landed: _nothingLands,
   pending: _nothingOwed,

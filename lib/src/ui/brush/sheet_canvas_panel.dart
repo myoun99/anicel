@@ -201,19 +201,26 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
   /// What takes a shape here — the sheet's ink layer says (F-420).
   final SheetShapeTargets _shapes = SheetShapeTargets();
 
-  /// Whether the tool in hand is one this sheet runs, as last built.
-  late bool _toolRuns = _toolInHandRuns;
-
-  bool get _toolInHandRuns {
+  /// Whether this sheet runs the tool in hand: its drawing on, and the
+  /// tool one it runs (F-80 · F-420).
+  bool get _runsNow {
     final tool = widget.brushToolState?.value.tool;
-    return tool != null && sheetRunsTool(tool);
+    return widget.drawingOn && tool != null && sheetRunsTool(tool);
   }
 
-  /// The panel is built again when the answer changes, and for nothing
-  /// else of the brush (H40 ②: a brush change rebuilds no sheet).
+  /// [_runsNow] as last built.
+  late bool _runs = _runsNow;
+
+  /// The panel is built again when what it builds from the tool changes,
+  /// and for nothing else of the brush (H40 ②: a brush change rebuilds no
+  /// sheet). ↩️It asked whether the tool alone was one a sheet runs, so a
+  /// tool change under a sheet whose drawing is off — the brush switch's
+  /// default — built the panel again for the same answer, and the dock
+  /// around it let its image go: ALT's eyedropper did it twice a press
+  /// (a-tool-change-lets-the-sheet-panels-dock-image-go, 11-22).
   void _hearTool() {
-    if (_toolInHandRuns != _toolRuns) {
-      setState(() => _toolRuns = _toolInHandRuns);
+    if (_runsNow != _runs) {
+      setState(() => _runs = _runsNow);
     }
   }
 
@@ -229,8 +236,8 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
     if (!identical(oldWidget.brushToolState, widget.brushToolState)) {
       oldWidget.brushToolState?.removeListener(_hearTool);
       widget.brushToolState?.addListener(_hearTool);
-      _toolRuns = _toolInHandRuns;
     }
+    _runs = _runsNow;
     // Drawing going off unmounts the ink windows — the pen that was down on
     // one will never be lifted there.
     if (oldWidget.drawingOn && !widget.drawingOn) {
@@ -293,7 +300,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
   Widget build(BuildContext context) {
     final widget = this.widget;
     final scale = widget.paperScale;
-    final runs = widget.drawingOn && _toolRuns;
+    final runs = _runs;
     return BrushCanvasPanel(
       coordinator: null,
       availableFrameKeys: const [],

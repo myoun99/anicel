@@ -31,6 +31,7 @@ import '../widgets/anchored_popup.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/kept_tail_row.dart';
+import '../widgets/live_sheet.dart';
 import '../text/app_strings.dart';
 import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
@@ -1250,45 +1251,21 @@ class _ProjectTab extends StatelessWidget {
           color: selected ? colorScheme.surfaceContainerHigh : null,
           shape: shape,
           type: selected ? MaterialType.canvas : MaterialType.transparency,
-          child: ControlPressClaim(
-            onPressed: press,
-            child: InkWell(
-              mouseCursor: AppCursors.press,
-              key: ValueKey<String>('project-tab-$index'),
-              customBorder: shape,
-              onTap: silentPress(press),
-              child: Padding(
-                padding: const EdgeInsets.only(left: 10, right: 3),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: EllipsisText(
-                        label,
-                        // The key the strip's name has always worn, on the
-                        // name of the project on screen.
-                        key: selected
-                            ? const ValueKey<String>('top-strip-project-name')
-                            : null,
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: selected
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    // The window's own ✕ — the same button, the same size.
-                    AppIconButton(
-                      keyValue: 'project-tab-close-$index',
-                      tooltip: AppText.strings.commonClose,
-                      size: AppIconButtonSize.micro,
-                      icon: const Icon(Icons.close),
-                      onPressed: onClose,
-                    ),
-                  ],
+          // The shown tab's fill is a ground of its own, painted over the
+          // strip's sheet: its ✕ lights in place, on that ground
+          // ([LiveSheet.inPlace]; `a_pointer_passing_over_a_strip_takes_no_
+          // image_test` holds every button of the strip to being seen).
+          child: LiveSheet.inPlace(
+            child: ControlPressClaim(
+              onPressed: press,
+              child: InkWell(
+                mouseCursor: AppCursors.press,
+                key: ValueKey<String>('project-tab-$index'),
+                customBorder: shape,
+                onTap: silentPress(press),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 10, right: 3),
+                  child: _nameAndClose(colorScheme),
                 ),
               ),
             ),
@@ -1297,6 +1274,39 @@ class _ProjectTab extends StatelessWidget {
       ),
     );
   }
+
+  /// The project's name, and the ✕ that closes it.
+  Widget _nameAndClose(ColorScheme colorScheme) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Flexible(
+        child: EllipsisText(
+          label,
+          // The key the strip's name has always worn, on the name of the
+          // project on screen.
+          key: selected
+              ? const ValueKey<String>('top-strip-project-name')
+              : null,
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 12,
+            color: selected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      const SizedBox(width: 2),
+      // The window's own ✕ — the same button, the same size.
+      AppIconButton(
+        keyValue: 'project-tab-close-$index',
+        tooltip: AppText.strings.commonClose,
+        size: AppIconButtonSize.micro,
+        icon: const Icon(Icons.close),
+        onPressed: onClose,
+      ),
+    ],
+  );
 }
 
 /// The tabs that did not fit, in a list — and, while the project on screen

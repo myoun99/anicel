@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -173,6 +175,74 @@ void main() {
           reason: reason,
         );
       }
+    });
+
+    test('🚨a cut edited where no row of its conte group reads it lays '
+        'the same row — a lane twirled on a cel makes a new cut, and the '
+        'conte row reads none of it (11-22)', () {
+      final a = cut('a', 10, conteLayer: conte('a', {0: block('a1', 10)}));
+      final row = trackConteRowShown(trackId, entriesOf([a]));
+      final twirled = a.copyWith(
+        layers: [
+          for (final layer in a.layers)
+            if (layer.kind == LayerKind.storyboard)
+              layer
+            else
+              layer.copyWith(lanesExpanded: !layer.lanesExpanded),
+        ],
+      );
+      expect(twirled, isNot(same(a)), reason: '⛔premise: a new cut');
+
+      expect(
+        trackConteRowShown(trackId, entriesOf([twirled])),
+        same(row),
+        reason: '↩️kept for the very cut: the whole film\'s conte row was '
+            'laid and painted again for a twirl on the camera row',
+      );
+    });
+
+    test('🚨an attach row of the conte edited lays its seat\'s row again — '
+        'the row is kept by every row of the cut\'s conte group, the ones '
+        'it is laid from', () {
+      final base = conte('a', {0: block('a1', 10)});
+      final cel = Layer(id: const LayerId('cel-a'), name: 'A', frames: const []);
+      Cut withRider(int length) => Cut(
+        id: const CutId('a'),
+        name: 'a',
+        duration: 10,
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        layers: [
+          cel,
+          base,
+          Layer(
+            id: const LayerId('over-a'),
+            name: 'over',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: base.id,
+            attachedPlacement: AttachedPlacement.above,
+            attachedMode: AttachedMode.free,
+            frames: [
+              Frame(id: const FrameId('o1'), duration: 1, strokes: const []),
+            ],
+            timeline: {0: block('o1', length)},
+          ),
+        ],
+      );
+      final row = trackConteRowShown(
+        trackId,
+        entriesOf([withRider(4)]),
+        seat: 1,
+      );
+      expect(blocksOf(row), {0: ('o1', 4)}, reason: '⛔premise: seat +1');
+
+      final again = trackConteRowShown(
+        trackId,
+        entriesOf([withRider(7)]),
+        seat: 1,
+      );
+
+      expect(again, isNot(same(row)));
+      expect(blocksOf(again), {0: ('o1', 7)});
     });
 
     test('a cut with no conte layer, and a gap, hold nothing', () {

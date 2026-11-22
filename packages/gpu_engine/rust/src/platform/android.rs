@@ -8,21 +8,20 @@
 //! - Vulkan only: whether GLES-only devices get compute is
 //!   gpu-engine-feasibility's open question (Q3); the device stage 0
 //!   measures on (SM-X910, Adreno 740) has Vulkan.
-//! - the kernels store straight into the swapchain's image when its usages
-//!   allow storage, which is per device (VkSurfaceCapabilitiesKHR::
-//!   supportedUsageFlags); otherwise into a texture of the engine's own,
-//!   copied into the image when it is presented — one GPU copy, which
-//!   [`Window::direct`] reports.
+//! - the kernels store into a texture of the engine's own, copied onto the
+//!   swapchain's next image as it is presented — one GPU copy a frame
+//!   ([`Window`] has why, and what stood here before).
 //! - RGBA8 unorm: the bytes the kernels write are the bytes shown, with no
 //!   sRGB encode between, as on Windows.
 //! - Fifo: the one present mode every device has.
 
 use std::ffi::c_void;
 use std::ptr::NonNull;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use wgpu::rwh::{AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle};
 
-use crate::device::{Engine, let_go, on_thread_of, storage_texture};
+use crate::device::{Engine, Sent, let_go, storage_texture};
 use crate::fail;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
@@ -79,29 +78,86 @@ impl Drop for NativeWindow {
 
 /// A window Flutter shows, and the swapchain the engine presents into it.
 ///
-/// ⏳THE THREAD THAT BUILDS THE APP'S FRAMES WAITS ON THE ENGINE'S TWICE A
-/// FRAME HERE — for the swapchain's next image (`gpu_engine_window_target`)
-/// and for the present. A way with no such wait was landed and taken out
-/// again the same day (2026-11-21, f2020bee3 and its revert; 관제 20:00
-/// 「되돌려라」, card the-galaxy-tab-canvas-went-slow-on-build-1095): the
-/// kernels wrote a texture of the engine's own and a present copied it
-/// onto the image, handed to Flutter once the GPU had finished the copy.
-/// Taken out TILL THE DEVICE HAS SAID, to be put back by its numbers: on
-/// the Galaxy Tab S9 Ultra build 1095's frame statistics read the build of
-/// a frame at ≤ 5.2 ms (p95) — what the wait can be of it — and the
-/// raster at 36–37 ms (p95), where that way was measured on no device: it
-/// adds a copy of the whole screen a frame, and hands the image over
-/// after work of the next frame may have been submitted. The statistics'
-/// SCREEN line (`ScreenTexture.upMicros`) reads a frame of this window to
-/// its present on this way, so the two can be told apart there.
+/// 🚨ITS CALLER WAITS FOR NO TURN OF THE ENGINE'S THREAD, TO DRAW ON IT OR
+/// TO SHOW IT (the-ui-thread-never-enters-the-driver, as every other
+/// platform's screens: two textures of the engine's own, shown turn about,
+/// and no call at all). What the kernels write is a texture of the
+/// engine's own, at one address for the window's life ([`Self::drawn`]),
+/// so it is named with no hand on the device; and a present is a body
+/// handed over ([`Self::shown`]): the swapchain's next image is asked
+/// for there, the texture copied onto it, and the image handed to Flutter
+/// once the GPU has finished the copy.
+///
+/// ↩️TILL 2026-11-21 THE THREAD THAT BUILDS THE APP'S FRAMES WAITED ON
+/// THE ENGINE'S TWICE A FRAME OF EVERY SCREEN, on Android alone: for the
+/// swapchain's next image before a frame was drawn — the kernels stored
+/// straight into it where its usages allowed storage, a device's own
+/// answer —, and for the present. Each stood behind every body handed
+/// over before it — a stroke's steps, a compose, a rest's folds — and in
+/// the driver's own wait for an image. 🗣️유저 2026-11-21, on a Galaxy Tab
+/// S9 Ultra (Adreno 740), card
+/// the-galaxy-tab-canvas-went-slow-on-build-1095: 「캔버스조작, 즉 팬이나
+/// 줌이나 스트로크가 너무 느려졋어」, 「초기값 프로젝트에서도 그냥 열자마자
+/// 느려」 — on no other platform. ⚠️Read in the sources, not measured on
+/// that device: whether this is all of what it met is the device's to
+/// say.
+///
+/// ↩️TAKEN OUT THE DAY IT LANDED, AND PUT BACK (f2020bee3 → d86f5b420,
+/// 관제 2026-11-21 20:00 「되돌려라」: it was measured on an emulator
+/// alone, and there only for its caller's waits; builds 1096 and 1097
+/// showed a window the old way, their frame statistics the baseline it
+/// is read against). Put back for what the old way cannot do besides: a
+/// frame shown again is drawn where it changed alone (the app's
+/// `EngineStackScreen.show`), which takes a texture that still holds the
+/// frame before — this one —, where the swapchain's next image is another
+/// each frame.
+///
+/// 🔬THE BASELINE, on that tablet (2960 × 1848), build 1097, 유저's two
+/// photographs of its frame statistics (2026-11-22): a frame of the
+/// canvas's screen 3584 × 2560 texels, drawn whole while a stroke was
+/// drawn as while the view was zoomed; the GPU finishing it in 53.4 ms
+/// (p50; p95 128.6), its draw waiting 0.3 ms and its show 0.7; the app's
+/// raster at 3.0 ms (p50) and 56.2 (p95), its frames at 30.5 a second
+/// zoomed. ⚠️What this way does to those is the tablet's to say: on an
+/// emulator a stroke's frame drew one tile of 128 × 128 where the old way
+/// drew the whole screen, and no time told the two apart — its GPU is
+/// this machine's (the card's ㉠, 2026-11-22). A view moved past the
+/// texture's room, or zoomed, is drawn whole here too, with a copy more.
+/// 🗣️Put on that tablet as it is, with no switch back to the old way
+/// (the card's Q4, 유저 2026-11-22: 「내자. 어차피 아직 아무도안써서
+/// 문제없어」).
+///
+/// ⚖️One way for every device, and a copy a frame for it (브러시/렌더링
+/// 2026-11-21): storing straight into the image keeps the copy where a
+/// device allows it, and then the image must be had before a frame's
+/// bodies are handed over — a second way to the screen, forked by a
+/// device's answer that no test here takes.
 pub struct Window {
     surface: wgpu::Surface<'static>,
-    current: Option<wgpu::SurfaceTexture>,
-    /// Where the kernels write when the swapchain's images take no stores.
-    staging: Option<wgpu::Texture>,
+    /// What the kernels write.
+    drawn: wgpu::Texture,
+    /// The image the last present copied [`Self::drawn`] onto, till it is
+    /// handed to Flutter — shared with the body that hands it
+    /// ([`Self::shown`]).
+    copied: Arc<Mutex<Copied>>,
     // Last, so it is dropped last: the window outlives the surface made on
     // it (fields drop in declaration order).
     _native: NativeWindow,
+}
+
+/// The image a present copied onto, and which present's it is.
+#[derive(Default)]
+struct Copied {
+    present: u64,
+    image: Option<wgpu::SurfaceTexture>,
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        // The image not handed over yet goes before the surface it is of:
+        // the body that would hand it finds none.
+        self.copied.lock().unwrap_or_else(PoisonError::into_inner).image = None;
+    }
 }
 
 impl Window {
@@ -123,14 +179,9 @@ impl Window {
         if !caps.formats.contains(&format) {
             return fail(format!("the window offers {:?}, not {format:?}", caps.formats));
         }
-        let direct = caps.usages.contains(wgpu::TextureUsages::STORAGE_BINDING);
-        let usage = if direct {
-            wgpu::TextureUsages::STORAGE_BINDING
-        } else {
-            wgpu::TextureUsages::COPY_DST
-        };
+        let usage = wgpu::TextureUsages::COPY_DST;
         if !caps.usages.contains(usage) {
-            return fail(format!("the window's images take neither stores nor copies: {:?}", caps.usages));
+            return fail(format!("the window's images take no copies: {:?}", caps.usages));
         }
         let Some(mut config) = surface.get_default_config(&engine.adapter, width, height) else {
             return fail("the window offers no present mode");
@@ -141,53 +192,72 @@ impl Window {
         surface.configure(engine.device(), &config);
         Some(Self {
             surface,
-            current: None,
-            staging: (!direct).then(|| storage_texture(engine.device(), width, height, format)),
+            drawn: storage_texture(engine.device(), width, height, format),
+            copied: Arc::default(),
             _native: native,
         })
     }
 
-    /// Whether the kernels store straight into the swapchain's images, with
-    /// no copy before Flutter's.
-    pub fn direct(&self) -> bool {
-        self.staging.is_none()
+    /// The texture the kernels write, which [`Self::shown`] copies onto
+    /// the swapchain's next image.
+    pub(crate) fn drawn(&self) -> &wgpu::Texture {
+        &self.drawn
     }
 
-    /// The texture this frame's kernels write: the swapchain's next image,
-    /// or the engine's own texture that [`Self::present`] copies into it.
-    pub(crate) fn target(&mut self) -> Option<&wgpu::Texture> {
-        let current = match self.current.take() {
-            Some(current) => current,
-            None => match self.surface.get_current_texture() {
-                wgpu::CurrentSurfaceTexture::Success(texture)
-                | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-                other => return fail(format!("get_current_texture: {other:?}")),
-            },
-        };
-        let current = self.current.insert(current);
-        Some(self.staging.as_ref().unwrap_or(&current.texture))
-    }
-
-    /// Hands the image the kernels wrote to Flutter, waiting for the GPU
-    /// first, as `Fill::run` does: Flutter waits on an image's fence only
-    /// from API 33 (FlutterRenderer.java:788-811), and minSdk is 29.
-    fn present(&mut self, engine: &Engine) -> Option<()> {
-        let Some(current) = self.current.take() else {
-            return fail("present before anything was written");
-        };
-        if let Some(staging) = &self.staging {
-            let mut encoder = engine
-                .device()
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            encoder.copy_texture_to_texture(
-                staging.as_image_copy(),
-                current.texture.as_image_copy(),
-                staging.size(),
-            );
-            engine.queue.submit([encoder.finish()]);
-            engine.wait()?;
+    /// What the kernels wrote, copied onto the swapchain's next image —
+    /// submitted, and waited for by no one — and the image handed to
+    /// Flutter once the GPU has finished the copy: Flutter waits on an
+    /// image's fence only from API 33 (FlutterRenderer.java:788-811), and
+    /// minSdk is 29. A body of the engine's thread, as the one that hands
+    /// the image over is: a thread of the engine's for waits no caller
+    /// stays for waits for the GPU between the two
+    /// ([`Engine::done_then`]), and the bodies behind this one go on.
+    ///
+    /// One image is had at a time, so one a present before this copied
+    /// onto goes up first where it has not: a present is asked for once
+    /// the GPU has finished what its frame was drawn of
+    /// (`ScreenTexture.present`), which that copy was submitted before.
+    fn shown(&self, engine: &Engine) -> Option<()> {
+        let mut copied = self.copied.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(before) = copied.image.take() {
+            engine.queue.present(before);
         }
-        engine.queue.present(current);
+        let image = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(image)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(image) => image,
+            other => return fail(format!("get_current_texture: {other:?}")),
+        };
+        let mut encoder =
+            engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_texture(
+            self.drawn.as_image_copy(),
+            image.texture.as_image_copy(),
+            self.drawn.size(),
+        );
+        engine.queue.submit([encoder.finish()]);
+        copied.present += 1;
+        let present = copied.present;
+        copied.image = Some(image);
+        drop(copied);
+        let (hands, copied) = (engine.clone(), Arc::clone(&self.copied));
+        engine.done_then(move |done| {
+            let handing = hands.clone();
+            hands.posted(move || {
+                let mut copied = copied.lock().unwrap_or_else(PoisonError::into_inner);
+                // Another present's by now.
+                if copied.present != present {
+                    return Some(());
+                }
+                // A copy the GPU did not finish is shown by no one — what
+                // failed it is told where a done is asked for —, and a
+                // window let go of meanwhile left no image (its `Drop`).
+                match (copied.image.take(), done) {
+                    (Some(image), Ok(())) => handing.queue.present(image),
+                    (image, _) => drop(image),
+                }
+                Some(())
+            });
+        });
         Some(())
     }
 }
@@ -232,43 +302,37 @@ pub unsafe extern "C" fn gpu_engine_window_new(
     })
 }
 
-/// # Safety
-/// `window` is live.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_window_direct(window: *const Window) -> bool {
-    // SAFETY: see the function's contract.
-    unsafe { &*window }.direct()
-}
-
-/// The texture this frame's kernels write to `window` — the same one until
-/// it is presented. Null on failure; see the last error. The swapchain's
-/// next image is the driver's to give, so it is asked on the window's
-/// engine's thread ([`on_thread_of`]).
+/// The texture the kernels write for `window` — one for its life
+/// ([`Window::drawn`]): where it is, read with no hand on the device.
 ///
 /// # Safety
-/// `window` is live; the texture lives until `window` is presented.
+/// `window` is live; the texture lives as long as it.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_window_target(window: *mut Window) -> *const wgpu::Texture {
+pub unsafe extern "C" fn gpu_engine_window_target(window: *const Window) -> *const wgpu::Texture {
     // SAFETY: see the function's contract.
-    unsafe {
-        on_thread_of(window, || {
-            (*window).target().map_or(std::ptr::null(), |texture| std::ptr::from_ref(texture))
-        })
-    }
+    std::ptr::from_ref(unsafe { &*window }.drawn())
 }
 
-/// Shows what the kernels last wrote to `window`. False on failure; see
-/// the last error.
+/// Shows what the kernels last wrote to `window` ([`Window::shown`]), on
+/// the engine's thread in its turn, its caller waiting for none of it
+/// ([`Engine::posted`]): where it fails, the caller's next done fails by
+/// it.
 ///
 /// # Safety
 /// `engine` and `window` are live, and `window` was made on `engine`.
+/// `window` is let go of on the engine's thread ([`let_go`]), behind this
+/// in turn.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpu_engine_window_present(engine: *const Engine, window: *mut Window) -> bool {
+pub unsafe extern "C" fn gpu_engine_window_present(engine: *const Engine, window: *const Window) {
     // SAFETY: see the function's contract.
-    let (engine, window) = unsafe { (&*engine, &mut *window) };
-    engine.on_thread(|| {
-        window.present(engine).is_some()
-    })
+    let engine = unsafe { &*engine };
+    let handed = Sent((engine.clone(), window));
+    engine.posted(move || {
+        let (engine, window) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        unsafe { &*window }.shown(&engine)
+    });
 }
 
 /// # Safety

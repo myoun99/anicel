@@ -147,11 +147,12 @@ class FrameStatsSnapshot {
   /// near none, they put up all that was asked of them.
   final double screensBehindPerSecond;
 
-  /// [screenUpP50] part by part (`ScreenUp`): the draw — on Android the
-  /// wait for the window's next image is in it —, the GPU finishing the
-  /// frame and this isolate hearing so, and the show — on Android the
-  /// present, with a copy of the whole screen where [windowsAreCopied].
-  /// The draw and the show are on the thread that builds the app's frames.
+  /// [screenUpP50] part by part (`ScreenUp`): the draw, the GPU finishing
+  /// the frame and this isolate hearing so, and the show. The draw and
+  /// the show are on the thread that builds the app's frames, and wait
+  /// for nothing there — on Android neither, where [windowsAreCopied]:
+  /// the copy of the whole screen is the engine's thread's, after the
+  /// show.
   final double screenDrawP50;
   final double screenDrawP95;
   final double screenFinishP50;
@@ -159,9 +160,9 @@ class FrameStatsSnapshot {
   final double screenShowP50;
   final double screenShowP95;
 
-  /// `ScreenTexture.windowsAreCopied`: null where no window was opened —
-  /// every platform but Android.
-  final bool? windowsAreCopied;
+  /// `ScreenTexture.windowsAreCopied`: false where no window was opened
+  /// — every platform but Android.
+  final bool windowsAreCopied;
 
   /// What the newest show of a canvas's screen asked of the engine
   /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and

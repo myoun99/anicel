@@ -4,8 +4,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppCursors;
+import '../theme/app_theme.dart' show AppCursors, SuperellipseFace;
 import 'app_tooltip.dart';
+import 'icon_button_box.dart' show IconButtonLayer;
+import 'live_sheet.dart';
 
 /// What a light face's spec says of the one it replaces ([PressFace.respec]).
 abstract interface class FaceSpec<S> {
@@ -81,9 +83,90 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
     if (_hovered) WidgetState.hovered,
   };
 
-  /// The hover or the press changed — a face that shows them repaints.
+  /// The hover or the press changed — a face whose own picture shows them
+  /// besides its state layer, in its glyph's ink say, repaints. The state
+  /// layer is laid again without it ([_lookChanged]).
   @protected
   void pressLookChanged() {}
+
+  // ── the state layer ────────────────────────────────────────────────
+
+  /// What the face lays under what it shows for the state it is in — the
+  /// hover, the press, the keyboard's focus (`iconButtonLayerOf`) — or null
+  /// for a face that lays none.
+  @protected
+  ShapeDecoration? get stateLayer;
+
+  late final IconButtonLayer _stateLayerPaint = IconButtonLayer(
+    markNeedsPaint,
+  );
+
+  /// The state layer as the sheet under the face draws it, where one is
+  /// ([LiveSheet]).
+  late final LaidLook<ShapeDecoration> _laidStateLayer =
+      LaidLook<ShapeDecoration>(
+        this,
+        _stateLayerOnTheSheet,
+        (canvas, layer) => _stateLayerPaint.paint(
+          canvas,
+          Offset.zero & size,
+          layer,
+          pressTextDirection,
+        ),
+      );
+
+  /// 🚨A STATE LAYER IS LAID ON THE SHEET UNDER THE FACE, WHERE ONE IS
+  /// ([LiveSheet] has why): drawn live there, it changes nothing a still
+  /// region holds, and a pointer passing over the face takes no image.
+  ///
+  /// ⛔Not a layer that is the face's own inside ([SuperellipseFace] — an
+  /// outlined face's, filled at rest too, its edge drawn by that fill,
+  /// `iconButtonLayerOf`): it is opaque, and what the face stands in is
+  /// painted over the sheet.
+  bool _sheetDraws(ShapeDecoration? layer) =>
+      _laidStateLayer.onSheet && layer != null && layer is! SuperellipseFace;
+
+  /// The state layer at [rect] in the face's own picture — nothing where
+  /// the sheet under the face draws it.
+  @protected
+  void paintStateLayer(Canvas canvas, Rect rect) {
+    final layer = stateLayer;
+    if (layer == null) {
+      return;
+    }
+    if (_sheetDraws(layer)) {
+      return;
+    }
+    _stateLayerPaint.paint(canvas, rect, layer, pressTextDirection);
+  }
+
+  /// What the sheet under the face draws of the state layer now — nothing
+  /// while it shows nothing.
+  ///
+  /// 🚨A layer with no ink is no look: a face at rest lays nothing, and a
+  /// sheet with nothing laid asks nothing of any frame ([LiveSheet]) — the
+  /// frames of a stroke among them.
+  ShapeDecoration? _stateLayerOnTheSheet() {
+    final layer = stateLayer;
+    return _sheetDraws(layer) && layer?.color != null ? layer : null;
+  }
+
+  /// The hover or the press changed: the state layer is laid again — on
+  /// the sheet, or by the face painting itself.
+  void _lookChanged() {
+    _laidStateLayer.changed();
+    final layer = stateLayer;
+    if (layer != null && !_sheetDraws(layer)) {
+      markNeedsPaint();
+    }
+    pressLookChanged();
+  }
+
+  @override
+  void wearPlace(BuildContext context) {
+    super.wearPlace(context);
+    _laidStateLayer.wear(LiveSheet.underOf(context));
+  }
 
   /// The face now wears [value] in place of [old]: unchanged, nothing is
   /// owed; else a box that moved lays out again, a picture that changed
@@ -105,6 +188,8 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
       markNeedsPaint();
     }
     markNeedsSemanticsUpdate();
+    // What it lays is its spec's too — its ink, its shape, its focus.
+    _laidStateLayer.changed();
   }
 
   /// The do-nothing tap entered into the arena on every enabled press —
@@ -142,14 +227,14 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   void _setHovered(bool value) {
     if (_hovered != value) {
       _hovered = value;
-      pressLookChanged();
+      _lookChanged();
     }
   }
 
   void _setPressed(bool value) {
     if (_pressed != value) {
       _pressed = value;
-      pressLookChanged();
+      _lookChanged();
     }
   }
 
@@ -212,15 +297,23 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   // ── lifecycle ──────────────────────────────────────────────────────
 
   @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _laidStateLayer.attached();
+  }
+
+  @override
   void detach() {
     _hovered = false;
     _pressed = false;
+    _laidStateLayer.detached();
     super.detach();
   }
 
   @override
   void dispose() {
     _arenaTap.dispose();
+    _stateLayerPaint.dispose();
     super.dispose();
   }
 }

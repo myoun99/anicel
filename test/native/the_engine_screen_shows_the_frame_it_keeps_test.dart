@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -21,6 +23,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/composite_tree_plan.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
+import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -38,6 +41,14 @@ import '../helpers/engine_screen_pins.dart';
 /// after a change composed where it lies. ↩️Not against the walk's screen:
 /// 「지금화면이랑 맞출필요는없어 … 바뀌고 나서만 동일하면되」(유저 11-08, 관제가
 /// 전함).
+///
+/// 🚨AND SHOWN AGAIN ON THE TARGET THAT HOLDS IT, IT IS DRAWN WHERE IT WAS
+/// MADE AGAIN ALONE — the target showing, byte for byte, what one drawn
+/// whole shows. 🗣️유저 2026-11-21, on a Galaxy Tab (card
+/// the-galaxy-tab-canvas-went-slow-on-build-1095): 「캔버스조작, 즉 팬이나
+/// 줌이나 스트로크가 너무 느려졋어」. ↩️Every frame drew every texel of its
+/// target, a stroke's step as a zoom's.
+
 /// A view a case shows through: where each device pixel's middle lands on
 /// the world ([canvasAt]), and the surface's size.
 typedef View = ({
@@ -46,6 +57,19 @@ typedef View = ({
   double devicePixelRatio,
   (int, int) size,
   (int, int) Function(int x, int y) canvasAt,
+});
+
+/// A camera a frame is shown again through, and its target's texels —
+/// with what it draws of each tile changed in turn, columns by rows, null
+/// where nothing: the page's first, its second and the one past it.
+/// [drawn] is null where the camera's edges are no whole texels, and a
+/// rounding tells which side of one they fall.
+typedef Camera = ({
+  String name,
+  CanvasViewport viewport,
+  double devicePixelRatio,
+  (int, int) size,
+  List<(int, int)?>? drawn,
 });
 
 void main() {
@@ -415,9 +439,9 @@ void main() {
   });
 
   // What a show asked is told for the frame statistics ([ScreenAsked]):
-  // the target's texels, the display's scale — the zoom by the device's
-  // ratio — and the mode the display's law picks by it, Blend under 100%
-  // and Nearest from it.
+  // the texels it drew — all of a target nothing was drawn on —, the
+  // display's scale — the zoom by the device's ratio — and the mode the
+  // display's law picks by it, Blend under 100% and Nearest from it.
   test('a show tells what it asked of the engine: its texels, the '
       'display\'s scale and the mode by it', () async {
     final screen = EngineStackScreen(engine.composite, engine.letters);
@@ -446,5 +470,499 @@ void main() {
         (columns: width, rows: height, scale: zoom * ratio, mode: mode),
       );
     }
+  });
+
+  // 🚨SHOWN AGAIN ON THE TARGET THAT HOLDS IT, A FRAME IS DRAWN WHERE IT
+  // WAS MADE AGAIN ALONE ([EngineStackScreen.show]) — and what the target
+  // shows then is, byte for byte, what one drawn whole shows.
+  group('shown again on the target that holds it,', () {
+    setUp(ScreenAsked.debugForget);
+    tearDown(ScreenAsked.debugForget);
+
+    /// A cel whose tiles are [cel]'s of the seeds [seeds] name, column by
+    /// column — those of the columns [over] alone: a tile of another seed
+    /// differs over all of it.
+    BitmapSurface celOf(List<int> seeds, {List<int> over = columns}) =>
+        BitmapSurface(
+          canvasSize: canvas,
+          tileSize: side,
+          tiles: {
+            for (final column in over)
+              TileCoord(x: column, y: 0): cel(
+                seeds[columns.indexOf(column)],
+                over: [column],
+              ).tileAt(TileCoord(x: column, y: 0))!,
+          },
+        );
+
+    /// What [screen] shows through [camera] on a target drawn whole — one
+    /// nothing was drawn on.
+    int whole(EngineStackScreen screen, Camera camera) {
+      final (width, height) = camera.size;
+      final target = shownSurfaceOf(width, height);
+      try {
+        screen.show(
+          target,
+          camera.size,
+          viewport: camera.viewport,
+          devicePixelRatio: camera.devicePixelRatio,
+        );
+        return target.fingerprint();
+      } finally {
+        target.free();
+      }
+    }
+
+    /// Shows [screen] through [camera] on [target]: the texels it drew,
+    /// columns by rows — null where none ([ScreenAsked]).
+    (int, int)? drawnOn(
+      GpuTarget target,
+      EngineStackScreen screen,
+      Camera camera,
+    ) {
+      ScreenAsked.debugForget();
+      screen.show(
+        target,
+        camera.size,
+        viewport: camera.viewport,
+        devicePixelRatio: camera.devicePixelRatio,
+      );
+      final asked = ScreenAsked.last;
+      return asked == null ? null : (asked.columns, asked.rows);
+    }
+
+    // A target with room past what the camera shows of the world: drawn
+    // whole, it is more texels than the world's tiles land on.
+    const roomy = (300, 140);
+    final Camera withRoom = (
+      name: 'at rest, with room',
+      viewport: CanvasViewport(),
+      devicePixelRatio: 1,
+      size: roomy,
+      drawn: const [(128, 128), (128, 128), null],
+    );
+    // A lay told of a corner of the page's first tile, and of its second.
+    final inTheFirst = rectOf((10, 10, 20, 20));
+    final inTheSecond = rectOf((200, 60, 210, 70));
+
+    // What the file's views draw of each tile, where their edges are
+    // whole texels.
+    const drawnThrough = <String, List<(int, int)?>>{
+      'at rest': [(128, 128), (128, 128), null],
+      'moved and shrunk at twice the pixels': [(96, 100), null, (64, 100)],
+      'magnified twice': [(128, 64), null, null],
+    };
+    // Under 100% the display's law reads Blend, a texel a tent over what
+    // it spans: one beside a tile reads into it. What is drawn is the
+    // tile and 16 pixels round it ([GpuSampling.reach]).
+    final Camera half = (
+      name: 'shrunk to a half',
+      viewport: CanvasViewport(zoom: 0.5),
+      devicePixelRatio: 1,
+      size: (160, 64),
+      drawn: const [(72, 64), (80, 64), (8, 64)],
+    );
+    final cameras = <Camera>[
+      withRoom,
+      // Under the world: its tiles' columns are on the target, none of
+      // their rows.
+      (
+        name: 'at rest, under the world',
+        viewport: CanvasViewport(panY: -140),
+        devicePixelRatio: 1,
+        size: (300, 20),
+        drawn: const [null, null, null],
+      ),
+      for (final view in views)
+        (
+          name: view.name,
+          viewport: view.viewport,
+          devicePixelRatio: view.devicePixelRatio,
+          size: view.size,
+          drawn: drawnThrough[view.name],
+        ),
+      // A camera turned is snapped to no device pixel
+      // (`renderSnappedViewport`): a tile's edges lie a part of a texel
+      // in — under the half a quarter round, over it turned over, where
+      // the world's left lands right of its right and its top under its
+      // bottom.
+      (
+        name: 'turned a quarter, under half a pixel in',
+        viewport: CanvasViewport(panX: 128.3, panY: 0.4, rotationDegrees: 90),
+        devicePixelRatio: 1,
+        size: (132, 260),
+        drawn: null,
+      ),
+      (
+        name: 'turned over, over half a pixel in',
+        viewport: CanvasViewport(
+          panX: 256.7,
+          panY: 128.7,
+          rotationDegrees: 180,
+        ),
+        devicePixelRatio: 1,
+        size: (260, 132),
+        drawn: null,
+      ),
+      half,
+      (
+        name: 'shrunk to a tenth',
+        viewport: CanvasViewport(zoom: 0.1),
+        devicePixelRatio: 1,
+        size: (32, 16),
+        drawn: const [(15, 15), (17, 15), (2, 15)],
+      ),
+    ];
+
+    // Each tile is changed in turn — all of it, a tile of another seed,
+    // though the lay is told of a corner of it: a lay makes again the
+    // tiles its rect meets, whole (`Screen::compose`), and what a target
+    // holds of them is what is drawn again. No lay is waited for before
+    // its show, as a canvas's is not (`_LiveCelScreenState._show`).
+    test('it is the frame drawn whole, byte for byte, through every '
+        'camera — drawn where its tiles were made again alone', () async {
+      final lays = [
+        (const [5, 7, 5], inTheFirst),
+        (const [5, 7, 9], inTheSecond),
+        (const [3, 7, 9], rectOf((-100, 10, -90, 20))),
+      ];
+      for (final camera in cameras) {
+        final screen = EngineStackScreen(engine.composite, engine.letters);
+        final (width, height) = camera.size;
+        final target = shownSurfaceOf(width, height);
+        try {
+          await screen.compose(frameOf(celOf(const [5, 5, 5])));
+          expect(
+            drawnOn(target, screen, camera),
+            camera.size,
+            reason: '${camera.name}: all of it, the first time',
+          );
+          final drawn = <(int, int)?>[];
+          for (final (seeds, told) in lays) {
+            final laid = screen.compose(frameOf(celOf(seeds)), changed: told);
+            drawn.add(drawnOn(target, screen, camera));
+            await laid;
+            expect(
+              target.fingerprint(),
+              whole(screen, camera),
+              reason: '${camera.name}: tiles of the seeds $seeds',
+            );
+          }
+          expect(
+            drawn,
+            camera.drawn ?? isNot(contains(camera.size)),
+            reason: '${camera.name}: what it drew of each tile — where '
+                'not told to the texel, never all of the target',
+          );
+        } finally {
+          target.free();
+          screen.free();
+        }
+      }
+    });
+
+    test('nothing is drawn where nothing was made again — nor for a lay '
+        'over no pixel', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      final reduced = shownSurfaceOf(160, 64);
+      addTearDown(reduced.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(target, screen, withRoom), roomy);
+      expect(drawnOn(reduced, screen, half), half.size);
+
+      expect(drawnOn(target, screen, withRoom), isNull);
+      expect(drawnOn(reduced, screen, half), isNull, reason: 'nor in Blend');
+      await screen.compose(frameOf(celOf(const [5, 5, 5])), changed: Rect.zero);
+      expect(drawnOn(target, screen, withRoom), isNull, reason: 'no pixel');
+      expect(drawnOn(reduced, screen, half), isNull, reason: 'no pixel');
+      expect(target.fingerprint(), whole(screen, withRoom));
+
+      // Beside a lay that made a tile again, it adds nothing to draw.
+      await screen.compose(
+        frameOf(celOf(const [5, 5, 9])),
+        changed: inTheSecond,
+      );
+      await screen.compose(frameOf(celOf(const [5, 5, 9])), changed: Rect.zero);
+      expect(drawnOn(target, screen, withRoom), (128, 128));
+      expect(target.fingerprint(), whole(screen, withRoom));
+    });
+
+    // A lay told nothing of where is one over all the frame; and a frame
+    // of another world — the tile past the page wiped — is laid on a
+    // canvas of its own, all of it: its second tile too, which the lay is
+    // told nothing of.
+    test('a frame laid everywhere, or one of another world, is drawn '
+        'whole', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(target, screen, withRoom), roomy);
+
+      await screen.compose(frameOf(celOf(const [5, 5, 9])));
+      expect(drawnOn(target, screen, withRoom), roomy, reason: 'everywhere');
+      expect(target.fingerprint(), whole(screen, withRoom));
+
+      await screen.compose(
+        frameOf(celOf(const [5, 5, 3], over: const [0, 1])),
+        changed: inTheFirst,
+      );
+      expect(drawnOn(target, screen, withRoom), roomy, reason: 'a world');
+      expect(target.fingerprint(), whole(screen, withRoom));
+    });
+
+    // Flutter shows one of a screen's two textures while its next frame
+    // is drawn on the other (`_AlternatedTextures`): each holds the frame
+    // before the last.
+    test('each of two targets drawn on in turn is drawn where the frame '
+        'was made again since its own last', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final first = shownSurfaceOf(300, 140);
+      addTearDown(first.free);
+      final second = shownSurfaceOf(300, 140);
+      addTearDown(second.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(first, screen, withRoom), roomy);
+      expect(drawnOn(second, screen, withRoom), roomy);
+
+      await screen.compose(
+        frameOf(celOf(const [5, 7, 5])),
+        changed: inTheFirst,
+      );
+      expect(drawnOn(first, screen, withRoom), (128, 128));
+      await screen.compose(
+        frameOf(celOf(const [5, 7, 9])),
+        changed: inTheSecond,
+      );
+
+      expect(
+        drawnOn(second, screen, withRoom),
+        (256, 128),
+        reason: 'both lays are since its last',
+      );
+      expect(second.fingerprint(), whole(screen, withRoom));
+      expect(
+        drawnOn(first, screen, withRoom),
+        (128, 128),
+        reason: 'the second lay alone is since its last',
+      );
+      expect(first.fingerprint(), whole(screen, withRoom));
+    });
+
+    // The lays are kept apart eight deep (`_Lays`): a target eight behind
+    // is still drawn where they lay, one nine behind whole — the oldest of
+    // them, the second tile's, is told of no more.
+    test('a target behind by more lays than are kept apart is drawn '
+        'whole', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(target, screen, withRoom), roomy);
+
+      /// A lay of the second tile, then [then] of the first.
+      Future<void> laysOf(List<int> seeds, {required int then}) async {
+        final frame = frameOf(celOf(seeds));
+        await screen.compose(frame, changed: inTheSecond);
+        for (var lay = 0; lay < then; lay++) {
+          await screen.compose(frame, changed: inTheFirst);
+        }
+      }
+
+      await laysOf(const [5, 7, 9], then: 7);
+      expect(drawnOn(target, screen, withRoom), (256, 128), reason: 'eight');
+      expect(target.fingerprint(), whole(screen, withRoom));
+
+      await laysOf(const [5, 3, 1], then: 8);
+      expect(drawnOn(target, screen, withRoom), roomy, reason: 'nine');
+      expect(target.fingerprint(), whole(screen, withRoom));
+    });
+
+    // A texel reads another pixel through another camera — and, of a
+    // target shown more of, texels nothing was drawn on.
+    test('through another camera, or over more of the target, it is '
+        'drawn whole', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      final Camera less = (
+        name: 'at rest, over less of the target',
+        viewport: withRoom.viewport,
+        devicePixelRatio: 1,
+        size: (200, 100),
+        drawn: null,
+      );
+      final Camera moved = (
+        name: 'a pixel on',
+        viewport: CanvasViewport(panX: 1),
+        devicePixelRatio: 1,
+        size: roomy,
+        drawn: null,
+      );
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(target, screen, less), less.size);
+      await screen.compose(
+        frameOf(celOf(const [5, 7, 5])),
+        changed: inTheFirst,
+      );
+
+      for (final camera in [withRoom, moved, withRoom]) {
+        expect(drawnOn(target, screen, camera), roomy, reason: camera.name);
+        expect(
+          target.fingerprint(),
+          whole(screen, camera),
+          reason: camera.name,
+        );
+      }
+    });
+
+    test('a target another screen drew on last is drawn whole', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final another = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(another.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      await another.compose(frameOf(celOf(const [9, 9, 9])));
+      expect(drawnOn(target, screen, withRoom), roomy);
+
+      for (final shown in [another, screen]) {
+        expect(drawnOn(target, shown, withRoom), roomy);
+        expect(target.fingerprint(), whole(shown, withRoom));
+      }
+    });
+
+    // Every draw on a target forgets what it was said to hold
+    // ([GpuTarget.kept]): a fill, a composite shown, a screen of the
+    // engine's shown by another hand, the grid's lay.
+    test('a target another draw was on since is drawn whole', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      final grid = GpuGridLay(engine.composite.engine);
+      addTearDown(grid.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      const all = (0, 0, 300, 140);
+      const page = (0, 0, 256, 128);
+
+      /// [draw] handed the paper alone, planned on the app's pool.
+      void withThePaper(void Function(GpuPool pool, GpuPlan plan) draw) {
+        final ledger = EngineTileLedger.instance;
+        ledger.held((hold) {
+          final plan = GpuPlan(engine.composite.engine);
+          try {
+            planCompositeTree(
+              plan,
+              <CompositeNode<EngineRow>>[
+                CompositeLeaf(
+                  EngineSolid(
+                    argb: paper.paintedArgb,
+                    rect: DirtyRegion.fromLTBR(
+                      left: 0,
+                      top: 0,
+                      rightExclusive: canvas.width,
+                      bottomExclusive: canvas.height,
+                    ),
+                  ),
+                ),
+              ],
+              hold: hold,
+              paper: canvas.canvasRect,
+              letters: engine.letters,
+            );
+            draw(ledger.pool, plan);
+          } finally {
+            plan.free();
+          }
+        });
+      }
+
+      final draws = <String, void Function()>{
+        'a fill': () => target.fill(7),
+        'a composite shown': () => withThePaper(
+          (pool, plan) => engine.composite.show(pool, plan, target, all),
+        ),
+        'a screen shown by another hand': () => withThePaper((pool, plan) {
+          final raw = GpuScreen(engine.composite, page);
+          try {
+            unawaited(raw.compose(pool, plan, page));
+            raw.show(
+              target,
+              inverse: const [1, 0, 0, 1, 0, 0],
+              sampling: GpuSampling.nearest,
+              rect: all,
+            );
+          } finally {
+            raw.free();
+          }
+        }),
+        "the grid's lay": () => grid.lay(target, all, const []),
+      };
+      expect(drawnOn(target, screen, withRoom), roomy);
+      for (final MapEntry(key: name, value: draw) in draws.entries) {
+        expect(drawnOn(target, screen, withRoom), isNull, reason: name);
+
+        draw();
+
+        expect(drawnOn(target, screen, withRoom), roomy, reason: name);
+        expect(target.fingerprint(), whole(screen, withRoom), reason: name);
+      }
+    });
+
+    // What the GPU did of a frame it did not finish is not known
+    // (`ScreenTexture.present`): nothing was made again since, and still
+    // the next frame is drawn whole. Nobody is told of the frames here
+    // ([ScreenTexture.putUp]) — the one given up is given up all the same,
+    // and the next is drawn.
+    test('a target whose frame the GPU did not finish is drawn '
+        'whole', () async {
+      final reportTo = FlutterError.onError;
+      final reported = <Object>[];
+      FlutterError.onError = (details) => reported.add(details.exception);
+      addTearDown(() => FlutterError.onError = reportTo);
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      final gates = <Completer<void>>[];
+      final texture = ScreenTexture.debugOnSurface(
+        target,
+        done: () {
+          final gate = Completer<void>();
+          gates.add(gate);
+          return gate.future;
+        },
+      );
+      addTearDown(texture.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      final drawn = <(int, int)?>[];
+      final failure = GpuRefused('the GPU did not finish within 30s');
+
+      /// A frame of the texture's, the GPU ending it as [end] says.
+      Future<void> aFrame(void Function(Completer<void> gate) end) async {
+        texture.present(
+          (next) => drawn.add(drawnOn(next, screen, withRoom)),
+        );
+        end(gates.last);
+        await pumpEventQueue();
+      }
+
+      await aFrame((gate) => gate.complete());
+      await aFrame((gate) => gate.complete());
+      await aFrame((gate) => gate.completeError(failure));
+      await aFrame((gate) => gate.complete());
+
+      expect(drawn, [roomy, null, null, roomy]);
+      expect(reported, [failure]);
+    });
   });
 }
