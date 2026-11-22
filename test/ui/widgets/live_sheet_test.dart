@@ -670,6 +670,49 @@ void main() {
       expectSame(tester, onSheet.after, inPlace.after, reason: 'selected');
     });
 
+    testWidgets('takes its light with it as it leaves under the '
+        'pointer', (tester) async {
+      final mouse = await mouseOf(tester);
+      Widget surface({required bool there}) => LiveSheet(
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: there
+                ? AppIconButton(
+                    keyValue: 'leaving',
+                    tooltip: 'Leaving',
+                    icon: const Icon(Icons.draw),
+                    onPressed: () {},
+                  )
+                : null,
+          ),
+        ),
+      );
+      await pump(tester, surface(there: false));
+      final bare = await captureBytes(tester);
+
+      await pump(tester, surface(there: true));
+      await mouse.moveTo(tester.getCenter(find.byType(AppIconButton)));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        apart(tester, bare, await captureBytes(tester)).over,
+        greaterThan(100),
+        reason: 'the button is there, lit',
+      );
+
+      await pump(tester, surface(there: false));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expectSame(
+        tester,
+        await captureBytes(tester),
+        bare,
+        reason: 'no light is left where it stood',
+      );
+    });
+
     testWidgets('an outlined face paints its own inside, over the ground '
         'it stands on', (tester) async {
       final mouse = await mouseOf(tester);
