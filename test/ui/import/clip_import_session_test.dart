@@ -18,6 +18,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
+import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart';
 import 'package:anicel/src/ui/open_projects.dart';
@@ -523,6 +524,41 @@ void main() {
     expect(read, isNotNull);
     expect(told, isNotEmpty);
     expect(told.first, 0);
+  });
+
+  /// F-608 (유저 2026-11-23, a Galaxy Tab: 「퍼센테이지도안뜨고」): a .clip
+  /// in a document with no filesystem path is copied in before its database
+  /// is read, and the copy told the bar nothing.
+  test('🎯a .clip from a document is ONE bar — the copy fills its first '
+      'half, the database read the rest, and it never runs back', () async {
+    final clip = writeClip();
+    const uri = 'content://drive/doc/clip';
+    ProviderDocuments.remember(
+      ProviderDocument(
+        uri: uri,
+        name: 'Drive.clip',
+        length: File(clip).lengthSync(),
+      ),
+    );
+    ProviderDocuments.debugChannel = (method, arguments) async {
+      if (method != 'copyDocument') {
+        return null;
+      }
+      File(clip).copySync(arguments['destinationPath']! as String);
+      return {'status': 'granted'};
+    };
+    addTearDown(ProviderDocuments.debugReset);
+    final told = <double>[];
+
+    final read = await readClipProject(
+      clipPath: uri,
+      isCancelled: () => false,
+      onRead: told.add,
+    );
+
+    expect(read, isNotNull);
+    expectOneBar(told, [0, 0.5]);
+    expect(told.last, greaterThan(0.5), reason: 'the database came in too');
   });
 
   test('a picture lands where it stands on the canvas', () async {

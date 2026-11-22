@@ -11,12 +11,16 @@ import 'package:anicel/src/services/persistence/save_failure.dart';
 import 'package:anicel/src/services/persistence/save_stretch.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart';
+import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
-import '../../helpers/wait_window.dart' show expectOneBar;
+import '../../helpers/wait_window.dart'
+    show expectOneBar, pumpPastTheWaitWindow, watchTheBar;
 
 /// PICK-7: a project in a document with no filesystem path — Google Drive
 /// on Android — opens through a WORKING COPY in this run's room, saves
@@ -208,6 +212,50 @@ void main() {
       );
 
       expect(read.bytes, File(provider.files[uri]!).readAsBytesSync());
+      expectOneBar(told, [0, 0.5, 1]);
+    });
+
+    testWidgets('🎯a project opened from a document is ONE bar on the open '
+        'window — the copy fills its first half, the read its second '
+        '(F-608, 유저 2026-11-23: 「퍼센테이지도안뜨고」)', (tester) async {
+      final uri = (await tester.runAsync(
+        () => projectDocument('Drive.anicel'),
+      ))!;
+      ProviderDocuments.remember(
+        ProviderDocument(
+          uri: uri,
+          name: 'Drive.anicel',
+          length: File(provider.files[uri]!).lengthSync(),
+        ),
+      );
+      final projects = OpenProjects(
+        first: createDefaultProject(),
+        openSession: (project) => EditorSessionManager(initialProject: project),
+        letGo: (session) => session.dispose(),
+      );
+      addTearDown(projects.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => ProjectOpenDoor(projects).open(context, (
+                  path: uri,
+                  folderBookmark: null,
+                  placed: false,
+                )),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      final told = watchTheBar(tester);
+
+      await tester.tap(find.text('open'));
+      await pumpPastTheWaitWindow(tester);
+
+      expect(projects.sessions, hasLength(2), reason: '⛔premise: it opened');
       expectOneBar(told, [0, 0.5, 1]);
     });
 
