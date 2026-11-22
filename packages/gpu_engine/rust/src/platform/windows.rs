@@ -25,7 +25,7 @@ use windows::Win32::Graphics::Direct3D12::{
     D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D,
     D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
     D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON,
-    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, ID3D12Resource,
+    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, ID3D12Device, ID3D12Resource,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN,
@@ -281,6 +281,36 @@ pub fn device_went_by(device: &wgpu::Device) -> u32 {
     match unsafe { hal.raw_device().GetDeviceRemovedReason() } {
         Ok(()) => super::WENT_UNSAID,
         Err(reason) => removed_by(reason.code()),
+    }
+}
+
+/// What asks `device`'s driver whether it took the device: whether
+/// D3D12 names a reason it was removed (`GetDeviceRemovedReason`, whose
+/// reason [`device_went_by`] reads).
+///
+/// ⚠️Of D3D12's own device, by a hold of its own — not through wgpu's:
+/// whoever asks whether the engine's device is gone asks it, the thread
+/// the app's frames are built on among them, and wgpu's device is in no
+/// hand but a thread's of the engine (`Engine::device`). A call into the
+/// runtime that waits on no GPU.
+pub fn asking_the_driver_of(device: &wgpu::Device) -> Option<super::DriverAsked> {
+    // SAFETY: only takes a hold of the device D3D12 made.
+    let asked = AskedAnywhere(unsafe { device.as_hal::<Dx12>() }?.raw_device().clone());
+    Some(Box::new(move || asked.removed()))
+}
+
+/// D3D12's device, as what any thread may ask whether it was removed.
+struct AskedAnywhere(ID3D12Device);
+
+// SAFETY: a D3D12 device is free-threaded — any of its methods may be
+// called from any thread at once (Microsoft Learn, "Multithreading and
+// Direct3D 12" — unlike D3D11's context), and this asks it one question.
+unsafe impl Send for AskedAnywhere {}
+
+impl AskedAnywhere {
+    fn removed(&self) -> bool {
+        // SAFETY: only asks the device why it was removed.
+        unsafe { self.0.GetDeviceRemovedReason() }.is_err()
     }
 }
 

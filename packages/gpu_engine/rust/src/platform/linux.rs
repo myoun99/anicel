@@ -285,6 +285,13 @@ pub fn device_went_by(_device: &wgpu::Device) -> u32 {
     super::WENT_UNSAID
 }
 
+/// What asks the device's driver whether it took the device — nothing:
+/// Vulkan says that a device is lost where a call fails by it, and no
+/// call asks.
+pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use crate::kernels::fill::Fill;

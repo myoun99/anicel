@@ -176,6 +176,27 @@ struct Refused {
     gone: Option<String>,
     /// The first error no scope caught since a wait last told one.
     noted: Option<String>,
+    /// What asks the device's driver whether it took the device
+    /// ([`Refusals::asks`]) — none where the platform's driver says no
+    /// such thing, and of a test's that stands for no device.
+    driver: Option<platform::DriverAsked>,
+    /// How many waits passed their limit with the device standing
+    /// ([`Refusals::past`]).
+    late: u32,
+}
+
+impl Refused {
+    /// Gone by its driver's word, where the driver has one and nothing
+    /// said it before ([`Refusals::asks`]). Why it took it is
+    /// [`Engine::went_by`]'s to say.
+    fn ask_the_driver(&mut self) {
+        if self.gone.is_some() {
+            return;
+        }
+        if self.driver.as_ref().is_some_and(|took| took()) {
+            self.gone = Some("its driver took it".to_string());
+        }
+    }
 }
 
 impl Refusals {
@@ -194,9 +215,57 @@ impl Refusals {
         self.kept().noted.get_or_insert(error);
     }
 
-    /// Whether the device is gone.
+    /// 🚨THE DEVICE ANSWERS FOR ITSELF WHETHER ITS DRIVER TOOK IT — to
+    /// whoever asks whether it is gone ([`Self::gone`]) and as every wait
+    /// ends ([`Self::told`]). `driver` asks it, waiting on nothing.
+    ///
+    /// WHY (board a-real-gpu-reset-went-unheard-on-the-main-pc,
+    /// 2026-11-22): wgpu says a device is lost only where a call of
+    /// D3D12's fails by it (wgpu-hal 30.0.1, auxil/dxgi/result.rs), and a
+    /// wait is no such call — a removed device's fence reads as through
+    /// (dx12/device.rs, `wait`). So the job under way as a driver took the
+    /// device came back done, the loss was learnt at the next submit, and
+    /// of a canvas that stood still, never. Found reading how a loss
+    /// reaches the app, after a fault of the main PC's GPU went unheard
+    /// (nvlddmkm 153, 11-22 16:47: the window on its last picture, and no
+    /// loss written) — whether this engine's device went then, nothing
+    /// said, which is the hole.
+    fn asks(&self, driver: platform::DriverAsked) {
+        self.kept().driver = Some(driver);
+    }
+
+    /// Whether the device is gone — by what was said of it, or by its
+    /// driver's word now ([`Self::asks`]).
     fn gone(&self) -> bool {
-        self.kept().gone.is_some()
+        let mut kept = self.kept();
+        kept.ask_the_driver();
+        kept.gone.is_some()
+    }
+
+    /// A wait passed `limit`: fails by it — or, where its driver took the
+    /// device, as every wait on a gone device does: that one is gone, not
+    /// late, and the poll stays in the driver for what will not come.
+    ///
+    /// 🚨COUNTED WHERE THE DEVICE STANDS ([`Self::late`]): the app writes
+    /// what the engine had sent the GPU at the first refusal it hears once
+    /// one is (board a-real-gpu-reset-went-unheard-on-the-main-pc,
+    /// 2026-11-22 — a wait past its limit left no word of what the GPU
+    /// was at). ⛔Not read from this failure's words: a body handed over
+    /// unwaited tells its caller only whether it worked
+    /// (lib/gpu_engine.dart, `_toldRefused` — a landing's finish, a lift),
+    /// and these words stay on the thread that waited.
+    fn past(&self, limit: Duration) -> Option<()> {
+        if self.gone() {
+            return self.told();
+        }
+        self.kept().late += 1;
+        fail(format!("the GPU did not finish within {limit:?}"))
+    }
+
+    /// How many waits passed their limit with the device standing
+    /// ([`Self::past`]).
+    fn late(&self) -> u32 {
+        self.kept().late
     }
 
     /// Whether the device is gone for want of memory: wgpu gave it up at
@@ -227,6 +296,7 @@ impl Refusals {
     /// it stands on by them, and a refusal reaches it as its words alone.
     fn told(&self) -> Option<()> {
         let mut kept = self.kept();
+        kept.ask_the_driver();
         if let Some(why) = &kept.gone {
             return fail(format!("the graphics device is gone: {why}"));
         }
@@ -581,6 +651,9 @@ impl Engine {
                     mapped_at_creation: false,
                 });
                 let refusals = Refusals::default();
+                if let Some(driver) = platform::asking_the_driver_of(&device) {
+                    refusals.asks(driver);
+                }
                 let (lost, noting) = (refusals.clone(), refusals.clone());
                 device.set_device_lost_callback(move |reason, message| {
                     lost.lose(format!("{reason:?} {message}").trim_end().to_owned());
@@ -1233,9 +1306,7 @@ impl Poll {
                 polled.map_or_else(fail, Some)?;
                 return refusals.told();
             }
-            Ok(Err(mpsc::RecvTimeoutError::Timeout)) => {
-                return fail(format!("the GPU did not finish within {limit:?}"));
-            }
+            Ok(Err(mpsc::RecvTimeoutError::Timeout)) => return refusals.past(limit),
             Ok(Err(mpsc::RecvTimeoutError::Disconnected)) => {
                 format!("the engine's thread never answered: {}", mpsc::RecvError)
             }
@@ -2494,6 +2565,20 @@ pub unsafe extern "C" fn gpu_engine_went_by(engine: *const Engine) -> u32 {
     engine.on_thread(|| engine.went_by())
 }
 
+/// How many waits on `engine` passed their limit with its device standing
+/// ([`Refusals::past`]) — the GPU at one job longer than the engine waits
+/// for any ([`WAIT_LIMIT`]): what the app writes down of the GPU (H63) is
+/// written at the first refusal it hears once this is not none.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_late(engine: *const Engine) -> u32 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.refusals.late()
+}
+
 /// Takes the error `engine` noted that no wait has told yet ([`Refusals`]):
 /// copies it (UTF-8) into `buffer` and returns its full length, 0 where
 /// there is none — and no wait fails by it after. For the app's tests,
@@ -2648,6 +2733,20 @@ pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool
         }
         engine.device().destroy();
     })
+}
+
+/// Test seam: a wait on `engine` ended past its limit, as a poll the GPU
+/// does not answer ends one ([`Refusals::past`]) — which no test waits
+/// out ([`WAIT_LIMIT`]). Answers whether it finished: it did not, and the
+/// caller's last error says so.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_wait_late(engine: *const Engine) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.refusals.past(Duration::ZERO).is_some()
 }
 
 /// Test seam: `engine`'s thread stands still for `millis` ms in its turn,
@@ -3921,6 +4020,165 @@ mod tests {
         let gone = "the graphics device is gone: the engine's thread ended under a wait";
         assert_eq!(told.recv(), Ok(Err(gone.to_string())));
         assert!(refusals.gone());
+    }
+
+    // A device its driver took is gone to whoever asks — with no wait
+    // and no word of wgpu's — and every wait fails by it; one that stands
+    // is not. What was said of a device first stays.
+    #[test]
+    fn a_device_its_driver_took_is_gone_to_whoever_asks() {
+        use super::Refusals;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        // What the driver says: that the device stands, then that it took it.
+        let took = Arc::new(AtomicBool::new(false));
+        let refusals = Refusals::default();
+        let says = took.clone();
+        refusals.asks(Box::new(move || says.load(Ordering::SeqCst)));
+        assert!(!refusals.gone(), "a device that stands");
+        assert_eq!(refusals.told(), Some(()));
+
+        took.store(true, Ordering::SeqCst);
+        assert!(refusals.gone(), "asked: no wait, no word of wgpu's");
+        assert_eq!(refusals.told(), None);
+        let gone = "the graphics device is gone: its driver took it";
+        assert_eq!(last_error(), gone);
+
+        // As a wait ends, no one having asked before it: the job under
+        // way as the driver took the device does not come back done.
+        let waited = Refusals::default();
+        waited.asks(Box::new(|| true));
+        assert_eq!(waited.told(), None);
+        assert_eq!(last_error(), gone);
+
+        let lost = Refusals::default();
+        lost.asks(Box::new(|| true));
+        lost.lose("Unknown lost".into());
+        assert_eq!(lost.told(), None);
+        assert_eq!(last_error(), "the graphics device is gone: Unknown lost", "wgpu's, said first");
+
+        assert!(!Refusals::default().gone(), "one that asks no driver");
+    }
+
+    // A wait past its limit on a device its driver took fails as every
+    // wait on a gone device does, and the device is gone; on one that
+    // stands it fails by its limit, and the device is not — counted, each
+    // one, where it stands and nowhere else.
+    #[test]
+    fn a_wait_past_its_limit_is_of_a_gone_device_where_its_driver_took_it() {
+        use super::{Poll, Refusals};
+        use std::time::{Duration, Instant};
+        // A poll in the driver still: nothing answers, and nothing will.
+        let in_the_driver = || {
+            let (keep, answer) = std::sync::mpsc::channel::<Result<(), String>>();
+            (keep, Poll { asked: Instant::now(), answer: Ok(answer) })
+        };
+        let stands = Refusals::default();
+        let (_keep, poll) = in_the_driver();
+        assert_eq!(stands.late(), 0);
+        assert_eq!(poll.within(Duration::ZERO, &stands), None);
+        assert_eq!(last_error(), "the GPU did not finish within 0ns");
+        assert!(!stands.gone());
+        assert_eq!(stands.late(), 1);
+        let (_keep, poll) = in_the_driver();
+        assert_eq!(poll.within(Duration::ZERO, &stands), None);
+        assert_eq!(stands.late(), 2);
+
+        let taken = Refusals::default();
+        taken.asks(Box::new(|| true));
+        let (_keep, poll) = in_the_driver();
+        assert_eq!(poll.within(Duration::ZERO, &taken), None);
+        assert_eq!(last_error(), "the graphics device is gone: its driver took it");
+        assert!(taken.gone());
+        assert_eq!(taken.late(), 0, "gone, not late");
+    }
+
+    // The engine's own device is asked of its driver from when it opens,
+    // where the platform's driver says (D3D12). What a removal itself
+    // comes to is run alone, below.
+    #[cfg(windows)]
+    #[test]
+    fn an_engine_asks_its_devices_driver_from_when_it_opens() {
+        use super::gpu_engine_gone;
+        let _turn = a_device_of_its_own();
+        let made = opened(Engine::open_first);
+        assert!(!made.is_null(), "{}", last_error());
+        // SAFETY: `made` is live till the close below.
+        unsafe {
+            assert!((*made).refusals.kept().driver.is_some());
+            assert!(!gpu_engine_gone(made), "asked, and it stands");
+            gpu_engine_close(made);
+        }
+    }
+
+    // 🔬D3D12 ITSELF STANDING IN FOR A DRIVER THAT TAKES A DEVICE
+    // (`ID3D12Device5::RemoveDevice`): what the engine learns of it, and
+    // what becomes of opening another.
+    //
+    // ⚠️RUN ALONE (`--ignored --exact`): D3D12's device is one a process
+    // for an adapter (Microsoft Learn, "D3D12CreateDevice": 「Direct3D 12
+    // devices are singletons per adapter」), so this removes the device
+    // every test of this process stands on. It resets no driver and no
+    // adapter — the process's own device object is marked removed — and
+    // 관제 2026-11-22 17:18 allowed it on those terms, one at a time and
+    // outside a measuring window (board
+    // a-real-gpu-reset-went-unheard-on-the-main-pc).
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "removes this process's one D3D12 device: run alone"]
+    fn a_device_d3d12_marks_removed_is_gone_to_whoever_asks() {
+        use super::{gpu_engine_gone, gpu_engine_went_by};
+        use crate::platform::{WENT_BY_REMOVAL, WENT_UNSAID};
+        use wgpu::hal::api::Dx12;
+        use windows::Win32::Graphics::Direct3D12::ID3D12Device5;
+        use windows::core::Interface;
+
+        let _turn = a_device_of_its_own();
+        let made = opened(Engine::open_first);
+        assert!(!made.is_null(), "{}", last_error());
+        // SAFETY: `made` is live till the close below.
+        unsafe {
+            let engine = &*made;
+            assert_eq!(engine.wait(), Some(()));
+            assert!(!gpu_engine_gone(made));
+            assert_eq!(gpu_engine_went_by(made), WENT_UNSAID);
+
+            // On the engine's thread, as every hand on its device is.
+            engine.on_thread(|| {
+                let hal = engine.device().as_hal::<Dx12>().expect("a D3D12 device");
+                let removes: ID3D12Device5 = hal.raw_device().cast().expect("ID3D12Device5");
+                removes.RemoveDevice();
+            });
+
+            assert!(gpu_engine_gone(made), "asked: no wait, no submit");
+            assert_eq!(gpu_engine_went_by(made), WENT_BY_REMOVAL);
+            assert_eq!(engine.wait(), None);
+            println!("a wait on it: {}", last_error());
+            assert!(last_error().starts_with("the graphics device is gone: its driver took it"));
+
+            // 🔬Not this lane's law — what the app's 「open another」 meets:
+            // another engine asked for while the removed one is held, and
+            // once it is let go.
+            let beside = opened(Engine::open_first);
+            println!(
+                "another engine, the removed one held: {}",
+                if beside.is_null() { format!("none — {}", last_error()) } else { "opened".into() },
+            );
+            if !beside.is_null() {
+                println!("  gone={} wait={:?}", gpu_engine_gone(beside), (*beside).wait());
+                gpu_engine_close(beside);
+            }
+            gpu_engine_close(made);
+            let after = opened(Engine::open_first);
+            println!(
+                "another engine, the removed one let go: {}",
+                if after.is_null() { format!("none — {}", last_error()) } else { "opened".into() },
+            );
+            if !after.is_null() {
+                println!("  gone={} wait={:?}", gpu_engine_gone(after), (*after).wait());
+                gpu_engine_close(after);
+            }
+        }
     }
 
     #[test]

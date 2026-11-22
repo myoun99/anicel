@@ -429,7 +429,9 @@ class GpuEngine {
   /// (rust/src/device.rs, `Refusals`): every job that waits for it is
   /// refused from then on ([GpuRefused]), and nothing made on this engine
   /// is of use again. Known once a job has waited — the word that a
-  /// device is lost comes inside a wait.
+  /// device is lost comes inside a wait — and, where the device's driver
+  /// says that it took one (D3D12), whenever this is asked
+  /// (rust/src/device.rs, `Refusals::asks`).
   ///
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
   /// 유지한다」 — a lost device is not the app's end.
@@ -513,6 +515,21 @@ class GpuEngine {
     final count = length < capacity ? length : capacity;
     return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
   });
+
+  /// How many waits for the GPU passed the engine's limit with its
+  /// device standing (rust/src/device.rs, `Refusals::past`) — the GPU at
+  /// one job longer than the engine waits for any. ⛔Not read from a
+  /// refusal's words: a body handed over unwaited carries none
+  /// ([_toldRefused]).
+  int get waitsPastTheirLimit => rust.engineLate(_engine);
+
+  /// Test seam: a wait ended past its limit, as the engine ends one the
+  /// GPU does not answer — which no test waits out: thrown as that wait's
+  /// caller hears it.
+  Never debugWaitPastItsLimit() {
+    rust.engineWaitLate(_engine);
+    throw GpuRefused(_lastError());
+  }
 
   /// Test seam: the device destroyed — the nearest a test comes to a
   /// driver taking it away, which no test does. [isGone] says so once a

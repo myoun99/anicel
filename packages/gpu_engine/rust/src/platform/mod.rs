@@ -36,7 +36,7 @@ use self::unsupported as native;
 #[cfg(windows)]
 use self::windows as native;
 
-pub(crate) use native::{adapter_luid, device_went_by, video_memory};
+pub(crate) use native::{adapter_luid, asking_the_driver_of, device_went_by, video_memory};
 #[cfg(windows)]
 pub(crate) use native::committed_buffer;
 
@@ -134,6 +134,11 @@ pub const WENT_BY_REMOVAL: u32 = 3;
 pub const WENT_BY_RESET: u32 = 4;
 /// Reset by its driver, which failed.
 pub const WENT_BY_DRIVER: u32 = 5;
+
+/// What asks a device's driver whether it took the device
+/// ([`asking_the_driver_of`]) — waiting on nothing, from whatever thread
+/// asks. Why it did is [`device_went_by`]'s to say.
+pub(crate) type DriverAsked = Box<dyn Fn() -> bool + Send>;
 
 /// A texture kernels write — and, where the platform shares textures,
 /// Flutter shows.

@@ -10,6 +10,7 @@ import 'app_gpu_engine.dart'
         appGpuEngineIsGone,
         appGpuEngineLossLines,
         appGpuEngineOpen,
+        appGpuEngineWaitsPastTheirLimit,
         appGpuEngineWentBy;
 import 'app_kernels_ahead.dart' show openTheAppsEngineAgain;
 
@@ -165,11 +166,46 @@ abstract final class EngineRefusals {
       // it started again. The app opens no engine but its own, so a device
       // gone under one it stands on makes that one gone.
       if (!error.ofAGoneDevice) {
+        if (appGpuEngineWaitsPastTheirLimit > 0 && _causes.add(_lateGpu)) {
+          _write('the GPU did not finish what the engine sent it');
+        }
         _tellOnce(error.runtimeType);
       }
     } else if (!_openAnotherIfMay()) {
-      _tellOnce(_deviceGone);
+      _tellTheDeviceGone();
     }
+  }
+
+  /// 🚨WHAT THE ENGINE HAD SENT THE GPU IS WRITTEN WHEREVER THE APP HEARS
+  /// THAT THE GPU STOPPED — once a cause ([_causes]), as a cause is told
+  /// once: it comes again at every frame once it starts.
+  ///
+  /// 🗣️H63 (관제 2026-11-18): the next real reset is to leave its own
+  /// evidence ([GpuLossLog]). ↩️Till 2026-11-22 it was written only as the
+  /// app let a gone engine go ([_letGoAndOpenAnother]) — board
+  /// a-real-gpu-reset-went-unheard-on-the-main-pc: a wait past its limit
+  /// with the device standing ([_lateGpu]), and a device gone that the app
+  /// stays on ([_tellTheDeviceGone]), left none.
+  static void _write(String title) =>
+      GpuLossLog.write(title, appGpuEngineLossLines);
+
+  /// The cause a wait past its limit is written by, its device standing
+  /// — at the first refusal heard once the engine says one was
+  /// ([appGpuEngineWaitsPastTheirLimit]), which is that wait's own or one
+  /// beside it: a refusal's words do not say it of every path (a body
+  /// handed over unwaited carries none). Told by its type, as every
+  /// refusal of a device that stands is.
+  static const Object _lateGpu = #lateGpu;
+
+  /// No engine stands in the place of the one whose device went — the app
+  /// stays on it, or stands on none: told as a refusal is, and what the
+  /// app's engine had sent the GPU written ([_write]) — once, the one
+  /// cause.
+  static void _tellTheDeviceGone() {
+    if (!_causes.contains(_deviceGone)) {
+      _write("the canvas engine's device went, and none stands in its place");
+    }
+    _tellOnce(_deviceGone);
   }
 
   /// Opens another engine in place of the app's gone one, after the turn —
@@ -206,7 +242,7 @@ abstract final class EngineRefusals {
     // waits on this engine far oftener than the runner's watch asks of the
     // screen's device (each 100 ms), so this loss may be heard first — and
     // once it is let go, what the screen's loss writes is of the next.
-    GpuLossLog.write("the canvas engine's device went", appGpuEngineLossLines);
+    _write("the canvas engine's device went");
     _openedAnotherAt = _now();
     try {
       await _openAnother();
@@ -216,7 +252,7 @@ abstract final class EngineRefusals {
     // Asked of the app's engine, not of what opened it: none is open
     // where one would not open, and one may be gone as it was made ready.
     if (appGpuEngineOpen.value == null || appGpuEngineIsGone) {
-      _tellOnce(_deviceGone);
+      _tellTheDeviceGone();
       return;
     }
     // The device that went is the app's no more: one that goes after it

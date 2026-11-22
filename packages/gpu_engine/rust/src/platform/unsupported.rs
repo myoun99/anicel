@@ -34,3 +34,9 @@ pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
 pub fn device_went_by(_device: &wgpu::Device) -> u32 {
     super::WENT_UNSAID
 }
+
+/// What asks the device's driver whether it took the device — nothing:
+/// there is no device here to take.
+pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked> {
+    None
+}

@@ -259,6 +259,9 @@ external bool engineGone(Pointer<Engine> engine);
 @Native<Uint32 Function(Pointer<Engine>)>(symbol: 'gpu_engine_went_by')
 external int engineWentBy(Pointer<Engine> engine);
 
+@Native<Uint32 Function(Pointer<Engine>)>(symbol: 'gpu_engine_late')
+external int engineLate(Pointer<Engine> engine);
+
 @Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
   symbol: 'gpu_engine_noted',
 )
@@ -314,6 +317,9 @@ external int doneFailure(
 
 @Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_lose')
 external void engineLose(Pointer<Engine> engine, bool forMemory);
+
+@Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_wait_late')
+external bool engineWaitLate(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<Engine>, Uint32)>(
   symbol: 'gpu_engine_stand_still',

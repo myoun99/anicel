@@ -89,11 +89,18 @@ bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 GpuDeviceWent get appGpuEngineWentBy =>
     _its.engine?.wentBy ?? GpuDeviceWent.unsaid;
 
+/// How many waits on the app's engine passed their limit with its device
+/// standing ([GpuEngine.waitsPastTheirLimit]) — none where the app has
+/// opened no engine: asked without opening one.
+int get appGpuEngineWaitsPastTheirLimit =>
+    _its.engine?.waitsPastTheirLimit ?? 0;
+
 /// What the app's engine says as a device goes, a line each: whether its
-/// device is gone and why, then what it handed the GPU and has not heard it
-/// finish, after the newest it has ([GpuEngine.unfinishedSubmits]) — asked
-/// without opening one. Waits on neither the engine's thread nor its
-/// device, so it is said of an engine whose device went.
+/// device is gone and why, how many of its waits passed their limit, then
+/// what it handed the GPU and has not heard it finish, after the newest it
+/// has ([GpuEngine.unfinishedSubmits]) — asked without opening one. Waits
+/// on neither the engine's thread nor its device, so it is said of an
+/// engine whose device went.
 ///
 /// 🗣️H63 (관제 2026-11-18): a reset of the GPU leaves what the engine had
 /// sent it and not had back — written where the app hears a device went
@@ -105,6 +112,7 @@ List<String> get appGpuEngineLossLines {
   }
   return [
     'engine gone=${engine.isGone} went=${engine.wentBy.name}',
+    'engine waits past their limit=${engine.waitsPastTheirLimit}',
     ...const LineSplitter().convert(engine.unfinishedSubmits),
   ];
 }

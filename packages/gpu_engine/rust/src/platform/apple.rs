@@ -218,6 +218,12 @@ pub fn device_went_by(_device: &wgpu::Device) -> u32 {
     super::WENT_UNSAID
 }
 
+/// What asks the device's driver whether it took the device — nothing:
+/// nothing wgpu hands over of Metal says that a device was taken.
+pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use objc2_core_video::{
