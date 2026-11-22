@@ -447,6 +447,9 @@ class _StillLayer extends OffsetLayer {
   /// moved alone unless the region changed in it too ([_moving]).
   final List<TickSceneLayer> _changedTicks = [];
 
+  /// The ticks the last walk of the region passed ([_signatureOf]).
+  final List<TickSceneLayer> _seenTicks = [];
+
   /// The frame its current image was taken, for the back-off.
   int? _capturedAt;
   int _stillFramesNeeded = StillRaster.stillFrames;
@@ -692,8 +695,15 @@ class _StillLayer extends OffsetLayer {
   /// tick changes every few refreshes, a row's tile landing once.
   static const int _movingFor = StillRaster.maxStillFrames;
 
-  /// Whether [tick] changed what it holds in the last [_movingFor] frames
-  /// WHILE THE REST OF THE REGION STOOD STILL — in a frame the region had
+  /// The longest a tick stays one that moves, having learned
+  /// ([_noteWhoMovedAlone]) — as far past the shortest as a region's wait
+  /// goes past its own ([StillRaster.maxStillFrames]).
+  static const int _movingForMost =
+      _movingFor * (StillRaster.maxStillFrames ~/ StillRaster.stillFrames);
+
+  /// Whether [tick] changed what it holds in the last [_movingFor] frames —
+  /// or the longer it has learned to stay ([TickSceneLayer._staysMovingFor])
+  /// — WHILE THE REST OF THE REGION STOOD STILL — in a frame the region had
   /// no change of its own in. One that changes only with the region moves
   /// with it, and is taken with the rest: a playing timeline's rows each
   /// hold a tick that a page turn moves with the page, and nothing else.
@@ -705,19 +715,60 @@ class _StillLayer extends OffsetLayer {
   /// film frame threw away — two images a page again, and the first film
   /// frame after every turn drawn live (10-12, cut 302: 55 of 55).
   bool _moving(TickSceneLayer tick) =>
-      tick.alwaysLive || _frame - tick._movedAloneAt <= _movingFor;
+      tick.alwaysLive ||
+      _frame - tick._movedAloneAt <= tick._staysMovingFor;
 
   /// Marks the ticks that changed in this frame as moved alone, unless the
   /// region changed in it too. A tick looked at for the first time is a
   /// layer new to the region, which is a change of the region's: a tick
   /// never moves alone on its first look.
+  ///
+  /// 🚨A TICK TAKEN BACK THAT MOVES AGAIN BEFORE THAT PAID STAYS LIVE TWICE
+  /// AS LONG THE NEXT TIME; ONE THAT PAID, THE SHORTEST AGAIN (card
+  /// a-frame-pick-recuts-and-rebakes-the-docks-ticks, 11-22) — the law a
+  /// region's own image goes by ([_drop]), a tick at a time. Taken back
+  /// into its stratum, a tick's next move is a change of the region's: the
+  /// strata are thrown away and taken again in that frame
+  /// (F-244-drag-start). The ruler's ticks and the cursor's move at every
+  /// pick, the dock's tab strip's whenever the pointer comes over the dock
+  /// — taken back in the rest after one pick, they cost the next pick an
+  /// image in its frame, each. 🔬The real app, the main PC, S5_BA cut 352,
+  /// 144 Hz, pick → 0.6 s hover → 1.5 s rest: 2.4 images of the bottom dock
+  /// a cycle taken in a frame with the taking back left to a gap alone, 1.1
+  /// with a tick's stay doubled each time it moved again.
+  /// ⛔Not doubled alone: a stay that only grows ends with every tick drawn
+  /// live in every frame (🔬the same run, every tick live: the raster's
+  /// median 0.93 → 2.71 ms a frame, frames over 6.94 ms 300 → 663).
   void _noteWhoMovedAlone() {
     if (_changedAt != _frame) {
       for (final tick in _changedTicks) {
+        final takenBackAt = tick._takenBackAt;
+        if (takenBackAt != null) {
+          tick._staysMovingFor =
+              _frame - takenBackAt < StillRaster.framesToPay
+              ? (tick._staysMovingFor * 2).clamp(_movingFor, _movingForMost)
+              : _movingFor;
+          tick._takenBackAt = null;
+        }
         tick._movedAloneAt = _frame;
       }
     }
     _changedTicks.clear();
+  }
+
+  /// Notes which of the ticks the strata just taken were walked for
+  /// ([_seenTicks]) they draw [live], and which they took back — one drawn
+  /// live until now, in its stratum from this frame on.
+  void _noteWhoWasTakenBack(Set<TickSceneLayer> live) {
+    for (final tick in _seenTicks) {
+      if (live.contains(tick)) {
+        tick._drawnLive = true;
+        tick._takenBackAt = null;
+      } else if (tick._drawnLive) {
+        tick._drawnLive = false;
+        tick._takenBackAt = _frame;
+      }
+    }
   }
 
   /// The frames the region stands still before its image is taken.
@@ -895,6 +946,7 @@ class _StillLayer extends OffsetLayer {
       }
       _imageSignature = signature;
       _capturedAt = _frame;
+      _noteWhoWasTakenBack(layout.live);
       StillRaster._capturesEver += 1;
       _FrameGap.leave(this);
     } on Object catch (error, stack) {
@@ -938,6 +990,7 @@ class _StillLayer extends OffsetLayer {
   /// read as moved whenever two walks asked with different ticks live.
   List<Object?>? _signatureOf(bool Function(TickSceneLayer tick) live) {
     final region = <Object?>[];
+    _seenTicks.clear();
     // [own]: what the nearest tick around [layer] draws itself.
     bool walk(Layer layer, List<Object?> out, List<Object?>? own) {
       own?.add(layer);
@@ -946,6 +999,7 @@ class _StillLayer extends OffsetLayer {
         if (layer.alwaysLive) {
           return true;
         }
+        _seenTicks.add(layer);
         final held = <Object?>[offset];
         final itsOwn = <Object?>[offset];
         for (var child = layer.firstChild;
@@ -1670,6 +1724,17 @@ class TickSceneLayer extends OffsetLayer {
   /// it on every frame itself.
   List<Object?>? _held;
   int _movedAloneAt = -_StillLayer._movingFor - 1;
+
+  /// How long the tick stays one that moves after it moved alone — longer
+  /// where it was taken back and moved again before that paid
+  /// ([_StillLayer._noteWhoMovedAlone]).
+  int _staysMovingFor = _StillLayer._movingFor;
+
+  /// Whether the strata last taken draw the tick live, and the frame they
+  /// took it back into its stratum — null while it is drawn live, and for
+  /// one that never was.
+  bool _drawnLive = false;
+  int? _takenBackAt;
 
   /// Whether what the tick holds changed since its region last looked.
   bool _looked(List<Object?> held) {

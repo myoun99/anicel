@@ -30,12 +30,27 @@ RenderStillRaster _region(WidgetTester tester) =>
     tester.renderObject<RenderStillRaster>(find.byType(StillRaster));
 
 /// A gap in the frames long enough for a region at the shortest wait
-/// (`_FrameGap`).
+/// (`_FrameGap`), and one long enough for a region at its longest.
 const _gapStep = Duration(milliseconds: 50);
+const _longGap = Duration(milliseconds: 50 * 16);
 
 Future<void> _frame(WidgetTester tester) async {
   tester.binding.scheduleFrame();
   await tester.pump();
+}
+
+Future<void> _frames(WidgetTester tester, int count) async {
+  for (var i = 0; i < count; i += 1) {
+    await _frame(tester);
+  }
+}
+
+/// The region's live tick stands still past the shortest stay, the frames
+/// flowing, and is taken back into its stratum in the gap after them.
+Future<void> _takenBackInAGap(WidgetTester tester) async {
+  await _frames(tester, StillRaster.maxStillFrames + 2);
+  await tester.binding.delayed(_longGap);
+  await _frame(tester);
 }
 
 /// Moves the tick a pixel a frame — a tick that moves while the rest of
@@ -118,6 +133,29 @@ Widget _regionWith(
     ),
   );
 }
+
+/// A region of still ground with two ticks, one under the other.
+Widget _regionWithTwo(
+  ValueNotifier<double> first,
+  ValueNotifier<double> second,
+) => StillRaster(
+  debugLabel: 'test',
+  child: Stack(
+    children: [
+      const Positioned.fill(
+        child: RepaintBoundary(child: ColoredBox(color: _ground)),
+      ),
+      for (final (top, at) in [(0.0, first), (50.0, second)])
+        Positioned(
+          left: 0,
+          top: top,
+          width: 200,
+          height: 40,
+          child: TickLayer(child: CustomPaint(painter: _Mark(at))),
+        ),
+    ],
+  ),
+);
 
 /// Painted after the tick, over its left half.
 const Widget _coverOverTheTick = Positioned(
@@ -538,6 +576,110 @@ void main() {
       _mark,
       reason: 'drawn from the stratum where it stood',
     );
+  });
+
+  testWidgets('🚨ticks that stopped at different frames are taken back in '
+      'ONE image, in the gap — the pointer coming over a dock moves its tab '
+      'strip, the pick a frame later its ruler', (tester) async {
+    final first = ValueNotifier<double>(0);
+    final second = ValueNotifier<double>(0);
+    addTearDown(first.dispose);
+    addTearDown(second.dispose);
+    await _pump(tester, _regionWithTwo(first, second));
+    await _moveUntilStill(tester, first);
+    final region = _region(tester);
+    // The second starts a few frames after the first stopped.
+    await _frames(tester, 5);
+    second.value = 30;
+    await tester.pump();
+    await _moveUntilStill(tester, second);
+    expect(region.debugLiveTicks, hasLength(2), reason: '⛔premise: both');
+    final taken = region.debugCaptureCount;
+
+    // Both stand still past their time, five frames apart.
+    for (var i = 0; i < StillRaster.maxStillFrames * 3; i += 1) {
+      await _frame(tester);
+      expect(region.debugDrawnFromImage, isTrue, reason: 'frame $i');
+    }
+    expect(
+      region.debugCaptureCount,
+      taken,
+      reason: '↩️an image as each one\'s frames ran out, each in a frame',
+    );
+
+    await tester.binding.delayed(_longGap);
+    expect(region.debugCaptureCount, taken + 1, reason: 'one image for both');
+    await _frame(tester);
+    expect(region.debugLiveTicks, isEmpty);
+    expect(region.debugDrawnFromImage, isTrue);
+  });
+
+  testWidgets('🚨a tick taken back that moves again before that paid stays '
+      'live TWICE AS LONG the next time — the ruler\'s tick, taken back in '
+      'the rest after one pick, moves at the next', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(tester, _regionWith(at));
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+    await _takenBackInAGap(tester);
+    expect(region.debugLiveTicks, isEmpty, reason: '⛔premise: taken back');
+
+    // It moves again in the first frame after.
+    at.value = (at.value + 1) % 180;
+    await tester.pump();
+    await _moveUntilStill(tester, at);
+    expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+    final taken = region.debugCaptureCount;
+
+    // Past the shortest stay, short of twice it.
+    await _frames(tester, StillRaster.maxStillFrames + 12);
+    await tester.binding.delayed(_longGap);
+    expect(
+      region.debugCaptureCount,
+      taken,
+      reason: 'not taken back — it has learned to stay',
+    );
+    await _frame(tester);
+    expect(region.debugLiveTicks, hasLength(1));
+
+    // Past twice it.
+    await _frames(tester, StillRaster.maxStillFrames);
+    await tester.binding.delayed(_longGap);
+    expect(region.debugCaptureCount, taken + 1, reason: 'taken back now');
+  });
+
+  testWidgets('🚨a tick whose taking back PAID stays live the shortest time '
+      'again — a stay that only grew would end with every tick drawn live '
+      'in every frame', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(tester, _regionWith(at));
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+    // Taken back, moved at once: it stays twice as long.
+    await _takenBackInAGap(tester);
+    at.value = (at.value + 1) % 180;
+    await tester.pump();
+    await _moveUntilStill(tester, at);
+    // Taken back again — after twice the time — and drawn from its stratum
+    // long enough to have paid, the frames flowing.
+    await _frames(tester, StillRaster.maxStillFrames * 2 + 2);
+    await tester.binding.delayed(_longGap);
+    await _frame(tester);
+    expect(region.debugLiveTicks, isEmpty, reason: '⛔premise: taken back');
+    await _frames(tester, StillRaster.framesToPay + 2);
+
+    at.value = (at.value + 1) % 180;
+    await tester.pump();
+    await _moveUntilStill(tester, at);
+    expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+    final taken = region.debugCaptureCount;
+
+    // Past the shortest stay, short of twice it.
+    await _frames(tester, StillRaster.maxStillFrames + 12);
+    await tester.binding.delayed(_longGap);
+    expect(region.debugCaptureCount, taken + 1, reason: 'the shortest again');
   });
 
   testWidgets('🚨something painted after a tick but beside it lets the region '
