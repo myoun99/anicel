@@ -112,6 +112,21 @@ impl Drop for NativeWindow {
 /// frame before — this one —, where the swapchain's next image is another
 /// each frame.
 ///
+/// 🔬THE BASELINE, on that tablet (2960 × 1848), build 1097, 유저's two
+/// photographs of its frame statistics (2026-11-22): a frame of the
+/// canvas's screen 3584 × 2560 texels, drawn whole while a stroke was
+/// drawn as while the view was zoomed; the GPU finishing it in 53.4 ms
+/// (p50; p95 128.6), its draw waiting 0.3 ms and its show 0.7; the app's
+/// raster at 3.0 ms (p50) and 56.2 (p95), its frames at 30.5 a second
+/// zoomed. ⚠️What this way does to those is the tablet's to say: on an
+/// emulator a stroke's frame drew one tile of 128 × 128 where the old way
+/// drew the whole screen, and no time told the two apart — its GPU is
+/// this machine's (the card's ㉠, 2026-11-22). A view moved past the
+/// texture's room, or zoomed, is drawn whole here too, with a copy more.
+/// 🗣️Put on that tablet as it is, with no switch back to the old way
+/// (the card's Q4, 유저 2026-11-22: 「내자. 어차피 아직 아무도안써서
+/// 문제없어」).
+///
 /// ⚖️One way for every device, and a copy a frame for it (브러시/렌더링
 /// 2026-11-21): storing straight into the image keeps the copy where a
 /// device allows it, and then the image must be had before a frame's
