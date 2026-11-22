@@ -218,6 +218,7 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
     show
+        TimelineChromeGroundsOf,
         TimelineRowChromeResolver,
         TimelineRowEditChromeLayer,
         TimelineRowGripCallbacks,
@@ -5360,7 +5361,10 @@ class _StoryboardTrackRow extends KeptPiece {
         Theme.of(context).colorScheme,
         hovered: false,
       ),
-      gripGrounds: () => StoryboardPlateGrounds(blocksPainter),
+      gripGrounds: TimelineChromeGroundsOf(
+        read: () => StoryboardPlateGrounds(blocksPainter),
+        laidBy: blocksPainter,
+      ),
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
