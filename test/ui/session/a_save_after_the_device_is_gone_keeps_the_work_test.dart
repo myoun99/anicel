@@ -50,9 +50,13 @@ void main() {
     final second = TileCoord(x: 1, y: 0);
 
     // One tile of 7s, its copy come, and one of 9s landed on a tile of 3s.
+    // ⚠️Copied till none waits, not one batch: the ledger is the process's,
+    // and a file before this one may have left tiles of its own on the
+    // engine (🔬card bundled-files-find-stores-left-behind, 2026-11-22:
+    // nine left there, and the one batch asked came back full).
     final ledger = EngineTileLedger.instance;
     final copied = landedOn(ledger, [null], 7).single;
-    expect(await ledger.copyHereABatch(), isFalse);
+    while (await ledger.copyHereABatch()) {}
     expect(copied.isOnlyOnEngine, isFalse, reason: '⛔premise: its copy came');
     final under = BitmapTile(
       size: gpuTileSide,
@@ -70,6 +74,9 @@ void main() {
     );
 
     appGpuEngine.debugLose();
+    // A device that is gone is gone for its process: the next test opens
+    // another, as the app does (the_apps_engine_let_go.dart).
+    addTearDown(letTheGoneAppGpuEngineGo);
     await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     expect(appGpuEngineIsGone, isTrue, reason: '⛔premise: it was gone');

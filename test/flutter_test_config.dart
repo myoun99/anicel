@@ -18,6 +18,7 @@ import 'package:anicel/src/services/import/cel_picture.dart'
     show debugPictureSideLimit;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show debugCheckFilmRowsKept;
+import 'package:anicel/src/services/memory_allowance.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
@@ -129,6 +130,14 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // in the next: its word stood waited for in every test after
   // ([BakedWords.debugForgetEveryBake] has the measurement).
   tearDown(BakedWords.instance.debugForgetEveryBake);
+  // So is the allowance's factor, and a session sets it as it is made — to
+  // what this machine's RAM gives the automatic allowance, not 1: a budget
+  // a later test made on its own then held that many times its share and
+  // let nothing go (🔬card bundled-files-find-stores-left-behind,
+  // 2026-11-22: 4.24 on the main PC, the viewer's four pages read as
+  // 1,138,111,174 bytes). A test ends with the allowance a process starts
+  // with.
+  tearDown(() => MemoryAllowance.factor.value = 1);
   // The surfaces the grids' screens opened on ([startATestFile]) go as
   // each test does.
   tearDown(_freeScreenSurfaces);
