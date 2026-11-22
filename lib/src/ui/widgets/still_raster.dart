@@ -491,6 +491,11 @@ class _StillLayer extends OffsetLayer {
     if (strata != null && _stillShows(strata)) {
       _drawFrom(strata, builder);
       _noteWhoMovedAlone();
+      if (!strata.live.every(_moving)) {
+        // A tick drawn live has stood still: taken back into its stratum
+        // in a gap in the frames ([_takeInAGap]), never in one.
+        _FrameGap.wait(this);
+      }
       return;
     }
     final dropped = strata != null;
@@ -659,15 +664,29 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Whether [strata] still show the region: the gate is open, the region
-  /// sits on the same device pixels, the layer tree under it is the one
-  /// they were taken of, its live ticks aside — and every tick drawn live
-  /// still moves: one that stood still for [_movingFor] frames is taken
-  /// into its stratum with the next strata.
+  /// sits on the same device pixels and the layer tree under it is the one
+  /// they were taken of, its live ticks aside.
+  ///
+  /// 🚨A LIVE TICK THAT STOOD STILL DOES NOT UNDO THE STRATA (card
+  /// a-frame-pick-recuts-and-rebakes-the-docks-ticks, 11-22): drawn live it
+  /// is drawn right, and it is taken back into its stratum in a gap in the
+  /// frames ([_takeInAGap]) — with whatever else stood still by then, in
+  /// one image.
+  /// ↩️「…and every tick drawn live still moves」: the strata were thrown
+  /// away in the frame a tick's [_movingFor] ran out and taken again in it
+  /// (F-244-drag-start) — each tick by its own count, so a frame picked on
+  /// the timeline took the dock's image four times, all in frames: the
+  /// pointer coming over the dock (its tab strip's tick), the pick (the
+  /// ruler's ticks, the cursor's), and one more as each of the two ran out
+  /// while the pointer hovered over the canvas. 🔬The real app, the main
+  /// PC, S5_BA cut 352, 144 Hz, laws walked in turn inside one run: images
+  /// of the bottom dock taken in a frame, a cycle of pick → hover / pick →
+  /// rest / pick → stroke — 4.9 / 5.9 / 8.4, and 4.1 / 2.4 / 0.5 with the
+  /// taking back left to a gap; frames over 6.94 ms 300 against 181.
   bool _stillShows(_Strata strata) =>
       _owner._gate() == StillStandDown.none &&
       _owner._gridFit() == strata.fit &&
-      listEquals(_signatureOf(strata.live.contains), _imageSignature) &&
-      strata.live.every(_moving);
+      listEquals(_signatureOf(strata.live.contains), _imageSignature);
 
   /// How long a tick that changed stays one that moves: a film frame's
   /// tick changes every few refreshes, a row's tile landing once.
@@ -812,9 +831,24 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Takes the region in a gap in the frames ([_FrameGap]), for the next
-  /// frame that comes anyway.
+  /// frame that comes anyway: one owed its image, or one drawn from strata
+  /// in which a live tick has stood still — taken again with that tick in
+  /// its stratum ([_stillShows]).
   void _takeInAGap() {
-    if (_owedAnImage && _capture()) {
+    final strata = _strata;
+    if (strata == null) {
+      if (_owedAnImage && _capture()) {
+        markNeedsAddToScene();
+      }
+      return;
+    }
+    if (attached &&
+        _owner._gate() == StillStandDown.none &&
+        !strata.live.every(_moving) &&
+        _capture()) {
+      // The strata it replaces: thrown away for no change of the region's,
+      // so the wait learns nothing from them ([_drop]).
+      strata.dispose();
       markNeedsAddToScene();
     }
   }
