@@ -1671,7 +1671,11 @@ class TimelineRowCellsPainter extends CustomPainter
   // below that is NOT wrapped in `ByIdentity` is value-compared for that
   // reason.
   Object get props => (
-    ByIdentity(layer),
+    // 🚨The layer BY THE CELLS IT SHOWS, as the tiles this painter lays
+    // down ask it ([ByItsCells]). ↩️By identity: a lane twirled — a new
+    // layer no cell reads anything new of — painted the row again over
+    // tiles that had stayed (11-22).
+    ByItsCells(layer),
     // ㉘: and what the row's coverage follows, for the rows whose
     // coverage is not on their layer. Value-compared like the rest —
     // a TransformTrack with one more key is a different value.
