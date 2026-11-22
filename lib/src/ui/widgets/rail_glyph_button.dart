@@ -355,8 +355,24 @@ class RenderRailGlyphFace extends RenderBox
   @override
   String get tooltipMessage => _spec.tooltip;
 
+  /// The ink the glyph was last painted in.
+  Color? _paintedInk;
+
+  /// The state layer is laid without the face ([PressFace]): its glyph is
+  /// painted again only where the hover or the press changes its ink.
   @override
-  void pressLookChanged() => markNeedsPaint();
+  void pressLookChanged() {
+    if (_spec.ink.foreground(_states) != _paintedInk) {
+      markNeedsPaint();
+    }
+  }
+
+  @override
+  ShapeDecoration get stateLayer => iconButtonLayerOf(
+    _spec.shape,
+    _spec.ink.overlay(_states),
+    ground: _spec.ground,
+  );
 
   /// What this face's ink is resolved against: the hover and the press,
   /// and the keyboard's focus where it is shown ([IconButtonFocus]).
@@ -475,25 +491,12 @@ class RenderRailGlyphFace extends RenderBox
 
   // ── paint ──────────────────────────────────────────────────────────
 
-  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
-
   @override
   void paint(PaintingContext context, Offset offset) {
-    final states = _states;
-    _layer.paint(
-      context.canvas,
-      offset & size,
-      iconButtonLayerOf(
-        _spec.shape,
-        _spec.ink.overlay(states),
-        ground: _spec.ground,
-      ),
-      _spec.textDirection,
-    );
-    _glyphPainter(_spec.ink.foreground(states)).paint(
-      context.canvas,
-      offset + _glyphOffset,
-    );
+    paintStateLayer(context.canvas, offset & size);
+    final ink = _spec.ink.foreground(_states);
+    _paintedInk = ink;
+    _glyphPainter(ink).paint(context.canvas, offset + _glyphOffset);
   }
 
   @override
@@ -524,12 +527,6 @@ class RenderRailGlyphFace extends RenderBox
       maxWidth: _spec.maxWidth,
     ),
   };
-
-  @override
-  void dispose() {
-    _layer.dispose();
-    super.dispose();
-  }
 }
 
 /// A rail PLATE that is pressed — the mark's and the take's ([RailPlateButton]).
@@ -561,49 +558,36 @@ class RenderRailPlateFace extends RenderProxyBox
     respec(old, value);
   }
 
-  @override
-  void pressLookChanged() {
-    if (_spec.shape != null) {
-      markNeedsPaint();
-    }
-  }
-
-  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
-
   /// The [InkWell]'s two highlights as one overlay ([inkWellOverlay]).
   Color? get _overlay => inkWellOverlay(
     focus: _spec.focus == IconButtonFocus.shown ? _spec.focusInk : null,
     hover: hovered && _spec.enabled ? _spec.hoverInk : null,
   );
 
+  /// A clear plate's ink, under the plate — none for a plate that paints
+  /// itself, opaque.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림
+  /// 안의 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」):
+  /// the shape is FILLED, not clipped to ([SuperellipseClip] says why).
+  /// ↩️It was the box clipped to the shape, as an `InkHighlight` paints
+  /// inside its `Material`.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버
+  /// · 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」): an
+  /// outlined plate is drawn whole, as an outlined icon button is — its
+  /// inside the ground it stands on with the hover and the focus over
+  /// that, its edge by fills ([iconButtonLayerOf]).
   @override
-  void paint(PaintingContext context, Offset offset) {
-    if (_spec.shape case final shape?) {
-      // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림
-      // 안의 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」):
-      // the shape is FILLED, not clipped to ([SuperellipseClip] says why).
-      // ↩️It was the box clipped to the shape, as an `InkHighlight` paints
-      // inside its `Material`.
-      //
-      // 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버
-      // · 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」): an
-      // outlined plate is drawn here whole, as an outlined icon button is —
-      // its inside the ground it stands on with the hover and the focus
-      // over that, its edge by fills ([iconButtonLayerOf]).
-      _layer.paint(
-        context.canvas,
-        offset & size,
-        iconButtonLayerOf(shape, _overlay, ground: _spec.ground),
-        _spec.textDirection,
-      );
-    }
-    super.paint(context, offset);
-  }
+  ShapeDecoration? get stateLayer => switch (_spec.shape) {
+    null => null,
+    final shape => iconButtonLayerOf(shape, _overlay, ground: _spec.ground),
+  };
 
   @override
-  void dispose() {
-    _layer.dispose();
-    super.dispose();
+  void paint(PaintingContext context, Offset offset) {
+    paintStateLayer(context.canvas, offset & size);
+    super.paint(context, offset);
   }
 
   @override

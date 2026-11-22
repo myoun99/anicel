@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
-import '../repaint_props.dart';
 import '../theme/app_theme.dart';
 import 'drag_chip.dart';
+import 'live_sheet.dart';
 import 'owning_draggable.dart';
 import 'superellipse_clip.dart';
 
@@ -181,17 +182,15 @@ class _LiftingGripBandState<T extends Object>
 
   Widget _band() => ValueListenableBuilder<bool>(
     valueListenable: widget.nearby,
-    builder: (context, nearby, _) => CustomPaint(
-      painter: _GripBandPainter(
-        shape: widget.shape.borderRadius.resolve(
-          Directionality.maybeOf(context),
-        ),
-        color: _bandColor(nearby),
-        extent: _bandExtent,
-        edgeOutline: widget.edgeOutline,
-        atBottom: widget.atBottom,
+    builder: (context, nearby, _) => _GripBandLook((
+      shape: widget.shape.borderRadius.resolve(
+        Directionality.maybeOf(context),
       ),
-    ),
+      color: _bandColor(nearby),
+      extent: _bandExtent,
+      edgeOutline: widget.edgeOutline,
+      atBottom: widget.atBottom,
+    )),
   );
 
   /// [grip], carrying [data] when pressed and moved.
@@ -215,6 +214,17 @@ class _LiftingGripBandState<T extends Object>
   );
 }
 
+/// Everything a band is painted with: the corners of the thing it runs
+/// along, its ink, how thick it is, how far in from the edge it starts and
+/// which edge that is.
+typedef GripBandSpec = ({
+  BorderRadius shape,
+  Color color,
+  double extent,
+  double edgeOutline,
+  bool atBottom,
+});
+
 /// The band: the thing's shape, filled where the band lies along its edge
 /// — the band starting where an outline over that edge ends (F-257,
 /// `EditorPanelTabs.stripEdgeOutline`).
@@ -223,39 +233,113 @@ class _LiftingGripBandState<T extends Object>
 /// thing's corners as the shape's own fill, not by clipping it to the shape
 /// — the tab and the strip's buttons stand in still regions
 /// ([SuperellipseClip]). ↩️It was a [ColoredBox] the thing clipped.
-class _GripBandPainter extends CustomPainter with RepaintOnProps {
-  const _GripBandPainter({
-    required this.shape,
-    required this.color,
-    required this.extent,
-    required this.edgeOutline,
-    required this.atBottom,
-  });
+///
+/// 🚨Laid OVER what the thing holds where a sheet is under it ([LiveSheet],
+/// card the-left-tool-strip-rebakes-on-every-hover): a band's ink is how
+/// near a hand is, and a pointer coming onto a strip changed every band on
+/// it — in the picture the strip's still region holds. ↩️A `CustomPaint`
+/// till 2026-11-22.
+class _GripBandLook extends LeafRenderObjectWidget {
+  const _GripBandLook(this.band);
 
-  /// The corners of the thing the band runs along.
-  final BorderRadius shape;
-  final Color color;
-  final double extent;
-  final double edgeOutline;
-  final bool atBottom;
+  final GripBandSpec band;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (color.a == 0) {
+  RenderGripBand createRenderObject(BuildContext context) =>
+      RenderGripBand(band)..wearSheet(LiveSheet.overOf(context));
+
+  @override
+  void updateRenderObject(BuildContext context, RenderGripBand renderObject) {
+    renderObject
+      ..band = band
+      ..wearSheet(LiveSheet.overOf(context));
+  }
+}
+
+/// The band's box. It paints the band where no sheet is over it, and lays
+/// it on the sheet where one is ([LiveSheet]).
+class RenderGripBand extends RenderBox {
+  RenderGripBand(this._band);
+
+  GripBandSpec _band;
+  GripBandSpec get band => _band;
+  set band(GripBandSpec value) {
+    if (value == _band) {
       return;
     }
-    final from = atBottom ? size.height - edgeOutline - extent : edgeOutline;
-    canvas.drawRSuperellipseCut(
-      shape.toRSuperellipse(Offset.zero & size),
-      Rect.fromLTWH(0, from, size.width, extent),
-      Paint()..color = color,
-    );
+    _band = value;
+    if (_laid.onSheet) {
+      _lay();
+    } else {
+      markNeedsPaint();
+    }
   }
+
+  late final LaidLook<GripBandSpec> _laid = LaidLook<GripBandSpec>(
+    this,
+    (canvas, band) => _paint(canvas, Offset.zero & size, band),
+  );
+
+  void wearSheet(LiveLooks? looks) {
+    _laid.wear(looks);
+    if (attached) {
+      _lay();
+    }
+  }
+
+  /// A band with no ink lays nothing.
+  void _lay() => _laid.lay(_band.color.a == 0 ? null : _band);
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _laid.attached();
+    _lay();
+  }
+
+  @override
+  void detach() {
+    _laid.detached();
+    super.detach();
+  }
+
+  // As large as the thing it is laid over ([Positioned.fill]).
+  @override
+  bool get sizedByParent => true;
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) =>
+      constraints.smallest;
 
   /// The band is painted; the target under it is what a pointer meets.
   @override
-  bool? hitTest(Offset position) => false;
+  bool hitTestSelf(Offset position) => false;
 
   @override
-  Object get props => (shape, color, extent, edgeOutline, atBottom);
+  void paint(PaintingContext context, Offset offset) {
+    if (_laid.onSheet) {
+      return;
+    }
+    _paint(context.canvas, offset & size, _band);
+  }
+
+  /// The band as the screen has it, in the box's own coordinates — whoever
+  /// draws it, the box or the sheet over it.
+  @visibleForTesting
+  void debugPaintBand(Canvas canvas) =>
+      _paint(canvas, Offset.zero & size, _band);
+
+  static void _paint(Canvas canvas, Rect thing, GripBandSpec band) {
+    if (band.color.a == 0) {
+      return;
+    }
+    final from = band.atBottom
+        ? thing.height - band.edgeOutline - band.extent
+        : band.edgeOutline;
+    canvas.drawRSuperellipseCut(
+      band.shape.toRSuperellipse(thing),
+      Rect.fromLTWH(thing.left, thing.top + from, thing.width, band.extent),
+      Paint()..color = band.color,
+    );
+  }
 }

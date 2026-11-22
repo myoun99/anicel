@@ -125,6 +125,7 @@ import 'workspace/workspace_door_commands.dart';
 import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
+import 'widgets/live_sheet.dart';
 import 'widgets/panel_flyout.dart' show pressFlyoutRow;
 import 'widgets/still_raster.dart';
 
@@ -1899,7 +1900,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     ]),
                                     builder: (context, _) => StillRaster(
                                       debugLabel: 'top-strip',
-                                      child: _topStrip(),
+                                      child: LiveSheet(child: _topStrip()),
                                     ),
                                   ),
                                 ),

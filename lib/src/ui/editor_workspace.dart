@@ -133,6 +133,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
 import 'widgets/face_ink_well.dart';
+import 'widgets/live_sheet.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/still_raster.dart';
 import 'widgets/superellipse_clip.dart';
@@ -3531,26 +3532,35 @@ class _RailGroupButton extends StatelessWidget {
             onPressed: onPressed,
             band: band,
           )
-        : AppTooltip(
-            message: tooltip,
-            child: Material(
-              key: ValueKey<String>('rail-group-$railId'),
-              color: Colors.transparent,
-              child: ControlPressClaim(
-                onPressed: onPressed,
-                child: FaceInkWell(
-                  edge: AppShapes.control(ToolsPanel.buttonExtent),
-                  fill: open ? colorScheme.surfaceContainerHigh : null,
-                  onTap: silentPress(onPressed),
-                  // The pair sizes itself to one button cell, so a group that
-                  // wears a face is the same square as every other.
-                  child: SizedBox.square(
-                    dimension: ToolsPanel.buttonExtent,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(child: face!),
-                        if (band != null) Positioned.fill(child: band),
-                      ],
+        // 🚨ON A TICK LAYER (card the-left-tool-strip-rebakes-on-every-hover,
+        // 2026-11-22): what this button shows is a value a hand moves
+        // elsewhere — the colour pair, on every step of a pick — and its
+        // well repaints its `Material` for a hover it lays no ink for
+        // (`InkHighlight`, 🔬eleven frames of the strip drawn live for one
+        // pass of a pointer). Drawn live between the strip's strata, it
+        // moves and the strip keeps its image ([TickSceneLayer]).
+        : TickLayer.heard(
+            child: AppTooltip(
+              message: tooltip,
+              child: Material(
+                key: ValueKey<String>('rail-group-$railId'),
+                color: Colors.transparent,
+                child: ControlPressClaim(
+                  onPressed: onPressed,
+                  child: FaceInkWell(
+                    edge: AppShapes.control(ToolsPanel.buttonExtent),
+                    fill: open ? colorScheme.surfaceContainerHigh : null,
+                    onTap: silentPress(onPressed),
+                    // The pair sizes itself to one button cell, so a group
+                    // that wears a face is the same square as every other.
+                    child: SizedBox.square(
+                      dimension: ToolsPanel.buttonExtent,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: face!),
+                          if (band != null) Positioned.fill(child: band),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -3599,7 +3609,10 @@ class _RailGroupButton extends StatelessWidget {
         ),
       ),
     ),
-    child: child,
+    // The outline lies over the button and its band: under it they are
+    // painted in place, not on the strip's sheet, whose band would lie
+    // over the outline ([LiveSheet.inPlace]).
+    child: LiveSheet.inPlace(child: child),
   );
 }
 

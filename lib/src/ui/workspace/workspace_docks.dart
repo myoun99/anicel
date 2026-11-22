@@ -188,15 +188,21 @@ class _WorkspaceDocks {
       // rung of the ladder, including "every panel closed" — which measured
       // 2.5–3.6 ms/frame with nothing on screen but them, the top strip and
       // an empty canvas. Dozens of icon buttons and swatches, re-executed
-      // on the GPU for a pointer that moved over the canvas. Hover and
-      // selection dirty it, and that is exactly when it should be taken
-      // again.
+      // on the GPU for a pointer that moved over the canvas. Selection
+      // dirties it, and that is exactly when it should be taken again.
+      // ↩️Hover dirtied it too, till 2026-11-22: its buttons lay their hover
+      // and their press on the sheet under them ([LiveSheet] — the strip's
+      // ground is this dock's, painted around the region), and a pointer
+      // passing down the strip takes no image.
       // ↩️Baked alone: under Impeller a bake is a zone and no more
       // ([StaticRaster.capturePays], 2026-09-24), and these strips, rendered
       // as content, never came under a dock's region ([StillRaster]) — so
       // every frame drew them. 🔬With the top strip beside them (F-533,
       // 2026-11-01; [StillRaster]'s class doc has the run).
-      child: StillRaster(debugLabel: 'strip:$dockId', child: strip),
+      child: StillRaster(
+        debugLabel: 'strip:$dockId',
+        child: LiveSheet(child: strip),
+      ),
     );
   }
 
