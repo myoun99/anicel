@@ -7,6 +7,17 @@ import 'package:anicel/src/ui/brush/eyedropper_swatch_painter.dart';
 /// place there, its ring empty, rather than vanishing over every blank
 /// stretch and coming back over ink.
 void main() {
+  // The swatch's shadow, as the app paints it. flutter_test's binding
+  // turns every shadow off for the process once a file starts it
+  // (`debugDisableShadows`), and this file starts none: ↩️it saw the
+  // shadow only while no file before it had (red in a bundle behind a
+  // widget test, 11-20).
+  setUp(() {
+    final disabled = debugDisableShadows;
+    debugDisableShadows = false;
+    addTearDown(() => debugDisableShadows = disabled);
+  });
+
   void Function(Canvas) swatch({Offset? at, int? color}) {
     final painter = EyedropperSwatchPainter(
       position: ValueNotifier(at),

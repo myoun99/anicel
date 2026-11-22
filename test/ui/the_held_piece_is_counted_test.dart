@@ -34,6 +34,11 @@ void main() {
       [session],
     ).items.firstWhere((item) => item.id == 'brushTips').bytes;
     final before = brushTipsRow();
+    // What the slots of this process held before this one's piece: a slot
+    // is the app's, one a process there, and a test file run before this
+    // one may have left its own alive. ↩️The totals were read bare (red
+    // in a bundle behind a file that had, 11-21).
+    final heldElsewhere = CutPieceSlot.allPieceBytes;
 
     slot.hold(
       CutPiece(
@@ -48,12 +53,12 @@ void main() {
       ),
     );
 
-    expect(CutPieceSlot.allPieceBytes, 30 * 20 * 4);
+    expect(CutPieceSlot.allPieceBytes - heldElsewhere, 30 * 20 * 4);
     expect(brushTipsRow() - before, 30 * 20 * 4);
 
     // The workspace goes, and with it the piece it held.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-    expect(CutPieceSlot.allPieceBytes, 0);
+    expect(CutPieceSlot.allPieceBytes, heldElsewhere);
   });
 }
