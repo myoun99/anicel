@@ -401,73 +401,6 @@ void main() {
       expect(marked(), isTrue, reason: 'told of a failure under the run');
     });
 
-    // F-625: the conte's walk stands on the very cursor its row reads.
-    testWidgets('🚨a walk on the row\'s own cursor is heard through the one '
-        'channel — no listener more than the row without it, and none '
-        'anew at a build from above', (tester) async {
-      final lane = PropertyLaneRow(
-        laneId: 'spin',
-        label: 'Spin',
-        keyMarks: const {2: KeyMark.linear, 6: KeyMark.linear},
-        valueLabel: (_) => '10.00%',
-      );
-      final frames = [2, 6, 30];
-      Future<_Heard> pump(bool walking) async {
-        final cursor = _Heard(0);
-        addTearDown(cursor.dispose);
-        Widget row() => MaterialApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: TimelineLaneControlsRow(
-                layer: layer,
-                lane: lane,
-                metrics: TimelineGridMetrics.defaults,
-                width: TimelineGridMetrics.defaults.layerControlsWidth,
-                height: TimelineGridMetrics.defaults.layerRowHeight,
-                frameCursor: cursor,
-                onSelectFrame: (_) {},
-                keyWalk: walking
-                    ? (
-                        cursor: cursor,
-                        offset: 0,
-                        last: null,
-                        frames: frames,
-                        onSelectFrame: (_) {},
-                      )
-                    : null,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpWidget(row());
-        // From above: a new row widget over the same cursor.
-        await tester.pumpWidget(row());
-        return cursor;
-      }
-
-      final plain = (await pump(false)).adds;
-      await tester.pumpWidget(const SizedBox());
-      final walked = await pump(true);
-
-      expect(plain, greaterThan(0), reason: '⛔전제: the row hears it');
-      expect(walked.adds, plain);
-      final next = find.byKey(
-        const ValueKey('timeline-lane-next-key-a-spin'),
-      );
-      expect(tester.widget<InkWell>(next).onTap, isNotNull);
-      walked.value = 6;
-      await tester.pump();
-      expect(
-        tester.widget<InkWell>(next).onTap,
-        isNotNull,
-        reason: 'the walk\'s 30, past the lane\'s last key',
-      );
-      walked.value = 30;
-      await tester.pump();
-      expect(tester.widget<InkWell>(next).onTap, isNull);
-    });
-
     testWidgets('a group header keeps its RESET lit or out', (tester) async {
       const lane = PropertyLaneRow(
         laneId: 'tag',
@@ -500,6 +433,73 @@ void main() {
       await turn(tester, playing, on: false);
       expect(reset().onPressed, isNotNull);
     });
+  });
+
+  // F-625: the conte's walk stands on the very cursor its row reads.
+  testWidgets('🚨a walk on the row\'s own cursor is heard through the one '
+      'channel — no listener more than the row without it, and none '
+      'anew at a build from above', (tester) async {
+    final lane = PropertyLaneRow(
+      laneId: 'spin',
+      label: 'Spin',
+      keyMarks: const {2: KeyMark.linear, 6: KeyMark.linear},
+      valueLabel: (_) => '10.00%',
+    );
+    final frames = [2, 6, 30];
+    Future<_Heard> pump(bool walking) async {
+      final cursor = _Heard(0);
+      addTearDown(cursor.dispose);
+      Widget row() => MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: TimelineLaneControlsRow(
+              layer: layer,
+              lane: lane,
+              metrics: TimelineGridMetrics.defaults,
+              width: TimelineGridMetrics.defaults.layerControlsWidth,
+              height: TimelineGridMetrics.defaults.layerRowHeight,
+              frameCursor: cursor,
+              onSelectFrame: (_) {},
+              keyWalk: walking
+                  ? (
+                      cursor: cursor,
+                      offset: 0,
+                      last: null,
+                      frames: frames,
+                      onSelectFrame: (_) {},
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(row());
+      // From above: a new row widget over the same cursor.
+      await tester.pumpWidget(row());
+      return cursor;
+    }
+
+    final plain = (await pump(false)).adds;
+    await tester.pumpWidget(const SizedBox());
+    final walked = await pump(true);
+
+    expect(plain, greaterThan(0), reason: '⛔전제: the row hears it');
+    expect(walked.adds, plain);
+    final next = find.byKey(
+      const ValueKey('timeline-lane-next-key-a-spin'),
+    );
+    expect(tester.widget<InkWell>(next).onTap, isNotNull);
+    walked.value = 6;
+    await tester.pump();
+    expect(
+      tester.widget<InkWell>(next).onTap,
+      isNotNull,
+      reason: 'the walk\'s 30, past the lane\'s last key',
+    );
+    walked.value = 30;
+    await tester.pump();
+    expect(tester.widget<InkWell>(next).onTap, isNull);
   });
 }
 
