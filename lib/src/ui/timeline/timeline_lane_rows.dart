@@ -331,7 +331,8 @@ class TimelineLaneControlsRow extends StatefulWidget {
     // the row stood on.
     frameCursor: ByIdentity(frameCursor),
     // And the frames its arrows walk, where they are not the lane's, with
-    // where the walk stands among them.
+    // where the walk stands among them — its way to one is a verb, and
+    // whether there is a walk is told here: one has a cursor.
     keyWalk: (
       ByIdentity(keyWalk?.cursor),
       keyWalk?.offset,
@@ -342,7 +343,6 @@ class TimelineLaneControlsRow extends StatefulWidget {
     currentRow: ByIdentity(currentRowHooks?.currentRow),
     verbs: (
       onSelectFrame != null,
-      keyWalk != null,
       laneEdit != null,
       laneEdit?.valueLink != null,
       onToggleLaneGroup != null,

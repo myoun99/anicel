@@ -738,11 +738,26 @@ void main() {
         reason: '↩️(b, 2) — the key before track frame 30, in b',
       );
 
+      // b keys its own first frame — the frame after a's last.
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('b-cam'),
+        'scale',
+        0,
+        '120',
+        frameIsGlobal: false,
+        scaleLinked: false,
+        description: 'Set',
+      );
       session.selectFrameIndex(30);
       await tester.pumpAndSettle();
+      expect(scaleKeysOf(session, b), [0, 2, 6, 12], reason: '⛔전제');
       expect(stood(session), (a, 30), reason: '⛔전제');
       await press(tester, 'next', 'scale');
-      expect(stood(session), (b, 2), reason: '↩️(b, 12)');
+      expect(
+        stood(session),
+        (b, 0),
+        reason: '↩️(b, 2) from a frame past a\'s last, (b, 12) from 30',
+      );
     });
 
     testWidgets('🚨parked in a gap, the arrows are asked again as the '
