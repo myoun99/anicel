@@ -85,6 +85,7 @@ mod spares_tests;
 pub(crate) mod tests;
 
 use std::ops::Range;
+use std::panic::Location;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 
@@ -1320,6 +1321,13 @@ impl Composite {
     /// beside the shared one — `testing::a_device_of_its_own` has the
     /// numbers —, and 6/6 at the rate it kept is what chance gives about one
     /// time in eleven. The walk stays here: the app's is.
+    ///
+    /// ITS ONE SUBMIT IS THE DOOR'S (H66, 2026-11-23): noted, and told of
+    /// while the engine is timed, where the door asked for the walk —
+    /// `run`, `run_onto`, `show`, each at its own line (`Queue::submit_by`,
+    /// device.rs). A canvas composited and the screen drawn are two stages
+    /// of a frame (took.rs), and the submit's own line told them as one.
+    #[track_caller]
     fn walk(
         &self,
         engine: &Engine,
@@ -1330,11 +1338,15 @@ impl Composite {
         target: &Target,
         budget: Budget,
     ) -> Option<usize> {
-        engine.on_thread(|| self.walk_here(engine, plan, tiles, extent, surface, target, budget))
+        let by = Location::caller();
+        engine.on_thread(|| self.walk_here(by, engine, plan, tiles, extent, surface, target, budget))
     }
 
+    /// [`Composite::walk`] on the engine's thread, for the door that asked
+    /// at `by`.
     fn walk_here(
         &self,
+        by: &'static Location<'static>,
         engine: &Engine,
         plan: &Plan,
         tiles: &[(i32, i32)],
@@ -1373,7 +1385,8 @@ impl Composite {
                 steps: &steps,
                 ..*plan
             };
-            let walked = self.walk(engine, &plan, tiles, extent, surface, target, budget);
+            // The same door's still: its chains ran, and this is its walk.
+            let walked = self.walk_here(by, engine, &plan, tiles, extent, surface, target, budget);
             // Held till the walk that reads them is through: a buffer is
             // no spare while a walk has yet to read it ([`spares`]).
             // ⚠️No test tells this from letting go before that walk —
@@ -1384,7 +1397,7 @@ impl Composite {
         }
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         if laid.iter().all(|each| each.pages.len() <= pages_per_pass) {
-            return self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget);
+            return self.walk_laid(by, engine, plan, &laid, tiles, extent, surface, target, budget);
         }
         let (pages, sets, laid) = self.gathered(engine, plan, laid, tiles, budget)?;
         let plan = Plan {
@@ -1392,7 +1405,7 @@ impl Composite {
             sets: &sets,
             ..*plan
         };
-        self.walk_laid(engine, &plan, &laid, tiles, extent, surface, target, budget)
+        self.walk_laid(by, engine, &plan, &laid, tiles, extent, surface, target, budget)
     }
 
     /// `laid` with each step reading more pages than a pass binds — a row
@@ -1665,6 +1678,7 @@ impl Composite {
     /// [`Composite::walk`] from the steps as `lay` laid them.
     fn walk_laid(
         &self,
+        by: &'static Location<'static>,
         engine: &Engine,
         plan: &Plan,
         laid: &[Laid],
@@ -1816,7 +1830,7 @@ impl Composite {
                 Target::Surface(_) => {}
             }
         }
-        engine.queue.submit([encoder.finish()]);
+        engine.queue.submit_by(by, [encoder.finish()]);
         Some(passes)
     }
 }

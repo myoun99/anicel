@@ -419,8 +419,20 @@ impl Queue {
     /// other ([`Took`] has what that makes of a frame).
     #[track_caller]
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
+        self.submit_by(Location::caller(), buffers);
+    }
+
+    /// [`Queue::submit`], made at `by` for all that is noted and told of
+    /// it: the one submit of a walk more doors than one come to
+    /// (`Composite::walk`), with a body lent to the engine's thread
+    /// between the door and it — past which `#[track_caller]` carries no
+    /// caller.
+    pub(crate) fn submit_by(
+        &self,
+        by: &'static Location<'static>,
+        buffers: impl IntoIterator<Item = wgpu::CommandBuffer>,
+    ) {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
-        let by = Location::caller();
         let (submits, made) = (self.submits.clone(), self.submits.note(by));
         let took = &self.thread.took;
         let timed = took.timed().then(|| (took.clone(), self.polls.clone(), self.device.clone()));
