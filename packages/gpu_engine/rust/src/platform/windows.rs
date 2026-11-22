@@ -19,7 +19,9 @@ use std::ffi::{OsString, c_void};
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 
-use windows::Win32::Foundation::{CloseHandle, E_OUTOFMEMORY, GENERIC_ALL, HANDLE, HMODULE};
+use windows::Win32::Foundation::{
+    CloseHandle, E_OUTOFMEMORY, FreeLibrary, GENERIC_ALL, HANDLE, HMODULE,
+};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_HEAP_FLAG_NONE, D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT,
     D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D,
@@ -38,9 +40,9 @@ use windows::Win32::Graphics::Dxgi::{
 };
 use windows::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-    GetModuleFileNameW, GetModuleHandleExW,
+    GetModuleFileNameW, GetModuleHandleExW, LoadLibraryW,
 };
-use windows::core::{HRESULT, PCWSTR};
+use windows::core::{HRESULT, PCWSTR, w};
 use wgpu::hal::api::Dx12;
 
 /// Flutter's ANGLE sits on D3D11, which opens a D3D12 resource by NT
@@ -295,22 +297,63 @@ pub fn device_went_by(device: &wgpu::Device) -> u32 {
 /// runtime that waits on no GPU.
 pub fn asking_the_driver_of(device: &wgpu::Device) -> Option<super::DriverAsked> {
     // SAFETY: only takes a hold of the device D3D12 made.
-    let asked = AskedAnywhere(unsafe { device.as_hal::<Dx12>() }?.raw_device().clone());
+    let device = unsafe { device.as_hal::<Dx12>() }?.raw_device().clone();
+    let asked = AskedAnywhere { device, _loaded: Loaded::d3d12()? };
     Some(Box::new(move || asked.removed()))
 }
 
-/// D3D12's device, as what any thread may ask whether it was removed.
-struct AskedAnywhere(ID3D12Device);
+/// D3D12's device, as what any thread may ask whether it was removed —
+/// and D3D12 itself, held loaded for as long.
+///
+/// 🚨THE HOLD KEEPS D3D12 LOADED ([`Loaded`]). wgpu frees `d3d12.dll` as
+/// the last of its instance, adapter and device goes (wgpu-hal,
+/// dx12/mod.rs, `D3D12Lib`), whatever of D3D12's is held still — and a
+/// hold let go of after that calls into a library no longer there.
+/// 🔬2026-11-23, this lane's first affected run: a test process that
+/// closed its one engine ended by an access violation (flutter_tester,
+/// 0xC0000005), in four files of test/native. An engine lets go of its
+/// `Refusals` after all it holds of wgpu (`Engine`'s fields, in their
+/// order), and a wait handed over holds one past the engine
+/// (device.rs, `Told`). ⛔Not mended by the order an engine lets go in:
+/// every holder of a `Refusals` would have to keep that order.
+struct AskedAnywhere {
+    // ⚠️In this order: the device is let go of first, into a library
+    // still loaded.
+    device: ID3D12Device,
+    _loaded: Loaded,
+}
 
 // SAFETY: a D3D12 device is free-threaded — any of its methods may be
 // called from any thread at once (Microsoft Learn, "Multithreading and
-// Direct3D 12" — unlike D3D11's context), and this asks it one question.
+// Direct3D 12" — unlike D3D11's context), and this asks it one question;
+// a library's count is the loader's, given back from whatever thread.
 unsafe impl Send for AskedAnywhere {}
 
 impl AskedAnywhere {
     fn removed(&self) -> bool {
         // SAFETY: only asks the device why it was removed.
-        unsafe { self.0.GetDeviceRemovedReason() }.is_err()
+        unsafe { self.device.GetDeviceRemovedReason() }.is_err()
+    }
+}
+
+/// `d3d12.dll` held loaded: one count more of the loader's own, given
+/// back as this goes ([`AskedAnywhere`] has why).
+struct Loaded(HMODULE);
+
+impl Loaded {
+    /// By the name wgpu loads it by (wgpu-hal, `D3D12Lib::new`): the
+    /// library a device was made by is loaded already, so this loads
+    /// nothing and counts one more.
+    fn d3d12() -> Option<Self> {
+        // SAFETY: loads a library of the system's by its name.
+        unsafe { LoadLibraryW(w!("d3d12.dll")) }.ok().map(Self)
+    }
+}
+
+impl Drop for Loaded {
+    fn drop(&mut self) {
+        // SAFETY: gives back the one count [`Self::d3d12`] took.
+        let _ = unsafe { FreeLibrary(self.0) };
     }
 }
 
