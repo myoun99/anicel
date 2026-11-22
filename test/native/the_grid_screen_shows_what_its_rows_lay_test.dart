@@ -998,20 +998,22 @@ void main() {
   });
 
   // 타임라인/콘티 리뷰 2026-11-09 B: they laid on the smaller one held.
-  testWidgets('while a screen as big as the view opens, its rows draw '
-      'their cells themselves', (tester) async {
+  testWidgets('while a screen as big as the view opens, a row past the edge '
+      'of the one held draws its cells itself', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);
     await tester.pumpWidget(aGridAtTheRight(row));
     await tester.pump();
     expect(row.laidLast, isTrue, reason: '⛔premise: laid on the one opened');
+    final held = surface;
 
     final opening = Completer<ScreenTexture>();
     debugOpenEngineScreen = (_, _, _) => opening.future;
     tester.view.physicalSize = const Size(600, 200);
     await tester.pump();
-    // The frame it outgrew the screen in: its rows have laid on it, and it
-    // shows what it holds from the start of what the view shows.
+    // The frame it outgrew the screen in: the row the view grew round
+    // paints nothing by itself — it has laid on it, and it shows what it
+    // holds from the start of what the view shows.
     expect(
       tester.layers.whereType<TextureLayer>().single.rect,
       const Rect.fromLTWH(0, -78, 256, 256),
@@ -1019,8 +1021,13 @@ void main() {
 
     await tester.pump();
 
+    // The row stands at device 440 to 560, past the 512 the one held has.
     expect(row.laidLast, isFalse);
-    expect(tester.layers.whereType<TextureLayer>(), isEmpty);
+    expect(
+      held.fingerprint(),
+      fingerprintBytes(screenOf([])),
+      reason: 'the one held holds nothing of a row that draws itself',
+    );
 
     final bigger = shownSurfaceOf(1024, 512);
     surfaces.add(bigger);
@@ -1036,6 +1043,228 @@ void main() {
         screenOf([(652, 712, red), (712, 772, green)], width: 1024),
       ),
     );
+  });
+
+  // Card the-first-lanes-opened-retake-the-rows-already-there (11-22): the
+  // screen had one answer for all its rows — none laid till a texture held
+  // what the view showed — and a row's lanes opened on the timeline, its
+  // rows' area passing a step of the texture's side, painted every row
+  // already there again, twice.
+  testWidgets('🚨a row the screen held has whole goes on laying while a '
+      'bigger one opens, and is laid on that one as it comes — painted '
+      'neither time', (tester) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    await tester.pump();
+    expect(asked, [(512, 512)], reason: '⛔premise: 200 and the room');
+    final (held, painted) = (surface, row.paints);
+
+    final opening = Completer<ScreenTexture>();
+    debugOpenEngineScreen = (_, width, height) {
+      asked.add((width, height));
+      return opening.future;
+    };
+    await tester.pumpWidget(aGrid(row, viewport: 280));
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(512, 512), (1024, 512)], reason: '⛔premise: outgrown');
+    expect(row.paints, painted, reason: 'painted as the screen was outgrown');
+    // 560 shown of the 512 it has: laid from the start of what the view
+    // shows, the viewport's 40 — the row's device 60 to 180 is its 20 to
+    // 140.
+    expect(
+      held.fingerprint(),
+      fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)])),
+    );
+    expect(tester.layers.whereType<TextureLayer>(), hasLength(1));
+
+    final bigger = shownSurfaceOf(1024, 512);
+    surfaces.add(bigger);
+    surface = bigger;
+    opening.complete(ScreenTexture.debugOnSurface(bigger));
+    await tester.pump();
+    await tester.pump();
+
+    expect(row.paints, painted, reason: 'painted as the bigger one came');
+    expect(
+      bigger.fingerprint(),
+      fingerprintBytes(
+        screenOf([(252, 312, red), (312, 372, green)], width: 1024),
+      ),
+    );
+  });
+
+  /// Rows 60 × 10, each [left] of its own in a grid [width] across at the
+  /// view's corner: a grid that grows as a row comes.
+  Widget rowsIn(double width, List<(double, _Row)> rows) => Directionality(
+    textDirection: TextDirection.ltr,
+    child: Align(
+      alignment: Alignment.topLeft,
+      child: SizedBox(
+        width: width,
+        height: 100,
+        child: TimelineGridScreenHost(
+          child: Stack(
+            children: [
+              for (final (left, row) in rows)
+                Positioned(
+                  key: ValueKey(row),
+                  left: left,
+                  top: 20,
+                  width: 60,
+                  height: 10,
+                  child: TimelineGridScreenSlot(
+                    child: CustomPaint(painter: row),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  testWidgets('🚨a row that comes past the edge of the screen held draws its '
+      'cells itself in the frame it comes in — the rows that screen has '
+      'laying on, unpainted — and lays once a bigger one has opened', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final (first, second) = (_Row(() => tile), _Row(() => tile));
+    await tester.pumpWidget(rowsIn(100, [(10, first)]));
+    await tester.pump();
+    await tester.pump();
+    expect(asked, [(512, 512)], reason: '⛔premise: 200 across');
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf(laidWhole)),
+      reason: '⛔premise: the first laid, at device 20',
+    );
+    final (held, painted) = (surface, first.paints);
+
+    final opening = Completer<ScreenTexture>();
+    debugOpenEngineScreen = (_, width, height) {
+      asked.add((width, height));
+      return opening.future;
+    };
+    // The grid grows to 600 device pixels, a row at its 440 to 560.
+    await tester.pumpWidget(rowsIn(300, [(10, first), (220, second)]));
+
+    expect(second.paints, 1, reason: '⛔premise: it came, and painted');
+    expect(second.laidLast, isFalse, reason: 'laid where nothing shows it');
+    expect(first.paints, painted);
+    expect(
+      held.fingerprint(),
+      fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)])),
+      reason: 'the first, from the start of what the view shows',
+    );
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(512, 512), (1024, 512)], reason: '⛔premise: outgrown');
+    expect((first.paints, second.paints), (painted, 1));
+
+    final bigger = shownSurfaceOf(1024, 512);
+    surfaces.add(bigger);
+    surface = bigger;
+    opening.complete(ScreenTexture.debugOnSurface(bigger));
+    await tester.pump();
+    await tester.pump();
+
+    expect(second.laidLast, isTrue);
+    expect((first.paints, second.paints), (painted, 2));
+    // 600 shown of 1024: 424 spare, 212 before it.
+    expect(
+      bigger.fingerprint(),
+      fingerprintBytes(
+        screenOf([
+          (232, 292, red),
+          (292, 352, green),
+          (652, 712, red),
+          (712, 772, green),
+        ], width: 1024),
+      ),
+    );
+  });
+
+  testWidgets('a row that drew its cells itself lays again once the screen '
+      'held has it, whatever opens', (tester) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGridAtTheRight(row));
+    await tester.pump();
+    final held = surface;
+    debugOpenEngineScreen = (_, _, _) => Completer<ScreenTexture>().future;
+    tester.view.physicalSize = const Size(600, 200);
+    await tester.pump();
+    await tester.pump();
+    expect(row.laidLast, isFalse, reason: '⛔premise: past the one held');
+    final painted = row.paints;
+
+    // The view as it was: the row at device 140 to 260 again.
+    tester.view.physicalSize = const Size(300, 200);
+    await tester.pump();
+    await tester.pump();
+
+    expect(row.laidLast, isTrue);
+    expect(row.paints, painted + 1);
+    expect(
+      held.fingerprint(),
+      fingerprintBytes(screenOf([(246, 306, red), (306, 366, green)])),
+    );
+  });
+
+  testWidgets('a frame that moves nothing lays nothing while a bigger '
+      'screen opens', (tester) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    var laid = 0;
+    debugOpenEngineScreen = (_, width, height) {
+      asked.add((width, height));
+      if (asked.length > 1) {
+        return Completer<ScreenTexture>().future;
+      }
+      surface = shownSurfaceOf(width, height);
+      surfaces.add(surface);
+      return Future.value(
+        ScreenTexture.debugOnSurface(
+          surface,
+          done: () {
+            laid++;
+            return Future.value();
+          },
+        ),
+      );
+    };
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.pumpWidget(aGrid(row, viewport: 280));
+    await tester.pump();
+    await tester.pump();
+    expect(asked, [(512, 512), (1024, 512)], reason: '⛔premise: outgrown');
+    expect(row.laidLast, isTrue, reason: '⛔premise: laying on the one held');
+    final laidOutgrown = laid;
+
+    for (var frame = 0; frame < 4; frame += 1) {
+      await tester.pump();
+    }
+
+    expect(laid, laidOutgrown);
   });
 
   // 타임라인/콘티 리뷰 2026-11-09 H: it let go of what it laid as it went,

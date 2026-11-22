@@ -103,6 +103,12 @@ final class _GridScreen {
   _RenderGridScreen? _box;
   final Set<_RenderGridScreenSlot> _slots = {};
 
+  /// The rows this screen, open, told to draw their cells themselves: the
+  /// texture held had not what the view showed of them on it ([_answers]).
+  /// Asked again as a scene is built, once it has
+  /// ([_RenderGridScreen._askRowsAgain]).
+  final Set<_RenderGridScreenSlot> _unheld = {};
+
   /// What it is shown through, as big as what of the box the view showed in
   /// the frame last composited, and its room.
   late final EngineScreenTexture _shownThrough = EngineScreenTexture(
@@ -119,7 +125,7 @@ final class _GridScreen {
       // for before they are read is drawn off the paint
       // (`TimelineGridTileStore._glyphNow`).
       unawaited(EngineFaces.bundled());
-      _laysChanged();
+      _textureCame();
     },
     // No row lays here till the next engine's is open: each paints again,
     // lets go of the tiles it laid, and draws its cells itself.
@@ -141,19 +147,47 @@ final class _GridScreen {
   /// finished last, where it was laid ([ScreenTexture.shownFor]).
   Rect? _laid;
 
-  /// Whether a row lays its tiles here: a box shows the screen, its texture
-  /// is open and holds what it shows, and the grids' passes are compiled
-  /// ([appGpuGridKernels]). ↩️Any texture open: while a bigger one opened,
-  /// the rows laid on the one held, and what of them lay past its edge was
-  /// shown nowhere (타임라인/콘티 리뷰 2026-11-09 B). ↩️The passes compiled
-  /// where the first row laid: a row draws its cells itself till they are,
-  /// as it does before the engine is open, and no frame waits for a compile
-  /// (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접
-  /// 하는 커널 컴파일 0개」).
-  bool get lays =>
-      _box != null &&
-      _shownThrough.holdsWhatIsWanted &&
-      appGpuGridKernels.compiled != null;
+  /// Whether rows lay their tiles here at all: a box shows the screen, a
+  /// texture is open for it, and the grids' passes are compiled
+  /// ([appGpuGridKernels]). ↩️The passes compiled where the first row laid:
+  /// a row draws its cells itself till they are, as it does before the
+  /// engine is open, and no frame waits for a compile (🗣️관제 2026-11-10
+  /// 18:14, gpu-canonical-store ⑦: 「UI 스레드가 직접 하는 커널 컴파일
+  /// 0개」).
+  bool get shows =>
+      _box != null && _texture != null && appGpuGridKernels.compiled != null;
+
+  /// 🚨A ROW LAYS ITS TILES HERE WHERE THE TEXTURE HELD HAS WHAT THE VIEW
+  /// SHOWS OF IT, and draws its cells itself where it has not — each row
+  /// by its own answer ([_RenderGridScreen._holds]), given as it paints.
+  ///
+  /// ↩️Any texture open: while a bigger one opened, the rows laid on the one
+  /// held, and what of them lay past its edge was shown nowhere
+  /// (타임라인/콘티 리뷰 2026-11-09 B).
+  /// ↩️One answer for the whole screen — B's: no row laid till the texture
+  /// held what the view showed. A row past the edge of the one held was
+  /// drawn, and so was every row within it: 🔬the whole workspace, the
+  /// timeline, a row's lanes opened so its rows' area passed a step of the
+  /// texture's side (140 to 196 px at a ratio of 3: 420 to 588 device
+  /// pixels, past 512) — the frame after, each of the five rows already
+  /// there was painted again with no painter asking, and its still image
+  /// let go; and once more as the bigger one opened (card
+  /// the-first-lanes-opened-retake-the-rows-already-there, 11-22). And the
+  /// row that CAME past the edge laid there for the frame it came in,
+  /// shown nowhere: it asks as it paints now, and draws itself.
+  bool laysFor(_RenderGridScreenSlot slot) => shows && _box!._holds(slot);
+
+  /// [slot]'s row is about to paint: whether it lays its tiles here
+  /// ([laysFor]), kept where the screen, open, tells it not to ([_unheld]).
+  bool _answers(_RenderGridScreenSlot slot) {
+    final lays = laysFor(slot);
+    if (shows && !lays) {
+      _unheld.add(slot);
+    } else {
+      _unheld.remove(slot);
+    }
+    return lays;
+  }
 
   void start() => _shownThrough.start();
 
@@ -178,11 +212,13 @@ final class _GridScreen {
   }
 
   /// The box tells what of it the view shows, [shown] of [bounds], in device
-  /// pixels. ⚠️What that changes, it changes after the frame: the rows of
-  /// this frame have laid, or not, by what [lays] said as they painted
-  /// ([PipelineOwner.flushPaint] paints what is deeper first), and the box
-  /// shows them by the same answer; marked during the frame a row would
-  /// paint in none (a frame is not asked for in a frame's own phases).
+  /// pixels: a texture that holds it is opened after the frame. The rows
+  /// of this frame have laid on the one held, or not, each by what the one
+  /// held has of it ([laysFor]) — and those the view has grown round, which
+  /// paint nothing by themselves, are asked again as the frame's scene is
+  /// built ([_RenderGridScreen._askRowsAgain]).
+  /// ↩️What it showed changed the whole screen's one answer after the
+  /// frame, and every row painted again by it.
   ///
   /// ↩️The view's size, off the MediaQuery (타임라인/콘티 리뷰 2026-11-09 A ·
   /// 01:46: a window grown stayed laid at the size it opened at): the view
@@ -199,11 +235,7 @@ final class _GridScreen {
       return;
     }
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      final laid = lays;
       _shownThrough.wanted = wanted;
-      if (lays != laid) {
-        _laysChanged();
-      }
       unawaited(_shownThrough.open());
     });
   }
@@ -220,11 +252,25 @@ final class _GridScreen {
     _laid = null;
   }
 
-  /// What lays here changed: every row asks again whether it lays its
-  /// tiles here, and the box whether it shows what they lay.
+  /// Whether rows lay here changed ([shows]): every row asks again whether
+  /// it lays its tiles here, and the box whether it shows what they lay.
   void _laysChanged() {
     for (final slot in _slots) {
       slot.markNeedsPaint();
+    }
+    _box?.markNeedsPaint();
+  }
+
+  /// A texture has just been opened — the first, or one bigger than the one
+  /// held: the rows that drew their cells themselves ask again, and those
+  /// that lay are laid on it as the next scene is built, unpainted — what a
+  /// row laid is its tiles' pictures, of no texture's.
+  void _textureCame() {
+    _laid = null;
+    for (final slot in _slots) {
+      if (!slot._lays) {
+        slot.markNeedsPaint();
+      }
     }
     _box?.markNeedsPaint();
   }
@@ -304,9 +350,9 @@ class _RenderGridScreen extends RenderBox {
   // between what it holds (11-09, card the-grid-screen-keeps-the-dock-from-baking).
   @override
   void paint(PaintingContext context, Offset offset) {
-    final laid = _screen.lays;
+    final shows = _screen.shows;
     _measured();
-    if (laid) {
+    if (shows) {
       context.addLayer(
         TickSceneLayer(alwaysLive: true)
           ..size = size
@@ -321,14 +367,54 @@ class _RenderGridScreen extends RenderBox {
   ({Matrix4 toView, Rect shown}) _measured() {
     final view = owner!.rootNode!;
     final toView = getTransformTo(view);
-    // ⚠️Asked empty before it is turned: what no clip left anything of is a
-    // rect inside out, and a transform turns it right side out again.
-    Rect inView(Rect rect) => rect.isEmpty
-        ? Rect.zero
-        : _outToDevicePixels(MatrixUtils.transformRect(toView, rect));
-    final shown = inView(_shownRect());
-    _screen.showed(shown, inView(Offset.zero & size));
+    final shown = _inView(toView, _shownRect());
+    _screen.showed(shown, _inView(toView, Offset.zero & size));
     return (toView: toView, shown: shown);
+  }
+
+  /// [rect] taken to the view by [toView], on whole device pixels.
+  /// ⚠️Asked empty before it is turned: what no clip left anything of is a
+  /// rect inside out, and a transform turns it right side out again.
+  static Rect _inView(Matrix4 toView, Rect rect) => rect.isEmpty
+      ? Rect.zero
+      : _outToDevicePixels(MatrixUtils.transformRect(toView, rect));
+
+  /// Whether the texture held has on it what the view shows of [slot]'s
+  /// row, where this frame's scene lays it ([_composited]): around what the
+  /// view shows of the box, and from its start along a side the texture is
+  /// outgrown on ([EngineScreenTexture.windowOf]). Asked as the row paints
+  /// — the frame is laid out by then, the box with it.
+  bool _holds(_RenderGridScreenSlot slot) {
+    final view = owner!.rootNode!;
+    final shown = _inView(getTransformTo(view), _shownRect());
+    return shown.isEmpty ||
+        _holdsOn(
+          EngineScreenTexture.windowOf(_screen._texture!, shown),
+          shown,
+          slot,
+          view,
+        );
+  }
+
+  /// Whether [window], in the device pixels of [view], has on it what of
+  /// [slot]'s row lies within [shown]: all of it, or the row draws its
+  /// cells itself — a row is not laid in part.
+  static bool _holdsOn(
+    Rect window,
+    Rect shown,
+    _RenderGridScreenSlot slot,
+    RenderObject view,
+  ) {
+    final row = _inView(
+      slot.getTransformTo(view),
+      Offset.zero & slot.size,
+    ).intersect(shown);
+    return row.width <= 0 ||
+        row.height <= 0 ||
+        (window.left <= row.left &&
+            window.top <= row.top &&
+            window.right >= row.right &&
+            window.bottom >= row.bottom);
   }
 
   /// [rect], in device pixels, out to the whole ones it touches — by the
@@ -356,9 +442,10 @@ class _RenderGridScreen extends RenderBox {
       return null;
     }
     final texture = screen._texture!;
+    _askRowsAgain(texture, shown);
     final laid = screen._laid;
     if (laid == null ||
-        !_covers(MatrixUtils.transformRect(toView, laid), shown) ||
+        !_has(MatrixUtils.transformRect(toView, laid), shown) ||
         _aRowMoved()) {
       final window = EngineScreenTexture.windowOf(texture, shown);
       final at = MatrixUtils.inverseTransformRect(toView, window);
@@ -401,14 +488,68 @@ class _RenderGridScreen extends RenderBox {
     return false;
   }
 
-  /// Whether the screen, standing at [laid], still has [shown] on it —
-  /// [laid] on whole device pixels but for what the box's pixels took off
-  /// it and gave back.
-  static bool _covers(Rect laid, Rect shown) =>
-      laid.left.roundToDouble() <= shown.left &&
-      laid.top.roundToDouble() <= shown.top &&
-      laid.right.roundToDouble() >= shown.right &&
-      laid.bottom.roundToDouble() >= shown.bottom;
+  /// The rows whose answer — lay on the texture held, or draw their cells
+  /// themselves ([_GridScreen.laysFor]) — is no longer the one they painted
+  /// by, painted again after this frame: a row that lays and stands past
+  /// what the texture has of [shown] now (the view grew round it, and it
+  /// paints nothing by itself), and a row that drew itself and is held now.
+  ///
+  /// Asked as the scene is built, as where the screen is laid is
+  /// ([_composited]) — and of no row where the texture has all the view
+  /// shows and none drew itself: every frame but the few a bigger one
+  /// opens in.
+  void _askRowsAgain(ScreenTexture texture, Rect shown) {
+    final screen = _screen;
+    final outgrown =
+        texture.width < shown.width || texture.height < shown.height;
+    if (!outgrown && screen._unheld.isEmpty) {
+      return;
+    }
+    final view = owner!.rootNode!;
+    final window = EngineScreenTexture.windowOf(texture, shown);
+    final again = [
+      for (final slot in outgrown ? screen._slots : screen._unheld)
+        // A row no screen open answered asks as one opens ([_textureCame]).
+        if ((slot._lays || screen._unheld.contains(slot)) &&
+            slot._lays != _holdsOn(window, shown, slot, view))
+          slot,
+    ];
+    if (again.isEmpty) {
+      return;
+    }
+    // Asked once: a row marked and out of what is painted is told no more
+    // till it paints, and answers then.
+    screen._unheld.removeAll(again);
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      for (final slot in again) {
+        if (slot.attached && identical(slot._screen, screen)) {
+          slot.markNeedsPaint();
+        }
+      }
+    });
+  }
+
+  /// Whether the screen, standing at [laid], still has on it what it can
+  /// of [shown] — [laid] on whole device pixels but for what the box's
+  /// pixels took off it and gave back. Along a side as long as what is
+  /// shown, all of it; along one [shown] has outgrown, from its start —
+  /// where it is laid ([EngineScreenTexture.windowOf]) — so a frame that
+  /// moved nothing lays nothing while a bigger one opens, either.
+  static bool _has(Rect laid, Rect shown) =>
+      _hasAlong(laid.left, laid.right, shown.left, shown.right) &&
+      _hasAlong(laid.top, laid.bottom, shown.top, shown.bottom);
+
+  static bool _hasAlong(
+    double from,
+    double to,
+    double shownFrom,
+    double shownTo,
+  ) {
+    final (start, end) = (from.roundToDouble(), to.roundToDouble());
+    return end - start >= shownTo - shownFrom
+        ? start <= shownFrom && end >= shownTo
+        : start == shownFrom;
+  }
 
   /// Presents every slot's tiles on [texture], from [origin] in the device
   /// pixels of [view] — what of them it holds, the rest of it clear — drawn
@@ -519,14 +660,15 @@ class TimelineGridScreenSlot extends SingleChildRenderObjectWidget {
   final TimelineGridScreenClip? clip;
 
   /// Where the row being painted lays its tiles — null where none does:
-  /// no screen over its grid, or none open yet. A row then draws its cells
-  /// itself.
+  /// no screen over its grid, none open yet, or one that has not what the
+  /// view shows of the row on it ([_GridScreen.laysFor]). A row then draws
+  /// its cells itself.
   static TimelineGridScreenLaying? get laying {
     if (_debugLaying case final laying?) {
       return laying;
     }
     final slot = _RenderGridScreenSlot._painting;
-    return slot != null && (slot._screen?.lays ?? false) ? slot : null;
+    return slot != null && slot._lays ? slot : null;
   }
 
   /// A slot on no screen, for a row a test paints by hand: it takes the
@@ -639,6 +781,11 @@ class _RenderGridScreenSlot extends RenderProxyBox
   /// What the row laid in its last paint.
   final List<TimelineGridScreenTile> _laid = [];
 
+  /// Whether the row's last paint laid its tiles on the screen: the answer
+  /// it was given as it painted ([_GridScreen._answers]) — false till it
+  /// has painted on a screen that shows.
+  bool _lays = false;
+
   /// Where the row stood on the screen's box when the screen last laid its
   /// tiles ([_RenderGridScreen._layAt]), asked of it as every frame's scene
   /// is built ([_RenderGridScreen._aRowMoved]).
@@ -677,6 +824,8 @@ class _RenderGridScreenSlot extends RenderProxyBox
 
   void _leave() {
     final screen = _screen;
+    _lays = false;
+    screen?._unheld.remove(this);
     if (screen != null && screen._slots.remove(this)) {
       screen._rowChanged();
     }
@@ -733,7 +882,9 @@ class _RenderGridScreenSlot extends RenderProxyBox
   void _paintRow(void Function() paint) {
     _letGo();
     _clipRects = null;
-    _screen?._rowChanged();
+    final screen = _screen;
+    screen?._rowChanged();
+    _lays = screen?._answers(this) ?? false;
     final outer = _painting;
     _painting = this;
     try {
