@@ -97,6 +97,23 @@ void main() {
     expect(summary.cpuMicros, 9000);
   });
 
+  test('one place told as the GPU\'s and as the engine thread\'s is two '
+      'places, each its own', () {
+    // One line can hand a body to the engine's thread and make a submit
+    // in it: what the GPU took there is not what the thread did.
+    final summary = EngineStages.summarize([
+      frame(10000, [gpu(present, 3000), cpu(present, 2000)]),
+    ]);
+
+    expect(
+      [
+        for (final place in summary.places)
+          (place.gpu, place.place, place.micros),
+      ],
+      [(true, 'device:1040', 3000), (false, 'device:1040', 2000)],
+    );
+  });
+
   test('a place told twice of one frame is that frame\'s once: its most in '
       'a frame is their sum', () {
     final summary = EngineStages.summarize([
