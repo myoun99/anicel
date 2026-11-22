@@ -9,9 +9,12 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// The timeline tile store is one per process. A test's drain can stop on a
@@ -25,10 +28,23 @@ import 'timeline_frame_geometry_probe.dart';
 ///
 /// The first holds its drain where its drawing waits, on a wait that never
 /// ends: ↩️an upload was that await until grid-on-the-engine ⑤.
+///
+/// The words its tiles are baked from are one per process too, and the
+/// config forgets them after every test as well (the last two tests, in
+/// this order on purpose): one a test baked stood baked in every test
+/// after, where a span that was to wait for it was baked in its ask
+/// (2026-11-23: a file naming its cel as the file run before it had).
 void main() {
   setUpAll(openAppGpuEngine);
   var leftBehindAsks = 0;
   var asksWhenItEnded = -1;
+
+  // A word its tile WAITS for, whatever ran in this process before: once
+  // the engine's faces are read — once a process — a word of theirs is
+  // baked in the ask, and no raster is queued for a drain to wait with.
+  // ↩️'A1' waited only where this file was the first to ask (red in a
+  // bundle behind a file that read the faces, 11-20).
+  const word = 'A1$aLetterNoBundledFaceHas';
 
   /// A row of named blocks — every span it rasters bakes a word.
   TimelineRowCellsPainter row(String id, {void Function()? onAsk}) =>
@@ -41,7 +57,7 @@ void main() {
               id: const FrameId('cel'),
               duration: 1,
               strokes: const [],
-              name: 'A1',
+              name: word,
             ),
           ],
           timeline: {
@@ -60,13 +76,14 @@ void main() {
               ? TimelineCellExposureState.drawingStart
               : TimelineCellExposureState.held;
         },
-        frameNameForLayer: (_, frameIndex) => frameIndex % 4 == 0 ? 'A1' : null,
+        frameNameForLayer: (_, frameIndex) => frameIndex % 4 == 0 ? word : null,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
         tileStore: TimelineGridTileStore.instance,
       );
 
-  void ask(TimelineRowCellsPainter painter, int span) =>
+  /// [painter]'s tile of [span], or null while it is waited for.
+  TimelineGridTilePicture? ask(TimelineRowCellsPainter painter, int span) =>
       TimelineGridTileStore.instance.tileFor(
         painter: painter,
         spanStartIndex: span * 4,
@@ -101,6 +118,29 @@ void main() {
       leftBehindAsks,
       asksWhenItEnded,
       reason: 'the earlier test\'s rasters asked its resolvers in this one',
+    );
+  });
+
+  test('a test that ends with the word of its tiles baked…', () async {
+    expect(
+      ask(row('first-to-set-it'), 0),
+      isNull,
+      reason: 'the premise: its word, never seen, is waited for',
+    );
+    await tileStoreIdle(TimelineGridTileStore.instance);
+    expect(
+      ask(row('second-to-set-it'), 0),
+      isNotNull,
+      reason: 'the premise: the word landed — a row that sets it now is '
+          'baked in its ask',
+    );
+  });
+
+  test('…hands the next test a store that has baked no word', () {
+    expect(
+      ask(row('own'), 0),
+      isNull,
+      reason: 'the earlier test\'s word stood baked in this one',
     );
   });
 }

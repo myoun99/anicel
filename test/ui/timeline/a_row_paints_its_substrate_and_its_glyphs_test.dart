@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/tiles_laid.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -68,8 +69,14 @@ void main() {
         ),
         crossAxisExtent: crossExtent,
         exposureStateForLayer: stateFor,
-        // A label on the block start, so there is a glyph to look for.
-        frameNameForLayer: (_, frameIndex) => frameIndex == 0 ? 'A1' : null,
+        // A label on the block start, so there is a glyph to look for —
+        // and one its tile WAITS for, whatever ran in this process before
+        // (the cold store of the third test): once the engine's faces are
+        // read — once a process — a word of theirs is baked in the ask.
+        // ↩️'A1' waited only where this file was the first to ask (red in
+        // a bundle behind a file that read the faces, 11-20).
+        frameNameForLayer: (_, frameIndex) =>
+            frameIndex == 0 ? 'A1$aLetterNoBundledFaceHas' : null,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
         tileStore: store,
@@ -189,9 +196,11 @@ void main() {
     await tester.runAsync(() async {
       final classic = paintedFraction(await paintBytes(painterFor()));
       TimelineGridTileStore.instance.clear();
-      // Nothing has rastered yet, so every span asks and gets null — the
-      // tiled pass has to lay the cells down itself while the raster lands
-      // off-frame. That is the zoom step across a span boundary.
+      // Its word is Flutter's to bake and nothing has rastered yet, so
+      // every span asks and gets null — the tiled pass has to lay the
+      // cells down itself while the raster lands off-frame. ↩️That was the
+      // zoom step across a span boundary till the engine baked a word of
+      // its faces in the ask (11-15); it is such a word's first sight now.
       final cold = paintedFraction(
         await paintBytes(
           painterFor(store: TimelineGridTileStore.instance),

@@ -126,6 +126,11 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // failed on a raster the test before it had queued). A test ends with
   // the store empty; the drain it scheduled then finds nothing.
   tearDown(TimelineGridTileStore.instance.clear);
+  // So are the words its tiles are baked from: one a test baked stood
+  // baked in every test after, where a span that was to wait for it was
+  // baked in its ask ([TimelineGridTileStore.debugForgetEveryWord] has the
+  // measurement).
+  tearDown(TimelineGridTileStore.instance.debugForgetEveryWord);
   // So are the baked words, and a bake a test left in flight never lands
   // in the next: its word stood waited for in every test after
   // ([BakedWords.debugForgetEveryBake] has the measurement).
