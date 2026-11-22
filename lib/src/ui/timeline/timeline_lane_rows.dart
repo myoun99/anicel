@@ -387,7 +387,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final walk = widget.keyWalk;
     final about = walk == null
         ? keysAbout(keyed, frame)
-        : keysAbout(walk.frames, laneKeyWalkFrame(walk));
+        : keysAbout(walk.frames, _laneKeyWalkFrame(walk));
     return (
       keyed: keyed.contains(frame),
       previous: about.previous,
@@ -873,19 +873,26 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// ([slice] of it), built again only when that changes — and kept as it
   /// was while a run moves the cursor (F-587, [PlaybackStillness]). A press
   /// reads [_frame] itself, as it lands.
+  ///
+  /// [also] is a second cursor [slice] reads — a walk's. It is heard as
+  /// ONE channel with the row's own where the two are one object, as the
+  /// conte's are (its walk stands on the cursor its row reads), or where
+  /// the row has none. ⚠️Two different ones are merged at every build,
+  /// and the gate under them made anew with the merge: no host hands two.
   Widget _onTheFrame<S>(
     S Function(int frame) slice,
     Widget Function(BuildContext context, S shown) builder, {
     Listenable? also,
   }) {
     final cursor = widget.frameCursor;
-    if (cursor == null && also == null) {
+    final heard = cursor == null || also == null || identical(cursor, also)
+        ? (cursor ?? also)
+        : Listenable.merge([cursor, also]);
+    if (heard == null) {
       return builder(context, slice(_frame));
     }
     return SlicedListenableBuilder<S>(
-      listenable: cursor == null || also == null
-          ? (cursor ?? also)!
-          : Listenable.merge([cursor, also]),
+      listenable: heard,
       slice: () => slice(_frame),
       stillWhile: PlaybackStillness.of(context),
       builder: builder,
@@ -1653,7 +1660,7 @@ typedef _KeysAround = ({bool keyed, int? previous, int? next});
 
 /// THE FRAMES A LANE'S KEY ARROWS WALK, where they are not the lane's own
 /// ([TimelineLaneControlsRow.keyWalk]): [frames], where the walk stands
-/// among them ([laneKeyWalkFrame]), and the way to one ([onSelectFrame]).
+/// among them ([_laneKeyWalkFrame]), and the way to one ([onSelectFrame]).
 ///
 /// It stands on [cursor]'s frame — which the row listens to itself —
 /// [offset] further along [frames]' axis, and no further than [last]: a
@@ -1661,10 +1668,10 @@ typedef _KeysAround = ({bool keyed, int? previous, int? next});
 /// the film shows another cut's. A walk that stands on [frames]' own axis
 /// has no offset and no last.
 ///
-/// Every part is a FACT of the row, [frames] by identity: a host hands
-/// the same list back while it holds the same frames, and a new one when
-/// a key came or went anywhere it walks — the arrows are asked again
-/// then, where the lane itself did not change.
+/// Every part but the way — a verb — is a FACT of the row, [frames] by
+/// identity: a host hands the same list back while it holds the same
+/// frames, and a new one when a key came or went anywhere it walks — the
+/// arrows are asked again then, where the lane itself did not change.
 typedef LaneKeyWalk = ({
   ValueListenable<int?> cursor,
   int offset,
@@ -1674,7 +1681,7 @@ typedef LaneKeyWalk = ({
 });
 
 /// The frame [walk] stands on now, on its frames' axis.
-int laneKeyWalkFrame(LaneKeyWalk walk) {
+int _laneKeyWalkFrame(LaneKeyWalk walk) {
   final at = laneRowFrame(walk.cursor) + walk.offset;
   final last = walk.last;
   return last == null || at < last ? at : last;
