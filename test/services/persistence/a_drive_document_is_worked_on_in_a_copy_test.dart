@@ -11,12 +11,16 @@ import 'package:anicel/src/services/persistence/save_failure.dart';
 import 'package:anicel/src/services/persistence/save_stretch.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart';
+import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
-import '../../helpers/wait_window.dart' show expectOneBar;
+import '../../helpers/wait_window.dart'
+    show expectOneBar, pumpPastTheWaitWindow, watchTheBar;
 
 /// PICK-7: a project in a document with no filesystem path — Google Drive
 /// on Android — opens through a WORKING COPY in this run's room, saves
@@ -129,32 +133,39 @@ void main() {
       expect(session.projectFile.path, source.path);
     });
 
-    test('🚨the copy is ONE wait with the cloud\'s — it reports what has '
-        'come, and a Cancel stops the copy and registers nothing', () async {
+    test('🚨the copy is ONE wait with the cloud\'s — the bar follows the '
+        'bytes it has moved of the size the provider gave, and a Cancel '
+        'stops the copy and registers nothing', () async {
       final uri = await projectDocument('Slow.anicel');
+      // 🗣️F-608 (유저 2026-11-23, a Galaxy Tab: 「퍼센테이지도안뜨고」).
+      ProviderDocuments.remember(
+        ProviderDocument(uri: uri, name: 'Slow.anicel', length: 4),
+      );
       provider.holdCopy = Completer<void>();
-      final told = <({Duration waited, Duration quiet, bool cloud})>[];
+      final told = <({Duration waited, bool cloud})>[];
+      final copied = <double>[];
       var cancelled = false;
 
       final opening = FolderPicker.materializeOpenedFile(
         uri,
         within: null,
         step: const Duration(milliseconds: 5),
-        onWaiting: (waited, quiet, {required fromTheCloud}) {
-          told.add((waited: waited, quiet: quiet, cloud: fromTheCloud));
+        onWaiting: (waited, {required fromTheCloud}) {
+          told.add((waited: waited, cloud: fromTheCloud));
           if (told.length == 3) {
             cancelled = true;
           }
         },
         isCancelled: () => cancelled,
+        onCopied: copied.add,
       );
 
       await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
       expect(
-        [for (final beat in told) beat.quiet < beat.waited],
-        contains(true),
-        reason: 'the bytes the copy moved were counted as arriving, so the '
-            'quiet runs from them and not from the start (F-608 ①)',
+        copied,
+        containsAllInOrder([0, 0.25]),
+        reason: 'one byte of four moved is a quarter — from 0 before it had '
+            'moved any',
       );
       expect(
         [for (final beat in told) beat.cloud],
@@ -167,6 +178,135 @@ void main() {
       provider.holdCopy!.complete();
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(ProviderDocuments.workingCopyOf(uri), isNull);
+    });
+
+    test('a document whose provider gives no size, picked or asked, tells '
+        'the bar nothing — never a number the app cannot know', () async {
+      final uri = await projectDocument('Sizeless.anicel');
+      final copied = <double>[];
+
+      await FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        isCancelled: () => false,
+        onCopied: copied.add,
+      );
+
+      expect(provider.calls, contains('describeDocument'));
+      expect(copied, isEmpty);
+    });
+
+    /// Board recent-drive-document-opens-without-percent (F-608): a new run
+    /// reopening a document from Recents knows it by its name alone.
+    test('🎯a document known by its name alone — a Recent row in a new run — '
+        'has its size ASKED of the provider, and the bar follows the copy '
+        'all the same', () async {
+      final uri = await projectDocument('Recent.anicel');
+      provider.sizes[uri] = 4;
+      provider.holdCopy = Completer<void>();
+      final copied = <double>[];
+      var told = 0;
+
+      final opening = FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        step: const Duration(milliseconds: 5),
+        onWaiting: (_, {required fromTheCloud}) => told += 1,
+        isCancelled: () => told >= 3,
+        onCopied: copied.add,
+      );
+
+      await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
+      expect(
+        copied,
+        containsAllInOrder([0, 0.25]),
+        reason: 'one byte of the four the provider said, from 0',
+      );
+      provider.holdCopy!.complete();
+    });
+
+    test('⚠️a size answered after the copy is over says nothing — the read\'s '
+        'half of the bar may have begun', () async {
+      final uri = await projectDocument('Late.anicel');
+      provider
+        ..sizes[uri] = 4
+        ..holdSize = Completer<void>();
+      final copied = <double>[];
+
+      await FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        isCancelled: () => false,
+        onCopied: copied.add,
+      );
+      provider.holdSize!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(copied, isEmpty);
+    });
+
+    test('🎯a document read in whole is ONE bar across its two passes — the '
+        'copy fills the first half, the read the second, and it never runs '
+        'back', () async {
+      final uri = await projectDocument('Drive.tvpp');
+      final length = File(provider.files[uri]!).lengthSync();
+      ProviderDocuments.remember(
+        ProviderDocument(uri: uri, name: 'Drive.tvpp', length: length),
+      );
+      final told = <double>[];
+
+      final read = await FolderPicker.readOpenedFile(
+        uri,
+        isCancelled: () => false,
+        onRead: told.add,
+      );
+
+      expect(read.bytes, File(provider.files[uri]!).readAsBytesSync());
+      expectOneBar(told, [0, 0.5, 1]);
+    });
+
+    testWidgets('🎯a project opened from a document is ONE bar on the open '
+        'window — the copy fills its first half, the read its second '
+        '(F-608, 유저 2026-11-23: 「퍼센테이지도안뜨고」)', (tester) async {
+      final uri = (await tester.runAsync(
+        () => projectDocument('Drive.anicel'),
+      ))!;
+      ProviderDocuments.remember(
+        ProviderDocument(
+          uri: uri,
+          name: 'Drive.anicel',
+          length: File(provider.files[uri]!).lengthSync(),
+        ),
+      );
+      final projects = OpenProjects(
+        first: createDefaultProject(),
+        openSession: (project) => EditorSessionManager(initialProject: project),
+        letGo: (session) => session.dispose(),
+      );
+      addTearDown(projects.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => ProjectOpenDoor(projects).open(context, (
+                  path: uri,
+                  folderBookmark: null,
+                  placed: false,
+                )),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      final told = watchTheBar(tester);
+
+      await tester.tap(find.text('open'));
+      await pumpPastTheWaitWindow(tester);
+
+      expect(projects.sessions, hasLength(2), reason: '⛔premise: it opened');
+      expectOneBar(told, [0, 0.5, 1]);
     });
 
     test('a document the provider will not give says it could not be read '
@@ -477,6 +617,13 @@ class _FakeProvider {
   /// Bytes moved so far, by local path.
   final Map<String, int> moved = {};
 
+  /// The size the provider says of each URI it is asked about; none for
+  /// the rest.
+  final Map<String, int> sizes = {};
+
+  /// Holds the provider's answer about a document while it is open.
+  Completer<void>? holdSize;
+
   final Set<String> cancelled = {};
 
   bool refuseWrites = false;
@@ -531,6 +678,10 @@ class _FakeProvider {
             {'uri': uri},
           ],
         };
+      case 'describeDocument':
+        await holdSize?.future;
+        final uri = arguments['uri']! as String;
+        return {'uri': uri, 'size': sizes[uri]};
       case 'documentTransferred':
         return {'value': moved[arguments['path']] ?? 0};
     }

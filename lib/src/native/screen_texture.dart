@@ -39,8 +39,10 @@ sealed class ScreenTexture {
     this.height, {
     required int surfaces,
     required Future<void> Function()? done,
+    GpuEngine? engine,
   }) : _bytes = width * height * 4 * surfaces,
-       _done = done {
+       _done = done,
+       _engine = engine {
     _liveBytes += _bytes;
   }
 
@@ -89,11 +91,42 @@ sealed class ScreenTexture {
   static bool get windowsAreCopied => _windowsAreCopied;
   static bool _windowsAreCopied = false;
 
+  /// 🔬What the newest window open says of itself, a line each
+  /// ([GpuWindow.said]): what the device said of an AHardwareBuffer's
+  /// image — empty where no window is open, every platform but Android.
+  /// The frame statistics show it under the stages (`EngineStages`).
+  static String get windowSaid =>
+      _debugWindowSays?.call() ?? _newestWindow?._window.said ?? '';
+  static _WindowTexture? _newestWindow;
+  static String Function()? _debugWindowSays;
+
+  /// Test seam: a window open that says what [says] answers — or none,
+  /// as `flutter test` opens none.
+  @visibleForTesting
+  static void debugWindowSays(String Function()? says) =>
+      _debugWindowSays = says;
+
   /// Test seam: a window opened, its frames [copied] — or none opened,
   /// as `flutter test` opens none.
   @visibleForTesting
   static void debugWindowsAre({required bool copied}) =>
       _windowsAreCopied = copied;
+
+  /// 🔬Who is told what each place of a screen's engine took of each frame
+  /// as it goes up ([GpuEngine.took]: since the frame before it went up,
+  /// on whatever screen of that engine) — and while anyone is, each
+  /// screen's engine is timed as its next frame is drawn
+  /// ([GpuEngine.timesItsPlaces]), and no longer once no one is. The
+  /// frame statistics' stages (`EngineStages`, Settings ▸ Debug).
+  ///
+  /// ⚠️A timed engine's frames are longer than an untimed one's
+  /// (rust/src/took.rs): [upMicros] says so beside them.
+  static void Function(ScreenUp up, List<GpuPlaceTook> took)? tookAsItWentUp;
+
+  /// The engine this screen's frames are drawn on: the one timed
+  /// ([tookAsItWentUp]). None where a test reads a surface back with no
+  /// engine named ([debugOnSurface]).
+  final GpuEngine? _engine;
 
   static void _wentUp(ScreenUp up) {
     _upsCounted += 1;
@@ -172,6 +205,7 @@ sealed class ScreenTexture {
     int id,
     int? nextId,
     Future<void> Function()? done,
+    GpuEngine? engine,
   }) =
       _SurfaceTexture;
 
@@ -306,6 +340,7 @@ sealed class ScreenTexture {
 
   _Frame _begin(int asked) {
     final (:draw, :drawnFor) = _beginning!;
+    _engine?.timesItsPlaces(tookAsItWentUp != null);
     _sinceItsDraw
       ..reset()
       ..start();
@@ -326,11 +361,16 @@ sealed class ScreenTexture {
     final heard = _sinceItsDraw.elapsedMicroseconds;
     _show();
     _showsAFrame = true;
-    _wentUp((
+    final up = (
       draw: _itsDrawMicros,
       finish: heard - _itsDrawMicros,
       show: _sinceItsDraw.elapsedMicroseconds - heard,
-    ));
+    );
+    _wentUp(up);
+    final (told, engine) = (tookAsItWentUp, _engine);
+    if (told != null && engine != null) {
+      told(up, engine.took());
+    }
   }
 
   static void _report(Object error, StackTrace stack) =>
@@ -398,7 +438,13 @@ final class _AlternatedTextures extends ScreenTexture {
     int height,
     GpuEngine engine,
   ) : _shown = ValueNotifier(_textures.first.id),
-      super(width, height, surfaces: _surfaces.length, done: engine.done);
+      super(
+        width,
+        height,
+        surfaces: _surfaces.length,
+        done: engine.done,
+        engine: engine,
+      );
 
   final List<GpuSurface> _surfaces;
   final List<SharedTexture> _textures;
@@ -440,6 +486,7 @@ final class _SurfaceTexture extends ScreenTexture {
     int id = 0,
     int? nextId,
     super.done,
+    super.engine,
   }) : _id = ValueNotifier(id),
        _nextId = nextId ?? id,
        super(_surface.width, _surface.height, surfaces: 1);
@@ -480,8 +527,9 @@ final class _WindowTexture extends ScreenTexture {
   // (`texturesAreInTheRamFigure`).
   _WindowTexture(this._window, int width, int height, GpuEngine engine)
     : _id = ValueNotifier(_window.textureId),
-      super(width, height, surfaces: 3, done: engine.done) {
+      super(width, height, surfaces: 3, done: engine.done, engine: engine) {
     ScreenTexture._windowsAreCopied = true;
+    ScreenTexture._newestWindow = this;
   }
 
   final GpuWindow _window;
@@ -498,6 +546,9 @@ final class _WindowTexture extends ScreenTexture {
 
   @override
   Future<void> _free() async {
+    if (identical(ScreenTexture._newestWindow, this)) {
+      ScreenTexture._newestWindow = null;
+    }
     _id.dispose();
     await _window.free();
   }

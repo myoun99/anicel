@@ -3289,10 +3289,12 @@ class EditorSessionManager extends ChangeNotifier
   // ── the cut-axis shove: its own object, in its own file ───────────────
   //
   // Push and pull on the CUT row (session/cut_shift.dart): the scope, the
-  // slack, and the one commit that slides the anchor cut and everything
-  // after it.
+  // slack, and the one commit that slides the first cut at or after the
+  // scope's frame and everything after it.
   late final CutShift cutShift = CutShift(
     project: this,
+    selection: this,
+    timeline: this,
     changes: this,
     storyboardRows: storyboardRows,
     rangeSelections: rangeSelections,

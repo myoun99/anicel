@@ -357,6 +357,14 @@ class _StoryboardRowsAndLabels {
     required String Function(PropertyLaneRow lane) groupKeyOf,
     ValueChanged<int>? onSelectFrame,
 
+    /// Where a lane's key ARROWS walk, where it is not the lane's own keys
+    /// about the frame its row stands on ([LaneKeyWalk]): a projection
+    /// row's walk every cut's keys on the film (F-625,
+    /// [_StoryboardRailRows._filmKeyWalks]) — in a gap too, where
+    /// [active] is false and nothing else of the label answers. Null, or
+    /// none for a lane, walks the lane's own.
+    LaneKeyWalk? Function(PropertyLaneRow lane)? keyWalkOf,
+
     /// The header's own ON/OFF switch (AE's per-effect eyeball). Null leaves
     /// the glyph inert. ↩️「which is what a Transform header wants here」 held
     /// until F-101 gave the S rows the timeline's switch.
@@ -420,6 +428,7 @@ class _StoryboardRowsAndLabels {
       frameCursor: hand.cursor,
       laneSpan: _state.widget.laneRange?.selection,
       onSelectFrame: active ? onSelectFrame : null,
+      keyWalk: keyWalkOf?.call(lane),
       laneEdit: lane.isGroupHeader || !active ? null : hand.edit,
       onToggleLaneGroup: toggleGroup == null
           ? null

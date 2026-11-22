@@ -1,5 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_frame_range.dart';
 import 'session_roles.dart';
 import 'project_settings.dart';
 
@@ -35,12 +36,23 @@ class StoryboardRows {
     return null;
   }
 
+  /// The storyboard selection where it is swept over its track's CUT ROW —
+  /// null where there is none, or it covers other rows only. Empty space on
+  /// that row is selected as its cuts are: what it says is where the
+  /// selection is, and [storyboardSelectedCutIds] which cuts it holds.
+  TrackFrameRangeSelection? get cutRowSelection {
+    final selection = _selection.trackFrameRangeSelection.value;
+    return selection != null &&
+            selection.coversRow(TrackRowAddress(selection.trackId))
+        ? selection
+        : null;
+  }
+
   /// The cuts the storyboard selection covers — DERIVED from the range, in
   /// track order.
   List<CutId> get storyboardSelectedCutIds {
-    final selection = _selection.trackFrameRangeSelection.value;
-    if (selection == null ||
-        !selection.coversRow(TrackRowAddress(selection.trackId))) {
+    final selection = cutRowSelection;
+    if (selection == null) {
       return const [];
     }
     return _projectSettings

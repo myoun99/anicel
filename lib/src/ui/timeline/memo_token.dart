@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/app_language.dart';
+import '../../models/layer.dart';
+import '../../models/layer_cells_agreement.dart';
 import '../text/app_strings.dart';
 
 /// A memo-token field that compares by IDENTITY.
@@ -103,6 +105,45 @@ final class AsPrinted<T extends Object> {
 
   @override
   int get hashCode => _printed.hashCode;
+}
+
+/// A memo-token field for a row's LAYER that compares BY THE CELLS IT
+/// SHOWS: the same as another instance that shows the same cells everywhere
+/// ([firstCellThatMayDiffer]) — the question the row's tiles are kept by,
+/// so who holds it is drawn again exactly where a tile of its row would be
+/// baked again.
+///
+/// 🚨FOR WHAT DRAWS A ROW'S CELLS — the painter that lays its tiles down,
+/// the grips on its paper (card
+/// a-rows-own-twirl-retakes-its-band-on-the-timeline, 11-22). ↩️They told
+/// the layer apart by identity. A lane twirled is an edit of its row
+/// (`Layer.lanesExpanded`, F-360) that no cell reads ([Layer.foldsLike]):
+/// the tiles stayed, and the painter over them was painted again and its
+/// row's image taken once more — 🔬the whole workspace, the timeline view:
+/// every press of a ▸ let the row's own 2802×28 image go.
+/// ⛔Not the row as a page prints it ([AsPrinted] over `rowAsPrinted`): it
+/// copies a row whose folds are not at rest to compare it — 🔬604 µs for a
+/// row of 2400 cels with its lanes open, each time it is another object
+/// (the test VM) — and it is the pages' question, not the one a row's
+/// tiles are kept by.
+final class ByItsCells {
+  const ByItsCells(this.layer);
+
+  final Layer? layer;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! ByItsCells) {
+      return false;
+    }
+    final (mine, theirs) = (layer, other.layer);
+    return mine == null || theirs == null
+        ? identical(mine, theirs)
+        : firstCellThatMayDiffer(mine, theirs) == null;
+  }
+
+  @override
+  int get hashCode => layer?.id.hashCode ?? 0;
 }
 
 /// What a memo holds for one key: the widget as built, the facts it was

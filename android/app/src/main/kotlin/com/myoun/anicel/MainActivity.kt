@@ -184,6 +184,21 @@ class MainActivity : FlutterActivity() {
                     )
                 "documentTransferred" ->
                     result.success(transfers[call.argument<String>("path") ?: ""])
+                // F-608 (board recent-drive-document-opens-without-percent):
+                // what the provider says of a document a new run reopens -
+                // its size, for the copy's percent - the same question a
+                // pick asks. Off the main thread: a provider may answer
+                // slowly.
+                "describeDocument" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri.isNullOrEmpty()) {
+                        result.success(null)
+                    } else {
+                        Thread {
+                            answerOnMain(result, documentItem(Uri.parse(uri)))
+                        }.start()
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

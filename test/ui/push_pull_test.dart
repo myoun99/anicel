@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_shift.dart';
@@ -32,7 +33,7 @@ void main() {
       final firstDuration = s.cutById(first)!.duration;
 
       s.selectCut(first);
-      expect(cutShoveOf(s).canPushCuts, isTrue);
+      expect(s.blockShift.canPushBlocks(currentRow: s.selectedRow), isTrue);
       cutShoveOf(s).pushCuts(6);
 
       expect(layoutStart(s, first), 6);
@@ -65,8 +66,13 @@ void main() {
       s.cutVerbs.createCut();
       s.selectCut(s.repository.requireProject().tracks.first.cuts[0].id);
 
-      expect(cutShoveOf(s).canPushCuts, isTrue);
+      expect(s.blockShift.canPushBlocks(currentRow: s.selectedRow), isTrue);
       expect(cutShoveOf(s).canPullCuts, isFalse);
+
+      // ...and a pull with nothing to close is no step.
+      final before = s.repository.requireProject();
+      cutShoveOf(s).pullCuts(3);
+      expect(s.repository.requireProject(), same(before));
     });
 
     test('the SELECTION decides the anchor: the run\'s first cut', () {
@@ -107,6 +113,181 @@ void main() {
       s.selectCut(first);
       cutShoveOf(s).pushCuts(5);
       expect(layoutStart(s, first), 5);
+    });
+
+    // 🗣️F-626 (유저 2026-11-21): 「콘티패널 컷 빈 공간에서도 밀기/당기기
+    // 사용가능하게. 빈공간이든 뭐든 묻지말고 법 통일.」 — the cut row is
+    // shoved from a FRAME, as a layer row is. These go through the one verb
+    // the conte panel's buttons press, asked of the row that panel stands on.
+    group('F-626 — shoved from a FRAME, empty space or not', () {
+      /// Two cuts with six empty frames between them, and the cut row the
+      /// conte panel stands on.
+      ({EditorSessionManager s, CutId first, CutId second, int length})
+      spaced() {
+        final s = session();
+        s.cutVerbs.createCut();
+        final track = s.repository.requireProject().tracks.first;
+        final first = track.cuts[0].id;
+        final second = track.cuts[1].id;
+        final length = s.cutById(first)!.duration;
+        s.selectCut(second);
+        cutShoveOf(s).pushCuts(6);
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (0, length + 6),
+          reason: '⛔전제',
+        );
+        return (s: s, first: first, second: second, length: length);
+      }
+
+      TimelineRowAddress cutRowOf(EditorSessionManager s) {
+        final row = s.selectedRow;
+        expect(
+          row,
+          isA<TrackRowAddress>(),
+          reason: '⛔전제: the conte panel stands on the cut row',
+        );
+        return row;
+      }
+
+      test('🚨standing in the empty space between two cuts, push and pull '
+          'shove the cuts after it', () {
+        final (:s, :first, :second, :length) = spaced();
+        s.selectGlobalFrame(length + 2);
+        expect(s.activeCutId, isNull, reason: '⛔전제: no cut is stood in');
+        final row = cutRowOf(s);
+        final seeks = s.frameSeekCommitted.value;
+
+        expect(s.blockShift.canPushBlocks(currentRow: row), isTrue);
+        expect(
+          s.blockShift.blockPullSlack(currentRow: row),
+          6,
+          reason: '🚨↩️0 — with no cut stood in, both buttons were dead',
+        );
+
+        s.blockShift.pushBlocks(2, currentRow: row);
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (0, length + 8),
+        );
+
+        s.blockShift.pullBlocks(3, currentRow: row);
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (0, length + 5),
+        );
+        expect(
+          (s.activeCutId, s.editingGlobalFrame),
+          (null, length + 2),
+          reason: 'the frame stood on stays, and it is still empty space',
+        );
+        expect(
+          s.frameSeekCommitted.value,
+          seeks,
+          reason: 'no cut came under it: nothing is stood on again',
+        );
+      });
+
+      test('a pull that brings a cut under the frame stood on stands in '
+          'that cut — and the next one finds it stood in, at its frame', () {
+        final (:s, :first, :second, :length) = spaced();
+        s.selectGlobalFrame(length + 2);
+        final row = cutRowOf(s);
+
+        s.blockShift.pullBlocks(9, currentRow: row);
+
+        expect(
+          layoutStart(s, second),
+          length,
+          reason: 'asking for more than there is closes what there is',
+        );
+        expect(
+          (s.activeCutId, s.currentFrameIndex, s.editingGlobalFrame),
+          (second, 2, length + 2),
+          reason:
+              '↩️parked over a frame a cut covers, the session said that '
+              'cut\'s picture was hidden',
+        );
+        expect(layoutStart(s, first), 0);
+      });
+
+      test('a selection over empty space aims from its start: the cut stood '
+          'in, before it, stays', () {
+        final (:s, :first, :second, :length) = spaced();
+        s.selectCut(first);
+        s.updateStoryboardCutSelectionByFrame(
+          anchorGlobalFrame: length + 2,
+          headGlobalFrame: length + 3,
+        );
+        expect(
+          s.trackFrameRangeSelection.value,
+          isNotNull,
+          reason: '⛔전제: empty space is selected',
+        );
+        expect(
+          s.storyboardRows.storyboardSelectedCutIds,
+          isEmpty,
+          reason: '⛔전제: and it holds no cut',
+        );
+
+        s.blockShift.pushBlocks(2);
+
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (0, length + 8),
+          reason: '🚨↩️(2, …) — holding no cut, it aimed the cut stood in',
+        );
+        expect(s.blockShift.blockPullSlack(), 8);
+      });
+
+      test('the anchor is a BOUNDARY here too: a cut the frame stood on is '
+          'inside stays put, and at its first frame it travels', () {
+        final (:s, :first, :second, :length) = spaced();
+        s.selectCut(first);
+        s.selectFrameIndex(5);
+        expect(s.editingGlobalFrame, 5, reason: '⛔전제');
+        final row = cutRowOf(s);
+
+        s.blockShift.pushBlocks(2, currentRow: row);
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (0, length + 8),
+          reason: 'the frame axis\' law — the straddled block held',
+        );
+        expect(s.blockShift.blockPullSlack(currentRow: row), 8);
+
+        s.selectFrameIndex(0);
+        s.blockShift.pushBlocks(3, currentRow: row);
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (3, length + 11),
+        );
+        expect(
+          (s.activeCutId, s.editingGlobalFrame),
+          (first, 3),
+          reason: 'the playhead stands in its cut, and goes where it goes',
+        );
+      });
+
+      test('standing past the last cut there is nothing to shove: no slack, '
+          'and a push is no step', () {
+        final (:s, :first, :second, :length) = spaced();
+        s.selectGlobalFrame(length * 2 + 20);
+        expect(s.activeCutId, isNull, reason: '⛔전제');
+        final row = cutRowOf(s);
+        final before = s.repository.requireProject();
+
+        expect(s.blockShift.blockPullSlack(currentRow: row), 0);
+        expect(s.blockShift.canPullBlocks(currentRow: row), isFalse);
+        s.blockShift.pushBlocks(2, currentRow: row);
+        s.blockShift.pullBlocks(2, currentRow: row);
+
+        expect(s.repository.requireProject(), same(before));
+        expect(
+          (layoutStart(s, first), layoutStart(s, second)),
+          (0, length + 6),
+        );
+      });
     });
   });
 

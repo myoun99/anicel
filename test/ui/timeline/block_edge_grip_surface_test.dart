@@ -288,7 +288,7 @@ void main() {
     // One ground under the triangle: the cut's top band, in the cut's own
     // label, as painted: the conte opens standing on the V row, in the cut
     // under the playhead, whose bands wear the standing wash (F-248).
-    final band = painter.gripGrounds!().under(end.rect).single;
+    final band = painter.gripGrounds!.read().under(end.rect).single;
     expect(
       band.color,
       Color.alphaBlend(timelineStandingWashColor, layerMarkColor(_cutLabel)),
@@ -367,7 +367,7 @@ void main() {
       prefix: _vRow,
     )!;
     expect(painter.gripGround, conteSheetInk);
-    final grounds = painter.gripGrounds!();
+    final grounds = painter.gripGrounds!.read();
     // The film's one cut is the one stood on, so its bands wear the
     // standing wash (F-248) — what the edges stand on is the band as
     // painted.

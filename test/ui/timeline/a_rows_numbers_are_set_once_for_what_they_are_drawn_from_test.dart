@@ -1,11 +1,17 @@
+import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
@@ -89,12 +95,61 @@ void main() {
     );
   });
 
+  testWidgets('🚨a row built again with ANOTHER layer over the same blocks — '
+      'its lanes twirled, which is an edit of the row — sets no number '
+      'again and is not painted again', (tester) async {
+    final before = numbers();
+    setsOf(before);
+    final twirled = numbers(layer: blocks.copyWith(lanesExpanded: true));
+    expect(twirled.layer, isNot(same(blocks)), reason: '⛔premise');
+
+    expect(
+      twirled.shouldRepaint(before),
+      isFalse,
+      reason: '↩️a storyboard\x27s S row twirled painted its numbers again, '
+          'and its image was taken again (11-22)',
+    );
+    expect(setsOf(twirled), 0);
+  });
+
+  testWidgets('a transition row\x27s numbers are its spans\x27: built again '
+      'over the same spans it sets none again, and a span made longer sets '
+      'them', (tester) async {
+    Layer spans(int length) =>
+        createTrackTransitionLayer(const TrackId('t')).copyWith(
+          instructions: SplayTreeMap.of({
+            6: InstructionEvent(instructionId: 'fo', length: length),
+          }),
+        );
+    final before = numbers(layer: spans(3));
+    expect(
+      [for (final label in before.runLabels()) label.text],
+      ['3'],
+      reason: '⛔premise: the row prints its span\x27s length',
+    );
+    setsOf(before);
+
+    final again = numbers(layer: spans(3).copyWith(lanesExpanded: true));
+    expect(again.shouldRepaint(before), isFalse);
+    expect(setsOf(again), 0);
+
+    final longer = numbers(layer: spans(5));
+    expect(longer.shouldRepaint(before), isTrue);
+    expect(setsOf(longer), 1);
+  });
+
   testWidgets('every input its numbers are drawn from sets them again', (
     tester,
   ) async {
     setsOf(numbers());
     final changed = {
       'its blocks': numbers(layer: row(length: 4)),
+      // Their ink is laid on it ([TimelineRowRunLabelsPainter.inkFor]).
+      'its colour label': numbers(
+        layer: blocks.copyWith(
+          mark: const LayerMark(process: LayerProcess.layout),
+        ),
+      ),
       'the seconds toggle': numbers(showSeconds: true),
       // With the seconds shown — the base counts nothing without them.
       'the counting base': numbers(showSeconds: true, countingBase: 30),

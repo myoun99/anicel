@@ -347,6 +347,59 @@ void main() {
     expect(twirls.value, isEmpty, reason: 'shut, not let back open');
   });
 
+  // 🗣️F-625 (유저 2026-11-21): 「콘티패널에선 로컬트랙이더라도 키 < > 누를수있는
+  // 판정이나 이동이 글로벌로 작동하도록 … 이는 콘티레이어가 아직안됫다면
+  // 콘티레이어나 다른것도 마찬가지」 — the camera row's law
+  // (`the_camera_row_twirls_down_its_lanes_test`), on the conte row.
+  group('F-625 — its arrows walk the film\'s keys', () {
+    Finder arrow(String which) =>
+        key('storyboard-lane-$which-key-$rowId-position');
+
+    bool lit(WidgetTester tester, String which) =>
+        tester.widget<InkWell>(arrow(which)).onTap != null;
+
+    (CutId?, int) stood(EditorSessionManager session) =>
+        (session.activeCutId, session.currentFrameIndex);
+
+    testWidgets('🚨from a cut\'s only key the previous arrow goes to the cut '
+        'before, and back', (tester) async {
+      final session = await pumpPanel(tester);
+      await openPosition(tester);
+      await tester.tapAt(at(tester, 'position', 15));
+      await tester.pumpAndSettle();
+      expect(stood(session), (b, 3), reason: '⛔전제');
+
+      expect(lit(tester, 'next'), isFalse, reason: 'the film\'s last key');
+      expect(
+        lit(tester, 'prev'),
+        isTrue,
+        reason: '🚨↩️dark — b\'s conte holds no other key',
+      );
+      await tester.tap(arrow('prev'));
+      await tester.pumpAndSettle();
+      expect(stood(session), (a, 8));
+
+      await tester.tap(arrow('next'));
+      await tester.pumpAndSettle();
+      expect(stood(session), (b, 3));
+    });
+
+    testWidgets('🚨in a cut that holds no conte the labels keep their names '
+        'alone — and their arrows still walk the film', (tester) async {
+      final session = await pumpPanel(tester);
+      await openPosition(tester);
+      await tester.tapAt(at(tester, 'position', 30));
+      await tester.pumpAndSettle();
+      expect(stood(session), (const CutId('c'), 2), reason: '⛔전제');
+
+      expect(lit(tester, 'next'), isFalse);
+      expect(lit(tester, 'prev'), isTrue);
+      await tester.tap(arrow('prev'));
+      await tester.pumpAndSettle();
+      expect(stood(session), (b, 3));
+    });
+  });
+
   group('pressing and sweeping a lane', () {
     testWidgets('a press stands on that lane of the row, in the cut pressed — '
         'the timeline\'s seat is the cut\'s conte', (tester) async {

@@ -39,6 +39,7 @@ import '../models/timeline_coverage.dart'
         coveringDrawingBlockAt,
         drawingBlocks;
 import '../models/camera_row_reach.dart';
+import '../models/lane_key_walk.dart' show filmKeyHolderAt;
 import '../models/track.dart';
 import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_camera_row.dart';
@@ -130,6 +131,7 @@ import 'timeline/timeline_row_span_resolver.dart'
         resolveSelectionSpanOverAddresses;
 import 'timeline/timeline_lane_rows.dart'
     show
+        LaneKeyWalk,
         TimelineLaneControlsRow,
         TimelineLaneFrameRow,
         TimelineLaneKeysLine,
@@ -218,6 +220,7 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
     show
+        TimelineChromeGroundsOf,
         TimelineRowChromeResolver,
         TimelineRowEditChromeLayer,
         TimelineRowGripCallbacks,
@@ -5360,7 +5363,10 @@ class _StoryboardTrackRow extends KeptPiece {
         Theme.of(context).colorScheme,
         hovered: false,
       ),
-      gripGrounds: () => StoryboardPlateGrounds(blocksPainter),
+      gripGrounds: TimelineChromeGroundsOf(
+        read: () => StoryboardPlateGrounds(blocksPainter),
+        laidBy: blocksPainter,
+      ),
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,

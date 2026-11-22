@@ -19,10 +19,12 @@ use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use ash::vk;
+use wgpu::hal::api::Vulkan;
 use wgpu::rwh::{AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle};
 
 use crate::device::{Engine, Sent, let_go, storage_texture};
-use crate::fail;
+use crate::{copy_out, fail};
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
 
@@ -140,9 +142,81 @@ pub struct Window {
     /// handed to Flutter — shared with the body that hands it
     /// ([`Self::shown`]).
     copied: Arc<Mutex<Copied>>,
+    /// What the device said, as the window was made, of an image made of
+    /// an AHardwareBuffer ([`hardware_buffer_said`]).
+    hardware_buffer: String,
     // Last, so it is dropped last: the window outlives the surface made on
     // it (fields drop in declaration order).
     _native: NativeWindow,
+}
+
+/// 🔬What the device says of an image made of an AHardwareBuffer — whether
+/// a kernel could store into one (`STORAGE`), beside whether it could be
+/// drawn into (`COLOR_ATTACHMENT`, which every device is expected to
+/// allow: a `no` there says the question itself did not get through):
+/// `ahb storage yes|no|… color yes|no|…`. Asked of Vulkan's physical
+/// device, which is asked and changes nothing; and whatever becomes of
+/// the asking, a window is made: a question that panics says `?`.
+///
+/// 🗣️공통 2026-11-22 23:50, of 유저's 「윈도랑 안드랑 다른거
+/// 통일못하는거야?」 (card the-galaxy-tab-canvas-went-slow-on-build-1095):
+/// Flutter's Android embedding would take a buffer the engine made, were
+/// a door cut for it — and whether the kernels could write that buffer
+/// is each device's own answer, the Galaxy Tab's (Adreno 740) among them.
+/// The frame statistics show it while the engine's stages are on
+/// (`gpu_engine_window_said`).
+fn hardware_buffer_said(engine: &Engine) -> String {
+    let asked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hardware_buffer_asked(engine)));
+    asked.unwrap_or_else(|_| "ahb ?  the asking panicked".to_owned())
+}
+
+fn hardware_buffer_asked(engine: &Engine) -> String {
+    // SAFETY: the raw device is asked what it supports, and nothing of
+    // wgpu's own state is changed.
+    let Some(device) = (unsafe { engine.device().as_hal::<Vulkan>() }) else {
+        return "ahb ?  not a Vulkan device".to_owned();
+    };
+    let (shared, physical) = (device.shared_instance(), device.raw_physical_device());
+    let instance = shared.raw_instance();
+    // SAFETY: only reads the device's own properties.
+    let speaks = unsafe { instance.get_physical_device_properties(physical) }.api_version;
+    // ⛔The question is Vulkan 1.1's own, of the instance and of the device
+    // both. Of an instance made as 1.0, ash has no function for it and
+    // its stand-in panics inside an `extern "system"` function — which
+    // no `catch_unwind` catches: the process ends.
+    if shared.instance_api_version() < vk::API_VERSION_1_1 || speaks < vk::API_VERSION_1_1 {
+        return "ahb ?  a Vulkan 1.0 device".to_owned();
+    }
+    let takes = |usage: vk::ImageUsageFlags| {
+        let mut external_info = vk::PhysicalDeviceExternalImageFormatInfo::default()
+            .handle_type(vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID);
+        let info = vk::PhysicalDeviceImageFormatInfo2::default()
+            .format(vk::Format::R8G8B8A8_UNORM)
+            .ty(vk::ImageType::TYPE_2D)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(usage | vk::ImageUsageFlags::SAMPLED)
+            .push_next(&mut external_info);
+        let mut external = vk::ExternalImageFormatProperties::default();
+        let mut properties = vk::ImageFormatProperties2::default().push_next(&mut external);
+        // SAFETY: every structure is a local that outlives the call.
+        let asked =
+            unsafe { instance.get_physical_device_image_format_properties2(physical, &info, &mut properties) };
+        let imports = external
+            .external_memory_properties
+            .external_memory_features
+            .contains(vk::ExternalMemoryFeatureFlags::IMPORTABLE);
+        match asked {
+            Ok(()) if imports => "yes".to_owned(),
+            Ok(()) => "not-imported".to_owned(),
+            Err(vk::Result::ERROR_FORMAT_NOT_SUPPORTED) => "no".to_owned(),
+            Err(error) => format!("{error:?}"),
+        }
+    };
+    format!(
+        "ahb storage {}  color {}",
+        takes(vk::ImageUsageFlags::STORAGE),
+        takes(vk::ImageUsageFlags::COLOR_ATTACHMENT),
+    )
 }
 
 /// The image a present copied onto, and which present's it is.
@@ -194,8 +268,15 @@ impl Window {
             surface,
             drawn: storage_texture(engine.device(), width, height, format),
             copied: Arc::default(),
+            hardware_buffer: hardware_buffer_said(engine),
             _native: native,
         })
+    }
+
+    /// What the window says of itself, a line each: what the device said
+    /// of an AHardwareBuffer's image ([`hardware_buffer_said`]).
+    fn said(&self) -> String {
+        format!("{}\n", self.hardware_buffer)
     }
 
     /// The texture the kernels write, which [`Self::shown`] copies onto
@@ -217,6 +298,22 @@ impl Window {
     /// onto goes up first where it has not: a present is asked for once
     /// the GPU has finished what its frame was drawn of
     /// (`ScreenTexture.present`), which that copy was submitted before.
+    ///
+    /// ⛔THE WHOLE IMAGE, EACH PRESENT — copying only what changed since an
+    /// image last went out is not wgpu's to do (wgpu-core 30.0.1, read
+    /// 2026-11-23 for 🗣️유저 11-22 「윈도랑 안드랑 다른거 통일못하는거야?」 ·
+    /// 「그 길도 일단 확인가능한가?」, card
+    /// the-galaxy-tab-canvas-went-slow-on-build-1095): an image is
+    /// uninitialized each time the swapchain hands it over
+    /// (present.rs:231-247); a copy onto less than all of it clears the
+    /// whole first (command/transfer.rs:723-740, "we don't track
+    /// subrects"); a read of it clears it too (transfer.rs:703-716); and
+    /// its first use begins from Vulkan's UNDEFINED layout, which lets the
+    /// driver throw its picture away (wgpu-hal vulkan/conv.rs:244). So
+    /// what an image keeps cannot be asked through wgpu either: a probe
+    /// that read a texel of each image as it came back was written and
+    /// taken out that night — it would have said "nothing kept" on every
+    /// device. That way needs a swapchain driven past wgpu.
     fn shown(&self, engine: &Engine) -> Option<()> {
         let mut copied = self.copied.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(before) = copied.image.take() {
@@ -311,6 +408,23 @@ pub unsafe extern "C" fn gpu_engine_window_new(
 pub unsafe extern "C" fn gpu_engine_window_target(window: *const Window) -> *const wgpu::Texture {
     // SAFETY: see the function's contract.
     std::ptr::from_ref(unsafe { &*window }.drawn())
+}
+
+/// Copies what `window` says of itself — what the device said of an
+/// AHardwareBuffer's image ([`Window::said`]) — into `buffer` (UTF-8) and
+/// returns its full length: what the window keeps on the heap, read with
+/// no hand on the device.
+///
+/// # Safety
+/// `window` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_window_said(
+    window: *const Window,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    copy_out(&unsafe { &*window }.said(), buffer, capacity)
 }
 
 /// Shows what the kernels last wrote to `window` ([`Window::shown`]), on

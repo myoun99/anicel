@@ -277,6 +277,18 @@ external int engineUnfinished(
   int capacity,
 );
 
+@Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_timed')
+external void engineTimed(Pointer<Engine> engine, bool timed);
+
+@Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_took',
+)
+external int engineTook(
+  Pointer<Engine> engine,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
+
 @Native<
   Void Function(
     Pointer<Engine>,
@@ -350,6 +362,15 @@ external Pointer<Texture> windowTarget(Pointer<Window> window);
   symbol: 'gpu_engine_window_present',
 )
 external void windowPresent(Pointer<Engine> engine, Pointer<Window> window);
+
+@Native<Size Function(Pointer<Window>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_window_said',
+)
+external int windowSaid(
+  Pointer<Window> window,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
 
 @Native<Void Function(Pointer<Window>)>(symbol: 'gpu_engine_window_free')
 external void windowFree(Pointer<Window> window);

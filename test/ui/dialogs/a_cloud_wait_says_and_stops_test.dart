@@ -10,13 +10,12 @@ void main() {
     final wait = CloudWait();
     addTearDown(wait.dispose);
     const waited = Duration(seconds: 3);
-    const quiet = Duration(seconds: 1);
 
-    wait.report(waited, quiet, fromTheCloud: true);
+    wait.report(waited, fromTheCloud: true);
 
     expect(
       wait.status.value,
-      cloudWaitLine(waited, quiet, fromTheCloud: true),
+      cloudWaitLine(waited, fromTheCloud: true),
     );
     expect(wait.waiting.value, isTrue);
   });
@@ -26,7 +25,7 @@ void main() {
     final wait = CloudWait();
     addTearDown(wait.dispose);
 
-    wait.report(const Duration(seconds: 2), Duration.zero, fromTheCloud: false);
+    wait.report(const Duration(seconds: 2), fromTheCloud: false);
 
     expect(
       wait.status.value,
@@ -50,11 +49,7 @@ void main() {
     addTearDown(wait.dispose);
     wait
       ..begin()
-      ..report(
-        const Duration(seconds: 12),
-        const Duration(seconds: 12),
-        fromTheCloud: true,
-      )
+      ..report(const Duration(seconds: 12), fromTheCloud: true)
       ..cancel()
       ..ended();
 

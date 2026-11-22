@@ -377,6 +377,15 @@ fn resample_offset(s: i32, shift: u32, position: i32, twice: bool) -> i32 {
 // read a reach twice wherever it failed late: forty turned cels of sparse
 // lines over clear took 16.9 ms so, 4.5 walked once, and 6.1 probing every
 // clear reach (a 2048² canvas, RTX 4080, 2026-11-05).
+//
+// Nor are taps that all read one word summed, on that one walk: while they
+// do, nothing is kept of them but their weight, and where they hold alpha
+// the word is the answer with no division. A screen shown under 100% is
+// mostly such pixels — paper, flat paint — and every one of them summed
+// five wide sums a tap and divided four times to arrive at the word it had
+// read (🗣️유저 2026-11-22, a Galaxy Tab S9 Ultra, card
+// the-galaxy-tab-canvas-went-slow-on-build-1095: a frame of the screen
+// shown whole at x0.75 took its GPU 53 ms).
 fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
   let radius = min(max(point.extent, vec2<u32>(map.floor)), vec2<u32>(RESAMPLE_CEILING));
   let reach = vec2<i32>((radius + vec2<u32>(0xffffu)) >> vec2<u32>(16u));
@@ -388,6 +397,11 @@ fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
   var weight = Wide(0u, 0u);
   // Every word a tap read, or-ed together.
   var seen = 0u;
+  // The word every tap so far read (`same`), while they have all read one
+  // (`alike`): nothing of theirs is summed but the weight — the sums are
+  // that word's by it, laid down where a tap first reads another.
+  var same = 0u;
+  var alike = true;
   for (var dy = -reach.y; dy <= reach.y; dy = dy + 1) {
     let sy = centre.y + dy;
     let near_y = i32(radius.y) - abs(resample_offset(sy, 16u, point.v, false));
@@ -405,13 +419,35 @@ fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
       let w = wx * wy;
       let texel = resample_texel(source, sx, sy);
       seen = seen | texel;
-      let held = (texel >> 24u) * w;
-      red = wide_add(red, wide_mul_u32(texel & 0xffu, held));
-      green = wide_add(green, wide_mul_u32((texel >> 8u) & 0xffu, held));
-      blue = wide_add(blue, wide_mul_u32((texel >> 16u) & 0xffu, held));
-      alpha = wide_add(alpha, Wide(held, 0u));
+      if (alike) {
+        if (all(weight == Wide(0u, 0u))) {
+          same = texel;
+        } else if (texel != same) {
+          alike = false;
+          // A tap weighs 2^24 at the most and a reach holds 33² of them,
+          // so the weight is under 2^35 and the alpha under 2^43: each
+          // high word times a byte fits a word (wide_by_u32).
+          alpha = wide_by_u32(weight, same >> 24u);
+          red = wide_by_u32(alpha, same & 0xffu);
+          green = wide_by_u32(alpha, (same >> 8u) & 0xffu);
+          blue = wide_by_u32(alpha, (same >> 16u) & 0xffu);
+        }
+      }
+      if (!alike) {
+        let held = (texel >> 24u) * w;
+        red = wide_add(red, wide_mul_u32(texel & 0xffu, held));
+        green = wide_add(green, wide_mul_u32((texel >> 8u) & 0xffu, held));
+        blue = wide_add(blue, wide_mul_u32((texel >> 16u) & 0xffu, held));
+        alpha = wide_add(alpha, Wide(held, 0u));
+      }
       weight = wide_add(weight, Wide(w, 0u));
     }
+  }
+  // Taps that all read one word holding alpha: the tent mean is that word
+  // (the note above — divr(A·W, W) = A, divr(C·A·W, A·W) = C), and nothing
+  // was summed for it or is divided.
+  if (alike && (same >> 24u) != 0u) {
+    return same;
   }
   // No weight is no alpha too.
   if (all(alpha == Wide(0u, 0u))) {

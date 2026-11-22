@@ -83,7 +83,20 @@ void main() {
     );
   });
 
-  test('a picture a coordinate shows no more is let go', () {
+  // A widget test: a picture let go is retired a few frames later
+  // (`DeferredImageDisposer`), and only frames show which went. ↩️It was
+  // a bare test, where the disposer has no scheduler and lets go at once
+  // — what it read only while no file before it had started a binding
+  // (red in a bundle behind a widget test, 11-20).
+  testWidgets('a picture a coordinate shows no more is let go', (
+    tester,
+  ) async {
+    Future<void> framesPass() async {
+      for (var frame = 0; frame < 4; frame += 1) {
+        await tester.pump();
+      }
+    }
+
     final (:overlay, :rasterizer) = strokeStarted();
     flush(overlay, rasterizer, [dabAt(2.5, 0)]);
     final before = overlay.tileImages[coord]!;
@@ -91,10 +104,12 @@ void main() {
     final after = overlay.tileImages[coord]!;
 
     expect(after, isNot(same(before)));
+    await framesPass();
     expect(before.debugDisposed, isTrue);
     expect(after.debugDisposed, isFalse);
 
     overlay.reset();
+    await framesPass();
 
     expect(after.debugDisposed, isTrue);
   });

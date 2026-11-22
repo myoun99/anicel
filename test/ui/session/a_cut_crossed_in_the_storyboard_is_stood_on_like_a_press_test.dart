@@ -55,12 +55,18 @@ void main() {
     expect(session.activeCutId, cut2, reason: 'premise');
   }
 
-  void play() {
+  /// Plays from cut-1 and lets the frame pass: a run's crossing lands
+  /// after the frame that shows its picture (`followPlaybackCut`), and
+  /// only a frame brings it. ↩️The playback cases were bare tests, where
+  /// it lands at once — what they read only while no file before them
+  /// had started a binding (red in a bundle behind a widget test, 11-20).
+  Future<void> play(WidgetTester tester) async {
     session.playbackRig.playback.play(
       scope: PlaybackScope.allCuts,
       startGlobalFrame: 2,
     );
     addTearDown(session.playbackRig.playback.stop);
+    await tester.pump();
   }
 
   // Whichever row cut-1 was left on: its first, the cel, or its conte row.
@@ -96,8 +102,8 @@ void main() {
         expect(session.activeLayerId, left);
       });
 
-      test('playback', () {
-        play();
+      testWidgets('playback', (tester) async {
+        await play(tester);
 
         expect(session.activeCutId, cut1, reason: 'premise: playback crossed');
         expect(session.activeLayerId, left);
@@ -135,8 +141,8 @@ void main() {
       expect(session.activeLayerId, conteId);
     });
 
-    test('playback', () {
-      play();
+    testWidgets('playback', (tester) async {
+      await play(tester);
 
       expect(session.activeCutId, cut1, reason: 'premise: playback crossed');
       expect(

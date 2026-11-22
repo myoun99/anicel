@@ -51,6 +51,24 @@ void main() {
     expect(appOf(tester).showPerformanceOverlay, isFalse);
   });
 
+  test('the engine\'s stages are off unless '
+      '--dart-define=QA_ENGINE_STAGES=true seeds them, and back off after '
+      'a reset', () {
+    // A timed engine waits out each submit where it makes it
+    // (rust/src/took.rs): left on, a build is slower for everyone.
+    expect(MeasurementMode.startWithEngineStages, isFalse);
+    expect(
+      MeasurementMode.engineStages.value,
+      MeasurementMode.startWithEngineStages,
+    );
+    MeasurementMode.engineStages.value = true;
+    MeasurementMode.reset();
+    expect(
+      MeasurementMode.engineStages.value,
+      MeasurementMode.startWithEngineStages,
+    );
+  });
+
   test('reset returns it to the build default', () {
     MeasurementMode.frameTimingOverlay.value = true;
     MeasurementMode.reset();

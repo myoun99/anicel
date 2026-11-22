@@ -2,19 +2,19 @@
 
 ## Nouveau
 
-- **Le relevé Wintab dans l'Inspecteur d'entrée** — sous Windows, les étapes par lesquelles l'application est passée en commençant à recevoir le stylet par Wintab sont gardées dans l'Inspecteur d'entrée (menu Debug). Si le stylet s'arrête, ce relevé montre où il s'est arrêté.
+- **Le temps par étape dans les statistiques des images** — les Statistiques des images (menu Debug) partagent une image de l'écran entre son dessin, sa finition par le GPU et son affichage, et montrent aussi combien de fois par seconde arrive la saisie du stylet et le temps qu'il faut pour la traiter.
+- **Temps du moteur par étape** — activez « Temps du moteur par étape » sous Debug dans les réglages, et les statistiques des images montrent le temps GPU et CPU que le moteur de dessin a passé à chaque endroit (composition des calques, conservation des dessins, dessin de l'écran et d'autres), ainsi que la part de chacun dans l'image la plus lente. Tant qu'il est activé, l'application est ralentie exprès : ne l'activez que pour lire les temps.
 
 ## Améliorations
 
-- **Préparation de l'application au premier lancement** — la fenêtre « Préparation de l'application », qui s'était allongée au premier lancement d'une nouvelle version, retrouve à peu près sa durée d'autour du 13 novembre. Les lancements suivants restent courts comme avant.
-- **Mémoire des dessins importés** — à l'import d'un fichier comme un .tvpp, chaque dessin est déposé dans l'Espace de session (le disque) dès son arrivée et libère sa RAM. Les dessins de l'image sur laquelle se tient le canevas restent tels quels. Avec un .tvpp de 220 dessins ouvert, « Cette application, en RAM » est passée de 2,26 Go à 0,96 Go (le PC principal). En échange, l'import prend environ deux secondes de plus.
-- **Mémoire d'un cellulo modifié** — après l'ouverture d'un fichier, un trait sur un cellulo d'une image que la bande verte a remplie une fois ne fait grandir « Dessins » dans l'onglet mémoire que de la partie tracée, et non du cellulo entier. Les cellulos de l'image où l'on se tenait à l'ouverture du fichier restent comme avant pour l'instant.
-- **Enregistrer après de nombreuses retouches** — la mémoire de l'application monte beaucoup moins pendant l'enregistrement après la retouche de nombreux cellulos. L'enregistrement après la retouche de 220 cellulos montait de 2,0 à 2,3 Go ; il monte maintenant d'environ 0,64 Go (le PC principal).
-- **Réserve de tuiles** — le moteur de dessin ne met plus de côté la mémoire des tuiles qu'il a libérées pour la réutiliser, et la rend tout de suite. La ligne « Réserve de tuiles du moteur de dessin » de l'onglet mémoire a disparu.
-- **Polices** — le moteur graphique lit les polices fournies avec l'application là où elles se trouvent, sans en garder une copie. Sous Windows, « Cette application, en RAM » a baissé d'environ 24 Mo. Android reste comme avant.
-- **Images composées** — dès que la main se repose, les images composées de la lecture sont elles aussi repliées et prennent moins de mémoire graphique, et la ligne « Images composées » de l'onglet mémoire montre la taille qu'elles occupent vraiment. La bande verte se remplit d'autant plus dans la place libérée.
-- **La touche de commande des raccourcis** — quel que soit le clavier branché sur quel appareil, la touche de commande d'un raccourci fait la même chose qu'on l'appuie en Ctrl ou en ⌘ (la touche Win d'un clavier Windows). Il n'y a rien à régler. Ctrl+Z annule aussi sur Mac.
+- **Le canevas sous Android** — sous Android, le moteur de dessin dessine dans une texture à lui avant de la passer à l'écran, et ne redessine que là où quelque chose a changé. Tracer un trait est plus léger.
+- **Dessiner sous 100 % de zoom** — avec un zoom sous 100 %, les endroits d'une seule couleur, comme le papier vierge, un aplat ou l'intérieur d'un trait, sautent les calculs de réduction. Sur le PC principal, cette étape prend 28 à 39 % de temps en moins.
+- **Mémoire des cellulos au repos** — dès que la main se repose, les cellulos enregistrés ou déposés dans l'Espace de session libèrent leur copie en RAM, y compris ceux de l'image sur laquelle se tient le canevas. À l'import d'un fichier aussi, les cellulos de l'image sur laquelle se tient le canevas descendent sur le disque comme les autres. Sur le PC principal, les 172,6 Mo que tenaient ces cellulos sont tombés à 0.
+- **Changer d'outil** — changer d'outil (la pipette d'ALT, alterner pinceau et gomme, les outils temporaires) ne redessine plus pour rien le panneau de feuille et la visionneuse.
+- **Replier et déplier la timeline** — replier ou déplier une piste de la ligne caméra ne redessine plus la ligne V ni la ligne conte de tout le film.
+- **La progression à l'ouverture d'un document** — sous Android, ouvrir un document, par exemple sur Drive, avec le bouton Ouvrir ou depuis les Projets récents, remplit la barre de progression aussi pendant sa copie dans l'application (.anicel, .clip et d'autres).
 
 ## Corrections
 
-- Avec une visionneuse ouverte, aller dans un autre onglet de projet (un onglet existant ou un onglet créé avec Ctrl+N) puis revenir gardait le numéro de page mais montrait l'image de la première page. Les visionneuses principale et secondaire reviennent maintenant à la page et au zoom qu'elles montraient.
+- Au bout de dix secondes d'attente d'un fichier, « Rien n'est arrivé depuis N s » s'affichait, puis le fichier s'ouvrait quand même. L'attente compte maintenant dans ses propres mots, comme « Lecture du fichier · N s », jusqu'à l'ouverture.
+- Juste après le début d'un enregistrement, avant l'arrivée de son premier son, dessiner sa ligne se terminait par une erreur. C'est corrigé.

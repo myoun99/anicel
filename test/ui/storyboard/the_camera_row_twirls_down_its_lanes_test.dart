@@ -477,7 +477,7 @@ void main() {
     });
 
     testWidgets('its label reads the cut stood in at the frame of its own, '
-        'and its ◆ walks that cut\'s keys', (tester) async {
+        'and its arrows walk the keys about it', (tester) async {
       final session = await pumpPanel(tester);
 
       await tester.tapAt(at(tester, 'position', 27));
@@ -598,6 +598,244 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(laneStrip('scale'), findsNothing);
+    });
+  });
+
+  // 🗣️F-625 (유저 2026-11-21): 「콘티패널에선 로컬트랙이더라도 키 < > 누를수있는
+  // 판정이나 이동이 글로벌로 작동하도록. 지금 카메라레이어에서 비율 <나 >로
+  // 이전/다음 키로 이동할때 컷 내에서만 판정되서 이동가능한데, 글로벌로
+  // 판정해서 다른컷에 키 있거나 해도 보이게? … 로컬은 지금대로 컷 내에서
+  // < > 판정」 — the arrows walk the keys the row DRAWS, cut after cut.
+  group('F-625 — its arrows walk the film\'s keys', () {
+    Finder arrow(String which, String laneId) =>
+        key('storyboard-lane-$which-key-$rowId-$laneId');
+
+    bool lit(WidgetTester tester, String which, String laneId) =>
+        tester.widget<InkWell>(arrow(which, laneId)).onTap != null;
+
+    Future<void> press(
+      WidgetTester tester,
+      String which,
+      String laneId,
+    ) async {
+      await tester.tap(arrow(which, laneId));
+      await tester.pumpAndSettle();
+    }
+
+    (CutId?, int) stood(EditorSessionManager session) =>
+        (session.activeCutId, session.currentFrameIndex);
+
+    testWidgets('🚨from the last key its cut draws, the next arrow goes to '
+        'the next cut\'s first — never to a key past the cut\'s end, which '
+        'the row does not draw', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 20));
+      await tester.pumpAndSettle();
+      expect(stood(session), (a, 20), reason: '⛔전제');
+
+      expect(lit(tester, 'next', 'scale'), isTrue);
+      await press(tester, 'next', 'scale');
+
+      expect(
+        stood(session),
+        (b, 2),
+        reason: '↩️(a, 30) — a\'s own key past its end, on b\'s frames',
+      );
+    });
+
+    testWidgets('🚨from the first key of its cut, the previous arrow is lit '
+        'and goes to the cut before', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 26));
+      await tester.pumpAndSettle();
+      expect(stood(session), (b, 2), reason: '⛔전제');
+
+      expect(
+        lit(tester, 'prev', 'scale'),
+        isTrue,
+        reason: '🚨↩️dark — b holds no key before its own 2',
+      );
+      await press(tester, 'prev', 'scale');
+      expect(stood(session), (a, 20));
+    });
+
+    testWidgets('a lane walks its OWN keys across the cuts: Position stops '
+        'at the key it alone holds', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'position', 12));
+      await tester.pumpAndSettle();
+      expect(stood(session), (a, 12), reason: '⛔전제');
+
+      await press(tester, 'next', 'position');
+      expect(stood(session), (a, 16));
+
+      await tester.tapAt(at(tester, 'scale', 12));
+      await tester.pumpAndSettle();
+      await press(tester, 'next', 'scale');
+      expect(stood(session), (a, 20));
+    });
+
+    testWidgets('🚨in a gap, and in a cut that holds no key, the arrows walk '
+        'on — and the last key of the film has no next', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 50));
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, isNull, reason: '⛔전제: a gap');
+
+      expect(lit(tester, 'next', 'scale'), isFalse, reason: 'c holds none');
+      expect(
+        lit(tester, 'prev', 'scale'),
+        isTrue,
+        reason: '🚨↩️dark — no cut stood in, no key to ask',
+      );
+      await press(tester, 'prev', 'scale');
+      expect(stood(session), (b, 12));
+      expect(lit(tester, 'next', 'scale'), isFalse);
+
+      await tester.tapAt(at(tester, 'scale', 55));
+      await tester.pumpAndSettle();
+      expect(stood(session), (const CutId('c'), 3), reason: '⛔전제');
+      expect(lit(tester, 'next', 'scale'), isFalse);
+      await press(tester, 'prev', 'scale');
+      expect(stood(session), (b, 12));
+    });
+
+    testWidgets('🚨over an O.L, where two cuts key one frame of the track, '
+        'a walk stays in its cut — and steps over to the other at the '
+        'first key the other alone holds', (tester) async {
+      final session = await pumpPanel(tester, transitions: ol);
+      await tester.tapAt(at(tester, 'scale', 12));
+      await tester.pumpAndSettle();
+      expect(stood(session), (a, 12), reason: '⛔전제');
+
+      // a's own 20 and b's own 2 are both drawn at track frame 20.
+      await press(tester, 'next', 'scale');
+      expect(stood(session), (a, 20));
+      await press(tester, 'next', 'scale');
+      expect(stood(session), (b, 6), reason: 'track 24 is b\'s alone');
+
+      await press(tester, 'prev', 'scale');
+      expect(stood(session), (b, 2), reason: 'b keys track 20 too');
+      await press(tester, 'prev', 'scale');
+      expect(stood(session), (a, 12));
+    });
+
+    // The timeline's runway: the session may stand past its cut's end,
+    // and the conte's playhead stands on the cut's last frame then.
+    testWidgets('🚨stood past its cut\'s end, the walk stands on the cut\'s '
+        'last frame — where the conte\'s playhead is', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 20));
+      await tester.pumpAndSettle();
+      session.selectFrameIndex(30);
+      await tester.pumpAndSettle();
+      expect(stood(session), (a, 30), reason: '⛔전제');
+
+      await press(tester, 'prev', 'scale');
+      expect(
+        stood(session),
+        (a, 20),
+        reason: '↩️(b, 2) — the key before track frame 30, in b',
+      );
+
+      // b keys its own first frame — the frame after a's last.
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('b-cam'),
+        'scale',
+        0,
+        '120',
+        frameIsGlobal: false,
+        scaleLinked: false,
+        description: 'Set',
+      );
+      session.selectFrameIndex(30);
+      await tester.pumpAndSettle();
+      expect(scaleKeysOf(session, b), [0, 2, 6, 12], reason: '⛔전제');
+      expect(stood(session), (a, 30), reason: '⛔전제');
+      await press(tester, 'next', 'scale');
+      expect(
+        stood(session),
+        (b, 0),
+        reason: '↩️(b, 2) from a frame past a\'s last, (b, 12) from 30',
+      );
+    });
+
+    testWidgets('🚨parked in a gap, the arrows are asked again as the '
+        'playhead moves — no cut is stood in, and none is left', (
+      tester,
+    ) async {
+      final session = await pumpPanel(tester);
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('c-cam'),
+        'scale',
+        4,
+        '120',
+        frameIsGlobal: false,
+        scaleLinked: false,
+        description: 'Set',
+      );
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('c-cam'),
+        'scale',
+        0,
+        '110',
+        frameIsGlobal: false,
+        scaleLinked: false,
+        description: 'Set',
+      );
+      await tester.pumpAndSettle();
+      expect(scaleKeysOf(session, const CutId('c')), [0, 4], reason: '⛔전제');
+
+      // The gap's last frame: the key on the frame after it is the next —
+      // a gap's standing is the playhead's frame itself.
+      session.selectGlobalFrame(51);
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, isNull, reason: '⛔전제: a gap');
+      await press(tester, 'next', 'scale');
+      expect(stood(session), (const CutId('c'), 0), reason: '↩️(c, 4)');
+
+      session.selectGlobalFrame(50);
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, isNull, reason: '⛔전제: a gap');
+      expect(lit(tester, 'next', 'scale'), isTrue, reason: '⛔전제: c\'s 0');
+
+      // Past the last cut: a gap still, with c's key behind it now.
+      session.selectGlobalFrame(70);
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, isNull, reason: '⛔전제: a gap still');
+
+      expect(lit(tester, 'next', 'scale'), isFalse);
+      await press(tester, 'prev', 'scale');
+      expect(stood(session), (const CutId('c'), 4));
+    });
+
+    testWidgets('🚨a key that comes in another cut lights the arrow where '
+        'the playhead stands — the label is asked again though its own '
+        'lane did not change', (tester) async {
+      final session = await pumpPanel(tester);
+      await tester.tapAt(at(tester, 'scale', 36));
+      await tester.pumpAndSettle();
+      expect(stood(session), (b, 12), reason: '⛔전제');
+      expect(lit(tester, 'next', 'scale'), isFalse, reason: '⛔전제');
+
+      // A handle on the line of a cut not stood in writes that cut, where
+      // it is (I-89-Q23): c's camera is keyed while b is stood in.
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('c-cam'),
+        'scale',
+        4,
+        '120',
+        frameIsGlobal: false,
+        scaleLinked: false,
+        description: 'Set',
+      );
+      await tester.pumpAndSettle();
+      expect(scaleKeysOf(session, const CutId('c')), [4], reason: '⛔전제');
+      expect(stood(session), (b, 12), reason: '⛔전제: nothing moved');
+
+      expect(lit(tester, 'next', 'scale'), isTrue);
+      await press(tester, 'next', 'scale');
+      expect(stood(session), (const CutId('c'), 4));
     });
   });
 

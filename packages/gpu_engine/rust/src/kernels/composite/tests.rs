@@ -1911,6 +1911,70 @@ fn screen_by_r1(map: &ResampleMap, canvas: &Picture) -> Vec<u8> {
     premultiplied(&straight).into_iter().flat_map(bytes_of).collect()
 }
 
+/// The places of the walk's own submits in what a timed `engine` tells of
+/// the GPU, drained as it is read (`gpu_engine_took`): `gpu <place> …`,
+/// each line's place.
+fn walks_told(engine: &Engine) -> Vec<String> {
+    let mut buffer = [0u8; 4096];
+    // SAFETY: a live engine, and the buffer's room.
+    let length =
+        unsafe { crate::device::gpu_engine_took(std::ptr::from_ref(engine), buffer.as_mut_ptr(), buffer.len()) };
+    let told = std::str::from_utf8(&buffer[..length]).expect("UTF-8");
+    let walk = format!("gpu {}:", file!().replace("tests.rs", "mod.rs"));
+    told.lines()
+        .filter(|line| line.starts_with(&walk))
+        .map(|line| line.split(' ').nth(1).expect("a place").to_owned())
+        .collect()
+}
+
+// 🔬While the engine is timed (took.rs), what the GPU took of a walk's one
+// submit is told of the door that asked for the walk: a canvas composited
+// and the screen drawn are two stages of a frame — what the frame
+// statistics' stages part (H66, 2026-11-23) —, and the submit's own line
+// told them as one. A chained plan walks again once its chains ran, and
+// that walk's submit is the same door's. On a device of its own: what is
+// told is the engine's, every test's on the shared one.
+#[test]
+fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("compile the composite");
+    let (scene, chained) = (canvas_scene(), chained_rows());
+    let (pages, chained_pages) = (scene.pool.upload(&engine), chained.pool.upload(&engine));
+    // SAFETY: a live engine.
+    unsafe { crate::device::gpu_engine_timed(&raw const engine, true) };
+
+    let done = composite
+        .run(&engine, &scene.plan(&pages), &scene.tiles, CANVAS, composite.widest())
+        .expect("composite the canvas");
+    let ran = walks_told(&engine);
+    assert_eq!(ran.len(), 1, "a run is one submit: {ran:?}");
+
+    let sets = [canvas_set()];
+    let steps = [with_map(0, cameras()[0].1, WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: std::slice::from_ref(&done.out),
+        sets: &sets,
+        keys: &[],
+        matrices: &[],
+        chains: &[],
+        steps: &steps,
+        mask: None,
+        stamps: None,
+    };
+    let texture = surface_on(&engine, SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
+    composite.show(&engine, &plan, &texture, whole_screen(), composite.widest()).expect("show");
+    let shown = walks_told(&engine);
+    assert_eq!(shown.len(), 1, "a show is one submit: {shown:?}");
+    assert_ne!(ran, shown, "⛔a run and a show are told at one place");
+
+    composite
+        .run(&engine, &chained.plan(&chained_pages), &chained.tiles, NO_EDGE, composite.widest())
+        .expect("composite the chained rows");
+    let walked_again = walks_told(&engine);
+    assert!(walked_again.contains(&ran[0]), "⛔the walk after its chains is not the door's: {walked_again:?}");
+}
+
 // The screen shows what R1 resamples of the canvas's composite, as the
 // app's one premultiply leaves it: the executor's one row sample, reading
 // the composite's own tiles as a page, put on a surface — at 100% as a
@@ -2414,6 +2478,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
     });
     composite
         .walk_laid(
+            std::panic::Location::caller(),
             engine,
             &plan,
             &laid,

@@ -52,10 +52,18 @@ class ProviderDocumentRefused implements Exception {
 
 /// One document on its way into its working copy ([ProviderDocuments.copyIn]).
 class ProviderCopy {
-  ProviderCopy._(this.destination, this.done);
+  ProviderCopy._(this.destination, this.done, this.length);
 
   /// Where the working copy stands once [done] answers true.
   final String destination;
+
+  /// The document's size — what [moved] is a share of: the one the provider
+  /// gave as it was picked ([ProviderDocument.length]), or else its answer
+  /// when asked now; null when it says none.
+  /// ↩️Only the pick's: a document a new run reopened from Recents was
+  /// remembered by its name alone, and its copy had no percent (board
+  /// recent-drive-document-opens-without-percent, F-608).
+  final Future<int?> length;
 
   /// True once the whole document stands at [destination]; false when the
   /// provider refused it or the copy was stopped.
@@ -178,7 +186,19 @@ abstract final class ProviderDocuments {
       _documentOfCopy[destination] = uri;
       return true;
     });
-    return ProviderCopy._(destination, done);
+    final picked = _known[uri]?.length;
+    return ProviderCopy._(
+      destination,
+      done,
+      picked != null ? Future.value(picked) : _sizeOf(uri),
+    );
+  }
+
+  /// What the provider says [uri]'s size is (the native `documentItem`, the
+  /// question a pick asks); null when it says none.
+  static Future<int?> _sizeOf(String uri) async {
+    final size = (await _call('describeDocument', {'uri': uri}))?['size'];
+    return size is int ? size : null;
   }
 
   /// [staged] — a whole project the picker has just poured into [document]

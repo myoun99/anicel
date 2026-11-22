@@ -1481,9 +1481,9 @@ class _ImportDialogState extends State<ImportDialog> {
       final source = await FolderPicker.materializeOpenedFile(
         path,
         within: null,
-        onWaiting: (waited, quiet, {required fromTheCloud}) {
+        onWaiting: (waited, {required fromTheCloud}) {
           if (mounted) {
-            _wait.report(waited, quiet, fromTheCloud: fromTheCloud);
+            _wait.report(waited, fromTheCloud: fromTheCloud);
           }
         },
         isCancelled: _wait.isCancelled,

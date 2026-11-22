@@ -98,6 +98,14 @@ fn wide_mul_u32(a: u32, b: u32) -> Wide {
   return Wide(word, high_a * high_b + (cross >> 16u) + cross_carry + carry);
 }
 
+// The low 64 bits of a · b for a word b — the product itself while it
+// fits: the low word's product, and the high word b times over. One
+// product of words where wide_mul's four would give the same.
+fn wide_by_u32(a: Wide, b: u32) -> Wide {
+  let low = wide_mul_u32(a.x, b);
+  return Wide(low.x, low.y + a.y * b);
+}
+
 fn wide_magnitude32(a: i32) -> u32 {
   return select(bitcast<u32>(a), 0u - bitcast<u32>(a), a < 0);
 }

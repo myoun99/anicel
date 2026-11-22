@@ -7,7 +7,6 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/keyed_notices.dart';
 import '../../core/once_a_microtask.dart';
-import '../../core/signed_memo.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
@@ -2072,23 +2071,12 @@ class _TileEntry {
     if (identical(layer, next)) {
       return true;
     }
-    final differs = _agreementOf(layer, next);
+    // Every span of the row asks it of the same two instances, and the
+    // agreement keeps the pair asked last.
+    final differs = firstCellThatMayDiffer(layer, next);
     return differs == null || spanEndIndexExclusive < differs;
   }
 }
-
-/// [firstCellThatMayDiffer] of the pair a row's tiles ask about together —
-/// every span of the row asks it of the same two instances.
-int? _agreementOf(Layer baked, Layer next) => _agreements.resolve(
-  baked,
-  next,
-  () => firstCellThatMayDiffer(baked, next),
-);
-
-final SignedMemo<Layer, int?> _agreements = SignedMemo(
-  'tile agreement',
-  same: identical,
-);
 
 /// Emits the SUBSTRATE op stream for [painter]'s cells in
 /// [spanStartIndex, spanEndIndexExclusive): the paper and the frame lines

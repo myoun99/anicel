@@ -333,9 +333,22 @@ class TimelineRowRunLabelsPainter extends CustomPainter
 
   @override
   // Geometry is absent on purpose — it arrives through `repaint`.
+  //
+  // 🚨THE LAYER BY WHAT THE NUMBERS READ OF IT, never by the layer (card
+  // a-twirl-repaints-the-film-views-cut-band, 11-22): which blocks it holds
+  // ([_blocks]) — a transition row's spans here, every other row's timeline
+  // in the row's facts below, which were told apart by value already — and
+  // the colour label their ink is laid on ([inkFor]).
+  // ↩️`ByIdentity(layer)` beside them: a row's own lanes twirled make a new
+  // layer, and a storyboard's S row — built again with it — set every
+  // number of the track again, painted them and had its image taken again
+  // (🔬the whole workspace: an S row twirled four times, its band four).
   Object get props =>
       (
-        ByIdentity(layer),
+        // A span's writing is compared with its length — more than the
+        // numbers read, and nothing made to compare it.
+        layer.kind.bandIsInstructionsOnly ? ByMap(layer.instructions) : null,
+        layer.mark,
         crossAxisExtent,
         showSeconds,
         countingBase,

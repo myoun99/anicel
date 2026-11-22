@@ -54,8 +54,8 @@ impl Submits {
     }
 
     /// Notes a submit made `by` there now, with what this thread encoded
-    /// since its last ([`encoded`]): its number.
-    pub(crate) fn note(&self, by: &'static Location<'static>) -> u64 {
+    /// since its last ([`encoded`]): the submit, as it is kept.
+    pub(crate) fn note(&self, by: &'static Location<'static>) -> Submitted {
         let (dispatches, groups) = ENCODED.take();
         let at_micros = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -66,8 +66,9 @@ impl Submits {
         if kept.submits.len() == KEPT {
             kept.submits.pop_front();
         }
-        kept.submits.push_back(Submitted { number, at_micros, by, dispatches, groups, done: false });
-        number
+        let noted = Submitted { number, at_micros, by, dispatches, groups, done: false };
+        kept.submits.push_back(noted);
+        noted
     }
 
     /// The GPU said it finished the submit `number` — and so every one
@@ -133,7 +134,7 @@ mod tests {
         let submits = Submits::default();
         let before = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
         let here = Location::caller();
-        let (first, second) = (submits.note(here), submits.note(here));
+        let (first, second) = (submits.note(here).number, submits.note(here).number);
         let after = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
         let kept = submits.kept_now();
         assert_eq!((first, second), (1, 2));

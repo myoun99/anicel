@@ -394,6 +394,7 @@ void main() {
       'menu-edit-input-inspector',
       'menu-edit-frame-timing-overlay',
       'menu-edit-frame-stats',
+      'menu-edit-engine-stages',
       'menu-edit-show-repaints',
     ]) {
       expect(
@@ -408,6 +409,7 @@ void main() {
       'menu-edit-input-inspector',
       'menu-edit-frame-timing-overlay',
       'menu-edit-frame-stats',
+      'menu-edit-engine-stages',
       'menu-edit-show-repaints',
     ]) {
       expect(find.byKey(ValueKey<String>(id)), findsOneWidget, reason: id);
@@ -871,6 +873,32 @@ void main() {
     await hoverEntry(tester, 'menu-edit-debug');
     await tapEntry(tester, 'menu-edit-frame-timing-overlay');
     expect(MeasurementMode.frameTimingOverlay.value, isFalse);
+  });
+
+  testWidgets('Settings: Engine Stages brings the statistics up with it, and '
+      'turned off leaves them up', (tester) async {
+    // The stages are lines of the statistics' readout and show nowhere
+    // else (`EngineStages`): one switch asked for, both are on.
+    addTearDown(MeasurementMode.reset);
+    await pumpHome(tester);
+    expect(MeasurementMode.engineStages.value, isFalse);
+    expect(MeasurementMode.frameStats.value, isFalse);
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-edit-debug');
+    await tapEntry(tester, 'menu-edit-engine-stages');
+    expect(MeasurementMode.engineStages.value, isTrue);
+    expect(MeasurementMode.frameStats.value, isTrue);
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-edit-debug');
+    await tapEntry(tester, 'menu-edit-engine-stages');
+    expect(MeasurementMode.engineStages.value, isFalse);
+    expect(
+      MeasurementMode.frameStats.value,
+      isTrue,
+      reason: 'the statistics have a switch of their own to go by',
+    );
   });
 
   // 🚨The bars and the blend button move with what they SHOW (2026-09-26):

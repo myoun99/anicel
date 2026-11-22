@@ -109,7 +109,7 @@ void main() {
       FolderPicker.materializeOpenedFile(
         path,
         within: const Duration(milliseconds: 4200),
-        onWaiting: (waited, _, {required fromTheCloud}) => seen.add(waited),
+        onWaiting: (waited, {required fromTheCloud}) => seen.add(waited),
       ),
       throwsA(isA<FileSystemException>()),
     );
@@ -139,7 +139,7 @@ void main() {
         path,
         within: const Duration(milliseconds: 300),
         step: const Duration(milliseconds: 100),
-        onWaiting: (_, _, {required fromTheCloud}) => told += 1,
+        onWaiting: (_, {required fromTheCloud}) => told += 1,
       ),
       throwsA(isA<FileSystemException>()),
     );
@@ -162,47 +162,14 @@ void main() {
     return () => now;
   }
 
-  /// ↩️It ran 60 real milliseconds, and a busy machine spent them before
-  /// the wait's first slice — the wait ran out before it spoke, and the pin
-  /// went red with nothing seen at all (board
-  /// `the-cloud-wait-saw-pin-runs-out-before-it-speaks`).
-  test('🚨a front that reads is ARRIVING — the line counts on for it, '
-      'however long the tail takes', () async {
-    FolderPicker.debugOperatingSystem = 'windows';
-    final path = at('slowly.anicel');
-    File(path).writeAsBytesSync(const [1, 2, 3]);
-    holdTheClock();
-    FolderPicker.debugArrival = (_) async => FileArrival.partway;
-    FolderPicker.debugDownloadRequester = (_) async {};
-    final told = <({Duration waited, Duration quiet})>[];
-
-    await expectLater(
-      FolderPicker.materializeOpenedFile(
-        path,
-        within: const Duration(seconds: 30),
-        onWaiting: (waited, quiet, {required fromTheCloud}) =>
-            told.add((waited: waited, quiet: quiet)),
-      ),
-      throwsA(isA<FileSystemException>()),
-    );
-
-    expect(
-      told.last.waited,
-      greaterThan(cloudWaitSaysNothingAfter),
-      reason: '⛔premise: the wait ran past the floor',
-    );
-    expect(
-      [for (final beat in told) beat.quiet < cloudWaitSaysNothingAfter],
-      everyElement(isTrue),
-      reason: 'the line must not claim nothing arrived while it is arriving',
-    );
-  });
-
-  /// 🚨F-608 ① (2026-11-17). A probe cannot make a placeholder stop
-  /// halfway, so the arrivals are written here; what is pinned is the
-  /// clock: the quiet is counted from the last of them.
-  test('🚨the quiet is counted from the LAST arrival, not from the start of '
-      'the wait — and that is the number the stalled line says', () async {
+  /// 🪦🗣️F-608 (유저 2026-11-23, a Galaxy Tab on build 1098: 「그냥
+  /// 도착안했다고 안뜨게하는게 젤 확실할거같은데」). Here a file comes partway
+  /// for six seconds and then not at all for twenty-five — the case the
+  /// stalled words were made for, and where they were said of a file that
+  /// then opened. ↩️F-141 · F-608 ① pinned that they said it from the last
+  /// arrival; now they are not said at all.
+  test('🚨a wait counts on in its own words to the end — past ten seconds, '
+      'with nothing coming, never 「nothing has arrived」', () async {
     FolderPicker.debugOperatingSystem = 'windows';
     final path = at('stopped-halfway.anicel');
     File(path).writeAsBytesSync(const [1, 2, 3]);
@@ -211,28 +178,35 @@ void main() {
         ? FileArrival.partway
         : FileArrival.nothing;
     FolderPicker.debugDownloadRequester = (_) async {};
-    final told = <({Duration waited, Duration quiet})>[];
+    final told = <(Duration, String)>[];
 
     await expectLater(
       FolderPicker.materializeOpenedFile(
         path,
         within: const Duration(seconds: 30),
-        onWaiting: (waited, quiet, {required fromTheCloud}) =>
-            told.add((waited: waited, quiet: quiet)),
+        onWaiting: (waited, {required fromTheCloud}) => told.add((
+          waited,
+          cloudWaitLine(waited, fromTheCloud: fromTheCloud),
+        )),
       ),
       throwsA(isA<FileSystemException>()),
     );
 
-    // Probes at 0.25 · 0.75 · 1.75 · 3.75 · 5.75 s (the spacing backing off
-    // to two seconds) — the one at 5.75 s is the last that saw the front.
-    expect(told.last, (
-      waited: const Duration(milliseconds: 30750),
-      quiet: const Duration(seconds: 25),
-    ));
     expect(
-      cloudWaitLine(told.last.waited, told.last.quiet, fromTheCloud: true),
-      AppText.strings.openWaitingStalledTemplate.replaceAll('{sec}', '25'),
+      told.last.$1,
+      greaterThan(const Duration(seconds: 30)),
+      reason: '⛔premise: the wait ran on long after the last arrival',
     );
+    expect(told, [
+      for (final (waited, _) in told)
+        (
+          waited,
+          AppText.strings.openWaitingCloudTemplate.replaceAll(
+            '{sec}',
+            '${waited.inSeconds}',
+          ),
+        ),
+    ]);
   });
 
   /// 🚨★★★THE LAW ITSELF, with nothing to imitate.

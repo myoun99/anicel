@@ -101,6 +101,10 @@ libc = "0.2"
 # feature to the wgpu above, on Android only.
 [target.'cfg(target_os = "android")'.dependencies]
 wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan"] }
+# What the device says of an AHardwareBuffer's image is asked of Vulkan
+# itself (platform/android.rs, `hardware_buffer_said`); ash is wgpu-hal
+# 30's own major, as on Linux below.
+ash = "0.38"
 
 # Apple shows the engine through an IOSurface (platform/apple.rs); Cargo
 # adds Metal to the wgpu above, on Apple only. The objc2 majors are

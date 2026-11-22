@@ -247,7 +247,6 @@ void main() {
     'openProgressRunning': (s) => s.openProgressRunning,
     'openWaitingCloudTemplate': (s) => s.openWaitingCloudTemplate,
     'openWaitingReadingTemplate': (s) => s.openWaitingReadingTemplate,
-    'openWaitingStalledTemplate': (s) => s.openWaitingStalledTemplate,
     'resizeProgressRunning': (s) => s.resizeProgressRunning,
     'unsavedAutosaveTitle': (s) => s.unsavedAutosaveTitle,
     'unsavedAutosaveBody': (s) => s.unsavedAutosaveBody,

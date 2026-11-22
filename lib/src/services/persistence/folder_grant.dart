@@ -282,15 +282,41 @@ typedef WaitClock = ({
 });
 
 /// What a wait tells the window it keeps, on every beat: how long it has
-/// gone on, how long since a byte of the file last arrived, and whether
-/// the device says the file is still coming from where it is kept — the
-/// things `cloudWaitLine` says.
+/// gone on, and whether the device says the file is still coming from where
+/// it is kept — the things `cloudWaitLine` says.
+/// 🪦It told how long since a byte last came too, for the 「nothing has
+/// arrived」 words alone — gone with them (F-608, 유저 2026-11-23).
 typedef WaitReport =
-    void Function(
-      Duration waited,
-      Duration quiet, {
-      required bool fromTheCloud,
-    });
+    void Function(Duration waited, {required bool fromTheCloud});
+
+/// The reading stretch of a window's bar, across the passes a picked file's
+/// bytes make before its door has read them.
+///
+/// 🗣️THE PERCENT FOLLOWS THE BYTES (F-608-Q2) — and on Android a document
+/// with no filesystem path is copied in first (PICK-7), then read out of its
+/// working copy: two passes, each half the stretch, so the bar rises while
+/// the provider pours the bytes in and never runs back when the read
+/// begins. A file read where it lies makes one pass, the whole stretch.
+/// ↩️The copy told the bar nothing, and on a Galaxy Tab the window counted
+/// seconds with no percent till the copy was done (F-608, 유저 2026-11-23:
+/// 「퍼센테이지도안뜨고」).
+final class ReadPasses {
+  ReadPasses(this._onRead);
+
+  final void Function(double fraction)? _onRead;
+  bool _copiedIn = false;
+
+  /// How much of the copy is in, 0–1.
+  void copied(double fraction) {
+    _copiedIn = true;
+    _onRead?.call(runShare(fraction, from: 0, to: 0.5));
+  }
+
+  /// How much of the read is in, 0–1.
+  void read(double fraction) => _onRead?.call(
+    _copiedIn ? runShare(fraction, from: 0.5, to: 1) : fraction,
+  );
+}
 
 /// How a file's bytes being made into something tell how far it is: [done]
 /// steps of [of] ([FolderPicker.readOpenedFileInto]).
@@ -967,14 +993,18 @@ abstract final class FolderPicker {
   ///
   /// [step] is the PROBE spacing, named so tests can compress it — how
   /// often the file is asked, which backs off. What [onWaiting] reports is
-  /// the elapsed time and how long since a byte last ARRIVED, on its own
-  /// steady beat.
+  /// the elapsed time, on its own steady beat.
+  ///
+  /// [onCopied] hears how much of a document copied in is in, 0–1
+  /// ([ReadPasses.copied]) — only where the bytes come through a copy whose
+  /// size the provider gave.
   static Future<({String path, bool staged})> materializeOpenedFile(
     String path, {
     Duration? within = _backstop,
     Duration step = _firstStep,
     WaitReport? onWaiting,
     bool Function()? isCancelled,
+    void Function(double fraction)? onCopied,
   }) async {
     return _materialize(
       path,
@@ -984,6 +1014,7 @@ abstract final class FolderPicker {
         onWaiting: onWaiting,
         isCancelled: isCancelled,
       ),
+      onCopied,
     );
   }
 
@@ -992,6 +1023,7 @@ abstract final class FolderPicker {
   static Future<({String path, bool staged})> _materialize(
     String path,
     _Wait wait,
+    void Function(double fraction)? onCopied,
   ) async {
     // 🚨★★★ONE WAIT, ONE CLOCK, ONE CANCEL (F-135, 유저 2026-09-15: 「우선
     // 프로젝트 열 때 여는중 이라고만뜨는데」). The provider's fetch and the
@@ -1015,34 +1047,60 @@ abstract final class FolderPicker {
     // `content://` document, and the archive reader needs a file it can
     // seek in, so the bytes come into the document's working copy
     // ([ProviderDocuments]) under the same clock, the same cancel and the
-    // same arrival line as a cloud placeholder's wait: to the person
-    // watching it is the same wait. Not `staged` — the working copy is the
-    // road, not the alarmed last resort below.
+    // same line as a cloud placeholder's wait: to the person watching it is
+    // the same wait. Not `staged` — the working copy is the road, not the
+    // alarmed last resort below.
     if (ProviderDocuments.isDocumentUri(path)) {
       final copy = ProviderDocuments.copyIn(path);
-      // A copy that has moved further since the last beat is bytes
-      // ARRIVING — so the line says nothing has come only when nothing has
-      // since the last of them, not since the start (F-608 ①).
-      var moved = 0;
+      // The bar follows the bytes poured in where the provider gave the
+      // document's size (F-608, 유저 2026-11-23: 「퍼센테이지도안뜨고」).
+      // ⚠️Bytes a provider holds back till it has them all — fetched where
+      // the app cannot see — read as 0 till then: never a number it cannot
+      // know.
+      // The size is ANSWERED, not awaited: a provider asked it now answers
+      // beside the copy, under the wait and its cancel, and the bar starts
+      // once it has (board recent-drive-document-opens-without-percent).
+      // ⚠️An answer that comes after the copy is over says nothing: the
+      // read's half of the bar may have begun.
+      int? length;
+      var over = false;
+      final told = onCopied;
+      unawaited(
+        copy.length.then((size) {
+          if (over) {
+            return;
+          }
+          length = size;
+          if (size != null) {
+            told?.call(0);
+          }
+        }),
+      );
       try {
         final done = await wait.outlast(
           copy.done,
-          between: () async {
-            final now = await copy.moved();
-            if (now > moved) {
-              moved = now;
-              wait.arrived();
-            }
-          },
+          between: told == null
+              ? null
+              : () async {
+                  final of = length;
+                  if (of != null) {
+                    told(doneShare(await copy.moved(), of));
+                  }
+                },
         );
         if (!done) {
           throw FileSystemException('파일을 읽지 못했습니다', path);
         }
       } on Object {
+        over = true;
         copy.stop();
         rethrow;
       }
+      over = true;
       if (await copy.done) {
+        if (length != null) {
+          told?.call(1);
+        }
         return (path: copy.destination, staged: false);
       }
       throw FileSystemException('파일을 읽지 못했습니다', path);
@@ -1073,12 +1131,6 @@ abstract final class FolderPicker {
         final arrival = await arrivalOf(path);
         if (arrival == FileArrival.whole) {
           return (path: path, staged: false);
-        }
-        // A front that reads is a file on its way, and the placeholder
-        // tells no more of its bytes than that: it counts as arriving, so
-        // the line keeps counting for it (F-141).
-        if (arrival == FileArrival.partway) {
-          wait.arrived();
         }
       }
     }
@@ -1135,10 +1187,9 @@ abstract final class FolderPicker {
   /// not, and both of [arrivalOf]'s ends answer in 2 ms (실측 11-16 · 11-17)
   /// — so the materializer found it whole, and the download ran inside the
   /// door's own read, which no wait was watching. The bytes are the one
-  /// honest signal there, so they are read in pieces ON THE WAIT'S CLOCK,
-  /// every piece an arrival: the line says the file is coming down while it
-  /// is, and that nothing has come only when no piece has for
-  /// `cloudWaitSaysNothingAfter`.
+  /// honest signal there, so they are read in pieces ON THE WAIT'S CLOCK:
+  /// the line counts while the file comes down, and the bar follows its
+  /// pieces.
   /// 🧪Free on a file that is here: 137 MB in 4 MB pieces read in 75–115 ms
   /// against ~100 ms for one `readAsBytes` (서피스 11-17).
   ///
@@ -1148,7 +1199,8 @@ abstract final class FolderPicker {
   ///
   /// [onRead] is told how much of the file is in, as its 0–1 — before the
   /// first piece and after every one: the reading stretch of the window's
-  /// bar.
+  /// bar, shared with a provider document's copy where there is one
+  /// ([ReadPasses]).
   /// 🗣️THE PERCENT FOLLOWS THE BYTES (F-608-Q2, 유저 2026-11-17: 「그냥
   /// 통일적으로 심플하게 퍼센테이지만 근본적으로 늘면됨 … 내려받는중에
   /// 퍼센테이지가 조금이라도 안느는게 문제」). ↩️Till then a door's bar
@@ -1203,7 +1255,8 @@ abstract final class FolderPicker {
       onWaiting: onWaiting,
       isCancelled: isCancelled,
     );
-    final source = await _materialize(path, wait);
+    final passes = ReadPasses(onRead);
+    final source = await _materialize(path, wait, passes.copied);
     // The device holds it no longer: what is waited for now is the read.
     wait.fromTheCloud = false;
     final allIn = Completer<void>();
@@ -1218,10 +1271,7 @@ abstract final class FolderPicker {
         if (gaveUp) {
           return false;
         }
-        if (done > 0) {
-          wait.arrived();
-        }
-        onRead?.call(doneShare(done, of));
+        passes.read(doneShare(done, of));
         if (done >= of && !allIn.isCompleted) {
           allIn.complete();
         }
@@ -1516,9 +1566,8 @@ abstract final class FolderPicker {
 /// give, and the reason 「읽을 수 있다」 was never the right question
 /// (F-142).
 ///
-/// ⚠️[partway] is not a failure: it is a file on its way, and the wait's
-/// sentence keeps counting for it rather than claiming nothing arrived
-/// ([cloudWaitLine], F-141).
+/// ⚠️[partway] is not a failure: it is a file on its way, and the wait goes
+/// on for it.
 enum FileArrival {
   /// Not a byte of it. The placeholder exists and refuses the read it has
   /// just started.
@@ -1531,10 +1580,9 @@ enum FileArrival {
   whole,
 }
 
-/// ONE wait for a picked file: one clock, one cancel, one steady beat, and
-/// when a byte of it last arrived — for every stretch of it, from the
-/// provider's fetch to the read that brings the bytes in
-/// ([FolderPicker.readOpenedFile]).
+/// ONE wait for a picked file: one clock, one cancel, one steady beat — for
+/// every stretch of it, from the provider's fetch to the read that brings
+/// the bytes in ([FolderPicker.readOpenedFile]).
 ///
 /// 🚨★★★TWO QUESTIONS, TWO VALUES (F-141, 유저 2026-09-16: 「클라우드에서
 /// 내려받는중 표시가 1,2,3초가 아니라 1,3,5초마다? 보임」).
@@ -1546,10 +1594,10 @@ enum FileArrival {
 /// 1 · 3 · 5 · 7) as the spacing grew. The clock is the clock now, and the
 /// backoff is only the backoff.
 ///
-/// 🚨「얼마나 지났나」 and 「얼마나 조용했나」 are two more (F-608 ①,
-/// 2026-11-17): the line may say nothing has come only when nothing has
-/// since the LAST byte — a download that stopped halfway is as stuck as
-/// one that never started, and one still moving is not stuck at all.
+/// 🪦It kept when a byte last arrived too, for 「얼마나 조용했나」 (F-608 ①,
+/// 2026-11-17) — read only by the 「nothing has arrived」 words, which went
+/// (F-608, 유저 2026-11-23: 「그냥 도착안했다고 안뜨게하는게 젤
+/// 확실할거같은데」).
 final class _Wait {
   _Wait({
     required this.within,
@@ -1572,7 +1620,6 @@ final class _Wait {
   final bool Function()? isCancelled;
   final WaitClock _clock = (FolderPicker.debugWaitClock ?? _realClock)();
   Duration _pause;
-  Duration _lastArrival = Duration.zero;
 
   /// Whether the device says the file is not here yet — an iPad's provider
   /// holding the coordinated read, or a placeholder asked to come down —
@@ -1589,9 +1636,6 @@ final class _Wait {
   /// with [_maxStep]: a clock that skipped seconds is exactly what F-141
   /// reported.
   static const Duration _reportEvery = Duration(seconds: 1);
-
-  /// Bytes of the file arrived, now.
-  void arrived() => _lastArrival = _clock.elapsed();
 
   /// One tick of the wait; false once [within] has passed. A wait that has
   /// something to finish passes it as [sooner] and ends the tick early when
@@ -1619,12 +1663,7 @@ final class _Wait {
         return true;
       }
       slept += slice;
-      final waited = _clock.elapsed();
-      onWaiting?.call(
-        waited,
-        waited - _lastArrival,
-        fromTheCloud: fromTheCloud,
-      );
+      onWaiting?.call(_clock.elapsed(), fromTheCloud: fromTheCloud);
       if (slept >= _pause) {
         // Doubling, capped: the common case lands within a second or two.
         _pause = _pause * 2;

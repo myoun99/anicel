@@ -27,6 +27,7 @@ import 'src/services/persistence/app_language_settings_store.dart';
 import 'src/services/persistence/app_workspace_colors_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
+import 'src/ui/debug/engine_stages.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -204,6 +205,7 @@ Future<void> main(List<String> handedAtLaunch) async {
   // recorder is inert until the switch is on — it costs one bool per
   // frame batch.
   FrameStats.install();
+  EngineStages.install();
   RepaintCause.install();
   // Inert until `DeviceGridAudit.strict` is set — the per-frame cost while
   // it is off is one bool. HERE for the same reason as the two above: a

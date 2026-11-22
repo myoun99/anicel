@@ -206,6 +206,42 @@ abstract interface class TimelineChromeGrounds {
   List<TimelineChromeGround> under(Rect box);
 }
 
+/// A row's grounds as its chrome is handed them: [read] once a paint
+/// against the live geometry, and laid down by [laidBy] — so the grips are
+/// drawn again exactly where that painter draws again.
+///
+/// 🚨BY THE PAINTER THAT LAYS THEM DOWN, never by the reader (card
+/// a-twirl-repaints-the-film-views-cut-band, 11-22). ↩️The chrome was
+/// handed a bare reader and told two of them apart by identity — 「a fresh
+/// reader is a fresh picture of the grounds (a label set, a thumbnail
+/// arrived), and the rebuild that made it is the only one that knows」.
+/// The storyboard's cut row is built again for every edit inside a cut —
+/// its presses and its pictures are asked with the cut as it is — so a
+/// lane twirled on the camera row painted every grip of the row again, and
+/// the row's image was taken again (🔬the whole workspace, three cuts:
+/// four twirls, the V row four times — after its blocks had stopped).
+@immutable
+final class TimelineChromeGroundsOf {
+  const TimelineChromeGroundsOf({required this.read, required this.laidBy});
+
+  final TimelineChromeGrounds Function() read;
+
+  /// The painter whose paint the grounds are. Two readers answer the same
+  /// while it would not repaint ([RepaintOnProps.props], asked of both as
+  /// they are compared — what it reads live is read once for the two), and
+  /// what it is told to draw again with no build — a picture that landed, a
+  /// plate hovered — the chrome is told too: a painter is the [Listenable]
+  /// of its own `repaint`.
+  final RepaintOnProps laidBy;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TimelineChromeGroundsOf && other.laidBy.props == laidBy.props;
+
+  @override
+  int get hashCode => (TimelineChromeGroundsOf).hashCode;
+}
+
 /// [layer]'s drawing blocks as grip material. Ghost repeat instances are
 /// DERIVED, so they carry no timing grips (UI-R8); a spill-in display
 /// block's start lives in an earlier cut, so it carries no start grip
@@ -424,11 +460,19 @@ class TimelineRowChromeResolver {
   TimelineFrameGeometry? _lastGeometry;
   TimelineRowEditChromeModel? _lastModel;
 
-  /// Whether [other] would resolve the same models — the widget-level
-  /// "do I need a new resolver" test.
+  /// Whether [other] would resolve the same models — what the painter of
+  /// the row's paper asks before it draws the grips again
+  /// ([TimelineRowPaperGrips]).
+  ///
+  /// 🚨THE LAYERS BY THE CELLS THEY SHOW ([ByItsCells]), as the row's tiles
+  /// and the painter over them ask (card
+  /// a-rows-own-twirl-retakes-its-band-on-the-timeline, 11-22): the runs
+  /// and their edges are read off the blocks, and no fold of the row's.
+  /// ↩️By identity: an S row's own lanes twirled made its layer anew, and
+  /// its paper — grips and all — was painted again over tiles that stayed.
   bool matches(TimelineRowChromeResolver other) =>
-      identical(other.layer, layer) &&
-      identical(other.baseLayer, baseLayer) &&
+      ByItsCells(other.layer) == ByItsCells(layer) &&
+      ByItsCells(other.baseLayer) == ByItsCells(baseLayer) &&
       listEquals(other.gripBlocks, gripBlocks) &&
       other.gripIdScope == gripIdScope &&
       other.crossAxisExtent == crossAxisExtent &&
@@ -550,10 +594,14 @@ class TimelineRowPaperGrips {
       other.resolver.matches(resolver) &&
       identical(other.state, state) &&
       other.gripGround == gripGround &&
-      other.gripRow == gripRow;
+      // What of the row its blocks' look reads, as the chrome's own
+      // painter compares it — the row's record compared its layer whole,
+      // folds and all.
+      timelineBlockRowFacts(other.gripRow) == timelineBlockRowFacts(gripRow);
 
   @override
-  int get hashCode => Object.hash(state, gripGround, gripRow);
+  int get hashCode =>
+      Object.hash(state, gripGround, timelineBlockRowFacts(gripRow));
 }
 
 /// Holds a row's [TimelineRowGripState] for as long as the row stands: its
@@ -610,6 +658,8 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
            // Its OWN row's answers: a block that turns empty turns its
            // grips grey (I-129), as its number.
            ?_rowContentRepaint(gripRow),
+           // The grounds it stands on, drawn again with no build.
+           ?gripGrounds?.laidBy,
          ]),
        );
 
@@ -668,7 +718,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
 
   /// Where the grips stand on more than [gripGround], read once a paint
   /// against the live geometry ([TimelineRowEditChromeLayer.gripGrounds]).
-  final TimelineChromeGrounds Function()? gripGrounds;
+  final TimelineChromeGroundsOf? gripGrounds;
 
   /// The row whose blocks the grips stand on
   /// ([TimelineRowEditChromeLayer.gripRow]).
@@ -736,7 +786,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       );
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
-    final grounds = gripGrounds?.call();
+    final grounds = gripGrounds?.read();
     for (final target in model.targets.where((target) => shows(target.rect))) {
       switch (target) {
         case TimelineRowGripTarget() when !gripsOnPaper:
@@ -848,9 +898,8 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       operatingId,
       draggingGripId,
       gripGround,
-      // By identity: a fresh reader is a fresh picture of the grounds (a
-      // label set, a thumbnail arrived), and the rebuild that made it is
-      // the only one that knows.
+      // By the painter that lays them down ([TimelineChromeGroundsOf]) — a
+      // picture that landed arrives through `repaint`.
       gripGrounds,
       timelineBlockRowFacts(gripRow),
       devicePixelRatio,
@@ -985,7 +1034,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// Where the grips stand on more than [gripGround] — null on a row of
   /// one colour. The storyboard's cut row hands its label bands and its
   /// pictures here, over the plate its [gripGround] is.
-  final TimelineChromeGrounds Function()? gripGrounds;
+  final TimelineChromeGroundsOf? gripGrounds;
 
   /// The row whose blocks the grips stand on, as its blocks are drawn —
   /// a grip on a hidden row's block is dimmed with it, one on an empty

@@ -1,7 +1,11 @@
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../../core/signed_memo.dart';
+import '../../models/camera_row_reach.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/fx_plugin_description.dart';
+import '../../models/lane_key_walk.dart' show filmKeyFrames;
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -154,6 +158,7 @@ final class KeptStoryboardLanes {
   final Project Function() project;
   final KeptLaneLists<_LaneOwner> _lists = KeptLaneLists();
   final Map<TrackId, Layer> _carriers = {};
+  final Map<({TrackId track, LayerId row}), FilmLaneKeys> _film = {};
   List<Track>? _tracks;
 
   /// Lets go of every track [project] no longer holds.
@@ -166,6 +171,7 @@ final class KeptStoryboardLanes {
     final live = {for (final track in tracks) track.id};
     _lists.keepWhere((owner) => live.contains(owner.track));
     _carriers.removeWhere((id, _) => !live.contains(id));
+    _film.removeWhere((owner, _) => !live.contains(owner.track));
   }
 
   /// The layer [track]'s V row wears its own lanes on, on this rail — its
@@ -182,6 +188,17 @@ final class KeptStoryboardLanes {
         frames: const [],
       ),
     );
+  }
+
+  /// The keys of [track]'s projection row [row] on the film — every cut's
+  /// ([FilmLaneKeys]) — read off each cut with [read]: what its lane
+  /// labels' arrows walk (F-625). One per row while the track stands.
+  FilmLaneKeys filmKeys(Track track, LayerId row, ProjectionKeysRead read) {
+    _standOn();
+    return _film.putIfAbsent(
+      (track: track.id, row: row),
+      FilmLaneKeys.new,
+    ).._read = read;
   }
 
   /// [track]'s fx chain's lanes ([trackEffectLanes]).
@@ -277,4 +294,75 @@ final class KeptStoryboardLanes {
     ]),
     ByIdentity(reads.outcomes),
   );
+}
+
+/// What a projection row's keys are read off a cut with: the layer the row
+/// shows of it, and that layer's lanes there — every one, whatever the
+/// twirls (the rail's `_ProjectionLanes`, the two its strips read too).
+typedef ProjectionKeysRead = ({
+  Layer? Function(Cut cut) layerOf,
+  List<PropertyLaneRow> Function(Cut cut, Layer layer) lanesOf,
+});
+
+/// A PROJECTION ROW'S KEYS ON THE FILM (F-625): each cut's own keyed
+/// frames by lane, and the track frames the row draws a lane's keys at
+/// over all its cuts — what that lane's label walks with its arrows.
+///
+/// 🚨Read at every pass of the rail, for every lane label it shows, over
+/// EVERY cut of the track — so nothing of it is read anew:
+/// - while the track's cuts lie alike ([CameraRowReach.==], the cut by
+///   identity — what the camera row itself is kept while, I-57) no lane
+///   is walked again: one comparison of the reaches a pass, where each
+///   lane asked every cut for its keys;
+/// - a cut's keys are read once while the cut is the same OBJECT (an edit
+///   makes a new cut of the one it touched and hands the rest back), and
+///   a lane's keyed frames are the cut's alone — this device's plugins
+///   grey a header and never take a key (`effectPropertyLanes`);
+/// - a lane's frames are handed back — the SAME list — while they are the
+///   same frames, so the label kept by them (`LaneKeyWalk.frames`, a fact
+///   by identity) is kept through every edit that moved none of its keys,
+///   and asked again by one that did, in whichever cut.
+final class FilmLaneKeys {
+  late ProjectionKeysRead _read;
+  final Expando<Map<String, Set<int>>> _own = Expando('film lane keys');
+  final Map<String, List<int>> _frames = {};
+
+  /// The reaches [_frames] was last read over, and the lanes read over
+  /// them since they last lay otherwise.
+  List<CameraRowReach>? _over;
+  final Set<String> _current = {};
+
+  /// [cut]'s own keyed frames of the row's lane [laneId] — none where the
+  /// cut holds no row there, or the row no such lane.
+  Set<int> ownKeysOf(Cut cut, String laneId) =>
+      (_own[cut] ??= _readOff(cut))[laneId] ?? const {};
+
+  Map<String, Set<int>> _readOff(Cut cut) {
+    final layer = _read.layerOf(cut);
+    return {
+      if (layer != null)
+        for (final lane in _read.lanesOf(cut, layer))
+          if (!lane.isGroupHeader) lane.laneId: lane.keyedFrames,
+    };
+  }
+
+  /// The track frames the row draws a key of [laneId] at over [reaches]
+  /// ([filmKeyFrames]), ascending — the same list while they are the same,
+  /// and unread while [reaches] lie as they did.
+  List<int> framesOf(String laneId, List<CameraRowReach> reaches) {
+    if (!identical(reaches, _over)) {
+      if (!listEquals(reaches, _over)) {
+        _current.clear();
+      }
+      _over = reaches;
+    }
+    if (!_current.add(laneId)) {
+      return _frames[laneId]!;
+    }
+    final frames = filmKeyFrames(reaches, (cut) => ownKeysOf(cut, laneId));
+    final kept = _frames[laneId];
+    return kept != null && listEquals(kept, frames)
+        ? kept
+        : _frames[laneId] = frames;
+  }
 }

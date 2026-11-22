@@ -2,10 +2,11 @@
 /// empty space between them is carried along rather than eaten.
 ///
 /// This is one rule for two axes. A layer row's blocks are its exposures
-/// and the anchor is a frame; a track row's blocks are its cuts and the
-/// anchor is a cut boundary. What differs is only what the shift is written
-/// back as — re-keyed exposures on one, leading gaps on the other — so the
-/// arithmetic lives here and the two commits stay thin.
+/// and a track row's blocks are its cuts; the anchor is a FRAME on both
+/// (↩️a cut on the track row, until F-626 — [shoveCarries]). What differs is
+/// only what the shift is written back as — re-keyed exposures on one,
+/// leading gaps on the other — so the arithmetic lives here and the two
+/// commits stay thin.
 ///
 /// It is deliberately NOT what a drag does. A drag that shoved everything
 /// after it made one selected block and five selected blocks the same
@@ -22,6 +23,18 @@ import 'timeline_exposure.dart';
 /// One block on a row's index axis, as PUSH/PULL sees it.
 typedef ShiftableBlock = ({int startIndex, int endIndexExclusive});
 
+/// Whether a shove from [anchorIndex] carries the block that starts at
+/// [startIndex]: the ones AT or after it travel. The anchor is a BOUNDARY
+/// (design D) — a block that began before it stays put, straddling it or
+/// not, because splitting one would not be a rigid move.
+///
+/// The one place that says so: the slack, the re-keyed exposures and the cut
+/// whose leading gap carries a track's run all ask here. ↩️Each wrote the
+/// comparison out, and the cut row had none — its anchor was a cut, so in
+/// empty space there was nothing to ask (F-626).
+bool shoveCarries(int startIndex, {required int anchorIndex}) =>
+    startIndex >= anchorIndex;
+
 /// How far a PULL from [anchorIndex] can travel before the first moved
 /// block touches whatever sits behind it. Zero when they already touch;
 /// unbounded rows (nothing before the anchor) clamp at frame 0.
@@ -36,7 +49,7 @@ int rowPullSlack({
   int? firstMovedStart;
   var lastStillEnd = 0;
   for (final block in blocks) {
-    if (block.startIndex >= anchorIndex) {
+    if (shoveCarries(block.startIndex, anchorIndex: anchorIndex)) {
       firstMovedStart ??= block.startIndex;
       continue;
     }
@@ -66,7 +79,9 @@ SplayTreeMap<int, TimelineExposure> timelineShiftedFrom(
   }
   final shifted = SplayTreeMap<int, TimelineExposure>();
   for (final entry in timeline.entries) {
-    final key = entry.key >= anchorIndex ? entry.key + delta : entry.key;
+    final key = shoveCarries(entry.key, anchorIndex: anchorIndex)
+        ? entry.key + delta
+        : entry.key;
     if (key < 0) {
       throw ArgumentError('Shift moves a block before frame 0.');
     }

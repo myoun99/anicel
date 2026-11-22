@@ -454,6 +454,51 @@ class GpuEngine {
     return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
   });
 
+  /// Times this engine from here on, or no longer (rust/src/took.rs):
+  /// while it is, each body handed to its thread and each submit is timed
+  /// by where in the engine it was made ([took]). ⚠️A timed engine waits
+  /// out each submit where it makes it, so that the GPU's time is that
+  /// submit's and no other's: its frames are the sum of their parts, and
+  /// longer than an untimed engine's. Asked for what it is already, it
+  /// keeps what it has.
+  void timesItsPlaces(bool timed) => rust.engineTimed(_engine, timed);
+
+  /// What each place of this engine took since this was last asked
+  /// ([GpuPlaceTook]) — none while it is not timed ([timesItsPlaces]).
+  /// Asks nothing of the engine's thread or the device.
+  List<GpuPlaceTook> took() => using((arena) {
+    const capacity = 16384;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.engineTook(_engine, buffer, capacity);
+    final count = length < capacity ? length : capacity;
+    return placesTook(
+      utf8.decode(buffer.asTypedList(count), allowMalformed: true),
+    );
+  });
+
+  /// The places [told] says took anything, as the engine tells them a
+  /// line each (rust/src/took.rs, `Took::told`): what [took] reads.
+  @visibleForTesting
+  static List<GpuPlaceTook> placesTook(String told) => [
+    for (final line in told.split('\n'))
+      if (_placeTook.firstMatch(line) case final said?)
+        (
+          gpu: said[1] == 'gpu',
+          place: said[2]!,
+          times: int.parse(said[3]!),
+          micros: int.parse(said[4]!),
+          longest: int.parse(said[5]!),
+          groups: int.parse(said[6]!),
+        ),
+  ];
+
+  /// A line of what the engine's places took. One cut short by the
+  /// buffer's room is no line.
+  static final RegExp _placeTook = RegExp(
+    r'^(cpu|gpu) (.+:\d+) times=(\d+) micros=(\d+) longest=(\d+) '
+    r'groups=(\d+)$',
+  );
+
   /// Test seam: the error the device raised that no job has been refused
   /// by yet, or null — taken, so no job is refused by it after. An error
   /// on a way that never waits is told to no one, and a test asks as it
@@ -784,6 +829,23 @@ final int gpuTileBytes = gpuTileSide * gpuTileSide * 4;
 
 /// Where a [GpuPool] keeps a tile: a slot of one of its pages.
 typedef GpuTile = ({int page, int slot});
+
+/// What one place of the engine took since it was last asked
+/// ([GpuEngine.took]): whose time it is — the [gpu]'s, of the submits
+/// made there, each waited out where it was made; else the engine's
+/// thread's, in the bodies handed over there, less their waits for the
+/// GPU —, the [place] (`file:line` in the engine's sources), how many
+/// [times], their [micros]econds in all and the [longest] of them, and
+/// the workgroups its submits dispatched in all ([groups]; none for a
+/// body).
+typedef GpuPlaceTook = ({
+  bool gpu,
+  String place,
+  int times,
+  int micros,
+  int longest,
+  int groups,
+});
 
 /// What the OS says of this process's use of an engine's adapter, in
 /// bytes: of its local video memory (`used`), the budget it gives the
@@ -5984,6 +6046,18 @@ class GpuWindow extends GpuTarget {
   /// screen's frame is (`ScreenTexture.present`); where it fails, the
   /// next done fails by it.
   void present() => rust.windowPresent(_engine._engine, _window);
+
+  /// 🔬What the window says of itself, a line each
+  /// (rust/src/platform/android.rs, `Window::said`): what the device said,
+  /// as the window was made, of an image made of an AHardwareBuffer —
+  /// `ahb storage … color …`. Read with no hand on the device.
+  String get said => using((arena) {
+    const capacity = 1024;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.windowSaid(_window, buffer, capacity);
+    final count = length < capacity ? length : capacity;
+    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  });
 
   /// Frees the swapchain, then Flutter's producer: the window it presents
   /// into must outlive it.

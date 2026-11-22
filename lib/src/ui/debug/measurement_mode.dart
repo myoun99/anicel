@@ -93,6 +93,18 @@ abstract final class MeasurementMode {
     startWithFrameStats,
   );
 
+  /// The engine's work place by place, under the frame statistics'
+  /// lines (Settings ▸ Debug ▸ Engine Stages). See `EngineStages`.
+  ///
+  /// A switch of its own, beside [frameStats] and not a part of it: a
+  /// timed engine waits out each submit where it makes it
+  /// (rust/src/took.rs), so its frames are longer than the ones
+  /// [frameStats] reads with this off — the instrument is in its own
+  /// number, which those lines never were.
+  static final ValueNotifier<bool> engineStages = ValueNotifier<bool>(
+    startWithEngineStages,
+  );
+
   /// Tints a surface every time it is BAKED (Settings ▸ Show Repaints).
   ///
   /// The fifth switch, and the one two mature apps decided they could not
@@ -134,6 +146,15 @@ abstract final class MeasurementMode {
     'QA_SHOW_REPAINTS',
   );
 
+  /// Seeds [engineStages]:
+  ///
+  /// ```
+  /// flutter run --dart-define=QA_ENGINE_STAGES=true
+  /// ```
+  static const bool startWithEngineStages = bool.fromEnvironment(
+    'QA_ENGINE_STAGES',
+  );
+
   /// Seeds [frameStats]:
   ///
   /// ```
@@ -161,6 +182,7 @@ abstract final class MeasurementMode {
   static void reset() {
     frameTimingOverlay.value = startWithFrameTimingOverlay;
     frameStats.value = startWithFrameStats;
+    engineStages.value = startWithEngineStages;
     showRepaints.value = startWithShowRepaints;
   }
 }
