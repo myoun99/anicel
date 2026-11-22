@@ -24,7 +24,7 @@ use std::{
     os::windows::fs::OpenOptionsExt as _,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use parking_lot::RwLock;
@@ -62,6 +62,18 @@ const TURN_STANDS: Duration = Duration::from_secs(30);
 
 /// How long a compile waits between two looks at another's turn.
 const TURN_LOOK: Duration = Duration::from_millis(10);
+
+/// How long a compile waits for another's turn before it says so on stderr
+/// ([`say_waiting`]) — once a turn, and again as the wait ends.
+///
+/// 🧭an-engine-setup-hangs-in-a-batch (2026-11-23): an engine test's setUpAll
+/// stood twelve minutes in a bundled run, its own CPU next to idle while
+/// other test processes kept the machine busy, and never stood alone. A
+/// test opens and compiles on its own isolate, so a wait here holds that
+/// isolate inside the call and no Dart timeout speaks: what the process
+/// writes to stderr is what such a run leaves. ⚠️Said, not changed: how
+/// long a turn is waited for is [`TURN_STANDS`]'s, as before.
+const TURN_SAID: Duration = Duration::from_secs(10);
 
 /// `FILE_FLAG_DELETE_ON_CLOSE`: a turn's file goes when its holder lets go
 /// of it — closing it, or ending, however it ends.
@@ -182,6 +194,8 @@ impl CompileCache {
         if let Some(kept) = self.read(made, asked) {
             return Turn::Kept(kept);
         }
+        let started = Instant::now();
+        let mut said = false;
         let held = loop {
             let taken = fs::File::options()
                 .write(true)
@@ -189,11 +203,19 @@ impl CompileCache {
                 .custom_flags(GOES_WITH_ITS_HOLDER)
                 .open(&turn);
             match taken {
-                Ok(held) => break Some(held),
+                Ok(mut held) => {
+                    // Whose it is, for whoever waits on it (`say_waiting`).
+                    let _ = held.write_all(std::process::id().to_string().as_bytes());
+                    break Some(held);
+                }
                 Err(error)
                     if error.kind() == ErrorKind::AlreadyExists && held_for(&turn, TURN_STANDS) =>
                 {
                     self.waited[made as usize].fetch_add(1, Ordering::Relaxed);
+                    if !said && started.elapsed() >= TURN_SAID {
+                        said = true;
+                        say_waiting(&turn, started.elapsed(), "and waits on");
+                    }
                     std::thread::sleep(TURN_LOOK);
                 }
                 // A turn its holder never let go of, a turn going this very
@@ -204,6 +226,10 @@ impl CompileCache {
                 Err(_) => break None,
             }
         };
+        if said {
+            let then = if held.is_some() { "and took it" } else { "and compiles past it" };
+            say_waiting(&turn, started.elapsed(), then);
+        }
         // Kept by the turn's last holder: handed, and the turn let go here.
         match self.read(made, asked) {
             Some(kept) => Turn::Kept(kept),
@@ -293,6 +319,23 @@ fn held_for(path: &Path, stands: Duration) -> bool {
         return true;
     };
     taken.elapsed().map_or(true, |age| age < stands)
+}
+
+/// Says on stderr that this process has waited `waited` for the turn at
+/// `path`, `then` what it does: whose the turn is, as its holder wrote it,
+/// and how long ago that was ([`TURN_SAID`]).
+fn say_waiting(path: &Path, waited: Duration, then: &str) {
+    let holder = fs::read_to_string(path).unwrap_or_default();
+    let holder = if holder.trim().is_empty() { "unsaid" } else { holder.trim() };
+    let taken = fs::metadata(path).and_then(|meta| meta.modified()).ok();
+    let age = taken.and_then(|taken| taken.elapsed().ok());
+    std::eprintln!(
+        "anicel compile cache: process {} waited {:.1} s for the turn {:?}, held by process {holder} {} ago, {then}",
+        std::process::id(),
+        waited.as_secs_f64(),
+        path.file_name().unwrap_or_default(),
+        age.map_or_else(|| "gone".into(), |age| alloc::format!("{:.1} s", age.as_secs_f64())),
+    );
 }
 
 /// Deletes the files of `folder` used longest ago till it holds no more
