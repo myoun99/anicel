@@ -774,11 +774,30 @@ void main() {
         scaleLinked: false,
         description: 'Set',
       );
+      session.laneVerbs.setLaneValueAt(
+        const LayerId('c-cam'),
+        'scale',
+        0,
+        '110',
+        frameIsGlobal: false,
+        scaleLinked: false,
+        description: 'Set',
+      );
       await tester.pumpAndSettle();
+      expect(scaleKeysOf(session, const CutId('c')), [0, 4], reason: '⛔전제');
+
+      // The gap's last frame: the key on the frame after it is the next —
+      // a gap's standing is the playhead's frame itself.
+      session.selectGlobalFrame(51);
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, isNull, reason: '⛔전제: a gap');
+      await press(tester, 'next', 'scale');
+      expect(stood(session), (const CutId('c'), 0), reason: '↩️(c, 4)');
+
       session.selectGlobalFrame(50);
       await tester.pumpAndSettle();
       expect(session.activeCutId, isNull, reason: '⛔전제: a gap');
-      expect(lit(tester, 'next', 'scale'), isTrue, reason: '⛔전제: c\'s 4');
+      expect(lit(tester, 'next', 'scale'), isTrue, reason: '⛔전제: c\'s 0');
 
       // Past the last cut: a gap still, with c's key behind it now.
       session.selectGlobalFrame(70);

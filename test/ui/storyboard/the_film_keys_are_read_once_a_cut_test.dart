@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/camera_row_reach.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -112,6 +114,33 @@ void main() {
     expect(r.reads(), 3);
   });
 
+  test('🚨while the cuts lie alike no lane is walked again, pass after '
+      'pass — and each is walked once when a cut moved', () {
+    final a = cutOf('a', 24, [0, 12]);
+    final b = cutOf('b', 24, [2]);
+    final film = filmOf([a, b]);
+    final r = rail(film);
+    final first = _Walked(reachesOf(film));
+    final scale = r.keys().framesOf('scale', first);
+    r.keys().framesOf('position', first);
+    r.keys().framesOf('scale', first);
+    expect(first.walks, 2, reason: '⛔전제: once a lane');
+
+    // The next pass: the same cuts laid alike, in a list of its own.
+    final again = _Walked(reachesOf(film));
+    expect(again, isNot(same(first)), reason: '⛔전제');
+    expect(r.keys().framesOf('scale', again), same(scale));
+    r.keys().framesOf('position', again);
+    expect(again.walks, 0);
+
+    final pushed = filmOf([a, b.copyWith(leadingGapFrames: 5)]);
+    r.stand(pushed);
+    final moved = _Walked(reachesOf(pushed));
+    expect(r.keys().framesOf('scale', moved), [0, 12, 31]);
+    r.keys().framesOf('scale', moved);
+    expect(moved.walks, 1);
+  });
+
   test('🚨an edit reads the one cut it made anew — and a lane whose keys it '
       'did not move keeps its list', () {
     final a = cutOf('a', 24, [0, 12]);
@@ -169,4 +198,33 @@ void main() {
       isEmpty,
     );
   });
+}
+
+/// A track's reaches that count the times they are walked whole — a
+/// lane's frames read off every cut. Comparing two of them walks
+/// neither (`listEquals` asks by index).
+final class _Walked extends ListBase<CameraRowReach> {
+  _Walked(this._of);
+
+  final List<CameraRowReach> _of;
+  int walks = 0;
+
+  @override
+  int get length => _of.length;
+
+  @override
+  set length(int _) => throw UnsupportedError('fixed');
+
+  @override
+  CameraRowReach operator [](int index) => _of[index];
+
+  @override
+  void operator []=(int index, CameraRowReach value) =>
+      throw UnsupportedError('fixed');
+
+  @override
+  Iterator<CameraRowReach> get iterator {
+    walks += 1;
+    return _of.iterator;
+  }
 }

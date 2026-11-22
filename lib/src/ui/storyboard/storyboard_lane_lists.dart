@@ -309,7 +309,11 @@ typedef ProjectionKeysRead = ({
 /// over all its cuts — what that lane's label walks with its arrows.
 ///
 /// 🚨Read at every pass of the rail, for every lane label it shows, over
-/// EVERY cut of the track — so neither half is read anew:
+/// EVERY cut of the track — so nothing of it is read anew:
+/// - while the track's cuts lie alike ([CameraRowReach.==], the cut by
+///   identity — what the camera row itself is kept while, I-57) no lane
+///   is walked again: one comparison of the reaches a pass, where each
+///   lane asked every cut for its keys;
 /// - a cut's keys are read once while the cut is the same OBJECT (an edit
 ///   makes a new cut of the one it touched and hands the rest back), and
 ///   a lane's keyed frames are the cut's alone — this device's plugins
@@ -322,6 +326,11 @@ final class FilmLaneKeys {
   late ProjectionKeysRead _read;
   final Expando<Map<String, Set<int>>> _own = Expando('film lane keys');
   final Map<String, List<int>> _frames = {};
+
+  /// The reaches [_frames] was last read over, and the lanes read over
+  /// them since they last lay otherwise.
+  List<CameraRowReach>? _over;
+  final Set<String> _current = {};
 
   /// [cut]'s own keyed frames of the row's lane [laneId] — none where the
   /// cut holds no row there, or the row no such lane.
@@ -338,8 +347,18 @@ final class FilmLaneKeys {
   }
 
   /// The track frames the row draws a key of [laneId] at over [reaches]
-  /// ([filmKeyFrames]), ascending — the same list while they are the same.
+  /// ([filmKeyFrames]), ascending — the same list while they are the same,
+  /// and unread while [reaches] lie as they did.
   List<int> framesOf(String laneId, List<CameraRowReach> reaches) {
+    if (!identical(reaches, _over)) {
+      if (!listEquals(reaches, _over)) {
+        _current.clear();
+      }
+      _over = reaches;
+    }
+    if (!_current.add(laneId)) {
+      return _frames[laneId]!;
+    }
     final frames = filmKeyFrames(reaches, (cut) => ownKeysOf(cut, laneId));
     final kept = _frames[laneId];
     return kept != null && listEquals(kept, frames)
