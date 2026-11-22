@@ -265,21 +265,13 @@ class _CanvasPanelViewport {
       return;
     }
     final previous = _editorViewportSize;
-    final insets = _state._framingInsets;
-    // Both windows measured with the SAME cover, so the delta below is the
-    // BOX's doing and nothing else. A cover that changed at the same time
-    // is deliberately not counted — see [_reanchorAfterBoxChange].
-    final before = previous == null
-        ? null
-        : canvasVisibleRect(previous, insets);
     _editorViewportSize = size;
-    final after = canvasVisibleRect(size, insets);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_state.mounted) {
         return;
       }
-      if (before != null) {
-        _reanchorAfterBoxChange(before, after);
+      if (previous != null) {
+        _reanchorAfterBoxChange(previous, size);
       }
       // Another window holds the view elsewhere (F-201).
       _holdTheStoredView();
@@ -315,12 +307,27 @@ class _CanvasPanelViewport {
   /// followed the centre, with no word of why, and a docked panel paid a pan
   /// on every frame its height changed — a rail scrolled over it, a
   /// splitter dragged.
-  void _reanchorAfterBoxChange(Rect before, Rect after) {
+  ///
+  /// The delta is the BOX's doing and nothing else: half of what its size
+  /// changed by, which is what the centre of the window you look through
+  /// moves by too while the cover fits in the box — the cover is on both
+  /// sides of the subtraction and falls out. ↩️It was taken from the two
+  /// windows, both laid with the cover of the moment (08-06 – 11-22) — the
+  /// NEW size's, as the box is laid: where that cover is wider than the
+  /// size left behind, [canvasVisibleRect] keeps a pixel of its window at
+  /// the leading edge, and that centre moved by what the cover did as well.
+  /// 🔬A phone's floor turned and back, 1080×2424 at 2.625
+  /// (the-view-stays-moved-after-the-screen-turns-and-back, 2026-11-22):
+  /// turned, the left cover (369.5) is wider than the upright box (315.4);
+  /// upright, the top and bottom ones (482.7) are taller than the turned
+  /// box (363.4) — so the two turns did not cancel and the view came back
+  /// 279 device pixels left and 158 up.
+  void _reanchorAfterBoxChange(Size before, Size after) {
     if (!_state._onFloor) {
       return;
     }
-    final dx = after.center.dx - before.center.dx;
-    final dy = after.center.dy - before.center.dy;
+    final dx = (after.width - before.width) / 2;
+    final dy = (after.height - before.height) / 2;
     if (dx == 0 && dy == 0) {
       return;
     }

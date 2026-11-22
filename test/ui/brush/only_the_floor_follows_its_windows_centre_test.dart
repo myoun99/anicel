@@ -82,4 +82,38 @@ void main() {
     expect(view.value!.panX, closeTo(stood.panX, 1e-6));
     expect(view.value!.panY, isNot(closeTo(stood.panY, 1e-6)));
   });
+
+  // the-view-stays-moved-after-the-screen-turns-and-back (2026-11-22): a
+  // phone's screen turned and back puts the floor's view back where it
+  // stood — its covers wider than the box it left, each way.
+  testWidgets('the floor turned and back stands where it stood', (
+    tester,
+  ) async {
+    const upright = Size(1080, 2424);
+    tester.view.devicePixelRatio = 2.625;
+    tester.view.physicalSize = upright;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pumpAndSettle();
+    final floor = find.byType(MainCanvasBrushHost);
+    final view = panelIn(tester, floor).viewportController!;
+    view.value = (view.value ?? CanvasViewport()).translated(dx: 7, dy: 11);
+    await tester.pump();
+    final stood = view.value!;
+
+    tester.view.physicalSize = Size(upright.height, upright.width);
+    await tester.pumpAndSettle();
+    expect(
+      view.value!.panX,
+      isNot(closeTo(stood.panX, 1e-6)),
+      reason: '⛔premise: turned, the view followed the centre',
+    );
+    tester.view.physicalSize = upright;
+    await tester.pumpAndSettle();
+
+    expect(view.value!.panX, closeTo(stood.panX, 1e-6));
+    expect(view.value!.panY, closeTo(stood.panY, 1e-6));
+  });
 }
