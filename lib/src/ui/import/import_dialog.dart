@@ -2202,8 +2202,8 @@ class _ImportDialogState extends State<ImportDialog> {
       return _placeThrough(into, path, kind, tally, fileReport);
     }
     final pieces = into.session.trimmedPieces;
-    // Named from its start, as what the piece is: a sound's or a page
-    // range's cut says nothing until it is done (F-494).
+    // Named from its start, as what the piece is: a sound's cut says
+    // nothing until it is done (F-494).
     final cut = TrimmedPieces.pieceKindOf(kind, settings.movieParts);
     fileReport.cutting(0, cut);
     final pull = _fitted[path] ?? noPull;
@@ -2561,8 +2561,9 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// [path] cut into its piece for the pool, [told] how far from the cut's
-  /// start on — a sound's or a page range's cut says nothing until it is
-  /// done, and the window names it all the same (F-494). The piece's path,
+  /// start on — a sound's cut says nothing until it is done, and the window
+  /// names it all the same (F-494); a page range's tells how far PDFium has
+  /// read the file ([PdfRenderService.pagesKept]). The piece's path,
   /// or null when it would not cut.
   Future<String?> _cutForThePool(
     String path,

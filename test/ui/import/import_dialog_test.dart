@@ -1308,8 +1308,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     final lines = watchTheLine(tester);
     await pumpPastTheWaitWindow(tester);
-    // 🗣️F-494: the cut named from its start — a page range's says nothing
-    // until it is done — then the piece's door, as a whole file's.
+    // 🗣️F-494: the cut named from its start, then the piece's door, as a
+    // whole file's.
     expect(lines, [
       '',
       AppText.strings.imStepWritingSpan,
@@ -1367,6 +1367,61 @@ void main() {
       File(piecePath).existsSync(),
       isFalse,
       reason: 'the file the door read is gone — the staged copy is the only one',
+    );
+  });
+
+  testWidgets("🗣️decoder-reads-skip-the-percent: a PDF's page range tells "
+      'how far its cut has read the file — PDFium reads it once, as it opens '
+      'it to cut (유저 11-23 「당연히 넣어야하는거아니야?」)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return normalizedMediaPath(file.path);
+    });
+    PdfRenderService.debugOpenerOverride =
+        (source, {void Function(double fraction)? onRead}) async {
+      onRead?.call(0.5);
+      onRead?.call(1);
+      return FakePdfDocument(
+        pageSizes: List.filled(
+          source.wholeFilePath == pdfPath ? 5 : 2,
+          const ui.Size(595, 842),
+        ),
+      );
+    };
+    PdfRenderService.debugPageSpanOverride = (path, first, count) async =>
+        Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
+    await keepImportSpan(tester, 3, 4);
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final counted = watchTheBar(tester);
+    await pumpPastTheWaitWindow(tester);
+    await settleAsync(
+      tester,
+      () => s.repository.requireProject().tracks.first.cuts.any(
+        (cut) => cut.name == 'conte_3-4',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      counted,
+      contains(closeTo(1 / 8, 1e-9)),
+      reason: "half the cut's read, of the cut's quarter of the file: "
+          '$counted',
     );
   });
 

@@ -6,6 +6,7 @@ import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../../core/made_once.dart';
 import '../../core/progress_share.dart';
+import '../../models/kept_span.dart';
 import '../flutter_test_run.dart';
 import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
@@ -196,45 +197,83 @@ abstract final class PdfRenderService {
     }
   }
 
-  /// Test seam for [pageSpan], for the same reason as [debugOpenerOverride]:
-  /// flutter_tester never loads PDFium.
+  /// Test seam for [pagesKept]'s pages, for the same reason as
+  /// [debugOpenerOverride]: flutter_tester never loads PDFium. The pages are
+  /// counted through [open], as the fake documents are.
   static Future<Uint8List?> Function(String path, int first, int count)?
   debugPageSpanOverride;
 
-  /// Pages [first] .. [first] + [count] - 1 of [path] as a PDF of their
-  /// own — what a trimmed PDF is carried as (유저 2026-09-23: 자른 구간만
-  /// 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」). Null when
-  /// the renderer is absent.
+  /// The pages [keep] answers for out of [path]'s page count, as a PDF of
+  /// their own — what a trimmed PDF is carried as (유저 2026-09-23: 자른
+  /// 구간만 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」) —
+  /// and the span they are. Null when the renderer is absent, or [keep]
+  /// keeps nothing.
+  ///
+  /// The file is opened ONCE, [onRead] told how far PDFium read it as it
+  /// opened ([PdfOpeningReads]): the cut's own share of the window's
+  /// percent. ↩️It was opened twice — once to count its pages, once to cut
+  /// them — each read of the whole file unseen by the window
+  /// (decoder-reads-skip-the-percent, 11-24).
   ///
   /// ⚠️The pages are PDFium's own objects moved into a new document, never
   /// pictures of them: a conte page stays vector, and a page that renders
   /// sharp at any zoom in the original renders sharp in its piece.
-  static Future<Uint8List?> pageSpan(
-    String path, {
-    required int first,
-    required int count,
+  static Future<({Uint8List bytes, KeptSpan kept})?> pagesKept(
+    String path,
+    KeptSpan? Function(int pageCount) keep, {
+    void Function(double fraction)? onRead,
   }) async {
     final override = debugPageSpanOverride;
     if (override != null) {
-      return override(path, first, count);
+      return _pagesKeptByTheSeams(path, keep, override, onRead);
     }
     if (!await ensureAvailable()) {
       return null;
     }
-    final source = await _openWindowed(MediaFileBytes(path), null);
+    final source = await _openWindowed(MediaFileBytes(path), onRead);
     try {
+      final kept = keep(source.pages.length);
+      if (kept == null) {
+        return null;
+      }
       final piece = await pdfrx.PdfDocument.createNew(sourceName: path);
       try {
-        piece.pages = source.pages.sublist(first, first + count);
+        piece.pages = source.pages.sublist(kept.first, kept.first + kept.count);
         // Encoding assembles the piece first, while [source] — whose pages
         // it is borrowing — is still open.
-        return await piece.encodePdf();
+        return (bytes: await piece.encodePdf(), kept: kept);
       } finally {
         await piece.dispose();
       }
     } finally {
       await source.dispose();
     }
+  }
+
+  /// [pagesKept] with no PDFium: the pages counted by the test opener
+  /// ([open]), cut by [cut] ([debugPageSpanOverride]).
+  static Future<({Uint8List bytes, KeptSpan kept})?> _pagesKeptByTheSeams(
+    String path,
+    KeptSpan? Function(int pageCount) keep,
+    Future<Uint8List?> Function(String path, int first, int count) cut,
+    void Function(double fraction)? onRead,
+  ) async {
+    final document = await open(MediaFileBytes(path), onRead: onRead);
+    if (document == null) {
+      return null;
+    }
+    final int pages;
+    try {
+      pages = document.pageCount;
+    } finally {
+      await document.dispose();
+    }
+    final kept = keep(pages);
+    if (kept == null) {
+      return null;
+    }
+    final bytes = await cut(path, kept.first, kept.count);
+    return bytes == null ? null : (bytes: bytes, kept: kept);
   }
 
   static void debugResetForTests() {

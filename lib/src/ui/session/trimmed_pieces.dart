@@ -35,7 +35,7 @@ typedef _Trim = ({int inFrame, int? outFrame});
 ///    ([writeMovieSpan]) — without its sound when it brings its picture
 ///    alone, and a sound's piece when it brings its sound alone (I-171-Q1)
 ///  * a sound → WAV of the span in its own time ([soundSpanAsWav])
-///  * a PDF → the kept pages as a PDF ([PdfRenderService.pageSpan])
+///  * a PDF → the kept pages as a PDF ([PdfRenderService.pagesKept])
 ///  * an animated image → APNG of the kept frames ([encodeAnimatedPng])
 ///
 /// 🚨The span is measured the way the kind's DOOR measures the file — a
@@ -122,7 +122,7 @@ class TrimmedPieces {
           pull: pull,
         ),
         MediaAssetKind.audio => await _sound(source, work, trim, pull),
-        MediaAssetKind.pdf => await _pages(source, work, trim),
+        MediaAssetKind.pdf => await _pages(source, work, trim, onProgress),
         MediaAssetKind.image => await _frames(source, work, trim),
       };
       if (kept == null) {
@@ -225,35 +225,28 @@ class TrimmedPieces {
     return kept;
   }
 
-  Future<KeptSpan?> _pages(String source, String work, _Trim trim) async {
-    final document = await PdfRenderService.open(MediaFileBytes(source));
-    if (document == null) {
-      return null;
-    }
-    final int pages;
-    try {
-      pages = document.pageCount;
-    } finally {
-      await document.dispose();
-    }
-    if (pages < 1) {
-      return null;
-    }
-    final kept = KeptSpan(
-      length: pages,
-      inFrame: trim.inFrame,
-      outFrame: trim.outFrame,
-    );
-    final bytes = await PdfRenderService.pageSpan(
+  Future<KeptSpan?> _pages(
+    String source,
+    String work,
+    _Trim trim,
+    void Function(double fraction)? onProgress,
+  ) async {
+    final piece = await PdfRenderService.pagesKept(
       source,
-      first: kept.first,
-      count: kept.count,
+      (pages) => pages < 1
+          ? null
+          : KeptSpan(
+              length: pages,
+              inFrame: trim.inFrame,
+              outFrame: trim.outFrame,
+            ),
+      onRead: onProgress,
     );
-    if (bytes == null) {
+    if (piece == null) {
       return null;
     }
-    File(work).writeAsBytesSync(bytes, flush: true);
-    return kept;
+    File(work).writeAsBytesSync(piece.bytes, flush: true);
+    return piece.kept;
   }
 
   Future<KeptSpan?> _frames(String source, String work, _Trim trim) async {
