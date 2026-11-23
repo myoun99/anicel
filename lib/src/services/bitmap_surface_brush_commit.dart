@@ -282,6 +282,36 @@ List<PlacedTile> _stampOnEngine(
   );
 }
 
+/// [surface] with each tile of it that pen-up handed over, once told what it
+/// is ([EngineTileLedger.toldOf]), put as a compared landing would have put
+/// it ([EngineTileLedger.toldInPlaceOf], [_placedOf]'s answers): the tile it
+/// landed on where told the same as that, none where told no ink is left
+/// ([BitmapSurface.putMaterializedTiles]) — the same pixels, held by what the
+/// cel held before the stroke or by nothing — with where it put them. Null
+/// where no tile of it was told either.
+///
+/// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+/// tab ③-1): 「Same → 원래 객체 · Cleared → 버림」 — the cel's picture taken
+/// in place of the one it was told of where the cel and its history alone
+/// hold it (`BrushFrameEditingCoordinator.takeToldTidied`).
+({BitmapSurface surface, DirtyTileSet tiles})? toldTidied(
+  BitmapSurface surface,
+) {
+  final ledger = EngineTileLedger.instance;
+  final put = <PlacedTile>[
+    for (final MapEntry(key: coord, value: tile) in surface.tiles.entries)
+      if (ledger.toldInPlaceOf(tile) case final told?)
+        (coord: coord, tile: told),
+  ];
+  if (put.isEmpty) {
+    return null;
+  }
+  return (
+    surface: surface.putMaterializedTiles(put),
+    tiles: DirtyTileSet([for (final one in put) one.coord]),
+  );
+}
+
 /// The tiles a compared landing changed, each at its place among
 /// [coords]: the one that [landed], a blank one where none is left.
 List<PlacedTile> _placedOf(

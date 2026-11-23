@@ -277,6 +277,7 @@ class HistoryManager extends ChangeNotifier {
     places.stamp(command);
     windows.stamp(command);
     _undoStack.add(command);
+    _tidyOnceTold(command);
     gestures._pushed += 1;
     gestures._pushedAt[command] = gestures._pushed;
     if (_undoStack.length > maxEntries) {
@@ -290,6 +291,36 @@ class HistoryManager extends ChangeNotifier {
     _trimRetainedBytes();
     _revision += 1;
     notifyListeners();
+  }
+
+  /// Has [step] take the told picture in its after's place
+  /// ([TidiesOnceTold]) once the tiles pen-up handed it are told — if it is
+  /// this stack's top then, nothing is undone and no gesture's line is being
+  /// written: the one place its after is no other step's before, so that
+  /// nothing but the cel and it holds what it lets go.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-1 ㉠): 「되돌리기 단계는 안 만든다」 — a step that is not the top
+  /// by then keeps its picture as it was taken.
+  void _tidyOnceTold(Command step) {
+    // ⚠️The cast is not ceremony — see [_parkDeepEnd].
+    if (step is! TidiesOnceTold) {
+      return;
+    }
+    final tidies = step as TidiesOnceTold;
+    final told = tidies.toldAfter;
+    if (told == null) {
+      return;
+    }
+    unawaited(
+      told.then((_) {
+        if (identical(_undoStack.lastOrNull, step) &&
+            _redoStack.isEmpty &&
+            gestures._held.isEmpty) {
+          tidies.tidyAfter();
+        }
+      }),
+    );
   }
 
   /// What an edit does to the history around it — the first step of a

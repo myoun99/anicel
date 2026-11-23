@@ -829,15 +829,45 @@ final GpuEngine _engine;
       changes = null;
     } finally {
       for (final (at, (:tile, :under)) in asked.indexed) {
-        tile.toldInk(switch (changes?[at]) {
+        final change = changes?[at];
+        tile.toldInk(switch (change) {
           GpuChange.inked => true,
           GpuChange.cleared => false,
           GpuChange.same => under == null ? false : under.inkWithNoWait,
           null => null,
         });
+        // ⚠️Of the tile it was asked beside, and only while its bytes are
+        // still the engine's alone: one whose bytes came here meanwhile has
+        // let that tile go ([_Slot.keepsNothing]), and told the same then it
+        // would read as told the same as none.
+        final slot = _slotNow(tile);
+        if (slot != null &&
+            tile.isOnlyOnEngine &&
+            identical(slot.under, under)) {
+          slot.told = change;
+        }
       }
       told.complete();
     }
+  }
+
+  /// What a compared landing would have left where [tile] lies, as [toldOf]
+  /// was told it: the tile it landed on where told the same as that, a blank
+  /// one where told no ink is left or the same as none — null where [tile]
+  /// stays: told ink of its own, not told, or its bytes here.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-1): the tiles pen-up hands over are the cel's whatever they turn
+  /// out to be, and a tile told the same as the one under it is that tile's
+  /// pixels held twice — 「Same → 원래 객체 · Cleared → 버림」, where the cel
+  /// still holds it (`toldTidied`).
+  BitmapTile? toldInPlaceOf(BitmapTile tile) {
+    final slot = _slotNow(tile);
+    return switch (slot?.told) {
+      GpuChange.same => slot!.under ?? BitmapTile.blank(size: tile.size),
+      GpuChange.cleared => BitmapTile.blank(size: tile.size),
+      GpuChange.inked || null => null,
+    };
   }
 
   /// Every tile of [rect] — a rectangle of tiles on the canvas's grid: its
@@ -1828,10 +1858,17 @@ final class _Slot {
   /// let go as [under] is.
   _Made? made;
 
-  /// Its tile's bytes are here: neither is its to keep any longer.
+  /// What [onlyOnEngine] was told it is beside [under]
+  /// (`EngineTileLedger.toldOf`) — what a compared landing would have left
+  /// in its place (`EngineTileLedger.toldInPlaceOf`). Kept and let go as
+  /// [under] is: the tile it was told the same as is [under].
+  GpuChange? told;
+
+  /// Its tile's bytes are here: none of them is its to keep any longer.
   void keepsNothing() {
     under = null;
     made = null;
+    told = null;
   }
 
   /// Let go already — by its key's finalizer, a full pool or a give-back.

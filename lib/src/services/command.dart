@@ -69,6 +69,27 @@ abstract interface class ParkableCommand {
   void dropPayload();
 }
 
+/// Commands whose after picture holds tiles pen-up handed over, their ink
+/// still to be told (`BitmapTile.inkTold`): told the same as the tile it
+/// landed on, or empty, a tile is that one's pixels held again — and the
+/// step takes the told picture in its after's place, with its cel
+/// (`BrushFrameEditingCoordinator.takeToldTidied`).
+///
+/// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+/// tab ③-1 ㉠): asked by the history alone, of its top step while nothing is
+/// undone and no gesture's line is being written — the one place a step's
+/// after is no other step's before (`HistoryManager._tidyOnceTold`). No
+/// step is made of it.
+abstract interface class TidiesOnceTold {
+  /// When the tiles of this step's after whose ink is still to be told are
+  /// told — null where none is.
+  Future<void>? get toldAfter;
+
+  /// The told picture taken in its after's place, where its cel still
+  /// stands at that after — nothing otherwise.
+  void tidyAfter();
+}
+
 /// What a step works out off the UI thread before it is taken, hearing
 /// through its `report` how much is done, from 0 to 1 — for the wait window
 /// the step stands behind (`StepWindows`) to hold up while it runs.
@@ -148,7 +169,8 @@ class CompositeCommand
         RetainedBytesCommand,
         ParkableCommand,
         PictureRestoringCommand,
-        WorksAheadCommand {
+        WorksAheadCommand,
+        TidiesOnceTold {
   CompositeCommand._({required this.description, required this.commands});
 
   @override
@@ -207,6 +229,25 @@ class CompositeCommand
   void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {
     for (final command in commands.whereType<PictureRestoringCommand>()) {
       command.visitHeldTiles(visit, undone: undone);
+    }
+  }
+
+  /// The children's, for the weight's reason: a composite that did not
+  /// forward would keep the tiles pen-up handed over in a stroke's after
+  /// whenever the stroke was the second write of its step.
+  @override
+  Future<void>? get toldAfter {
+    final told = [
+      for (final command in commands.whereType<TidiesOnceTold>())
+        ?command.toldAfter,
+    ];
+    return told.isEmpty ? null : Future.wait(told);
+  }
+
+  @override
+  void tidyAfter() {
+    for (final command in commands.whereType<TidiesOnceTold>()) {
+      command.tidyAfter();
     }
   }
 

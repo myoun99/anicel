@@ -432,6 +432,50 @@ class BrushFrameEditingCoordinator {
     _invalidateBrushFrame(cacheInvalidationSink, key);
   }
 
+  /// [picture] — [key]'s cel as it stands — once the tiles pen-up handed it
+  /// are told what they are ([toldTidied]): the same pixels, held by what
+  /// the cel held before the stroke or by nothing, made the cel's current
+  /// pixels as [restoreSurfaceSnapshot] makes one — the session, the baked
+  /// truth and its display cache, and the tiles it put through the one door
+  /// ([_invalidateBrushFrame]). Returns what it put.
+  ///
+  /// ⛔NOT an edit: the cel is not marked edited, and no history step is
+  /// made of it. 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-
+  /// on-the-galaxy-tab ③-1 ㉠): asked only by the step whose after
+  /// [picture] is, while no other step holds it (`TidiesOnceTold`) — a
+  /// picture taken where somebody else still held [picture] would leave the
+  /// handed tiles in that holder alone, where no bill sees them.
+  ///
+  /// Null, and the cel left as it is, where it stands at [picture] no
+  /// longer, or no tile of it was told either.
+  BitmapSurface? takeToldTidied(
+    BrushFrameKey key,
+    BitmapSurface picture, {
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) {
+    if (!identical(currentSurfaceOf(key), picture)) {
+      return null;
+    }
+    final tidied = toldTidied(picture);
+    if (tidied == null ||
+        !frameStore.takeSamePicture(key, picture, tidied.surface)) {
+      return null;
+    }
+    final blank = sessionStore.reset(key);
+    sessionStore.update(
+      key,
+      blank.copyWith(
+        canvasState: CanvasSurfaceState(currentSurface: tidied.surface),
+      ),
+    );
+    _invalidateBrushFrame(
+      cacheInvalidationSink,
+      key,
+      dirtyTiles: tidied.tiles,
+    );
+    return tidied.surface;
+  }
+
   /// 🚨★★★THE ONE DOOR EVERY SURFACE REPLACEMENT LEAVES THROUGH. Both
   /// funnels above end here, for a stroke, a lift's erase, a landing, an
   /// undo, a redo and a pixel verb alike — and for every verb written

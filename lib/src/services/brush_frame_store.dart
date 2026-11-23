@@ -2449,6 +2449,32 @@ class BrushFrameStore {
     _scheduleCooling();
   }
 
+  /// [to] in [from]'s place as [key]'s hot picture — the same pixels, held
+  /// by other objects (`BrushFrameEditingCoordinator.takeToldTidied`) — and
+  /// its display cache with it. ⛔NOT an edit: the cel stays as clean or as
+  /// dirty as it was, at its revision, with what it keeps. False, and
+  /// nothing changed, where [from] is its hot picture no longer.
+  ///
+  /// ⚠️In its place in the line, as [_becomesItsShell] puts a shell: the
+  /// second picture taken for the same pixels — a third is where the two
+  /// become one.
+  bool takeSamePicture(
+    BrushFrameKey key,
+    BitmapSurface from,
+    BitmapSurface to,
+  ) {
+    key = _canonicalize(key);
+    if (!identical(_bakedSurfaces[key], from)) {
+      return false;
+    }
+    _bakedSurfaces[key] = to;
+    _hotWeights.weigh(key, to);
+    if (_displayCaches.containsKey(key)) {
+      storeRebuiltDisplayCache(key: key, previewSurface: to);
+    }
+    return true;
+  }
+
   /// Every tile the HOT surfaces hold, into [tiles] (an identity set) — what
   /// a holder that shares tiles with this store must not count again (the
   /// app's clipboard, in the memory census). Cold and file cels hold no
