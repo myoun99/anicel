@@ -213,6 +213,8 @@ void main() {
     testWidgets('of a stroke pressed again before its frame is the newest '
         'stroke\'s', (tester) async {
       StrokeSteps.pressed();
+      now = 50;
+      StrokeSteps.armed();
       StrokeSteps.queued();
       StrokeSteps.stepped(1, together: null);
       now = 1000;
@@ -222,7 +224,14 @@ void main() {
       StrokeSteps.stepped(1, together: null);
       now = 3000;
       await aFrame(tester);
-      expect(StrokeSteps.firstStep?.up, 2000);
+      expect(StrokeSteps.firstStep, (
+        armed: 200,
+        dab: 200,
+        held: 0,
+        up: 2000,
+        behind: null,
+        did: (wrote: (inPlace: 0, copied: 0, whole: 0), asked: null),
+      ), reason: 'unarmed: armed as its step went out, not as the one before');
       expect(StrokeSteps.firstUpMicros, [3000, 2000]);
     });
 
