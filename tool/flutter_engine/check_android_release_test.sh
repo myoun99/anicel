@@ -95,11 +95,16 @@ consumer_renamed='io/flutter/view/a.java=package io.flutter.view;
 public interface a {
   android.hardware.HardwareBuffer acquireLatestHardwareBuffer();
 }'
+other_door='io/flutter/embedding/engine/renderer/e.java=package io.flutter.embedding.engine.renderer;
+public final class e {
+  public Object createHardwareBufferTexture(Object buffer) { return null; }
+}'
 
 dex_of good "$consumer" "$renderer" "$literal"
 dex_of renamed "$consumer" "$renamed" "$literal"
 dex_of declared "$consumer" "$declared" "$literal"
 dex_of consumer_renamed "$consumer_renamed" "$renderer" "$literal"
+dex_of other_door "$consumer" "$other_door" "$literal"
 
 # 1 — an apk that kept every name, on the patched native, is ok and says
 # the class the method is on.
@@ -133,6 +138,14 @@ pack "$scratch/declared.apk" . lib "$scratch/declared.dex" arm64-v8a=patched
 said=$(bash "$check" "$scratch/declared.apk" 2>&1) && fail "an abstract method passed"
 echo "$said" | grep -q 'no public createHardwareBufferTexture' ||
   fail "the abstract-only dex is not named: $said"
+passed=$((passed + 1))
+
+# 4b — the name on a method that takes no HardwareBuffer: getMethod asks
+# for (HardwareBuffer), and finds nothing.
+pack "$scratch/other_door.apk" . lib "$scratch/other_door.dex" arm64-v8a=patched
+said=$(bash "$check" "$scratch/other_door.apk" 2>&1) && fail "another signature passed"
+echo "$said" | grep -q 'no public createHardwareBufferTexture' ||
+  fail "the other signature is not named: $said"
 passed=$((passed + 1))
 
 # 5 — the consumer interface renamed: the C++ FindClass finds nothing.
