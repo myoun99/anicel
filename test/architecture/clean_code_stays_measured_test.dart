@@ -2088,7 +2088,7 @@ void main() {
   /// since `55fcd0e8b` (82 → 83 by the same diff). ⛔Not split to fit: each
   /// answer stands beside the reset it answers for.
   ///
-  /// ⚠️86 → 87 on 2026-11-23, ONE name: `_StillLayer` crossed (592 → 644)
+  /// ⚠️86 → 87 on 2026-11-23, ONE name: `_StillLayer` crossed (592 → 651)
   /// when a live tick that stood still came to be taken back into its
   /// stratum in a gap in the frames, in one image, and no longer in the
   /// frame its count ran out (card a-frame-pick-recuts-and-rebakes-the-

@@ -578,6 +578,37 @@ void main() {
     );
   });
 
+  // 🔬11-23: a conte pin that took a picture of the screen under eighteen
+  // suites read a row taken again in its own picture's wait — the gap was
+  // asked for in the scene the picture built, and ran on the real clock.
+  testWidgets('🚨a picture of the screen taken between frames is no frame — '
+      'a tick that stood still waits for the gap the frames left, and no '
+      'picture\'s wait takes it', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(tester, _regionWith(at));
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+    for (var i = 0; i < StillRaster.maxStillFrames * 3; i += 1) {
+      await _frame(tester);
+    }
+    expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: live');
+    final taken = region.debugCaptureCount;
+
+    // The picture, and the real time a busy machine spends around it —
+    // longer than a gap.
+    await captureBytes(tester);
+    await tester.runAsync(() => Future<void>.delayed(_gapStep * 3));
+    expect(
+      region.debugCaptureCount,
+      taken,
+      reason: '↩️taken in the picture\'s own wait (11-23)',
+    );
+
+    await tester.binding.delayed(_gapStep);
+    expect(region.debugCaptureCount, taken + 1, reason: 'in the frames\' gap');
+  });
+
   testWidgets('🚨ticks that stopped at different frames are taken back in '
       'ONE image, in the gap — the pointer coming over a dock moves its tab '
       'strip, the pick a frame later its ruler', (tester) async {

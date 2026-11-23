@@ -494,9 +494,16 @@ class _StillLayer extends OffsetLayer {
     if (strata != null && _stillShows(strata)) {
       _drawFrom(strata, builder);
       _noteWhoMovedAlone();
-      if (!strata.live.every(_moving)) {
-        // A tick drawn live has stood still: taken back into its stratum
-        // in a gap in the frames ([_takeInAGap]), never in one.
+      // A tick drawn live has stood still: taken back into its stratum in
+      // a gap in the frames ([_takeInAGap]), never in one. 🚨Asked only in
+      // a frame — a scene is built between frames too (an ancestor's
+      // `toImage`, a picture of the screen), and the gap asked there ran on
+      // a clock no frame keeps: a conte pin took a picture under eighteen
+      // suites and read a row taken in its own wait (11-23). [StaticRaster]
+      // counts its capture streak by the same law.
+      if (!strata.live.every(_moving) &&
+          SchedulerBinding.instance.schedulerPhase ==
+              SchedulerPhase.persistentCallbacks) {
         _FrameGap.wait(this);
       }
       return;
