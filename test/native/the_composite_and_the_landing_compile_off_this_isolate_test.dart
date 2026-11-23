@@ -29,7 +29,16 @@ void main() {
   });
 
   test('asked for while the pass compiles, the app keeps one', () async {
-    appGpuCompositeKernels.debugForget();
+    // 🐞bundled-files-find-the-engine-already-open ③ (2026-11-23): from no
+    // engine, as the first test is — not with the pass forgotten. The frame
+    // tools the first test opened keep the pass they were opened with
+    // (`appEngineFrameTools`), and forgotten it was freed under them: the
+    // next file's first frame was laid with it, and the engine's thread
+    // waited for good on a lock in freed memory (🔬cdb on the stuck
+    // tester: `Fulls::cell` under `Composite::walk_here`, the UI thread in
+    // `gpu_engine_surface_read` waiting for it).
+    theAppHasNoEngineYet();
+    await openAppGpuEngine();
 
     final opening = appGpuCompositeKernels.warm();
     final asked = appGpuComposite;

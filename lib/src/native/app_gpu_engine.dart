@@ -383,6 +383,13 @@ final class AppKernels<T extends Object> {
   /// Test seam: gone, as at launch — and with it every kernel the engine
   /// keeps ([GpuEngine.debugForgetKernels]), or the set would be made
   /// again of those, with nothing to compile.
+  ///
+  /// 🚨FREED, AND WHAT KEPT IT FROM BEFORE HOLDS A FREED ONE: the frame
+  /// tools keep the composite (`appEngineFrameTools`), and a frame laid with
+  /// them after it was forgotten waited for good on the engine's thread
+  /// (card bundled-files-find-the-engine-already-open ③, 2026-11-23). A
+  /// test of the first compile of a set something keeps starts from no
+  /// engine (`theAppHasNoEngineYet`), as a launch does.
   void debugForget() {
     _kept.forget();
     _its.engine?.debugForgetKernels();

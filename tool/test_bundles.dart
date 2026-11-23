@@ -84,12 +84,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'every_sheet_takes_its_photo_with_the_tool (4 of 4 tests red); green '
       'alone.',
-  'test/ui/a_pen_that_hovers_has_lifted_test.dart':
-      'census 11-21 reversed: red 8/8 in a bundle, after '
-      'the_composite_and_the_landing_compile_off_this_isolate — a test never '
-      'ended; green alone. Again 11-23, in a bundle of the two (its first '
-      'test never ended, cut at 3 min; green with it first) — card '
-      'bundled-files-find-the-engine-already-open.',
   'test/ui/brush/the_eyedropper_swatch_keeps_its_place_test.dart':
       'census 11-20 forward and 11-21 reversed: red 5/10 in a bundle, after '
       'toolbar_buttons_do_not_fade (2 red) — Expected: Object or closure '
