@@ -69,11 +69,13 @@ consumer='io/flutter/view/TextureRegistry.java=package io.flutter.view;
 public interface TextureRegistry {
   interface HardwareBufferConsumer {
     android.hardware.HardwareBuffer acquireLatestHardwareBuffer();
+    long readSignal();
   }
 }'
 renderer='io/flutter/embedding/engine/renderer/e.java=package io.flutter.embedding.engine.renderer;
 public final class e {
-  public Object createHardwareBufferTexture(android.hardware.HardwareBuffer buffer) {
+  public Object createHardwareBufferTexture(
+      android.hardware.HardwareBuffer buffer, long readSignal) {
     return null;
   }
 }'
@@ -81,7 +83,9 @@ public final class e {
 # getMethod literal keeps the old name in the dex's string pool.
 renamed='io/flutter/embedding/engine/renderer/e.java=package io.flutter.embedding.engine.renderer;
 public final class e {
-  public Object a(android.hardware.HardwareBuffer buffer) { return null; }
+  public Object a(android.hardware.HardwareBuffer buffer, long readSignal) {
+    return null;
+  }
 }'
 literal='com/myoun/gpu_engine/P.java=package com.myoun.gpu_engine;
 public final class P {
@@ -89,15 +93,31 @@ public final class P {
 }'
 declared='io/flutter/view/R.java=package io.flutter.view;
 public interface R {
-  Object createHardwareBufferTexture(android.hardware.HardwareBuffer buffer);
+  Object createHardwareBufferTexture(
+      android.hardware.HardwareBuffer buffer, long readSignal);
 }'
 consumer_renamed='io/flutter/view/a.java=package io.flutter.view;
 public interface a {
   android.hardware.HardwareBuffer acquireLatestHardwareBuffer();
+  long readSignal();
+}'
+# 0006's consumer: no read signal for the C++ to ask by name.
+consumer_unsignalled='io/flutter/view/TextureRegistry.java=package io.flutter.view;
+public interface TextureRegistry {
+  interface HardwareBufferConsumer {
+    android.hardware.HardwareBuffer acquireLatestHardwareBuffer();
+  }
 }'
 other_door='io/flutter/embedding/engine/renderer/e.java=package io.flutter.embedding.engine.renderer;
 public final class e {
   public Object createHardwareBufferTexture(Object buffer) { return null; }
+}'
+# 0006's door: the buffer alone, no read signal — getMethod asks for both.
+old_door='io/flutter/embedding/engine/renderer/e.java=package io.flutter.embedding.engine.renderer;
+public final class e {
+  public Object createHardwareBufferTexture(android.hardware.HardwareBuffer buffer) {
+    return null;
+  }
 }'
 
 dex_of good "$consumer" "$renderer" "$literal"
@@ -105,6 +125,8 @@ dex_of renamed "$consumer" "$renamed" "$literal"
 dex_of declared "$consumer" "$declared" "$literal"
 dex_of consumer_renamed "$consumer_renamed" "$renderer" "$literal"
 dex_of other_door "$consumer" "$other_door" "$literal"
+dex_of old_door "$consumer" "$old_door" "$literal"
+dex_of consumer_unsignalled "$consumer_unsignalled" "$renderer" "$literal"
 
 # 1 — an apk that kept every name, on the patched native, is ok and says
 # the class the method is on.
@@ -141,11 +163,29 @@ echo "$said" | grep -q 'no public createHardwareBufferTexture' ||
 passed=$((passed + 1))
 
 # 4b — the name on a method that takes no HardwareBuffer: getMethod asks
-# for (HardwareBuffer), and finds nothing.
+# for (HardwareBuffer, long), and finds nothing.
 pack "$scratch/other_door.apk" . lib "$scratch/other_door.dex" arm64-v8a=patched
 said=$(bash "$check" "$scratch/other_door.apk" 2>&1) && fail "another signature passed"
 echo "$said" | grep -q 'no public createHardwareBufferTexture' ||
   fail "the other signature is not named: $said"
+passed=$((passed + 1))
+
+# 4c — 0006's door, the buffer alone: an embedding without 0007's read
+# signal is refused by name.
+pack "$scratch/old_door.apk" . lib "$scratch/old_door.dex" arm64-v8a=patched
+said=$(bash "$check" "$scratch/old_door.apk" 2>&1) && fail "0006's door passed"
+echo "$said" | grep -q 'no public createHardwareBufferTexture(HardwareBuffer, long)' ||
+  fail "0006's door is not named: $said"
+passed=$((passed + 1))
+
+# 4d — 0006's consumer, no readSignal: the C++ GetMethodID finds nothing,
+# and that alone is named.
+pack "$scratch/unsignalled.apk" . lib "$scratch/consumer_unsignalled.dex" arm64-v8a=patched
+said=$(bash "$check" "$scratch/unsignalled.apk" 2>&1) && fail "a consumer with no signal passed"
+echo "$said" | grep -q 'HardwareBufferConsumer.readSignal()J is not' ||
+  fail "the missing signal is not named: $said"
+echo "$said" | grep -q 'acquireLatestHardwareBuffer is not' &&
+  fail "the kept acquire was refused: $said"
 passed=$((passed + 1))
 
 # 5 — the consumer interface renamed: the C++ FindClass finds nothing.

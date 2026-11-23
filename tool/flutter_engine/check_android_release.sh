@@ -4,15 +4,21 @@
 #
 #   bash tool/flutter_engine/check_android_release.sh <aab|apk>
 #
-#   ① a public, non-abstract createHardwareBufferTexture(HardwareBuffer)
-#      defined in the dex — the plugin finds it with getMethod on the texture
-#      registry's own class (packages/gpu_engine/android/.../GpuEnginePlugin.kt)
+#   ① a public, non-abstract createHardwareBufferTexture(HardwareBuffer,
+#      long) defined in the dex — the plugin finds it with getMethod on the
+#      texture registry's own class (packages/gpu_engine/android/.../
+#      GpuEnginePlugin.kt); patch 0007 added the long, its read signal
 #   ② io/flutter/view/TextureRegistry$HardwareBufferConsumer declaring
-#      acquireLatestHardwareBuffer()Landroid/hardware/HardwareBuffer; — the
-#      engine's C++ finds both with FindClass / GetMethodID (patch 0006,
-#      platform_view_android_jni_impl.cc)
-#   ③ every ABI's libflutter.so carrying that name — the patched native,
-#      not the stock one, in each ABI the release ships
+#      acquireLatestHardwareBuffer()Landroid/hardware/HardwareBuffer; and
+#      readSignal()J — the engine's C++ finds them with FindClass /
+#      GetMethodID (patches 0006 · 0007, platform_view_android_jni_impl.cc)
+#   ③ every ABI's libflutter.so carrying acquireLatestHardwareBuffer — the
+#      patched native, not the stock one, in each ABI the release ships.
+#      ⚠️No name tells 0007's native from 0006's: `readSignal` is in the
+#      stock engine's strings too (🔬arm64 release libflutter.so of
+#      06a2e2a1, two hits, 2026-11-24). What keeps 0007's natives under
+#      0007's embedding is the one version both are taken at
+#      (android/build.gradle.kts, the_android_build_takes_anicels_engine).
 #
 # Ends `check_android_release: ok — …` (exit 0), or names every miss (exit 1).
 #
@@ -86,21 +92,28 @@ else
     /^      type *: / { type = value($0) }
     /^      access *: / {
       if (name == "createHardwareBufferTexture" &&
-          index(type, "(Landroid/hardware/HardwareBuffer;)") == 1 &&
+          index(type, "(Landroid/hardware/HardwareBuffer;J)") == 1 &&
           $0 ~ /PUBLIC/ && $0 !~ /ABSTRACT/)
         print "create " owner
       if (owner == "Lio/flutter/view/TextureRegistry$HardwareBufferConsumer;" &&
           name == "acquireLatestHardwareBuffer" &&
           type == "()Landroid/hardware/HardwareBuffer;")
         print "consumer"
+      if (owner == "Lio/flutter/view/TextureRegistry$HardwareBufferConsumer;" &&
+          name == "readSignal" && type == "()J")
+        print "signal"
     }')
   creator=$(echo "$found" | sed -n 's/^create //p' | head -n 1)
   [ -n "$creator" ] ||
-    miss "no public createHardwareBufferTexture(HardwareBuffer) is defined" \
-      "in the dex — the plugin's getMethod finds none (R8 renamed or stripped it)"
+    miss "no public createHardwareBufferTexture(HardwareBuffer, long) is" \
+      "defined in the dex — the plugin's getMethod finds none (R8 renamed or" \
+      "stripped it, or the embedding is not 0007's)"
   echo "$found" | grep -qx consumer ||
     miss "TextureRegistry\$HardwareBufferConsumer.acquireLatestHardwareBuffer" \
       "is not in the dex by that name — the engine's FindClass/GetMethodID finds none"
+  echo "$found" | grep -qx signal ||
+    miss "TextureRegistry\$HardwareBufferConsumer.readSignal()J" \
+      "is not in the dex by that name — the engine's GetMethodID finds none"
 fi
 
 abis=()
@@ -122,5 +135,5 @@ if [ "${#misses[@]}" -gt 0 ]; then
   exit 1
 fi
 echo "check_android_release: ok — createHardwareBufferTexture on $creator ·" \
-  "HardwareBufferConsumer.acquireLatestHardwareBuffer · patched libflutter.so" \
-  "in ${abis[*]}"
+  "HardwareBufferConsumer.acquireLatestHardwareBuffer · .readSignal ·" \
+  "patched libflutter.so in ${abis[*]}"
