@@ -53,6 +53,15 @@ void clockStopped(Object clock) {
   }
 }
 
+/// Whether a clock follows time now ([clockStarted]) — a playback, whatever
+/// the display says: [framesAreHeld] asks the display too, and is false
+/// where it says nothing. What a pixel asked of the screen is never drawn
+/// beside (`ScreenCanary`). False where the binding does not pace.
+bool aClockRuns() {
+  final binding = SchedulerBinding.instance;
+  return binding is PresentPacing && binding._clocks.isNotEmpty;
+}
+
 /// Whether a clock's frames are held for their vblanks now — a clock running
 /// and looking, on a display that says ([PresentPacing]): what background
 /// GPU work must then never run beside (`QuietTurn.landed`).

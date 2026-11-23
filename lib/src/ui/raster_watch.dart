@@ -51,6 +51,8 @@ typedef RasterStood = ({
 /// not drawn either (`LookOnlyFrames`). Counted where every frame begun is
 /// called back, those were frames handed over that no raster thread was
 /// ever handed — and ten seconds on this wrote that the thread stood.
+/// ⛔So [handedOverAt] is not whether the screen rests: a playback holding
+/// one picture draws nothing and is no rest — `ScreenCanary` asks its clock.
 abstract final class RasterWatch {
   /// How long after a frame was handed over none is said drawn before the
   /// raster thread is said to stand.

@@ -5,8 +5,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/native/lost_screen.dart';
+import 'package:anicel/src/native/qa_display_timing.dart';
+import 'package:anicel/src/ui/look_only_frames.dart';
+import 'package:anicel/src/ui/playback/looking_ticker.dart';
+import 'package:anicel/src/ui/present_pacing.dart';
 import 'package:anicel/src/ui/raster_watch.dart';
 import 'package:anicel/src/ui/screen_canary.dart';
+
+/// The test binding with the PRODUCTION mixins a playback's frames go
+/// through — looks, not drawn where they change nothing, and its clock
+/// counted — in the order the app's binding wears them (`AnicelBinding`),
+/// on a display that says nothing, as one may.
+class _CanaryBinding extends AutomatedTestWidgetsFlutterBinding
+    with LookOnlyFrames, PresentPacing {
+  @override
+  DisplayTiming? get displayTiming => null;
+}
 
 /// 🗣️a-real-gpu-reset-went-unheard-on-the-main-pc-Q1 (유저 2026-11-22):
 /// 「앱이 화면용 컨텍스트로 1픽셀을 그려 되읽는다 — 처음엔 기록만」 —
@@ -18,7 +32,7 @@ import 'package:anicel/src/ui/screen_canary.dart';
 /// drawn here by a stand-in saying what such a context is read to say, and
 /// the draw the app makes is pinned on a context that stands.
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  _CanaryBinding();
 
   late DateTime now;
 
@@ -168,6 +182,36 @@ void main() {
     now = now.add(const Duration(milliseconds: 1));
     await ScreenCanary.ask();
     expect(asked, ['runner', drawOf(1)]);
+  });
+
+  // 🗣️The option chosen, its third cost (Q1, 유저 2026-11-22): 「재생
+  // 중에는 프레임을 밀까 봐 안 묻는다」. A playback holding one picture
+  // draws no frame, so the frame watch alone reads its hold as a rest.
+  testWidgets('while a playback runs nothing is asked, the runner neither — '
+      'though its frames change nothing and none is drawn', (tester) async {
+    Future<void> settle() async {
+      for (var turn = 0; turn < 3; turn += 1) {
+        await tester.pump();
+      }
+    }
+
+    final playback = LookingTicker((_) {})..start(tester);
+    addTearDown(playback.stop);
+    await settle();
+    expect(
+      RasterWatch.handedOverAt,
+      DateTime(0),
+      reason: '⛔premise: by the frame watch\'s count, the screen rests',
+    );
+
+    unawaited(ScreenCanary.ask());
+    await settle();
+    expect(asked, isEmpty, reason: 'a playback runs');
+
+    playback.stop();
+    unawaited(ScreenCanary.ask());
+    await settle();
+    expect(asked, ['runner', drawOf(1)], reason: 'LIVENESS — it stopped');
   });
 
   test('a screen its watch said gone is asked nothing', () async {

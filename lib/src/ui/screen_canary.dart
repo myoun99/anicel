@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../native/lost_screen.dart';
+import 'present_pacing.dart' show aClockRuns;
 import 'raster_watch.dart';
 
 /// A pixel the screen's context did not say back: the colour asked, as the
@@ -27,9 +28,18 @@ typedef PixelNotSaid = ({String asked, String instead, DateTime askedAt});
 /// whose device went draws nothing, so a pixel drawn through it and read
 /// back is the one question that reaches the screen's own device.
 ///
-/// - ONLY WHILE THE SCREEN RESTS — no frame handed over for [rest]: a
-///   pixel is drawn on the thread that draws the frames, and no frame is
-///   to wait behind one, a playback's least of all.
+/// - ONLY WHILE THE SCREEN RESTS — no clock running ([aClockRuns]) and no
+///   frame handed over for [rest]: a pixel is drawn on the thread that
+///   draws the frames, and no frame is to wait behind one, a playback's
+///   least of all (the option chosen, its third cost: 「재생 중에는
+///   프레임을 밀까 봐 안 묻는다」).
+///   ⚠️THE CLOCK IS ASKED OF ITSELF: a playback holding one picture draws
+///   no frame (`LookOnlyFrames`), and the frame watch counts the frames
+///   drawn (board a-frame-handed-over-after-the-loss-word-is-not-said-
+///   drawn, 2026-11-23). ↩️Till then it counted every frame begun, a
+///   playback's looks with them, and that alone kept the pixel out of one
+///   — a value answering whether the screen rests and whether the raster
+///   thread was handed a frame, which part.
 /// - 🚨THE RUNNER'S WATCH IS ASKED FIRST, and the pixel drawn only where
 ///   it says, asked just then, that its device stands
 ///   ([LostScreen.stands]). On the Surface (Intel, 11-18 15:08) the first
@@ -81,14 +91,14 @@ abstract final class ScreenCanary {
   static Future<Uint8List> Function(int argb)? debugDrawOverride;
 
   /// One asking: nothing where a pixel was not said back or the screen
-  /// said gone this run, nor while frames are handed over; else the
-  /// runner's watch, and a pixel where it says its device stands.
+  /// said gone this run, nor while a clock runs or frames are handed over;
+  /// else the runner's watch, and a pixel where it says its device stands.
   @visibleForTesting
   static Future<void> ask() async {
     if (_asking || _notSaid.value != null || LostScreen.hasGone) {
       return;
     }
-    if (_now().difference(RasterWatch.handedOverAt) <= rest) {
+    if (aClockRuns() || _now().difference(RasterWatch.handedOverAt) <= rest) {
       return;
     }
     _asking = true;
