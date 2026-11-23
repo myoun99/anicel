@@ -205,19 +205,32 @@ class BrushFrameEditingCoordinator {
   /// cleared every old-size cache) — and a cel laid on the canvas as it
   /// seeds ([_laysCelsOnItsCanvas]) is the store's truth at that size.
   BrushEditSessionState _seedSession(BrushFrameKey key) {
-    final blank = sessionStore.reset(key);
     final baked = frameStore.bakedSurfaceOrNull(key);
     if (baked == null || !_standsOn(baked)) {
-      return blank;
+      return sessionStore.reset(key);
     }
-    final laid = resizeBitmapSurfaceCanvas(baked, sessionStore.canvasSize);
-    final seeded = sessionStore.update(
+    final seeded = _sessionAfresh(
       key,
-      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: laid)),
+      resizeBitmapSurfaceCanvas(baked, sessionStore.canvasSize),
     );
     _donateSessionSurfaceToDisplayCache(key, seeded);
     return seeded;
   }
+
+  /// [key]'s session begun again on [surface]: no edit before it, nothing
+  /// of the one it had kept — what a seed ([_seedSession]), a restore
+  /// ([restoreSurfaceSnapshot]) and a told tidy ([takeToldTidied]) each
+  /// make of it. ↩️Each wrote the reset and the update itself till the
+  /// third (2026-11-24, ③-1).
+  BrushEditSessionState _sessionAfresh(
+    BrushFrameKey key,
+    BitmapSurface surface,
+  ) => sessionStore.update(
+    key,
+    sessionStore
+        .reset(key)
+        .copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
+  );
 
   /// Whether a session stands on [baked]: one at the canvas's size, or of
   /// any size where this coordinator lays its cels on the canvas
@@ -422,11 +435,7 @@ class BrushFrameEditingCoordinator {
     if (surface.canvasSize != sessionStore.canvasSize) {
       return;
     }
-    final blank = sessionStore.reset(key);
-    final state = sessionStore.update(
-      key,
-      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
-    );
+    final state = _sessionAfresh(key, surface);
     frameStore.markCelEdited(key);
     _donateSessionSurfaceToDisplayCache(key, state);
     _invalidateBrushFrame(cacheInvalidationSink, key);
@@ -459,13 +468,7 @@ class BrushFrameEditingCoordinator {
         !frameStore.takeSamePicture(key, picture, tidied.surface)) {
       return null;
     }
-    final blank = sessionStore.reset(key);
-    sessionStore.update(
-      key,
-      blank.copyWith(
-        canvasState: CanvasSurfaceState(currentSurface: tidied.surface),
-      ),
-    );
+    _sessionAfresh(key, tidied.surface);
     _invalidateBrushFrame(
       cacheInvalidationSink,
       key,

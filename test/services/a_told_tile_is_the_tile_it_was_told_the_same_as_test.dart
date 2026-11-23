@@ -288,8 +288,27 @@ void main() {
 
       await told(handed);
 
+      // Read before anything asks the cel: asked, a session left on the
+      // handed tiles would be seeded again and hide them ([holdersOf]).
+      final kept = coordinator.sessionStore.sessionOrNull(key)?.canvasState;
+      final heldStill = {
+        for (final at in [bare, wiped, paper])
+          at: holdersOf(
+            handed[at]!,
+            at,
+            coordinator: coordinator,
+            store: store,
+            stroke: stroke,
+          ),
+      };
+
       final now = coordinator.currentSurfaceOf(key);
       expect(identical(now, taken), isFalse, reason: 'the cel took another');
+      expect(
+        identical(kept?.currentSurface, now),
+        isTrue,
+        reason: 'the session took it with them, not at the next ask',
+      );
       expect(
         identical(now.tileAt(bare), base.tileAt(bare)),
         isTrue,
@@ -349,19 +368,11 @@ void main() {
       }
 
       // ④ What it let go of is held by nobody, and the bill says so.
-      for (final at in [bare, wiped, paper]) {
-        expect(
-          holdersOf(
-            handed[at]!,
-            at,
-            coordinator: coordinator,
-            store: store,
-            stroke: stroke,
-          ),
-          0,
-          reason: '$at: the handed tile is held by nobody',
-        );
-      }
+      expect(
+        heldStill,
+        {bare: 0, wiped: 0, paper: 0},
+        reason: 'each handed tile is held by nobody',
+      );
       expect(
         billed - history.retainedBytes,
         base.tileAt(bare)!.ownBytes,
@@ -553,13 +564,20 @@ void main() {
       'let go of', () async {
     final under = painted();
     theCopiesComeOf([under]);
+    // The tile under [bare] the before's own: a park of it waits on the
+    // room to write it.
     BitmapSurface over() => under.putTiles([
-      (coord: paper, tile: under.tileAt(bare)!),
+      (coord: bare, tile: under.tileAt(wiped)!),
     ]);
 
     final parking = UndoSurfacePair(key: key, before: under, after: over());
     expect(parking.afterHeldHere, isNotNull, reason: '⛔premise: here');
     final parked = parking.before.park();
+    expect(
+      parking.before.isParked,
+      isFalse,
+      reason: '⛔premise: on its way — it holds a tile to write',
+    );
     expect(parking.afterHeldHere, isNull, reason: 'on its way');
     expect(await parked, isTrue);
     expect(parking.afterHeldHere, isNull, reason: 'gone');
