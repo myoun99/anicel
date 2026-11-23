@@ -61,7 +61,7 @@ fn colour(seed: u32, block: u32, index: u32) -> u32 {
 
 /// A tile whose block `block` holds `counts(block)` colours of its own
 /// ([`colour`]): each once in its first pixels, then as they fall.
-pub(super) fn tile_of(seed: u32, counts: impl Fn(u32) -> u32) -> Vec<u32> {
+pub(crate) fn tile_of(seed: u32, counts: impl Fn(u32) -> u32) -> Vec<u32> {
     let mut words = vec![0; TILE_TEXELS as usize];
     for block in 0..BLOCKS {
         let count = counts(block);

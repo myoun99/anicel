@@ -26,19 +26,19 @@ const TIMES: usize = 15;
 /// under load, and the first runs are slower than the rest.
 const WARM: Duration = Duration::from_millis(400);
 /// The tiles of a kind made apart; a row's are these over and over.
-const APART: u32 = 16;
+pub(crate) const APART: u32 = 16;
 
 /// A kind of picture: of a hundred blocks, how many hold each count of
 /// colours — from, to, of a hundred.
-struct Kind {
-    name: &'static str,
+pub(crate) struct Kind {
+    pub(crate) name: &'static str,
     blocks: &'static [(u32, u32, u32)],
 }
 
 /// 🔬The two pictures' are what was counted in the user's line art and
 /// S5_BA cut 352 (2026-11-19, their pictures' tiles): of a hundred blocks,
 /// those of one colour, of 2, of 3–4, of 5–16, of 17–47 and of more.
-const KINDS: [Kind; 5] = [
+pub(crate) const KINDS: [Kind; 5] = [
     Kind { name: "one colour", blocks: &[(1, 1, 100)] },
     Kind { name: "16 colours a block", blocks: &[(16, 16, 100)] },
     Kind { name: "40 in 100 as they are", blocks: &[(64, 64, 40), (1, 1, 60)] },
@@ -54,7 +54,7 @@ const KINDS: [Kind; 5] = [
 
 impl Kind {
     /// The colours of block `block` of the kind's tile `seed`.
-    fn count(&self, seed: u32, block: u32) -> u32 {
+    pub(crate) fn count(&self, seed: u32, block: u32) -> u32 {
         let drawn = mix(seed.wrapping_mul(0x9e37_79b9) ^ block);
         let mut of_a_hundred = drawn % 100;
         for &(from, to, share) in self.blocks {
@@ -70,7 +70,7 @@ impl Kind {
 /// The middle of [`TIMES`] timings of each of `runs` and the GPU's work
 /// after it, in milliseconds — taken turn about, so what drifts drifts
 /// under them all, after runs nobody times ([`WARM`]).
-fn timed<const N: usize>(mut runs: [&mut dyn FnMut(); N]) -> [f64; N] {
+pub(crate) fn timed<const N: usize>(mut runs: [&mut dyn FnMut(); N]) -> [f64; N] {
     let engine = rig().engine;
     let once = |run: &mut dyn FnMut()| {
         let started = Instant::now();

@@ -21,9 +21,9 @@
 //! ([`Folded::put`]).
 
 #[cfg(test)]
-mod cost;
+pub(crate) mod cost;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use crate::device::{Engine, let_go};
 use crate::fail;

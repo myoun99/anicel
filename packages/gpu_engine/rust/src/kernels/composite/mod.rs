@@ -81,6 +81,8 @@ mod moved;
 mod moved_tests;
 mod passes;
 pub(crate) mod screen;
+#[cfg(test)]
+mod show_cost;
 pub(crate) mod spares;
 #[cfg(test)]
 mod spares_tests;
