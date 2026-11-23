@@ -38,14 +38,14 @@ void main() {
   });
 
   /// A pen pressed on a canvas whose pictures go up [together] — on none
-  /// where null — drawn on [overlay], its line [steadied] or not; and how
-  /// it moves, a sample a call, 8 ms apart.
+  /// where null — drawn on [overlay], its line steadied by [correction];
+  /// and how it moves, a sample a call, 8 ms apart.
   Future<({void Function(Offset at) move, void Function(Offset at) lift})>
   aPenOn(
     WidgetTester tester, {
     required ActiveStrokeOverlayModel overlay,
     required PicturesUpTogether? together,
-    bool steadied = false,
+    BrushCorrection? correction,
   }) async {
     final cel = BitmapSurface(
       canvasSize: const CanvasSize(width: 400, height: 40),
@@ -58,7 +58,7 @@ void main() {
       viewport: CanvasViewport(),
       inputSettings: () => BrushEditCanvasInputSettings(
         size: 4,
-        correction: BrushCorrection(steadies: steadied),
+        correction: correction ?? BrushCorrection(steadies: false),
       ),
       overlayModel: overlay,
       onSourceStrokeCommitted: (_) {},
@@ -132,9 +132,15 @@ void main() {
     );
   }
 
-  for (final steadied in const [false, true]) {
-    final line = steadied ? 'a steadied line' : 'a line as the pen went';
-
+  for (final (line, correction) in [
+    ('a line as the pen went', BrushCorrection(steadies: false)),
+    ('a steadied line', BrushCorrection()),
+    // Behind the pen, the frames move it on (`_steadyOneFrame`).
+    (
+      'a line steadied far behind the pen',
+      BrushCorrection(stabilization: 100),
+    ),
+  ]) {
     testWidgets('🚨the samples of the frames built while one is drawn go on '
         'the stroke as one step once it is up ($line)', (tester) async {
       final overlay = ActiveStrokeOverlayModel(tileSize: 128);
@@ -144,7 +150,7 @@ void main() {
         tester,
         overlay: overlay,
         together: together,
-        steadied: steadied,
+        correction: correction,
       );
       pen.move(const Offset(40, 20));
       await tester.pump();
@@ -156,7 +162,13 @@ void main() {
       final stepsBefore = overlay.moveMark.count;
       for (final x in const [80.0, 120.0, 160.0, 200.0]) {
         pen.move(Offset(x, 20));
-        await tester.pump();
+        // A frame's time goes by: a line behind the pen moves on in it.
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      // The pen rests: from the second frame after its last sample, a line
+      // behind it is moved on by the frames alone (StrokeStabilizer.lookAtFrame).
+      for (var frame = 0; frame < 3; frame++) {
+        await tester.pump(const Duration(milliseconds: 8));
       }
       expect(
         overlay.dabs.length,
@@ -195,7 +207,7 @@ void main() {
         tester,
         overlay: overlay,
         together: together,
-        steadied: steadied,
+        correction: correction,
       );
       pen.move(const Offset(40, 20));
       await tester.pump();
