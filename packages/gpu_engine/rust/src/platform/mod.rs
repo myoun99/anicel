@@ -44,7 +44,7 @@ use std::ffi::c_void;
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, Sent, let_go};
 use crate::fail;
 
 /// The instance the engine's adapters come from.
@@ -169,6 +169,11 @@ pub(crate) fn stores(engine: &Engine, format: wgpu::TextureFormat) -> bool {
 
 impl Surface {
     fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat) -> Option<Self> {
+        // Android's window refused one before it was a surface (2026-11-23):
+        // an image of no texel is no image to Vulkan or D3D12.
+        if width == 0 || height == 0 {
+            return fail(format!("a {width} × {height} surface"));
+        }
         if !stores(engine, format) {
             return fail("this adapter cannot store to bgra8unorm from a compute pass");
         }
@@ -217,6 +222,70 @@ pub unsafe extern "C" fn gpu_engine_surface_free(surface: *mut Surface) {
 pub unsafe extern "C" fn gpu_engine_surface_texture(surface: *const Surface) -> *const wgpu::Texture {
     // SAFETY: see the function's contract.
     &unsafe { &*surface }.texture
+}
+
+/// Copies the pixels `rect` of what the kernels wrote to `surface` —
+/// [left, top, right, bottom) — onto what Flutter shows of it, where the
+/// two are apart (Android's screens on a device whose AHardwareBuffer
+/// images take no stores, `platform/android.rs`, `Way::Copied`): on the
+/// engine's thread in its turn, its caller waiting for none of it
+/// ([`Engine::posted`]) — where it fails, the caller's next done fails by
+/// it. Nothing where the two are one texture, every other surface.
+///
+/// The app asks it once a frame is drawn, of what the frame's draws wrote
+/// (`GpuTarget.settle`), before it asks for the GPU's done: the frame is
+/// shown once the copy is done too.
+///
+/// # Safety
+/// `engine` and `surface` are live, `surface` made on `engine`; `rect`
+/// holds four words. `surface` is let go of on the engine's thread
+/// ([`let_go`]), behind this in turn.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_surface_settle(
+    engine: *const Engine,
+    surface: *const Surface,
+    rect: *const u32,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, made) = unsafe { (&*engine, &*surface) };
+    if made.shared.shown().is_none() {
+        return;
+    }
+    // SAFETY: see the function's contract.
+    let [left, top, right, bottom] = unsafe { *rect.cast::<[u32; 4]>() };
+    let size = made.texture.size();
+    let (right, bottom) = (right.min(size.width), bottom.min(size.height));
+    if left >= right || top >= bottom {
+        return;
+    }
+    let handed = Sent((engine.clone(), surface));
+    engine.posted(move || {
+        let (engine, surface) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let made = unsafe { &*surface };
+        let shown = made.shared.shown()?;
+        let at = wgpu::Origin3d { x: left, y: top, z: 0 };
+        let mut encoder =
+            engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                origin: at,
+                ..made.texture.as_image_copy()
+            },
+            wgpu::TexelCopyTextureInfo {
+                origin: at,
+                ..shown.as_image_copy()
+            },
+            wgpu::Extent3d {
+                width: right - left,
+                height: bottom - top,
+                depth_or_array_layers: 1,
+            },
+        );
+        engine.queue.submit([encoder.finish()]);
+        Some(())
+    });
 }
 
 /// Copies the way a surface reaches Flutter's screen on `engine` — where

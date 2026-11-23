@@ -347,6 +347,15 @@ external Pointer<Void> surfaceHandle(Pointer<Surface> surface);
 )
 external Pointer<Texture> surfaceTexture(Pointer<Surface> surface);
 
+@Native<Void Function(Pointer<Engine>, Pointer<Surface>, Pointer<Uint32>)>(
+  symbol: 'gpu_engine_surface_settle',
+)
+external void surfaceSettle(
+  Pointer<Engine> engine,
+  Pointer<Surface> surface,
+  Pointer<Uint32> rect,
+);
+
 @Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
   symbol: 'gpu_engine_screen_said',
 )

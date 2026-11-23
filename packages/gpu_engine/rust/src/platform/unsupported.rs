@@ -11,6 +11,12 @@ impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
         std::ptr::null_mut()
     }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
 }
 
 pub fn create(

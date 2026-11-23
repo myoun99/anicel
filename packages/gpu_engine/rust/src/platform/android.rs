@@ -20,7 +20,8 @@
 //! - The buffer's usage is GPU_SAMPLED_IMAGE alone: Flutter samples it, and
 //!   no AHardwareBuffer usage stands for a Vulkan storage image — whether
 //!   the kernels may store into one is the device's own answer
-//!   ([`takes`]), asked before an image is made.
+//!   ([`takes`]), asked before an image is made; where it says no, what
+//!   they write is copied onto the buffer's image ([`Way::Copied`]).
 //! - ⚠️No release of the image to VK_QUEUE_FAMILY_FOREIGN_EXT, as on Linux
 //!   (linux.rs) — but Linux's reason does not hold here: its image is
 //!   LINEAR, and this one is OPTIMAL, which a driver may keep compressed.
@@ -48,16 +49,13 @@ use std::ptr::NonNull;
 use ash::vk;
 use wgpu::hal::api::Vulkan;
 
+use crate::device::storage_texture;
+
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
 
 const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 const AHB: vk::ExternalMemoryHandleTypeFlags =
     vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID;
-/// What the kernels do with a screen: store into it, and copy from it
-/// (a view moved, `kernels/composite/moved.rs`; a readback).
-const USAGE: vk::ImageUsageFlags = vk::ImageUsageFlags::from_raw(
-    vk::ImageUsageFlags::STORAGE.as_raw() | vk::ImageUsageFlags::TRANSFER_SRC.as_raw(),
-);
 
 /// AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM (hardware_buffer.h).
 const AHB_FORMAT_R8G8B8A8_UNORM: u32 = 1;
@@ -85,9 +83,15 @@ unsafe extern "C" {
 }
 
 /// The engine's reference to the AHardwareBuffer a surface's image lives
-/// in — what Flutter is handed (`gpu_engine_surface_handle`). The image's
-/// memory holds a reference of its own, which wgpu lets go of with it.
-pub struct SharedHandle(NonNull<vk::AHardwareBuffer>);
+/// in — what Flutter is handed (`gpu_engine_surface_handle`) — and, where
+/// the kernels cannot store into that image ([`Way::Copied`]), the image
+/// itself, which what they wrote is copied onto ([`Self::shown`]). The
+/// image's memory holds a reference of the buffer's own, which wgpu lets
+/// go of with it.
+pub struct SharedHandle {
+    buffer: NonNull<vk::AHardwareBuffer>,
+    shown: Option<wgpu::Texture>,
+}
 
 // SAFETY: an AHardwareBuffer reference may be used and released on any
 // thread (hardware_buffer.h).
@@ -97,7 +101,14 @@ unsafe impl Sync for SharedHandle {}
 
 impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
-        self.0.as_ptr().cast()
+        self.buffer.as_ptr().cast()
+    }
+
+    /// What Flutter shows, where it is not the texture the kernels write:
+    /// the AHardwareBuffer's image on a device whose screens are copied
+    /// onto ([`Way::Copied`]); none where the kernels store into it.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        self.shown.as_ref()
     }
 }
 
@@ -105,9 +116,35 @@ impl Drop for SharedHandle {
     fn drop(&mut self) {
         // SAFETY: the reference came from AHardwareBuffer_allocate and is
         // released once.
-        unsafe { AHardwareBuffer_release(self.0.as_ptr()) };
+        unsafe { AHardwareBuffer_release(self.buffer.as_ptr()) };
     }
 }
+
+/// How a device's screens reach Flutter's ([`way`]).
+enum Way {
+    /// The kernels store into the AHardwareBuffer's image itself.
+    Direct,
+    /// They store into a texture of the engine's own, and what of it
+    /// changed is copied onto the buffer's image before a frame is shown
+    /// (`gpu_engine_surface_settle`) — where the device makes no storable
+    /// image of an AHardwareBuffer, which the words say why.
+    ///
+    /// 🗣️유저 2026-11-23 (card the-galaxy-tab-canvas-went-slow-on-build-1095-Q9
+    /// 「그 기기만 바뀐 곳을 한 번 옮겨 보여 준다」, after 「판단하기전에
+    /// 어느기기가 안되는지 조사해줘」: whether a device stores into one is its
+    /// driver's choice, not its age — 관제's reading of the Vulkan spec and
+    /// the CTS). The app's way to the screen stays one on every device; this
+    /// is the engine's alone.
+    Copied(String),
+}
+
+/// What the kernels do with an image they store into: store into it, and
+/// copy from it (a view moved, `kernels/composite/moved.rs`; a readback).
+const STORED: vk::ImageUsageFlags = vk::ImageUsageFlags::from_raw(
+    vk::ImageUsageFlags::STORAGE.as_raw() | vk::ImageUsageFlags::TRANSFER_SRC.as_raw(),
+);
+/// What the engine does with an image it copies onto ([`Way::Copied`]).
+const COPIED_ONTO: vk::ImageUsageFlags = vk::ImageUsageFlags::TRANSFER_DST;
 
 /// Whether the device makes an image of [`FORMAT`] and `usage` in an
 /// AHardwareBuffer's memory: `Ok` where it does, else what it said.
@@ -134,13 +171,14 @@ fn takes(instance: &ash::Instance, physical: vk::PhysicalDevice, usage: vk::Imag
     Ok(())
 }
 
-/// What stands between the device and a screen of an AHardwareBuffer, the
-/// first thing missing named: the extension, Vulkan 1.1, or the device's
-/// answer for a storable image ([`takes`]).
-fn missing(hal_device: &wgpu::hal::vulkan::Device) -> Option<String> {
+/// The way the device's screens reach Flutter's ([`Way`]), or what stands
+/// between it and a screen of an AHardwareBuffer, the first thing missing
+/// named: the extension, Vulkan 1.1, or the device's answers for an image
+/// stored into and one copied onto ([`takes`]).
+fn way(hal_device: &wgpu::hal::vulkan::Device) -> Result<Way, String> {
     let name = ash::android::external_memory_android_hardware_buffer::NAME;
     if !hal_device.enabled_device_extensions().contains(&name) {
-        return Some(format!("the Vulkan device has no {}", name.to_string_lossy()));
+        return Err(format!("the Vulkan device has no {}", name.to_string_lossy()));
     }
     let shared = hal_device.shared_instance();
     // ⛔The question is Vulkan 1.1's own, of the instance and of the device
@@ -149,18 +187,25 @@ fn missing(hal_device: &wgpu::hal::vulkan::Device) -> Option<String> {
     // `catch_unwind` catches: the process ends. (The extension is turned on
     // only on a 1.1 device, `ANICEL` in vulkan/adapter.rs.)
     if shared.instance_api_version() < vk::API_VERSION_1_1 {
-        return Some("a Vulkan 1.0 instance".to_owned());
+        return Err("a Vulkan 1.0 instance".to_owned());
     }
-    takes(shared.raw_instance(), hal_device.raw_physical_device(), USAGE)
-        .err()
-        .map(|said| format!("ahb storage {said}"))
+    let (instance, physical) = (shared.raw_instance(), hal_device.raw_physical_device());
+    match takes(instance, physical, STORED) {
+        Ok(()) => Ok(Way::Direct),
+        Err(stored) => match takes(instance, physical, COPIED_ONTO) {
+            Ok(()) => Ok(Way::Copied(format!("ahb storage {stored}"))),
+            Err(copied) => Err(format!("ahb storage {stored}  copy {copied}")),
+        },
+    }
 }
 
 /// 🔬What the device says of a screen of an AHardwareBuffer, for the debug
-/// screen: `ahb` where it makes one, else `ahb no — ` and what stands in
-/// the way ([`missing`]); and beside it whether it would make one Flutter
-/// draws into (`color`, which every device is expected to allow: a `no`
-/// there says the question itself did not get through).
+/// screen: `ahb` where the kernels store into one, `ahb copy — ` and why
+/// where what they write is copied onto one ([`Way::Copied`]), else
+/// `ahb no — ` and what stands in the way ([`way`]); and beside the first
+/// two whether it would make one Flutter draws into (`color`, which every
+/// device is expected to allow: a `no` there says the question itself did
+/// not get through).
 ///
 /// 🗣️공통 2026-11-22 23:50, of 유저's 「윈도랑 안드랑 다른거
 /// 통일못하는거야?」 (card the-galaxy-tab-canvas-went-slow-on-build-1095):
@@ -172,19 +217,23 @@ pub fn screen_said(device: &wgpu::Device) -> String {
     let Some(hal_device) = (unsafe { device.as_hal::<Vulkan>() }) else {
         return "ahb no — not a Vulkan device".to_owned();
     };
-    let Some(standing) = missing(&hal_device) else {
+    let color = || {
         let shared = hal_device.shared_instance();
         let color = takes(
             shared.raw_instance(),
             hal_device.raw_physical_device(),
             vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
         );
-        return format!("ahb  color {}", color.err().unwrap_or_else(|| "yes".to_owned()));
+        color.err().unwrap_or_else(|| "yes".to_owned())
     };
-    format!("ahb no — {standing}")
+    match way(&hal_device) {
+        Ok(Way::Direct) => format!("ahb  color {}", color()),
+        Ok(Way::Copied(why)) => format!("ahb copy — {why}  color {}", color()),
+        Err(standing) => format!("ahb no — {standing}"),
+    }
 }
 
-fn allocated(width: u32, height: u32) -> Result<SharedHandle, String> {
+fn allocated(width: u32, height: u32) -> Result<NonNull<vk::AHardwareBuffer>, String> {
     let desc = BufferDesc {
         width,
         height,
@@ -200,24 +249,25 @@ fn allocated(width: u32, height: u32) -> Result<SharedHandle, String> {
     // for the reference.
     let said = unsafe { AHardwareBuffer_allocate(&desc, &mut buffer) };
     match NonNull::new(buffer) {
-        Some(buffer) if said == 0 => Ok(SharedHandle(buffer)),
+        Some(buffer) if said == 0 => Ok(buffer),
         _ => Err(format!("AHardwareBuffer_allocate: {said}")),
     }
 }
 
-/// The image in `buffer`'s memory, and that memory, imported and bound.
+/// The image of `usage` in `buffer`'s memory, and that memory, imported and
+/// bound.
 fn imported_image(
     instance: &ash::Instance,
     device: &ash::Device,
-    buffer: &SharedHandle,
-    width: u32,
-    height: u32,
+    buffer: NonNull<vk::AHardwareBuffer>,
+    (width, height): (u32, u32),
+    usage: vk::ImageUsageFlags,
 ) -> Result<(vk::Image, vk::DeviceMemory), String> {
     let ahb = ash::android::external_memory_android_hardware_buffer::Device::new(instance, device);
     let mut format = vk::AndroidHardwareBufferFormatPropertiesANDROID::default();
     let mut properties = vk::AndroidHardwareBufferPropertiesANDROID::default().push_next(&mut format);
     // SAFETY: the buffer is live; every structure is a local.
-    unsafe { ahb.get_android_hardware_buffer_properties(buffer.0.as_ptr(), &mut properties) }
+    unsafe { ahb.get_android_hardware_buffer_properties(buffer.as_ptr(), &mut properties) }
         .map_err(|error| format!("vkGetAndroidHardwareBufferPropertiesANDROID: {error}"))?;
     let (size, memory_types) = (properties.allocation_size, properties.memory_type_bits);
     if format.format != FORMAT {
@@ -239,14 +289,14 @@ fn imported_image(
         .array_layers(1)
         .samples(vk::SampleCountFlags::TYPE_1)
         .tiling(vk::ImageTiling::OPTIMAL)
-        .usage(USAGE)
+        .usage(usage)
         .sharing_mode(vk::SharingMode::EXCLUSIVE)
         .initial_layout(vk::ImageLayout::UNDEFINED)
         .push_next(&mut external);
-    // SAFETY: `missing` said the device takes this image.
+    // SAFETY: `way` said the device takes this image.
     let image = unsafe { device.create_image(&info, None) }.map_err(|error| format!("vkCreateImage: {error}"))?;
     let made = (|| {
-        let mut import = vk::ImportAndroidHardwareBufferInfoANDROID::default().buffer(buffer.0.as_ptr());
+        let mut import = vk::ImportAndroidHardwareBufferInfoANDROID::default().buffer(buffer.as_ptr());
         let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
         let allocation = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
@@ -289,12 +339,21 @@ pub fn create(
     // SAFETY: the raw device is only used to make an image and its memory,
     // never to change wgpu's own state.
     let hal_device = unsafe { device.as_hal::<Vulkan>() }.ok_or("not a Vulkan device")?;
-    if let Some(standing) = missing(&hal_device) {
-        return Err(standing);
-    }
-    let buffer = allocated(width, height)?;
+    let way = way(&hal_device)?;
+    let ((vk_usage, hal_usage), usage) = match way {
+        Way::Direct => (
+            (STORED, wgpu::TextureUses::STORAGE_WRITE_ONLY | wgpu::TextureUses::COPY_SRC),
+            wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        ),
+        Way::Copied(_) => ((COPIED_ONTO, wgpu::TextureUses::COPY_DST), wgpu::TextureUsages::COPY_DST),
+    };
+    let buffer = SharedHandle {
+        buffer: allocated(width, height)?,
+        shown: None,
+    };
     let instance = hal_device.shared_instance().raw_instance();
-    let (image, memory) = imported_image(instance, hal_device.raw_device(), &buffer, width, height)?;
+    let (image, memory) =
+        imported_image(instance, hal_device.raw_device(), buffer.buffer, (width, height), vk_usage)?;
     let size = wgpu::Extent3d {
         width,
         height,
@@ -312,7 +371,7 @@ pub fn create(
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUses::STORAGE_WRITE_ONLY | wgpu::TextureUses::COPY_SRC,
+                usage: hal_usage,
                 memory_flags: wgpu::hal::MemoryFlags::empty(),
                 view_formats: Vec::new(),
             },
@@ -323,7 +382,7 @@ pub fn create(
     drop(hal_device);
     // SAFETY: the texture matches the descriptor and is in UNDEFINED
     // layout, which is what UNINITIALIZED stands for.
-    let texture = unsafe {
+    let imported = unsafe {
         device.create_texture_from_hal::<Vulkan>(
             hal_texture,
             &wgpu::TextureDescriptor {
@@ -333,13 +392,20 @@ pub fn create(
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+                usage,
                 view_formats: &[],
             },
             wgpu::TextureUses::UNINITIALIZED,
         )
     };
-    Ok((texture, buffer))
+    let mut buffer = buffer;
+    Ok(match way {
+        Way::Direct => (imported, buffer),
+        Way::Copied(_) => {
+            buffer.shown = Some(imported);
+            (storage_texture(device, width, height, format), buffer)
+        }
+    })
 }
 
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {

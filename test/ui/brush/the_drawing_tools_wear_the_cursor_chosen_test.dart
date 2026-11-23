@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/red_and_blue_swapped.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_cursor_painter.dart';
@@ -950,7 +951,7 @@ void main() {
     final rgba = ByteData.sublistView(
       Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]),
     );
-    expect(bgraOf(rgba), [3, 2, 1, 4, 7, 6, 5, 8]);
+    expect(redAndBlueSwapped(rgba), [3, 2, 1, 4, 7, 6, 5, 8]);
   });
 }
 

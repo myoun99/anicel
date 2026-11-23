@@ -1498,7 +1498,7 @@ fn used(rest: wgpu::Limits) -> wgpu::Limits {
 
 /// A texture of the engine's own that a compute pass stores to and a copy
 /// reads — shared with nothing.
-#[cfg(test)]
+#[cfg(any(test, target_os = "android"))]
 pub(crate) fn storage_texture(
     device: &wgpu::Device,
     width: u32,

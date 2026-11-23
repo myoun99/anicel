@@ -107,6 +107,15 @@ sealed class ScreenTexture {
   static String _said = '';
   static String? _refused;
 
+  /// The engine the newest screen was opened on, [path]'s, while it is
+  /// live and not gone: what the debug screen checks the way on
+  /// (`ScreenCheck`). Held weakly — the app lets an engine go.
+  static GpuEngine? get engineOfThePath => switch (_pathsEngine?.target) {
+    final engine? when !engine.isClosed && !engine.isGone => engine,
+    _ => null,
+  };
+  static WeakReference<GpuEngine>? _pathsEngine;
+
   /// Test seam: a screen opened [said] that way — refused for [refused],
   /// where named.
   @visibleForTesting
@@ -165,6 +174,7 @@ sealed class ScreenTexture {
     int height,
   ) async {
     _said = engine.screenSaid;
+    _pathsEngine = WeakReference(engine);
     try {
       final opened = await _AlternatedTextures.open(engine, width, height);
       _refused = null;
@@ -353,6 +363,10 @@ sealed class ScreenTexture {
     _draw((next) {
       _drawnOnLast = next;
       draw(next);
+      // What the frame wrote, handed over where Flutter shows another
+      // texture than the one drawn on ([GpuTarget.settle]) — before the
+      // done the frame goes up by.
+      next.settle();
     });
     _itsDrawMicros = _sinceItsDraw.elapsedMicroseconds;
     return (asked: asked, drawnFor: drawnFor);

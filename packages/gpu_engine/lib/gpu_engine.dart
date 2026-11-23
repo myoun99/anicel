@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' show max, min;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -296,12 +297,19 @@ class GpuEngine {
     return made;
   }
 
-  /// [target]'s texture, for a draw on this engine to write: what the
-  /// target was said to hold is forgotten ([GpuTarget.kept]). Every draw
+  /// [target]'s texture, for a draw on this engine to write [rect] of —
+  /// [left, top, right, bottom), the whole of it where null: what the
+  /// target was said to hold is forgotten ([GpuTarget.kept]), and what the
+  /// draw writes is counted as changed ([GpuTarget.settle]). Every draw
   /// reaches a target's texture through here.
-  Pointer<rust.Texture> _toDrawOn(GpuTarget target) {
+  Pointer<rust.Texture> _toDrawOn(
+    GpuTarget target,
+    (int, int, int, int)? rect,
+  ) {
     final texture = _its(target)._texture;
-    target.kept = null;
+    target
+      ..kept = null
+      .._wrote(rect);
     return texture;
   }
 
@@ -437,6 +445,10 @@ class GpuEngine {
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
   /// 유지한다」 — a lost device is not the app's end.
   bool get isGone => rust.engineGone(_engine);
+
+  /// Whether [close] has been called: nothing of this engine is asked
+  /// after, [isGone] among it.
+  bool get isClosed => _closed;
 
   /// Why the device went, as far as anything says ([GpuDeviceWent]) —
   /// unsaid while it is there.
@@ -735,13 +747,47 @@ sealed class GpuTarget implements _OfAnEngine {
   /// the engine's own now: a surface (rust/src/platform/android.rs).
   Object? kept;
 
+  int get width;
+  int get height;
+
+  /// What the draws since the last [settle] wrote of the target — the box
+  /// round all of them, [left, top, right, bottom) —, null where none has.
+  (int, int, int, int)? _changed;
+
+  void _wrote((int, int, int, int)? rect) {
+    final (left, top, right, bottom) = rect ?? (0, 0, width, height);
+    _changed = switch (_changed) {
+      null => (left, top, right, bottom),
+      (final l, final t, final r, final b) => (
+        min(l, left),
+        min(t, top),
+        max(r, right),
+        max(b, bottom),
+      ),
+    };
+  }
+
+  /// Hands Flutter what the draws since the last settle wrote, where what
+  /// it shows of the target is not the texture they write: copied onto
+  /// it, submitted, and waited for by none of this — the next
+  /// [GpuEngine.done] ends once the copy is done too
+  /// (rust/src/platform/mod.rs, `gpu_engine_surface_settle`). Asked once a
+  /// frame is drawn, before its done (the app's `ScreenTexture.present`),
+  /// on every platform; where the two are one texture — every device but
+  /// an Android one whose AHardwareBuffer images take no stores — it
+  /// copies nothing.
+  ///
+  /// 🗣️유저 2026-11-23 (card the-galaxy-tab-canvas-went-slow-on-build-1095-Q9):
+  /// 「그 기기만 바뀐 곳을 한 번 옮겨 보여 준다」 — what changed, once.
+  void settle();
+
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
   Duration fill(int seed) => _ran(
     rust.fillRun(
       _engine._fillKernel,
       _engine._engine,
-      _engine._toDrawOn(this),
+      _engine._toDrawOn(this, null),
       seed,
     ),
   );
@@ -758,7 +804,9 @@ class GpuSurface extends GpuTarget {
   );
 
   final Pointer<rust.Surface> _surface;
+  @override
   final int width;
+  @override
   final int height;
   final bool bgra;
 
@@ -766,6 +814,22 @@ class GpuSurface extends GpuTarget {
 
   @override
   Pointer<rust.Texture> get _texture => rust.surfaceTexture(_surface);
+
+  @override
+  void settle() {
+    final changed = _changed;
+    _changed = null;
+    if (changed == null) {
+      return;
+    }
+    using(
+      (arena) => rust.surfaceSettle(
+        _engine._engine,
+        _surface,
+        _edges(arena, changed),
+      ),
+    );
+  }
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
   /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
@@ -3372,7 +3436,7 @@ class GpuComposite implements _OfAnEngine {
         _engine._engine,
         _engine._its(pool)._pool,
         _engine._its(plan)._plan,
-        _engine._toDrawOn(target),
+        _engine._toDrawOn(target, rect),
         _edges(arena, rect),
       ),
     );
@@ -3392,7 +3456,7 @@ class GpuComposite implements _OfAnEngine {
     rust.compositeMove(
       _composite,
       _engine._engine,
-      _engine._toDrawOn(target),
+      _engine._toDrawOn(target, null),
       dx,
       dy,
     );
@@ -3572,7 +3636,7 @@ class GpuScreen implements _OfAnEngine {
         _engine._engine,
         _doubles(arena, inverse),
         sampling.id,
-        _engine._toDrawOn(target),
+        _engine._toDrawOn(target, rect),
         _edges(arena, rect),
       ),
     );
@@ -5787,7 +5851,7 @@ class GpuGridLay {
       rust.gridLay(
         _lay,
         _engine._engine,
-        _engine._toDrawOn(target),
+        _engine._toDrawOn(target, rect),
         edges,
         pictures,
         boxes,

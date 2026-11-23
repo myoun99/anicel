@@ -58,6 +58,12 @@ impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
         CFRetained::as_ptr(&self.pixels).as_ptr().cast()
     }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
 }
 
 fn number(value: usize) -> CFRetained<CFNumber> {

@@ -61,6 +61,12 @@ impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
         (&raw const self.plane).cast_mut().cast()
     }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
 }
 
 fn exportable(instance: &ash::Instance, physical: vk::PhysicalDevice) -> Result<(), String> {

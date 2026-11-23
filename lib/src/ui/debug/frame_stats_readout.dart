@@ -4,6 +4,7 @@ import 'engine_stages.dart';
 import 'frame_stats.dart';
 import 'measurement_mode.dart';
 import 'screen_asked.dart' show screenAskWords;
+import 'screen_check.dart';
 
 /// Hosts the measurement readouts above the whole app.
 ///
@@ -145,6 +146,9 @@ class FrameStatsReadout extends StatelessWidget {
                 // it was refused ([FrameStatsSnapshot.screenPath]) — its
                 // row always there, its words read off the device.
                 ' path   ${stats.screenPath.isEmpty ? '—' : stats.screenPath}',
+                // Whether Flutter shows the bytes the engine wrote, that
+                // way ([ScreenCheck], its probe under the lines).
+                ' check  ${ScreenCheck.said.value}',
                 // The pointer packets, dealt with between the frames
                 // ([FrameStatsSnapshot.pointsPerSecond]).
                 'POINTER ${stats.pointsPerSecond.toStringAsFixed(0)} pts/s  '
@@ -186,6 +190,7 @@ class FrameStatsReadout extends StatelessWidget {
               children: <Widget>[
                 for (final line in lines)
                   Text(line, style: _style, textDirection: TextDirection.ltr),
+                const ScreenCheck(),
               ],
             ),
           ),

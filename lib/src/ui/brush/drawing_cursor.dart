@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 
+import '../../core/red_and_blue_swapped.dart';
 import '../../models/app_input_settings.dart';
 import '../canvas/raster_picture.dart' show withPicture;
 import 'tool_cursor_look.dart';
@@ -107,7 +108,9 @@ _PictureDoor? get _pictureDoor => switch (defaultTargetPlatform) {
     channel: SystemChannels.mouseCursor,
     make: 'createCustomCursor/windows',
     wear: 'setCustomCursor/windows',
-    pixels: bgraOf,
+    // `toByteData`'s premultiplied RGBA in the order Windows reads a
+    // cursor's pixels: blue, green, red, alpha.
+    pixels: redAndBlueSwapped,
   ),
   TargetPlatform.macOS || TargetPlatform.android || TargetPlatform.linux => (
     channel: runnerCursorChannel,
@@ -266,21 +269,6 @@ Future<String?> _makeLookCursor(
   } on MissingPluginException {
     return null;
   }
-}
-
-/// [rgba] — `toByteData`'s premultiplied RGBA — in the order Windows reads
-/// a cursor's pixels: blue, green, red, alpha.
-@visibleForTesting
-Uint8List bgraOf(ByteData rgba) {
-  final bytes = Uint8List.fromList(
-    rgba.buffer.asUint8List(rgba.offsetInBytes, rgba.lengthInBytes),
-  );
-  for (var i = 0; i + 3 < bytes.length; i += 4) {
-    final red = bytes[i];
-    bytes[i] = bytes[i + 2];
-    bytes[i + 2] = red;
-  }
-  return bytes;
 }
 
 /// [rgba] as the runners read it — as it is.
