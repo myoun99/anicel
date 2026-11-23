@@ -579,14 +579,35 @@ impl Engine {
         Self::on(instance, adapters.remove(0))
     }
 
-    /// Opens on the platform's first adapter: the tests', cargo's and
-    /// `flutter test`'s alike, where no Flutter names one — and asking of
-    /// the limits the kernels' sources fix only what they use ([`used`]).
-    /// A kernel that comes to use more than the engine says they do is so
-    /// refused by its own test's device, on whatever adapter that runs, as
-    /// an adapter that gave only that much would refuse the app's.
+    /// Opens on the platform's first adapter: cargo's tests', where no
+    /// Flutter names one — and asking of the limits the kernels' sources fix
+    /// only what they use ([`used`]). A kernel that comes to use more than
+    /// the engine says they do is so refused by its own test's device, on
+    /// whatever adapter that runs, as an adapter that gave only that much
+    /// would refuse the app's.
+    #[cfg(test)]
     pub(crate) fn open_first() -> Option<Self> {
         Self::first_within(|most| asked(most).map(used))
+    }
+
+    /// Opens on the platform's first adapter — `flutter test`'s, where no
+    /// Flutter names one — asking what the app asks of its own ([`asked`]),
+    /// as 1099 did.
+    ///
+    /// 🚧관제 2026-11-23 20:1x (PR 1502 shard 4, card
+    /// bundled-files-find-the-engine-already-open): the candidate for the
+    /// segfault of build 1100's Linux `flutter test` on lavapipe, not its
+    /// cause — none is found yet. The flutter tester crashed in
+    /// the_engine_keys_a_row_as_each_pixel_is_keyed_test, alone too, after
+    /// its device came to ask [`used`]'s limits (99f2b3e25); 1099 asked
+    /// these on the same mesa and stood. The next bundle's CI is the
+    /// experiment: green, and the limits are why (why they crash it is a
+    /// card of its own); red, and they are not, and this goes back.
+    /// cargo's tests keep [`Self::open_first`], so a kernel that uses more
+    /// is still refused in its own test.
+    #[cfg(not(test))]
+    fn open_for_flutter_test() -> Option<Self> {
+        Self::first_within(asked)
     }
 
     /// [`Self::open_first`], one binding holding no more than `room` bytes:
@@ -2435,10 +2456,16 @@ pub extern "C" fn gpu_engine_open_sole() -> *mut Engine {
 }
 
 /// Opens the engine on the platform's first adapter — `flutter test`'s,
-/// where no Flutter names one. Null on failure; see the last error.
+/// where no Flutter names one ([`Engine::open_for_flutter_test`]); cargo's
+/// tests that open through it ask what [`Engine::open_first`] does. Null
+/// on failure; see the last error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open_first() -> *mut Engine {
-    opened(Engine::open_first)
+    #[cfg(test)]
+    let open = Engine::open_first;
+    #[cfg(not(test))]
+    let open = Engine::open_for_flutter_test;
+    opened(open)
 }
 
 /// # Safety
