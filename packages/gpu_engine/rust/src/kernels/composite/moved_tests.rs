@@ -5,6 +5,7 @@
 //! pass compiled where the executor an app shows through is made.
 
 use super::Composite;
+use super::moved::staying;
 use crate::device::{Engine, storage_texture};
 use crate::kernels::fill::Fill;
 use crate::kernels::shared::storage_format;
@@ -128,4 +129,34 @@ fn an_executor_opened_to_show_has_its_move() {
     }
     let none = Composite::new(engine).expect("the executor");
     assert!(none.moves.outputs().is_empty(), "none made to show nothing");
+}
+
+// What a move copies and stores of a side is what stays on it — nothing
+// the move takes past an edge. No pixel shows it: a store past a
+// surface's edge is the driver's to drop (WGSL's textureStore), so the
+// law is read off its function.
+#[test]
+fn what_stays_of_a_side_is_what_the_move_keeps_on_it() {
+    let side = SIZE.0;
+    assert_eq!(staying(0, side), Some((0, 300)));
+    assert_eq!(staying(13, side), Some((0, 287)));
+    assert_eq!(staying(-13, side), Some((13, 300)));
+    assert_eq!(staying(299, side), Some((0, 1)));
+    assert_eq!(staying(-299, side), Some((299, 300)));
+    assert_eq!(staying(300, side), None);
+    assert_eq!(staying(-301, side), None);
+}
+
+// ⚠️By its text, for what no pixel here shows: a draw after the move
+// stores over texels it moved, through a write-only binding as the move
+// does, and two such uses of a texture get no barrier of wgpu's own
+// (`land_storage_writes`'s 🚨) — once, after every band, before the work
+// is submitted.
+#[test]
+fn a_move_lands_its_stores_before_what_is_drawn_after_it() {
+    let source = include_str!("moved.rs").replace("\r\n", "\n");
+    let block = "        land_storage_writes(&mut encoder, surface);\n        \
+                 engine.queue.submit([encoder.finish()]);";
+    assert!(source.contains(block));
+    assert_eq!(source.matches("land_storage_writes(&mut encoder").count(), 1, "once");
 }

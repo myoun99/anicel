@@ -55,7 +55,7 @@ pub(super) fn compile(engine: &Engine, token: &'static str) -> wgpu::ComputePipe
 /// What stays on a side of `side` texels of what moves `by` along it:
 /// where it lies before the move, [from, to) — none where all of it goes
 /// off.
-fn staying(by: i32, side: u32) -> Option<(u32, u32)> {
+pub(super) fn staying(by: i32, side: u32) -> Option<(u32, u32)> {
     let side = i64::from(side);
     let from = (-i64::from(by)).max(0);
     let to = (side - i64::from(by)).min(side);
@@ -121,8 +121,12 @@ impl Composite {
             bound.push(wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view) });
             let groups = flat((columns.div_ceil(GROUP), rows.div_ceil(GROUP)));
             encode_on(engine, &mut encoder, &[Encoded { pipeline: &pass, bound, groups }]);
-            land_storage_writes(&mut encoder, surface);
         }
+        // What is drawn after the move — the tiles changed since, over texels
+        // it moved — lands after its stores ([`land_storage_writes`]'s 🚨).
+        // Its bands need none between them: a band's copy is a use of its
+        // own, and no band stores where another does.
+        land_storage_writes(&mut encoder, surface);
         engine.queue.submit([encoder.finish()]);
         Some(())
     }
