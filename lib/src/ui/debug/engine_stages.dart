@@ -79,10 +79,11 @@ class EngineStagesSummary {
 /// image, and a stall of one frame stood in a p95. The slowest frame kept
 /// is told whole, by its own places ([EngineStagesSummary.slowest]).
 ///
-/// ⚠️A timed engine waits out each submit where it makes it
-/// (rust/src/took.rs): its frames are the sum of their parts, and longer
-/// than an untimed engine's. The places' share of a frame is what is read
-/// here, not how long a frame is.
+/// 🚨A timed engine waits for nothing to be timed (rust/src/took.rs): a
+/// submit's GPU time is the GPU's own clock's, read once written, where
+/// the device has one ([GpuEngine.clocked]) — and none is shown where it
+/// has not ([lines]). ↩️Till 2026-11-23 each submit was waited out where
+/// it was made, and a timed engine's frames were the sum of their parts.
 abstract final class EngineStages {
   /// How many frames are kept, the newest: seconds of them at a screen's
   /// rate, and a stroke's worth.
@@ -211,6 +212,9 @@ abstract final class EngineStages {
   static String _ms(num micros, {int width = 7}) =>
       (micros / 1000).toStringAsFixed(2).padLeft(width);
 
+  /// A GPU column where the GPU has no clock: none, as wide as a figure.
+  static final String _noClock = '—'.padLeft(7);
+
   /// The workgroups a frame, in thousands — a kernel's are of 64 texels
   /// or so each, so how many it ran says how many texels it wrote.
   static String _groups(num groups) =>
@@ -227,17 +231,27 @@ abstract final class EngineStages {
   /// thread's, then place by place, each with the most it took in one
   /// frame, its times a frame and its workgroups —, and the slowest frame,
   /// with what it was drawn as. `timed, no frame yet` with none.
-  static List<String> lines(EngineStagesSummary? summary) {
+  ///
+  /// 🗣️관제 2026-11-23 23:51, of a device whose GPU has no clock
+  /// ([clocked] false): 「단계 GPU 시간 칸만 「이 기기는 시각 쿼리 없음」으로
+  /// 비우고, 나머지 숫자는 기다림 없이 그대로」 — its GPU columns say none
+  /// rather than a zero, which reads as measured and free.
+  static List<String> lines(
+    EngineStagesSummary? summary, {
+    required bool clocked,
+  }) {
     if (summary == null) {
       return const <String>['STAGES  timed, no frame yet'];
     }
     final frames = summary.frames;
     final slowest = summary.slowest;
     const of = EngineStagesSummary.microsOf;
+    String gpu(num micros) => clocked ? _ms(micros) : _noClock;
     return <String>[
       'STAGES  ${frames}f  a frame${_ms(summary.wholeMicros / frames)}  '
-          'gpu${_ms(summary.gpuMicros / frames)}  '
+          'gpu${gpu(summary.gpuMicros / frames)}  '
           'cpu${_ms(summary.cpuMicros / frames)}',
+      if (!clocked) ' gpu: no timestamp queries on this device',
       for (final place in summary.places.take(placesShown))
         _placeLine(
           place,
@@ -252,7 +266,7 @@ abstract final class EngineStages {
             null => '',
             final asked => '  ${screenAskWords(asked)}',
           }}',
-      '        gpu${_ms(of(summary.slowestPlaces, gpu: true))}  '
+      '        gpu${gpu(of(summary.slowestPlaces, gpu: true))}  '
           'cpu${_ms(of(summary.slowestPlaces, gpu: false))}',
       for (final place in summary.slowestPlaces.take(slowestPlacesShown))
         _placeLine(place, 1),

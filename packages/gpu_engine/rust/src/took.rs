@@ -1,8 +1,8 @@
 //! HOW LONG EACH PLACE OF THE ENGINE TOOK, WHILE IT IS TIMED (H66 · H67,
 //! 2026-11-22): the bodies handed to the engine's thread, each by where it
-//! was handed over, and the submits, each by where it was made — a submit
-//! waited out on that thread before the next thing is done, so what the
-//! GPU took of it is its own and no other's.
+//! was handed over, and the submits, each by where it was made — a
+//! submit's by the GPU's own clock, stamped before its work and after it
+//! ([`crate::clock`]), so what the GPU took of it is its own and no other's.
 //!
 //! 🗣️유저 2026-11-22, a Galaxy Tab out of reach, build 1098 (card
 //! the-galaxy-tab-canvas-went-slow-on-build-1095): 「팬줌똑같이느리고 …
@@ -13,19 +13,22 @@
 //! What was mended before it was what the sources suggested, and whether it
 //! was the large part was known a build later.
 //!
-//! ⚠️TIMED, THE ENGINE IS NOT THE ENGINE THAT IS NOT: its thread stands
-//! through each submit, where untimed it goes on encoding the next while
-//! the GPU works — a frame is the sum of its parts and no shorter. So it is
-//! a switch of its own ([`Took::times`]), off till asked for, and what the
-//! places took is read beside a frame's whole time and not in its stead.
+//! 🚨TIMED, THE ENGINE IS THE ENGINE UNTIMED: nothing of it waits for the
+//! GPU to be timed — a submit's stamps are read once the GPU has written
+//! them, as the device is next polled. A device with no clock of its own
+//! is told of no GPU time at all, and says so (`gpu_engine_clocked`).
 //!
-//! ⛔NOT THE GPU's OWN CLOCK (timestamp queries): whether a tablet's driver
-//! answers them is not known before the build is on it, and a build that
-//! reads nothing there is a round lost — the rounds are two days apart
-//! (유저 away 11-21~30). A wait on the engine's thread is what every read
-//! already does.
+//! ↩️⛔Each submit was waited out on the engine's thread till 2026-11-23,
+//! its GPU time what the wait took — and not the GPU's own clock: whether a
+//! tablet's driver answers timestamp queries was not known before the build
+//! was on it, and a build that read nothing there was a round lost (유저
+//! away 11-21~30). Waited out, the engine was not the engine that is not:
+//! build 1101's photographs of a stroke read a step at 1.4 times its cost.
+//! 🗣️유저 11-23 (관제 23:24): 「모든가능성 철저하게 검사해서 디버그화면
+//! 만들면되지」, and 관제 23:51 of a device with no clock: 「기다림이 걸음 줄 ·
+//! 펜→화면 지연 · GPU 줄까지 같이 부풀린다 … 단계 GPU 시간 칸만 「이 기기는
+//! 시각 쿼리 없음」으로 비우고, 나머지 숫자는 기다림 없이」.
 
-use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::panic::Location;
@@ -36,11 +39,10 @@ use std::time::{Duration, Instant};
 /// Whose time a place's is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Whose {
-    /// The engine's thread's, in a body: all of it but its waits for the
-    /// GPU ([`Took::waited`]).
+    /// The engine's thread's, in a body: all of it.
     Cpu,
-    /// The GPU's, of one submit: from the driver having it till the GPU
-    /// said it was done.
+    /// The GPU's, of one submit, by its own clock: from its first command
+    /// to its last ([`crate::clock`]).
     Gpu,
 }
 
@@ -69,13 +71,6 @@ struct Sum {
 pub(crate) struct Took {
     timed: AtomicBool,
     places: Mutex<BTreeMap<(Whose, &'static str, u32), Sum>>,
-}
-
-thread_local! {
-    /// How long this thread, an engine's, has waited for the GPU since a
-    /// body began on it ([`Took::begun`], [`Took::waited`]) — a body's own
-    /// time is the rest of it ([`Took::ended`]).
-    static WAITED: Cell<u64> = const { Cell::new(0) };
 }
 
 fn micros(of: Duration) -> u64 {
@@ -112,32 +107,27 @@ impl Took {
     }
 
     /// A body begins on this thread: when — none while nothing is timed.
-    /// Its waits are counted from here: a submit handed to this thread from
-    /// another, between two bodies, is waited out here too
-    /// (`Queue::submit`), and is no part of the body after it.
     pub(crate) fn begun(&self) -> Option<Instant> {
-        self.timed().then(|| {
-            WAITED.set(0);
-            Instant::now()
-        })
+        self.timed().then(Instant::now)
     }
 
     /// The body [`Self::begun`] on this thread, handed over `by` there,
-    /// ended: its own time is what it took less its waits for the GPU,
-    /// which are their submits'.
+    /// ended: what it took is its own.
     pub(crate) fn ended(&self, begun: Option<Instant>, by: &'static Location<'static>) {
         if let Some(begun) = begun {
-            let own = micros(begun.elapsed()).saturating_sub(WAITED.get());
-            self.add(Whose::Cpu, by, own, 0);
+            self.add(Whose::Cpu, by, micros(begun.elapsed()), 0);
         }
     }
 
-    /// This thread waited `long` for the GPU to finish the submit made `by`
-    /// there, of `groups` workgroups in all.
-    pub(crate) fn waited(&self, by: &'static Location<'static>, long: Duration, groups: u64) {
-        let long = micros(long);
-        WAITED.set(WAITED.get().saturating_add(long));
-        self.add(Whose::Gpu, by, long, groups);
+    /// The GPU's clock said it took `long` over the submit made `by` there,
+    /// of `groups` workgroups in all ([`crate::clock`]) — read after it,
+    /// and waited for by no thread. Told nothing while the engine is not
+    /// timed: stamps of a submit made before the switch went off may be
+    /// read after it.
+    pub(crate) fn stamped(&self, by: &'static Location<'static>, long: Duration, groups: u64) {
+        if self.timed() {
+            self.add(Whose::Gpu, by, micros(long), groups);
+        }
     }
 
     /// What each place took since this was last asked, a line each, the
@@ -172,9 +162,9 @@ mod tests {
     fn a_place_sums_its_times_and_keeps_its_longest() {
         let took = timed();
         let (here, line) = (Location::caller(), line!());
-        took.waited(here, Duration::from_micros(300), 4);
-        took.waited(here, Duration::from_micros(900), 6);
-        took.waited(here, Duration::from_micros(500), 0);
+        took.stamped(here, Duration::from_micros(300), 4);
+        took.stamped(here, Duration::from_micros(900), 6);
+        took.stamped(here, Duration::from_micros(500), 0);
         let place = format!("{}:{line}", file!());
         assert_eq!(took.told(), format!("gpu {place} times=3 micros=1700 longest=900 groups=10\n"));
     }
@@ -182,55 +172,9 @@ mod tests {
     #[test]
     fn told_takes_what_it_tells() {
         let took = timed();
-        took.waited(Location::caller(), Duration::from_micros(1), 1);
+        took.stamped(Location::caller(), Duration::from_micros(1), 1);
         assert_ne!(took.told(), "");
         assert_eq!(took.told(), "", "told once, it is not told again");
-    }
-
-    #[test]
-    fn a_body_s_own_time_is_what_it_took_less_its_waits_for_the_gpu() {
-        let took = timed();
-        let (body, submit) = (Location::caller(), Location::caller());
-        let begun = took.begun();
-        let since = Instant::now();
-        std::thread::sleep(Duration::from_millis(12));
-        took.waited(submit, Duration::from_millis(9), 1);
-        took.ended(begun, body);
-        let whole = micros(since.elapsed());
-        let told = took.told();
-        let own: u64 = told
-            .lines()
-            .find(|line| line.starts_with("cpu "))
-            .and_then(|line| line.split(" micros=").nth(1))
-            .and_then(|rest| rest.split(' ').next())
-            .and_then(|micros| micros.parse().ok())
-            .unwrap_or_else(|| panic!("no body's line: {told}"));
-        // Slept twelve and said nine of them were the GPU's: three its own,
-        // and no more than all of it less the nine.
-        assert!((3_000..=whole - 9_000).contains(&own), "{own} of {whole}: {told}");
-    }
-
-    #[test]
-    fn a_wait_before_a_body_began_is_not_taken_off_it() {
-        let took = timed();
-        let here = Location::caller();
-        // In a body before it, and between the two.
-        let first = took.begun();
-        took.waited(here, Duration::from_secs(60), 0);
-        took.ended(first, here);
-        took.waited(here, Duration::from_secs(60), 0);
-        let next = took.begun();
-        std::thread::sleep(Duration::from_millis(5));
-        took.ended(next, here);
-        let told = took.told();
-        let cpu = told.lines().find(|line| line.starts_with("cpu ")).expect("the bodies' line");
-        let longest: u64 = cpu
-            .split(" longest=")
-            .nth(1)
-            .and_then(|rest| rest.split(' ').next())
-            .and_then(|micros| micros.parse().ok())
-            .expect("its longest");
-        assert!(longest >= 5_000, "the second body's five milliseconds are its own: {told}");
     }
 
     #[test]
@@ -246,10 +190,10 @@ mod tests {
     #[test]
     fn a_switch_thrown_forgets_what_was_taken_and_one_asked_as_it_is_keeps_it() {
         let took = timed();
-        took.waited(Location::caller(), Duration::from_micros(1), 1);
+        took.stamped(Location::caller(), Duration::from_micros(1), 1);
         took.times(true);
         assert_ne!(took.told(), "", "timed and asked to be: nothing is taken away");
-        took.waited(Location::caller(), Duration::from_micros(1), 1);
+        took.stamped(Location::caller(), Duration::from_micros(1), 1);
         took.times(false);
         took.times(true);
         assert_eq!(took.told(), "", "what it took before the switch went is forgotten");
@@ -260,8 +204,8 @@ mod tests {
         let took = timed();
         let first = Location::caller();
         let second = Location::caller();
-        took.waited(second, Duration::from_micros(2), 0);
-        took.waited(first, Duration::from_micros(1), 0);
+        took.stamped(second, Duration::from_micros(2), 0);
+        took.stamped(first, Duration::from_micros(1), 0);
         took.ended(took.begun(), second);
         let told = took.told();
         let kinds: Vec<_> = told.lines().map(|line| &line[..3]).collect();
@@ -302,22 +246,40 @@ mod tests {
             .unwrap_or_else(|| panic!("no {name} at {place}: {told}"))
     }
 
+    /// Whether the GPU has said it finished the engine's newest submit.
+    fn newest_done(engine: &crate::device::Engine) -> Option<bool> {
+        engine.queue.submits.kept_now().last().map(|last| last.done)
+    }
+
     #[test]
-    fn a_timed_submit_is_waited_out_where_it_is_made_and_an_untimed_one_is_not() {
+    fn a_timed_submit_is_waited_for_by_no_one_and_its_stamps_are_read_at_the_next_poll() {
         let turn = crate::testing::a_device_of_its_own();
         let engine = timed_engine(&turn);
         let line = line!() + 1;
         engine.queue.submit([]);
-        let done = |engine: &crate::device::Engine| engine.queue.submits.kept_now().last().map(|last| last.done);
-        assert_eq!(done(&engine), Some(true), "back from a timed submit, the GPU has said it is done");
+        assert_eq!(newest_done(&engine), Some(false), "back from a timed submit, no one has polled the GPU");
+        assert_eq!(told_by(&engine), "", "nothing told before the GPU wrote it");
+        crate::testing::done_here(&engine).expect("the GPU done");
         let told = told_by(&engine);
-        assert_eq!(figure(&told, &format!("gpu {}:{line} ", file!()), "times"), 1, "{told}");
+        let place = format!("gpu {}:{line} ", file!());
+        let said = by_the_clock(&engine, &told, &place, "times");
+        assert!(matches!(said, Some(1) | None), "{said:?}: {told}");
         // SAFETY: a live engine.
         unsafe { crate::device::gpu_engine_timed(&raw const engine, false) };
         engine.queue.submit([]);
-        assert_eq!(done(&engine), Some(false), "an untimed submit is waited for by no one");
         crate::testing::done_here(&engine).expect("the GPU done");
-        assert_eq!(told_by(&engine), "", "and nothing is told of it");
+        assert_eq!(told_by(&engine), "", "an untimed submit is told of no one");
+    }
+
+    /// What `told` says the GPU took at `place`, by `name` — and where the
+    /// device has no clock, that it says nothing of the GPU's at all, and
+    /// none.
+    fn by_the_clock(engine: &crate::device::Engine, told: &str, place: &str, name: &str) -> Option<u64> {
+        if engine.queue.clock.is_none() {
+            assert!(!told.contains("gpu "), "a device with no clock tells no GPU time: {told}");
+            return None;
+        }
+        Some(figure(told, place, name))
     }
 
     #[test]
@@ -341,12 +303,33 @@ mod tests {
             mapped_at_creation: false,
         });
         let dispatch = |groups| Encoded { pipeline: &put, bound: whole(&[(0, &out)]), groups };
+        crate::testing::done_here(&engine).expect("the GPU done");
         let _ = told_by(&engine);
         let line = line!() + 1;
         encode(&engine, &[dispatch((2, 3, 1)), dispatch((4, 1, 1))]);
+        crate::testing::done_here(&engine).expect("the GPU done");
         let told = told_by(&engine);
         let place = format!("gpu {}:{line} ", file!());
-        assert_eq!((figure(&told, &place, "times"), figure(&told, &place, "groups")), (1, 10), "{told}");
+        let said = (by_the_clock(&engine, &told, &place, "times"), by_the_clock(&engine, &told, &place, "groups"));
+        assert!(matches!(said, (Some(1), Some(10)) | (None, None)), "{said:?}: {told}");
+    }
+
+    #[test]
+    fn submits_out_at_once_are_each_told() {
+        let turn = crate::testing::a_device_of_its_own();
+        let engine = timed_engine(&turn);
+        let line = line!() + 3;
+        engine.on_thread(|| {
+            for _ in 0..64 {
+                engine.queue.submit([]);
+            }
+        });
+        crate::testing::done_here(&engine).expect("the GPU done");
+        let told = told_by(&engine);
+        let place = format!("gpu {}:{line} ", file!());
+        if by_the_clock(&engine, &told, &place, "times").is_some_and(|times| times != 64) {
+            panic!("sixty-four submits, each told: {told}");
+        }
     }
 
     #[test]
@@ -389,27 +372,5 @@ mod tests {
         for line in [lent, posted, let_go_of] {
             assert_eq!(figure(&told, &format!("cpu {}:{line} ", file!()), "times"), 1, "{told}");
         }
-    }
-
-    #[test]
-    fn a_body_s_submits_are_the_gpu_s_time_and_not_the_body_s_too() {
-        let turn = crate::testing::a_device_of_its_own();
-        let engine = timed_engine(&turn);
-        let since = Instant::now();
-        let (body, submit) = (line!() + 1, line!() + 3);
-        engine.on_thread(|| {
-            for _ in 0..64 {
-                engine.queue.submit([]);
-            }
-        });
-        let whole = micros(since.elapsed());
-        let told = told_by(&engine);
-        let place = format!("gpu {}:{submit} ", file!());
-        let own = figure(&told, &format!("cpu {}:{body} ", file!()), "micros");
-        let waited = figure(&told, &place, "micros");
-        assert_eq!(figure(&told, &place, "times"), 64, "{told}");
-        // Sixty-four waits, counted once: with them in the body's own time
-        // as well the two are more than all that passed.
-        assert!(own + waited <= whole, "{own} + {waited} of {whole}: {told}");
     }
 }

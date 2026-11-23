@@ -16,6 +16,7 @@
 // never run as this one's (kernels/shared/one_checkout.rs).
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
+mod clock;
 mod device;
 mod fingerprint;
 mod kernels;

@@ -9,6 +9,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
+use crate::clock::Clock;
 use crate::kernels::shared::{Counted, built_here, put_built_here};
 use crate::submits::Submits;
 use crate::took::Took;
@@ -466,10 +467,10 @@ pub(crate) struct Queue {
     /// Every submit through here, and whether the GPU said it finished it
     /// ([`Submits`]).
     pub(crate) submits: Arc<Submits>,
-    /// What a submit is waited out by while the engine is timed
-    /// ([`Took`]): the engine's thread for polls, and the device it
-    /// polls.
-    polls: EngineThread,
+    /// What a submit is stamped by while the engine is timed ([`Took`]),
+    /// where the device has a clock of its own ([`Clock`]) — and the
+    /// device the stamps are made on.
+    pub(crate) clock: Option<Arc<Clock>>,
     device: wgpu::Device,
 }
 
@@ -479,10 +480,10 @@ impl Queue {
     /// is gone is the next wait's error. Noted, where its caller made it,
     /// until the GPU says it finished it ([`Submits`]).
     ///
-    /// While the engine is timed it returns once the GPU has finished
-    /// them, too: waited out on the engine's thread, so that what the GPU
-    /// took of this submit is told of the place it was made and of no
-    /// other ([`Took`] has what that makes of a frame).
+    /// While the engine is timed, what the GPU took of this submit is told
+    /// of the place it was made and of no other — stamped on the GPU
+    /// before and after it and read once written, where the device has a
+    /// clock ([`Clock`]); waited for by no one either way ([`Took`]).
     #[track_caller]
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
         self.submit_by(Location::caller(), buffers);
@@ -501,25 +502,27 @@ impl Queue {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
         let (submits, made) = (self.submits.clone(), self.submits.note(by));
         let took = &self.thread.took;
-        let timed = took.timed().then(|| (took.clone(), self.polls.clone(), self.device.clone()));
+        let clocked = match (took.timed(), &self.clock) {
+            (true, Some(clock)) => Some((clock.clone(), took.clone(), self.device.clone())),
+            _ => None,
+        };
         #[cfg(test)]
         let thread = self.thread.number;
         let _ = self.thread.run(move || {
-            {
-                // The tests' shared device waits here while a test's own is
-                // up (`testing::a_device_of_its_own`) — on the engine's
-                // thread, where no caller waits for it with that turn in
-                // hand.
-                #[cfg(test)]
-                let _turn = crate::testing::submitting(thread);
-                queue.submit(buffers);
-                queue.on_submitted_work_done(move || submits.done(made.number));
+            // The tests' shared device waits here while a test's own is up
+            // (`testing::a_device_of_its_own`) — on the engine's thread,
+            // where no caller waits for it with that turn in hand.
+            #[cfg(test)]
+            let _turn = crate::testing::submitting(thread);
+            let (buffers, stamps) = match &clocked {
+                Some((clock, _, device)) => clock.around(device, buffers),
+                None => (buffers, None),
+            };
+            queue.submit(buffers);
+            if let (Some(stamps), Some((clock, took, _))) = (stamps, clocked) {
+                clock.read_after(stamps, by, made.groups, took);
             }
-            if let Some((took, polls, device)) = timed {
-                let since = Instant::now();
-                Poll::asked_of(&polls, &device).through();
-                took.waited(by, since.elapsed(), made.groups);
-            }
+            queue.on_submitted_work_done(move || submits.done(made.number));
         });
     }
 
@@ -639,7 +642,11 @@ impl Engine {
         adapter: wgpu::Adapter,
         required_limits: wgpu::Limits,
     ) -> Option<Self> {
-        let required_features = adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE;
+        // The GPU's own clock where it has one, both halves of it or
+        // neither ([`Clock`]): what a timed engine is told the GPU's time by.
+        let stamps = Some(crate::clock::stamped()).filter(|stamps| adapter.features().contains(*stamps));
+        let required_features =
+            (adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE) | stamps.unwrap_or_default();
         let request = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("gpu_engine"),
             required_features,
@@ -680,10 +687,10 @@ impl Engine {
                 };
                 Some(Self {
                     queue: Queue {
+                        clock: Clock::of(&device, &queue).map(Arc::new),
                         queue,
                         thread: thread.clone(),
                         submits: Arc::default(),
-                        polls: polls.clone(),
                         device: device.clone(),
                     },
                     thread,
@@ -2631,11 +2638,36 @@ pub unsafe extern "C" fn gpu_engine_unfinished(
     copy_out(&engine.queue.submits.told(), buffer, capacity)
 }
 
+/// How many submits `engine` made that the GPU has not said it finished
+/// ([`Submits::behind`]) — as of the device's last poll. Asks nothing of
+/// the engine's thread or the device.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_submits_behind(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.queue.submits.behind()
+}
+
+/// Whether `engine`'s device has a clock of its own ([`Clock`]): what a
+/// timed engine tells the GPU's time by — none told where it has not.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_clocked(engine: *const Engine) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.queue.clock.is_some()
+}
+
 /// Times `engine` from here on, or no longer ([`Took::times`]): while it
 /// is, each body handed to its thread and each submit is timed by where
-/// it was made, and a submit is waited out there — so a timed engine is
-/// slower by what it no longer does beside the GPU's work. Asks nothing
-/// of the engine's thread or the device.
+/// it was made — a submit by the GPU's own clock, where the device has
+/// one ([`Clock`]), and waited for by no one either way. Asks nothing of
+/// the engine's thread or the device.
 ///
 /// # Safety
 /// `engine` is live.

@@ -469,13 +469,22 @@ class GpuEngine {
     return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
   });
 
+  /// How many submits of this engine the GPU has not said it finished — as
+  /// of the device's last poll (rust/src/submits.rs, `Submits::behind`).
+  /// Asks nothing of the engine's thread or the device.
+  int get submitsBehind => rust.engineSubmitsBehind(_engine);
+
+  /// Whether this engine's device has a clock of its own
+  /// (rust/src/clock.rs): what a timed engine tells the GPU's time by
+  /// ([took]) — none told where it has not.
+  bool get clocked => rust.engineClocked(_engine);
+
   /// Times this engine from here on, or no longer (rust/src/took.rs):
   /// while it is, each body handed to its thread and each submit is timed
-  /// by where in the engine it was made ([took]). ⚠️A timed engine waits
-  /// out each submit where it makes it, so that the GPU's time is that
-  /// submit's and no other's: its frames are the sum of their parts, and
-  /// longer than an untimed engine's. Asked for what it is already, it
-  /// keeps what it has.
+  /// by where in the engine it was made ([took]) — a submit by the GPU's
+  /// own clock where the device has one ([clocked]), and waited for by no
+  /// one: the engine timed is the engine untimed. Asked for what it is
+  /// already, it keeps what it has.
   void timesItsPlaces(bool timed) => rust.engineTimed(_engine, timed);
 
   /// What each place of this engine took since this was last asked
@@ -907,9 +916,9 @@ typedef GpuTile = ({int page, int slot});
 
 /// What one place of the engine took since it was last asked
 /// ([GpuEngine.took]): whose time it is — the [gpu]'s, of the submits
-/// made there, each waited out where it was made; else the engine's
-/// thread's, in the bodies handed over there, less their waits for the
-/// GPU —, the [place] (`file:line` in the engine's sources), how many
+/// made there, by its own clock ([GpuEngine.clocked]); else the engine's
+/// thread's, in the bodies handed over there —, the [place] (`file:line`
+/// in the engine's sources), how many
 /// [times], their [micros]econds in all and the [longest] of them, and
 /// the workgroups its submits dispatched in all ([groups]; none for a
 /// body).

@@ -278,6 +278,12 @@ external int engineUnfinished(
   int capacity,
 );
 
+@Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_submits_behind')
+external int engineSubmitsBehind(Pointer<Engine> engine);
+
+@Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_clocked')
+external bool engineClocked(Pointer<Engine> engine);
+
 @Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_timed')
 external void engineTimed(Pointer<Engine> engine, bool timed);
 

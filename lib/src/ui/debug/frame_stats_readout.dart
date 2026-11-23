@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import 'engine_stages.dart';
 import 'frame_stats.dart';
 import 'measurement_mode.dart';
@@ -178,7 +179,10 @@ class FrameStatsReadout extends StatelessWidget {
                 // ([EngineStages]) — read as this window is published,
                 // of the frames it keeps itself.
                 if (MeasurementMode.engineStages.value)
-                  ...EngineStages.lines(EngineStages.summary),
+                  ...EngineStages.lines(
+                    EngineStages.summary,
+                    clocked: appGpuEngineOpen.value?.clocked ?? false,
+                  ),
               ];
         return DecoratedBox(
           decoration: const BoxDecoration(color: Color(0xE6101112)),

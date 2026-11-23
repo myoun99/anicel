@@ -131,8 +131,8 @@ sealed class ScreenTexture {
   /// ([GpuEngine.timesItsPlaces]), and no longer once no one is. The
   /// frame statistics' stages (`EngineStages`, Settings ▸ Debug).
   ///
-  /// ⚠️A timed engine's frames are longer than an untimed one's
-  /// (rust/src/took.rs): [upMicros] says so beside them.
+  /// A timed engine waits for nothing to be timed (rust/src/took.rs): its
+  /// frames are an untimed one's.
   static void Function(ScreenUp up, List<GpuPlaceTook> took)? tookAsItWentUp;
 
   /// The engine this screen's frames are drawn on: the one timed

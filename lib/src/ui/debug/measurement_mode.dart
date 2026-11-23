@@ -96,11 +96,11 @@ abstract final class MeasurementMode {
   /// The engine's work place by place, under the frame statistics'
   /// lines (Settings ▸ Debug ▸ Engine Stages). See `EngineStages`.
   ///
-  /// A switch of its own, beside [frameStats] and not a part of it: a
-  /// timed engine waits out each submit where it makes it
-  /// (rust/src/took.rs), so its frames are longer than the ones
-  /// [frameStats] reads with this off — the instrument is in its own
-  /// number, which those lines never were.
+  /// A switch of its own, beside [frameStats] and not a part of it — a
+  /// timed engine waits for nothing to be timed (rust/src/took.rs), so
+  /// the frames [frameStats] reads are the same with this on. ↩️Till
+  /// 2026-11-23 it waited out each submit, and the instrument was in its
+  /// own number.
   static final ValueNotifier<bool> engineStages = ValueNotifier<bool>(
     startWithEngineStages,
   );

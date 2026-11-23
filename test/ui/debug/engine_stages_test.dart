@@ -177,6 +177,7 @@ void main() {
           cpu(present, 20000),
         ], asked: stall),
       ]),
+      clocked: true,
     );
 
     // The columns' padding is the readout's own: the words and the
@@ -196,12 +197,28 @@ void main() {
     ]);
   });
 
+  test('🚨a device whose GPU has no clock shows none of its time, not a '
+      'zero (관제 11-23 23:51)', () {
+    final lines = EngineStages.lines(
+      EngineStages.summarize([
+        frame(20500, [cpu('src/device.rs:1040', 3000)]),
+      ]),
+      clocked: false,
+    );
+
+    final words = [for (final line in lines) line.replaceAll(RegExp(' +'), ' ')];
+    expect(words[0], 'STAGES 1f a frame 20.50 gpu — cpu 3.00');
+    expect(words[1], ' gpu: no timestamp queries on this device');
+    expect(words, contains(' gpu — cpu 3.00'), reason: 'the slowest, too');
+  });
+
   test('no more places are named than the readout has room for', () {
     final many = [
       for (var line = 1; line <= 20; line++) gpu('src/a.rs:$line', line * 100),
     ];
     final lines = EngineStages.lines(
       EngineStages.summarize([frame(10000, many)]),
+      clocked: true,
     );
 
     expect(
@@ -212,7 +229,9 @@ void main() {
   });
 
   test('with no frame up yet the lines say so', () {
-    expect(EngineStages.lines(null), ['STAGES  timed, no frame yet']);
+    expect(EngineStages.lines(null, clocked: true), [
+      'STAGES  timed, no frame yet',
+    ]);
     expect(EngineStages.summary, isNull);
   });
 
