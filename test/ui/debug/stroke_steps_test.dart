@@ -338,6 +338,16 @@ void main() {
     );
   });
 
+  test('a lift told before the statistics were let go of times no landing '
+      'after', () {
+    now = 1000;
+    StrokeSteps.lifted();
+    StrokeSteps.forget();
+    now = 3000;
+    StrokeSteps.landed(together: null);
+    expect(StrokeSteps.landing?.commit, 0);
+  });
+
   test('the newest steps are kept, the oldest let go', () {
     for (var dabs = 0; dabs <= StrokeSteps.stepsKept; dabs += 1) {
       StrokeSteps.stepped(dabs, together: null);
