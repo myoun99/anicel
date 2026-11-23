@@ -51,6 +51,16 @@ void main() {
   group('a window PDFium asks for', () {
     final window = Uint8List(64);
 
+    test('is read off the isolate, never with it standing still — a cloud '
+        'file comes down inside a read', () async {
+      final reader = _Reader(
+        (size) => size,
+        sync: (_) => throw StateError('read with the isolate standing'),
+      );
+
+      expect(await readPdfWindow(reader, window, 0, 64), 64);
+    });
+
     test('read whole, is its size', () async {
       expect(await readPdfWindow(_Reader((size) => size), window, 0, 64), 64);
     });
@@ -147,12 +157,13 @@ void main() {
 
 /// A window reader that answers [answer] for any window.
 class _Reader implements MediaWindowReader {
-  _Reader(this.answer);
+  _Reader(this.answer, {int Function(int size)? sync}) : _sync = sync ?? answer;
 
   final int Function(int size) answer;
+  final int Function(int size) _sync;
 
   @override
-  int readIntoSync(Uint8List buffer, int position, int size) => answer(size);
+  int readIntoSync(Uint8List buffer, int position, int size) => _sync(size);
 
   @override
   Future<int> readInto(Uint8List buffer, int position, int size) async =>
