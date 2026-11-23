@@ -3612,13 +3612,11 @@ class EditorSessionManager extends ChangeNotifier
   /// The effects the shared delete takes of the selected ROWS besides their
   /// layers: what their fx header rows name on rows that stay (F-476,
   /// [LaneVerbs.effectsNamedBySelectedRows]) — a row that goes takes its
-  /// chain with it.
+  /// chain with it, whatever takes the row ([LayerVerbs.rowsADeleteTakes]).
   List<({Layer row, List<EffectId> effects})> effectsToDeleteOfRows() {
-    final layers = layerVerbs.deletableSelectedLayerIds();
-    final going = {
-      ...layers,
-      for (final row in layerVerbs.rowsHeldBy(layers)) row.id,
-    };
+    final going = layerVerbs.rowsADeleteTakes(
+      layerVerbs.deletableSelectedLayerIds(),
+    );
     return [
       for (final named in laneVerbs.effectsNamedBySelectedRows)
         if (!going.contains(named.row.id)) named,

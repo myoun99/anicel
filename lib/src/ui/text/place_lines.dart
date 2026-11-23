@@ -121,12 +121,43 @@ List<String> drawingPlaceLines(
 /// What a lane KEY's link notice lists: the keys a join re-values sit on
 /// that row's lanes, and a key has no drawing of its own to name.
 List<String> rowPlaceLines(Project project, LayerId layerId) => [
-  if (_rowOf(project, layerId) case final owned?)
-    rowPlaceLine(
-      owner: placeOwnerOf(project, track: owned.track, cut: owned.cut),
-      layerName: owned.layer.name,
-    ),
+  if (_rowOf(project, layerId) case final owned?) _placeLineOf(project, owned),
 ];
+
+/// The rows of [rows] that stand in cuts other than [cutId] — or its
+/// 동기컷's, the one cut standing in other timelines (I-150-Q3) — each as
+/// [rowPlaceLine] names it: cut by cut as the timelines hold them, each
+/// cut's rows top first.
+///
+/// What a delete window lists under the rows of the cut it is asked in:
+/// the rows the delete takes from the other cuts a row stands in too.
+/// 07-21 「완전 링크」 said a linked row's delete goes to every cut WITH a
+/// notice — 「컷 X에서도 함께 사라집니다」 — and no window said it.
+List<String> rowPlaceLinesElsewhere(
+  Project project,
+  Set<LayerId> rows, {
+  required CutId cutId,
+}) {
+  final here = {cutId, ...?project.linkRegistry.syncOf(cutId)?.cuts};
+  final byCut = <CutId, List<String>>{};
+  for (final owned in projectLayersWithOwners(project)) {
+    final cut = owned.cut;
+    if (cut != null &&
+        !here.contains(cut.id) &&
+        rows.contains(owned.layer.id)) {
+      (byCut[cut.id] ??= []).add(_placeLineOf(project, owned));
+    }
+  }
+  return [for (final lines in byCut.values) ...lines.reversed];
+}
+
+String _placeLineOf(
+  Project project,
+  ({Track track, Cut? cut, Layer layer}) owned,
+) => rowPlaceLine(
+  owner: placeOwnerOf(project, track: owned.track, cut: owned.cut),
+  layerName: owned.layer.name,
+);
 
 /// [layerId]'s row in [project] with what holds it, wherever it lives.
 ({Track track, Cut? cut, Layer layer})? _rowOf(
@@ -203,16 +234,5 @@ String? cutPlaceLine(Project project, CutId cutId) =>
     };
 
 /// [member] as [rowPlaceLine] names it; null for a member whose row is gone.
-String? _memberLine(Project project, LayerLinkMember member) {
-  final position = cutPositionOf(project, member.cutId);
-  final layer = position?.cut.layers.firstWhereOrNull(
-    (layer) => layer.id == member.layerId,
-  );
-  if (position == null || layer == null) {
-    return null;
-  }
-  return rowPlaceLine(
-    owner: placeOwnerOf(project, track: position.track, cut: position.cut),
-    layerName: layer.name,
-  );
-}
+String? _memberLine(Project project, LayerLinkMember member) =>
+    rowPlaceLines(project, member.layerId).firstOrNull;
