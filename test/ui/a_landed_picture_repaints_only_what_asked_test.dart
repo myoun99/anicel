@@ -41,6 +41,7 @@ import '../helpers/project_scratch_folder.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/until_the_brushes_land.dart';
+import '../helpers/until_the_panel_pictures_land.dart';
 
 /// A picture that LANDS repaints the painters that asked for it and
 /// rebuilds nothing — in the workspace as it is wired, with its own store.
@@ -82,12 +83,7 @@ void main() {
     StoryboardThumbnails thumbnails,
   ) async {
     await untilTheBrushesLand(tester);
-    expect(
-      await settleAsync(tester, () => !thumbnails.pending()),
-      isTrue,
-      reason: 'the premise: every picture on screen landed',
-    );
-    await tester.pumpAndSettle();
+    await untilThePanelPicturesLand(tester, thumbnails);
   }
 
   /// [cut]'s picture lands as a render lands it — asked at a width no

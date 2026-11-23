@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show partAlong, sizeAlong;
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -30,6 +31,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import '../../helpers/a_move_lands.dart';
 import '../../helpers/an_se_row.dart';
 import '../../helpers/painted_glyph_boxes.dart';
+import '../../helpers/until_the_panel_pictures_land.dart';
 
 /// F-358 — 유저 2026-10-14: 「여러 컷에 걸친 se블록이 있을때, 글로벌에선
 /// e라는 글자가 보이는 구간인데 로컬에선 T라는게 보인다던가 하는식으로 위치가
@@ -235,6 +237,12 @@ void main() {
       deliveryAt('storyboard-se-label-se-row-1-4'),
       SeLineType.on,
       reason: 'cut 2 is the one open, and the track reads the head\'s',
+    );
+    await untilThePanelPicturesLand(
+      tester,
+      tester
+          .widget<StoryboardTabHost>(find.byType(StoryboardTabHost))
+          .thumbnails!,
     );
 
     await tapKey(tester, 'timeline-mode-timeline-button');
