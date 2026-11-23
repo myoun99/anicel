@@ -93,42 +93,50 @@ abstract final class LostScreen {
     channel.setMethodCallHandler((call) async {
       switch ((call.method, call.arguments)) {
         case (
-              contextRestoredMethod,
-              [
-                final int reason,
-                final int seenAt,
-                final String saidBy,
-                final int stoodAt,
-              ],
-            )
-            when _goneBy(saidBy) != null:
-          _stoodAgain.value = (
-            lost: (
-              reason: reason,
-              seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
-              by: _goneBy(saidBy)!,
-            ),
-            stoodAt: DateTime.fromMillisecondsSinceEpoch(stoodAt),
-          );
-        case (final String method, [final int reason, final int seenAt])
-            when _goneBy(method) != null:
-          _went.value ??= (
-            reason: reason,
-            seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
-            by: _goneBy(method)!,
-          );
+          contextRestoredMethod,
+          [
+            final int reason,
+            final int seenAt,
+            final String saidBy,
+            final int stoodAt,
+          ],
+        ):
+          if (_goneOf(saidBy, reason, seenAt) case final lost?) {
+            _stoodAgain.value = (
+              lost: lost,
+              stoodAt: DateTime.fromMillisecondsSinceEpoch(stoodAt),
+            );
+          }
+        case (final String method, [final int reason, final int seenAt]):
+          _went.value ??= _goneOf(method, reason, seenAt);
       }
       return null;
     });
   }
 
-  /// Who says the screen went by [method]: none for a method of another
-  /// word.
-  static ScreenGoneBy? _goneBy(String method) => switch (method) {
-    wentMethod => ScreenGoneBy.watch,
-    contextLostMethod => ScreenGoneBy.engine,
-    _ => null,
-  };
+  /// The screen gone as [method] says it — none for a method of another
+  /// word: [reason] as the runner gave it, and [seenAt] in milliseconds
+  /// since 1970 UTC.
+  ///
+  /// ⚠️THE ONE PLACE A WORD IS READ AS A LOSS, for the word said alone and
+  /// the word an engine that stood again held. Asked once as a guard and
+  /// again for its answer, a word of another method was heard either way
+  /// as nothing — or as a throw no test could tell from it.
+  static ScreenGone? _goneOf(String method, int reason, int seenAt) {
+    final by = switch (method) {
+      wentMethod => ScreenGoneBy.watch,
+      contextLostMethod => ScreenGoneBy.engine,
+      _ => null,
+    };
+    if (by == null) {
+      return null;
+    }
+    return (
+      reason: reason,
+      seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
+      by: by,
+    );
+  }
 
   /// Asks [title] and [message] with a window Windows draws, and answers
   /// the index in [buttons] of the one pressed — -1 for the window closed
