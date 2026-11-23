@@ -137,6 +137,25 @@ void main() {
     expect(area(convexOutset(ragged, 2)), closeTo(14 * 14, 1e-9));
   });
 
+  test('a line cuts an outline to the side where a·x + b·y + c >= 0', () {
+    // x <= 4 is −x + 4 >= 0; y >= 7 + x / 10 holds a sliver of it.
+    final left = convexCutBy(square, -1, 0, 4);
+    expect(area(left), closeTo(40, 1e-9));
+    for (final corner in left) {
+      expect(corner.dx, lessThanOrEqualTo(4 + 1e-9));
+    }
+    final under = convexCutBy(square, -0.1, 1, -7);
+    expect(area(under), closeTo(25, 1e-9));
+    expect(convexCutBy(square, 1, 0, -11), isEmpty, reason: 'x >= 11');
+    expect(convexCutBy(square, 0, 0, 0), square, reason: '0 >= 0 everywhere');
+    expect(convexCutBy(square, 0, 0, -1), isEmpty, reason: 'nowhere');
+    expect(
+      area(convexCutBy(square, -1e-6, 0, 4e-6)),
+      closeTo(40, 1e-6),
+      reason: 'the scale of the line is not the cut',
+    );
+  });
+
   test('a point is in an outline on its edges, and not outside them', () {
     expect(convexContains(square, const Offset(5, 5)), isTrue);
     expect(convexContains(square, const Offset(10, 5)), isTrue);

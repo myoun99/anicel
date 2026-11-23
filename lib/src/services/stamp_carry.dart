@@ -87,37 +87,18 @@ final class QuadCarry extends StampCarry {
   final List<CanvasPoint> base;
   final List<CanvasPoint> corners;
 
+  /// The quad transform's own, from the box's rect: the whole quad dragged
+  /// by one delta carries every stamp by it, byte for byte, and a quad too
+  /// degenerate to warp through moves no pixel.
   @override
-  BrushDab through(BrushDab stamp, {SelectionVisibleRect? visible}) {
-    // The whole quad dragged by one delta carries every stamp by it,
-    // byte for byte ([stampDabMovedWholesale]).
-    final moved = stampDabMovedWholesale(stamp, base, corners);
-    if (moved != null) {
-      return moved;
-    }
-    final own = stampCornersOf(stamp);
-    final h = own == null ? null : solveHomography(base, corners);
-    if (own == null || h == null) {
-      // No picture, or a quad too degenerate to warp through — which the
-      // quad transform refuses the same way.
-      return stamp;
-    }
-    return transformStampDabQuad(
-      stamp,
-      [
-        for (var i = 0; i < own.length; i += 1)
-          // ⛔A corner on the box's own goes where the box put it, to the
-          // bit: solving and re-applying the homography leaves a residue,
-          // and the picture must land on the quad the screen showed.
-          if (own[i] == base[i])
-            corners[i]
-          else
-            applyHomography(h, own[i]),
-      ],
-      mode: mode,
-      visible: visible ?? within,
-    );
-  }
+  BrushDab through(BrushDab stamp, {SelectionVisibleRect? visible}) =>
+      transformStampDabQuad(
+        stamp,
+        corners,
+        from: base,
+        mode: mode,
+        visible: visible ?? within,
+      );
 
   /// A quad too degenerate to warp through moves no pixel ([through]), and
   /// so no selection.

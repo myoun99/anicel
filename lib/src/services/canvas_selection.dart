@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
+import '../core/convex_clip.dart' show convexCutBy;
 import '../core/point_bounds.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
@@ -492,9 +493,16 @@ BrushDab? stampDabMovedWholesale(
 /// path uses. Corners exactly at the source rect = untouched; every corner
 /// moved by the SAME delta is a pure translation and travels byte-exact; a
 /// degenerate quad refuses (returns the dab unchanged).
+///
+/// [from] is the quad [corners] are where went — the stamp rect's own
+/// corners unless a box standing on another rect says so: the float past
+/// the box it stands on (F-570), another cel's picture ([StampCarry]).
+/// The stamp then goes where that one mapping sends it, up to [visible]
+/// ([_quadLanding]).
 BrushDab transformStampDabQuad(
   BrushDab stampDab,
   List<CanvasPoint> corners, {
+  List<CanvasPoint>? from,
   ResampleMode mode = ResampleMode.blend,
   SelectionVisibleRect? visible,
 }) {
@@ -505,12 +513,13 @@ BrushDab transformStampDabQuad(
   assert(corners.length == 4);
   final srcLeft = stampDab.center.x - stamp.width / 2;
   final srcTop = stampDab.center.y - stamp.height / 2;
-  final base = [
+  final own = [
     CanvasPoint(x: srcLeft, y: srcTop),
     CanvasPoint(x: srcLeft + stamp.width, y: srcTop),
     CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
     CanvasPoint(x: srcLeft, y: srcTop + stamp.height),
   ];
+  final base = from ?? own;
   final moved = stampDabMovedWholesale(stampDab, base, corners);
   if (moved != null) {
     return moved;
@@ -521,7 +530,9 @@ BrushDab transformStampDabQuad(
     return stampDab;
   }
 
-  final out = selectionWarpOutputRect(corners);
+  final out = selectionWarpOutputRect(
+    _quadLanding(h, own: own, base: base, corners: corners, within: visible),
+  );
   // The per-pixel `w ≈ 0` guard the old loop carried lives in the kernel
   // now, along with a non-finite check the old one did not have. Both write
   // the outside token where this used to leave the pixel untouched, which
@@ -541,6 +552,112 @@ BrushDab transformStampDabQuad(
     mode: mode,
     idPrefix: 'q',
   );
+}
+
+/// Where the picture on [own] lands through the quad taking [base] to
+/// [corners] — [toSource] its way back, destination to source —, as the
+/// points whose bounds are the output rect: [corners] when the picture
+/// stands on the box's own rect, else [own]'s corners carried on.
+///
+/// ⛔A corner on the box's own goes where the box put it, to the bit:
+/// carrying it there and back leaves a residue, and the picture must land
+/// on the quad the screen showed.
+///
+/// 🚨PAST THE HORIZON NOTHING LANDS, and a picture reaching it lands
+/// without end (a-small-float-in-steep-perspective-vanishes, 검증/서피스
+/// 2026-11-23: a box's top edge pulled to 2 px). A quad pinched that hard
+/// puts its horizon a pixel or two past the box, inside the whole pixel a
+/// float's edge rounds out to: what lies between goes on to infinity, what
+/// lies past it comes back from the far side — w <= 0, which resample.wgsl
+/// writes outside. So the landing is then the part of [within] whose way
+/// back lies on [own] in front of the horizon. ↩️Each corner of [own] was
+/// carried and a second quad solved from them, the float's own rect to
+/// where those went: one corner past the horizon threw it to the far side
+/// — the preview went back to the float unwarped, and once the float
+/// vanished on Enter.
+List<CanvasPoint> _quadLanding(
+  Float64List toSource, {
+  required List<CanvasPoint> own,
+  required List<CanvasPoint> base,
+  required List<CanvasPoint> corners,
+  required SelectionVisibleRect? within,
+}) {
+  final h = toSource;
+  var whole = true;
+  for (var i = 0; i < 4; i += 1) {
+    whole = whole && own[i] == base[i];
+  }
+  if (whole) {
+    return corners;
+  }
+  // The way there, at the scale of the adjugate: a source point s lands at
+  // adj(h)·s, whose w has the sign of det(h)·W wherever it is in front of
+  // the horizon, W being h's own w at a corner of the box's quad.
+  final there = [
+    h[4] * h[8] - h[5] * h[7],
+    h[2] * h[7] - h[1] * h[8],
+    h[1] * h[5] - h[2] * h[4],
+    h[5] * h[6] - h[3] * h[8],
+    h[0] * h[8] - h[2] * h[6],
+    h[2] * h[3] - h[0] * h[5],
+    h[3] * h[7] - h[4] * h[6],
+    h[1] * h[6] - h[0] * h[7],
+    h[0] * h[4] - h[1] * h[3],
+  ];
+  final det = h[0] * there[0] + h[1] * there[3] + h[2] * there[6];
+  final side = (h[6] * corners[0].x + h[7] * corners[0].y + h[8]).sign;
+  final landed = <CanvasPoint>[];
+  for (var i = 0; i < 4; i += 1) {
+    if (own[i] == base[i]) {
+      landed.add(corners[i]);
+      continue;
+    }
+    final (x, y) = (own[i].x, own[i].y);
+    final w = there[6] * x + there[7] * y + there[8];
+    if (w * det * side <= 0) {
+      break;
+    }
+    landed.add(
+      CanvasPoint(
+        x: (there[0] * x + there[1] * y + there[2]) / w,
+        y: (there[3] * x + there[4] * y + there[5]) / w,
+      ),
+    );
+  }
+  if (landed.length == 4) {
+    return landed;
+  }
+  if (within == null) {
+    throw ArgumentError.value(
+      within,
+      'within',
+      'a picture reaching the horizon lands without end, so a wall to cut '
+          'it at must be given',
+    );
+  }
+  // In front (side·W >= 0) and back on [own]: left <= X/W <= right and
+  // top <= Y/W <= bottom, each linear once multiplied through by side·W.
+  final (left, top, right, bottom) = (own[0].x, own[0].y, own[2].x, own[2].y);
+  var kept = [
+    Offset(within.left, within.top),
+    Offset(within.right, within.top),
+    Offset(within.right, within.bottom),
+    Offset(within.left, within.bottom),
+  ];
+  for (final (a, b, c) in [
+    (h[6], h[7], h[8]),
+    (h[0] - left * h[6], h[1] - left * h[7], h[2] - left * h[8]),
+    (right * h[6] - h[0], right * h[7] - h[1], right * h[8] - h[2]),
+    (h[3] - top * h[6], h[4] - top * h[7], h[5] - top * h[8]),
+    (bottom * h[6] - h[3], bottom * h[7] - h[4], bottom * h[8] - h[5]),
+  ]) {
+    kept = convexCutBy(kept, side * a, side * b, side * c);
+  }
+  // Wholly past the horizon, the picture lands nowhere: the box's own quad,
+  // which reads the box's rect alone.
+  return kept.isEmpty
+      ? corners
+      : [for (final point in kept) CanvasPoint(x: point.dx, y: point.dy)];
 }
 
 /// The lifted stamp through a MESH warp (R20-D3): an n×m control grid

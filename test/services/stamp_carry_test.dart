@@ -286,6 +286,175 @@ void main() {
 
       expect(identical(degenerate.regionThrough(selected), selected), isTrue);
     });
+
+    group('🚨a box pinched to a point carries a float past it', () {
+      // a-small-float-in-steep-perspective-vanishes (검증/서피스 11-23): a
+      // box on a selection's fractional bounds, its float the whole pixels
+      // they round out to — and a grow past that —, its top edge pulled in
+      // to a pixel or two. The horizon then lies a pixel or two under the
+      // box, inside what the float holds past it. ↩️The float went back to
+      // its own picture unwarped, and once was gone.
+      final box = cornersOfStampRect((
+        left: 1284.4,
+        top: 700.4,
+        width: 132,
+        height: 110,
+      ));
+      const wall = (left: 1000.0, top: 500.0, right: 1700.0, bottom: 1100.0);
+      List<CanvasPoint> pinchedTo(double edge) => [
+        CanvasPoint(x: 1350.4 - edge / 2, y: 700.4),
+        CanvasPoint(x: 1350.4 + edge / 2, y: 700.4),
+        box[2],
+        box[3],
+      ];
+      // Ink in the lower half of the box, where the pinch leaves room.
+      final spots = [
+        for (final x in [1310.0, 1350.0, 1390.0]) CanvasPoint(x: x, y: 795),
+      ];
+      BrushDab floatPast(int grow) => stampOver(
+        left: 1284 - grow,
+        top: 700 - grow,
+        width: 133 + 2 * grow,
+        height: 111 + 2 * grow,
+        ink: spots,
+      );
+
+      /// [dab]'s pixel at canvas ([x], [y]) — clear off its stamp.
+      List<int> pixelAt(BrushDab dab, int x, int y) {
+        final made = dab.stamp!;
+        final col = x - (dab.center.x - made.width / 2).round();
+        final row = y - (dab.center.y - made.height / 2).round();
+        if (col < 0 || row < 0 || col >= made.width || row >= made.height) {
+          return const [0, 0, 0, 0];
+        }
+        final at = (row * made.width + col) * 4;
+        return made.rgba.sublist(at, at + 4);
+      }
+
+      // Each edge over a float that stops short of the horizon and one
+      // grown past it.
+      for (final (edge, short, past) in [
+        (1.0, 0, 2),
+        (2.0, 0, 2),
+        (4.0, 0, 4),
+      ]) {
+        test('a top edge of $edge px', () {
+          final corners = pinchedTo(edge);
+          final there = solveHomography(box, corners)!;
+          List<double> wsOf(BrushDab float) => [
+            for (final corner in stampCornersOf(float)!)
+              there[6] * corner.x + there[7] * corner.y + there[8],
+          ];
+          expect(
+            wsOf(floatPast(short)).where((w) => w <= 0),
+            isEmpty,
+            reason: '⛔premise: rounded out alone, the float stops short of '
+                'the horizon (w <= 0 past it)',
+          );
+          expect(
+            wsOf(floatPast(past)).where((w) => w <= 0),
+            isNotEmpty,
+            reason: '⛔premise: grown, it reaches past the horizon',
+          );
+          final carry = QuadCarry(
+            base: box,
+            corners: corners,
+            mode: mode,
+            within: wall,
+          );
+          final landed = [
+            for (final grow in [short, past]) carry.through(floatPast(grow)),
+          ];
+
+          for (final (index, carried) in landed.indexed) {
+            final why = index == 0 ? 'short of it' : 'past it';
+            for (final spot in spots) {
+              final sent = applyHomography(there, spot);
+              expect(apart(sent, spot), greaterThan(6), reason: '⛔premise');
+              expect(
+                apart(inkNear(carried, sent, reach: 6), sent),
+                lessThan(3),
+                reason: '$why: the ink goes where the quad sends it',
+              );
+            }
+            final made = carried.stamp!;
+            final left = (carried.center.x - made.width / 2).round();
+            final top = (carried.center.y - made.height / 2).round();
+            expect(left, greaterThanOrEqualTo(wall.left), reason: why);
+            expect(
+              top + made.height,
+              lessThanOrEqualTo(wall.bottom),
+              reason: why,
+            );
+          }
+          // What the float holds in front of the horizon lands the same,
+          // however far past it the float reaches: within the quad, and
+          // nothing beyond (all it holds past the box is clear).
+          for (var y = 690; y < 830; y += 1) {
+            for (var x = 1270; x < 1430; x += 1) {
+              final stops = pixelAt(landed[0], x, y);
+              final reaches = pixelAt(landed[1], x, y);
+              for (var channel = 0; channel < 4; channel += 1) {
+                expect(
+                  (stops[channel] - reaches[channel]).abs(),
+                  lessThanOrEqualTo(1),
+                  reason: '($x, $y) $channel',
+                );
+              }
+              if (stops[3] != 0) {
+                expect(x, inInclusiveRange(1283, 1417));
+                expect(y, inInclusiveRange(699, 811));
+              }
+            }
+          }
+        });
+      }
+
+      test('a picture wholly past the horizon lands nothing', () {
+        // Another cel's, under the box — past the horizon a pixel and a
+        // bit under it, where the mapping comes back from the far side.
+        final under = stampOver(
+          left: 1290,
+          top: 830,
+          width: 120,
+          height: 60,
+          ink: [CanvasPoint(x: 1350, y: 860)],
+        );
+        final corners = pinchedTo(2);
+        final there = solveHomography(box, corners)!;
+        expect(
+          [
+            for (final corner in stampCornersOf(under)!)
+              there[6] * corner.x + there[7] * corner.y + there[8],
+          ].every((w) => w < 0),
+          isTrue,
+          reason: '⛔premise: all of it lies past the horizon',
+        );
+
+        final carried = QuadCarry(
+          base: box,
+          corners: corners,
+          mode: mode,
+          within: wall,
+        ).through(under);
+
+        final rgba = carried.stamp!.rgba;
+        expect([
+          for (var i = 3; i < rgba.length; i += 4) rgba[i],
+        ], everyElement(0));
+      });
+
+      test('a picture reaching the horizon asks for a wall to cut it at', () {
+        expect(
+          () => QuadCarry(
+            base: box,
+            corners: pinchedTo(2),
+            mode: mode,
+          ).through(floatPast(2)),
+          throwsArgumentError,
+        );
+      });
+    });
   });
 
   group('a mesh', () {
