@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
+
 /// 🗣️관제 · 공통 2026-11-24 01:5x (card the-galaxy-tab-canvas-went-slow-on-
 /// build-1095): every Android release is read for what Anicel's engine is
 /// asked for by name (tool/flutter_engine/check_android_release.sh — run by
@@ -15,9 +17,7 @@ void main() {
   final check = read('tool/flutter_engine/check_android_release.sh');
   final number = read('tool/flutter_engine/android_patch').trim();
   final patch = read(
-    Directory('tool/flutter_engine')
-        .listSync(recursive: true)
-        .whereType<File>()
+    filesUnder('tool/flutter_engine')
         .singleWhere((file) =>
             file.uri.pathSegments.last.startsWith('$number-') &&
             file.path.endsWith('.patch'))
