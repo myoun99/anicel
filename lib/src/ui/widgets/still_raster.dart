@@ -685,7 +685,12 @@ class _StillLayer extends OffsetLayer {
   /// PC, S5_BA cut 352, 144 Hz, laws walked in turn inside one run: images
   /// of the bottom dock taken in a frame, a cycle of pick → hover / pick →
   /// rest / pick → stroke — 4.9 / 5.9 / 8.4, and 4.1 / 2.4 / 0.5 with the
-  /// taking back left to a gap; frames over 6.94 ms 300 against 181.
+  /// taking back left to a gap; frames over 6.94 ms 300 against 181. The
+  /// law as it is written here ([_noteWhoMovedAlone]'s with it), the same
+  /// way on 11-23: 6.9 / 5.6 / 8.1 and 3.2 / 1.6 / 1.0; frames over
+  /// 6.94 ms 653 against 260, the median frame of pick → hover 2.49 →
+  /// 2.69 ms. ⚠️No weak device was measured: a tick stays live while the
+  /// frames flow, and what a frame pays for that there is not known.
   bool _stillShows(_Strata strata) =>
       _owner._gate() == StillStandDown.none &&
       _owner._gridFit() == strata.fit &&
@@ -735,7 +740,15 @@ class _StillLayer extends OffsetLayer {
   /// image in its frame, each. 🔬The real app, the main PC, S5_BA cut 352,
   /// 144 Hz, pick → 0.6 s hover → 1.5 s rest: 2.4 images of the bottom dock
   /// a cycle taken in a frame with the taking back left to a gap alone, 1.1
-  /// with a tick's stay doubled each time it moved again.
+  /// with a tick's stay doubled each time it moved again. The law as it is
+  /// written here, the same way on 11-23, 28 cycles a law, pick → hover /
+  /// rest / stroke: 3.7 / 2.3 / 1.5 with the gap alone and 3.2 / 1.6 / 1.0
+  /// with this; frames over 6.94 ms 365 against 260; no median frame
+  /// longer but the rest's (2.60 → 2.68 ms). A stay changed 25 times in
+  /// 120 cycles, and stood for cycles each time: the tab strip's, at 192
+  /// frames, was not taken back in the rest at all.
+  /// ⛔Not weight to take out for how seldom it changes: the gap alone was
+  /// measured beside it, and takes more images.
   /// ⛔Not doubled alone: a stay that only grows ends with every tick drawn
   /// live in every frame (🔬the same run, every tick live: the raster's
   /// median 0.93 → 2.71 ms a frame, frames over 6.94 ms 300 → 663).
