@@ -42,7 +42,9 @@ android {
     }
 
     defaultConfig {
-        minSdk = 24
+        // HardwareBuffer and the texture of one (GpuEnginePlugin.kt) are
+        // API 26's; the app's own floor is 29 (android/app).
+        minSdk = 26
     }
 }
 

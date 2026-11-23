@@ -11,8 +11,6 @@ final class Fill extends Opaque {}
 /// The texture a kernel writes: a surface's, or a window's next image.
 final class Texture extends Opaque {}
 
-final class Window extends Opaque {}
-
 final class Pool extends Opaque {}
 
 final class Planned extends Opaque {}
@@ -349,37 +347,14 @@ external Pointer<Void> surfaceHandle(Pointer<Surface> surface);
 )
 external Pointer<Texture> surfaceTexture(Pointer<Surface> surface);
 
-@Native<
-  Pointer<Window> Function(Pointer<Engine>, Pointer<Void>, Uint32, Uint32)
->(symbol: 'gpu_engine_window_new')
-external Pointer<Window> windowNew(
+@Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_screen_said',
+)
+external int screenSaid(
   Pointer<Engine> engine,
-  Pointer<Void> native,
-  int width,
-  int height,
-);
-
-@Native<Pointer<Texture> Function(Pointer<Window>)>(
-  symbol: 'gpu_engine_window_target',
-)
-external Pointer<Texture> windowTarget(Pointer<Window> window);
-
-@Native<Void Function(Pointer<Engine>, Pointer<Window>)>(
-  symbol: 'gpu_engine_window_present',
-)
-external void windowPresent(Pointer<Engine> engine, Pointer<Window> window);
-
-@Native<Size Function(Pointer<Window>, Pointer<Uint8>, Size)>(
-  symbol: 'gpu_engine_window_said',
-)
-external int windowSaid(
-  Pointer<Window> window,
   Pointer<Uint8> buffer,
   int capacity,
 );
-
-@Native<Void Function(Pointer<Window>)>(symbol: 'gpu_engine_window_free')
-external void windowFree(Pointer<Window> window);
 
 @Native<Pointer<Fill> Function(Pointer<Engine>)>(symbol: 'gpu_engine_fill_new')
 external Pointer<Fill> fillNew(Pointer<Engine> engine);

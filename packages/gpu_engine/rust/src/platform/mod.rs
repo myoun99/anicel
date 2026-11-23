@@ -1,8 +1,8 @@
 //! The way to Flutter's screen without a copy, one file per platform with
 //! the same face: Windows hands Flutter a texture the engine made
 //! (windows.rs), and so do iOS and macOS, through an IOSurface (apple.rs),
-//! and Linux, through a dma-buf (linux.rs); Android presents into a window
-//! Flutter made (android.rs); the rest have no bridge yet.
+//! Linux, through a dma-buf (linux.rs), and Android, through an
+//! AHardwareBuffer (android.rs); the rest have no bridge yet.
 
 #[cfg(target_os = "android")]
 mod android;
@@ -47,8 +47,7 @@ use std::sync::{Mutex, PoisonError};
 use crate::device::{Engine, let_go};
 use crate::fail;
 
-/// The instance the engine's adapters come from. The engine keeps it:
-/// Android's window surfaces must come from it too.
+/// The instance the engine's adapters come from.
 pub(crate) fn instance() -> wgpu::Instance {
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = native::BACKENDS;
@@ -220,10 +219,31 @@ pub unsafe extern "C" fn gpu_engine_surface_texture(surface: *const Surface) -> 
     &unsafe { &*surface }.texture
 }
 
+/// Copies the way a surface reaches Flutter's screen on `engine` — where
+/// Android's cannot, what stands in the way ([`native::screen_said`]) —
+/// into `buffer` (UTF-8) and returns its full length, for the debug
+/// screen.
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_screen_said(
+    engine: *const Engine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let said = engine.on_thread(|| native::screen_said(engine.device()));
+    crate::copy_out(&said, buffer, capacity)
+}
+
 /// What Flutter opens the surface by — on Windows, an NT handle; on iOS
 /// and macOS, a CVPixelBuffer the caller does not own (retain it before
 /// handing it to Flutter); on Linux, the `DmaBuf` that describes the
-/// plane; null where the platform shares no texture.
+/// plane; on Android, the AHardwareBuffer the caller does not own
+/// (`GpuEnginePlugin.register` hands Flutter a reference of its own);
+/// null where the platform shares no texture.
 ///
 /// # Safety
 /// `surface` is live.

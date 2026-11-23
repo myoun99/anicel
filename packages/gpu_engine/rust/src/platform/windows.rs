@@ -224,6 +224,11 @@ pub fn committed_buffer(device: &wgpu::Device, desc: &wgpu::BufferDescriptor) ->
     Some(unsafe { device.create_buffer_from_hal::<Dx12>(hal_buffer, desc) })
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "d3d12 shared handle".to_owned()
+}
+
 /// The adapter's LUID, high part in the upper 32 bits.
 pub fn adapter_luid(adapter: &wgpu::Adapter) -> Option<u64> {
     // SAFETY: only reads the adapter's description.

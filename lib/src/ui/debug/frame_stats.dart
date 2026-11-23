@@ -53,7 +53,7 @@ class FrameStatsSnapshot {
     required this.screenFinishP95,
     required this.screenShowP50,
     required this.screenShowP95,
-    required this.windowsAreCopied,
+    required this.screenPath,
     required this.screenAsked,
     required this.pointsPerSecond,
     required this.packetsPerSecond,
@@ -150,9 +150,8 @@ class FrameStatsSnapshot {
   /// [screenUpP50] part by part (`ScreenUp`): the draw, the GPU finishing
   /// the frame and this isolate hearing so, and the show. The draw and
   /// the show are on the thread that builds the app's frames, and wait
-  /// for nothing there — on Android neither, where [windowsAreCopied]:
-  /// the copy of the whole screen is the engine's thread's, after the
-  /// show.
+  /// for nothing there. The show hands Flutter a texture id and copies
+  /// nothing, on every platform.
   final double screenDrawP50;
   final double screenDrawP95;
   final double screenFinishP50;
@@ -160,9 +159,10 @@ class FrameStatsSnapshot {
   final double screenShowP50;
   final double screenShowP95;
 
-  /// `ScreenTexture.windowsAreCopied`: false where no window was opened
-  /// — every platform but Android.
-  final bool windowsAreCopied;
+  /// `ScreenTexture.path`: the way the newest screen reaches Flutter's
+  /// screen, and why it was refused where it was — empty where none has
+  /// been opened.
+  final String screenPath;
 
   /// What the newest show of a canvas's screen asked of the engine
   /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and
@@ -556,7 +556,7 @@ abstract final class FrameStats {
       screenFinishP95: _percentileMillis(upFinishes, 0.95),
       screenShowP50: _percentileMillis(upShows, 0.50),
       screenShowP95: _percentileMillis(upShows, 0.95),
-      windowsAreCopied: ScreenTexture.windowsAreCopied,
+      screenPath: ScreenTexture.path,
       screenAsked: ScreenAsked.last,
       pointsPerSecond: aSecond(counted.points, before?.points),
       packetsPerSecond: aSecond(counted.packets, before?.packets),

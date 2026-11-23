@@ -22,6 +22,11 @@ pub fn create(
     Err("no bridge to Flutter's screen on this platform yet".into())
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "none".to_owned()
+}
+
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
     None
 }

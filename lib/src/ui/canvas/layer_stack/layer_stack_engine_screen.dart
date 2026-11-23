@@ -480,9 +480,9 @@ List<(int, int, int, int)> _uncovered((int, int) by, (int, int) size) {
 }
 
 /// How many lays a canvas's screen holds apart ([_Lays]): what a target
-/// falls behind by — a frame's lays where one texture is drawn on at
-/// every frame (Android's window, `_WindowTexture`), two frames' where two
-/// are drawn on in turn (`_AlternatedTextures`). One behind by more is
+/// falls behind by — two frames' lays, two textures being drawn on in
+/// turn (`_AlternatedTextures`, every platform's since Android's window
+/// went, 2026-11-23). One behind by more is
 /// drawn whole ([_Lays.since]) — the bound costs a whole frame, never a
 /// wrong one.
 ///

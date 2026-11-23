@@ -611,27 +611,18 @@ class GpuEngine {
     return GpuSurface._(this, surface, width, height, bgra);
   }
 
-  /// A Flutter texture of [width] × [height] RGBA texels that the engine
-  /// presents into — Android's way to the screen.
-  Future<GpuWindow> window(int width, int height) async {
-    final made = (await _plugin.invokeMapMethod<String, int>('window', {
-      'width': width,
-      'height': height,
-    }))!;
-    final textureId = made['textureId']!;
-    final window = rust.windowNew(
-      _engine,
-      Pointer.fromAddress(made['window']!),
-      width,
-      height,
-    );
-    if (window == nullptr) {
-      final error = _lastError();
-      await _plugin.invokeMethod<void>('release', {'textureId': textureId});
-      throw GpuRefused(error);
-    }
-    return GpuWindow._(this, window, textureId);
-  }
+  /// 🔬The way a [surface] reaches Flutter's screen on this engine, for the
+  /// debug screen — on Android `ahb` where the device makes a screen of an
+  /// AHardwareBuffer, else `ahb no — ` and what stands in the way: the
+  /// extension, Vulkan 1.1, or the device's answer for a storable image
+  /// (rust/src/platform/android.rs, `screen_said`).
+  String get screenSaid => using((arena) {
+    const capacity = 1024;
+    final buffer = arena<Uint8>(capacity);
+    final length = rust.screenSaid(_engine, buffer, capacity);
+    final count = length < capacity ? length : capacity;
+    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  });
 
   /// Test seam: the engine keeps none of its kernels, as a launch finds it
   /// (rust/src/device.rs, `Kernels`) — what holds one keeps it, and the
@@ -713,8 +704,8 @@ class GpuEngine {
 }
 
 /// What a kernel writes for the screen to show: a [GpuSurface] Flutter
-/// shows through a [SharedTexture], or a [GpuWindow]'s next image — one
-/// kernel entry for both (rust/src/kernels/mod.rs).
+/// shows through a [SharedTexture], on every platform. ⚠️One kind of
+/// target since Android's window went (2026-11-23).
 sealed class GpuTarget implements _OfAnEngine {
   GpuTarget(this._engine);
 
@@ -741,8 +732,7 @@ sealed class GpuTarget implements _OfAnEngine {
   /// (Android's, on the way builds 1095 to 1097 showed one by): its next
   /// was another of its swapchain's each frame, holding a frame older
   /// than the last by how many it keeps. Every target is one texture of
-  /// the engine's own now, a window's too
-  /// (rust/src/platform/android.rs, `Window`).
+  /// the engine's own now: a surface (rust/src/platform/android.rs).
   Object? kept;
 
   /// Fills the target with the pattern for [seed] and waits for the GPU;
@@ -3259,7 +3249,7 @@ class GpuComposite implements _OfAnEngine {
 
   /// Compiled on [engine] off this isolate, which goes on meanwhile — and
   /// with it the pass that shows on a screen of BGRA texels where [bgra],
-  /// of RGBA else ([GpuEngine.surface]'s; a [GpuWindow] is RGBA), which the
+  /// of RGBA else ([GpuEngine.surface]'s), which the
   /// first [show] compiles where it is called else: the thread an app's
   /// frames are built on (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦ —
   /// 🔬3.5 s of a stopped UI at the first canvas, Surface Pro 11).
@@ -5749,7 +5739,7 @@ class GpuGridLay {
 
   /// The pass compiled on [engine], off this isolate, which goes on
   /// meanwhile, for a screen of BGRA texels where [bgra], of RGBA else —
-  /// [GpuEngine.surface]'s; a [GpuWindow] is RGBA.
+  /// [GpuEngine.surface]'s.
   static Future<GpuGridLay> opening(
     GpuEngine engine, {
     required bool bgra,
@@ -6058,59 +6048,35 @@ int crc32Update(int running, Uint8List bytes, int length) {
 /// well under a frame, at a gigabyte a second.
 const int _crcSlice = 1 << 20;
 
-/// A Flutter texture the engine presents into: a SurfaceProducer's window,
-/// whose images Flutter shows without a copy (Android). Drawn on and
-/// presented with no wait for the engine's thread
-/// (rust/src/platform/android.rs, `Window`).
-class GpuWindow extends GpuTarget {
-  GpuWindow._(super._engine, this._window, this.textureId);
-
-  final Pointer<rust.Window> _window;
-
-  /// What a `Texture` widget shows the window by.
-  final int textureId;
-
-  /// What the kernels write for the window, one texture for its life —
-  /// [present] shows what a kernel wrote there. What is drawn on it
-  /// stands till the next draw, as on a surface ([kept]).
-  @override
-  Pointer<rust.Texture> get _texture => rust.windowTarget(_window);
-
-  /// Hands what a kernel last wrote ([fill], [GpuScreen.show]) to
-  /// Flutter: copied onto the window's next image and put up once the GPU
-  /// has finished the copy, this isolate waiting for none of it. Asked
-  /// once the GPU has finished what was written ([GpuEngine.done]), as a
-  /// screen's frame is (`ScreenTexture.present`); where it fails, the
-  /// next done fails by it.
-  void present() => rust.windowPresent(_engine._engine, _window);
-
-  /// 🔬What the window says of itself, a line each
-  /// (rust/src/platform/android.rs, `Window::said`): what the device said,
-  /// as the window was made, of an image made of an AHardwareBuffer —
-  /// `ahb storage … color …`. Read with no hand on the device.
-  String get said => using((arena) {
-    const capacity = 1024;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.windowSaid(_window, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
-
-  /// Frees the swapchain, then Flutter's producer: the window it presents
-  /// into must outlive it.
-  Future<void> free() async {
-    rust.windowFree(_window);
-    await _plugin.invokeMethod<void>('release', {'textureId': textureId});
-  }
-}
-
-/// A Flutter external texture that shows [front], or [back] once
-/// [show] picks slot 1 — Windows', iOS', macOS' and Linux' way to the
-/// screen: the engine makes the texture, Flutter shows it.
+/// A Flutter external texture that shows [front], or [back] once [show]
+/// picks slot 1 — every platform's way to the screen: the engine makes the
+/// texture, Flutter shows it. Windows', iOS', macOS' and Linux' through
+/// the texture shim (src/texture_shim.dart); Android's through the plugin
+/// (GpuEnginePlugin.kt, `register`), as a texture of the AHardwareBuffer
+/// the surface lives in.
+///
+/// 🚨ON ANDROID A TEXTURE SHOWS ONE BUFFER FOR ITS LIFE, so it takes no
+/// [back]: a picture changes by showing another texture, never under one
+/// id (Anicel's Flutter patch 0006, `createHardwareBufferTexture`; card
+/// panning-then-pen-jumps-the-android-canvas-a-frame — a buffer swapped
+/// under one id was taken up by the raster a frame apart from where the
+/// layer tree placed it).
 class SharedTexture {
   SharedTexture._(this.id);
 
-  factory SharedTexture.register(GpuSurface front, {GpuSurface? back}) {
+  static Future<SharedTexture> register(
+    GpuSurface front, {
+    GpuSurface? back,
+  }) async {
+    if (Platform.isAndroid) {
+      if (back != null) {
+        throw GpuRefused('an Android texture shows one buffer, not two');
+      }
+      final id = await _plugin.invokeMethod<int>('register', {
+        'buffer': front._handle.address,
+      });
+      return SharedTexture._(id!);
+    }
     final id = shim.textureRegister(
       front._handle,
       back?._handle ?? nullptr,
@@ -6126,12 +6092,19 @@ class SharedTexture {
 
   final int id;
 
-  /// Shows slot 0 (front) or 1 (back) on the next frame.
-  bool show(int slot) => shim.textureShow(id, slot);
+  /// Shows slot 0 (front) or 1 (back) on the next frame. On Android the
+  /// texture's one buffer is what it shows each paint: nothing to tell.
+  bool show(int slot) => Platform.isAndroid || shim.textureShow(id, slot);
 
   /// Flutter must no longer show the texture: on Linux nothing tells the
   /// plugin when Flutter stops drawing it (linux/gpu_engine_plugin.cc).
-  void unregister() => shim.textureUnregister(id);
+  void unregister() {
+    if (Platform.isAndroid) {
+      unawaited(_plugin.invokeMethod<void>('release', {'textureId': id}));
+      return;
+    }
+    shim.textureUnregister(id);
+  }
 }
 
 /// How a plugin's value — four doubles a parameter — becomes the words it

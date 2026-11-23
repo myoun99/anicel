@@ -270,6 +270,11 @@ pub fn create(
     Ok((texture, SharedHandle { plane, _fd: fd }))
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "dma-buf linear".to_owned()
+}
+
 /// Vulkan names no adapter by LUID that Flutter's GL would match; Flutter
 /// is matched by there being one device (device.rs, `open_sole`).
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {

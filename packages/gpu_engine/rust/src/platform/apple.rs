@@ -195,6 +195,11 @@ pub fn create(
     ))
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "iosurface".to_owned()
+}
+
 /// Metal names no adapter by LUID; Flutter is matched by there being one
 /// device (device.rs, `open_sole`).
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {

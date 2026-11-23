@@ -30,10 +30,6 @@ pub(crate) const NO_PAGE_BYTES: u64 = 4;
 /// One wgpu device and its queue.
 #[derive(Clone)]
 pub struct Engine {
-    /// Kept for Android's window surfaces, which must come from the
-    /// instance the adapter came from.
-    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-    pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
     /// ⛔Private to this type, as the `wgpu::Queue` is to [`Queue`]: a
     /// kernel takes it by [`Engine::device`], which counts the hands that
@@ -532,12 +528,6 @@ impl Queue {
         self.queue.write_buffer(buffer, offset, data);
     }
 
-    #[cfg(target_os = "android")]
-    pub(crate) fn present(&self, texture: wgpu::SurfaceTexture) {
-        entered();
-        self.queue.present(texture);
-    }
-
     pub(crate) fn write_texture(
         &self,
         texture: wgpu::TexelCopyTextureInfo<'_>,
@@ -563,7 +553,7 @@ impl Engine {
             .into_iter()
             .find(|adapter| platform::adapter_luid(adapter) == Some(luid));
         match adapter {
-            Some(adapter) => Self::on(instance, adapter),
+            Some(adapter) => Self::on(adapter),
             None => fail(format!("no adapter has LUID {luid:#x}")),
         }
     }
@@ -576,7 +566,7 @@ impl Engine {
         if adapters.len() != 1 {
             return fail(format!("{} adapters, not one", adapters.len()));
         }
-        Self::on(instance, adapters.remove(0))
+        Self::on(adapters.remove(0))
     }
 
     /// Opens on the platform's first adapter: cargo's tests', where no
@@ -634,19 +624,18 @@ impl Engine {
         match platform::adapters(&instance).into_iter().next() {
             Some(adapter) => {
                 let limits = limits(&adapter.limits())?;
-                Self::within(instance, adapter, limits)
+                Self::within(adapter, limits)
             }
             None => fail("no adapter"),
         }
     }
 
-    pub(crate) fn on(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
+    pub(crate) fn on(adapter: wgpu::Adapter) -> Option<Self> {
         let limits = asked(&adapter.limits())?;
-        Self::within(instance, adapter, limits)
+        Self::within(adapter, limits)
     }
 
     fn within(
-        instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         required_limits: wgpu::Limits,
     ) -> Option<Self> {
@@ -712,7 +701,6 @@ impl Engine {
                     refusals,
                     ended: Ended::default(),
                     posted_refused: PostedRefused::default(),
-                    instance,
                     adapter,
                     device,
                 })
@@ -1510,7 +1498,7 @@ fn used(rest: wgpu::Limits) -> wgpu::Limits {
 
 /// A texture of the engine's own that a compute pass stores to and a copy
 /// reads — shared with nothing.
-#[cfg(any(test, target_os = "android"))]
+#[cfg(test)]
 pub(crate) fn storage_texture(
     device: &wgpu::Device,
     width: u32,
@@ -2311,8 +2299,8 @@ pub(crate) unsafe fn let_go<T>(handed: *mut T) {
 /// (2026-11-14, each body read): `gpu_engine_held_let_go` and
 /// `gpu_engine_blurs_let_go` let buffers go on their caller's thread, and
 /// Android's `gpu_engine_window_target` took the swapchain's image there
-/// (↩️it names a texture of the engine's own from 2026-11-21, and takes no
-/// hand on the device: `platform/android.rs`) —
+/// (↩️gone with Android's window on 2026-11-23: Android shows surfaces as
+/// every platform does, `platform/android.rs`) —
 /// past `every_verb.rs`, which read the verbs handed the engine alone till
 /// then.
 ///

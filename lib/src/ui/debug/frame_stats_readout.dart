@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../native/screen_texture.dart';
 import 'engine_stages.dart';
 import 'frame_stats.dart';
 import 'measurement_mode.dart';
@@ -141,8 +140,11 @@ class FrameStatsReadout extends StatelessWidget {
                 ' finish p50${_ms(stats.screenFinishP50)}  '
                     'p95${_ms(stats.screenFinishP95)}',
                 ' show   p50${_ms(stats.screenShowP50)}  '
-                    'p95${_ms(stats.screenShowP95)}'
-                    '${stats.windowsAreCopied ? '  copied' : ''}',
+                    'p95${_ms(stats.screenShowP95)}',
+                // The way the screen reaches Flutter's, and why not where
+                // it was refused ([FrameStatsSnapshot.screenPath]) — its
+                // row always there, its words read off the device.
+                ' path   ${stats.screenPath.isEmpty ? '—' : stats.screenPath}',
                 // The pointer packets, dealt with between the frames
                 // ([FrameStatsSnapshot.pointsPerSecond]).
                 'POINTER ${stats.pointsPerSecond.toStringAsFixed(0)} pts/s  '
@@ -171,10 +173,8 @@ class FrameStatsReadout extends StatelessWidget {
                 // The engine's work place by place, while it is timed
                 // ([EngineStages]) — read as this window is published,
                 // of the frames it keeps itself.
-                if (MeasurementMode.engineStages.value) ...[
+                if (MeasurementMode.engineStages.value)
                   ...EngineStages.lines(EngineStages.summary),
-                  ...EngineStages.windowLines(ScreenTexture.windowSaid),
-                ],
               ];
         return DecoratedBox(
           decoration: const BoxDecoration(color: Color(0xE6101112)),

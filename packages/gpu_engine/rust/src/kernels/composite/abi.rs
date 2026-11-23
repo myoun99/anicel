@@ -1350,8 +1350,7 @@ pub unsafe extern "C" fn gpu_engine_composited_free(composited: *mut Composited)
 /// right, bottom) — leaving the rest of it as it was, and waits for the GPU;
 /// returns how many passes it took, -1 on failure (see the last error).
 /// `target` is what the screen shows: a surface's texture
-/// (`gpu_engine_surface_texture`) or the one a window is drawn on
-/// (`gpu_engine_window_target`), one entry for both (kernels/mod.rs).
+/// (`gpu_engine_surface_texture`).
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `rect` holds four words.

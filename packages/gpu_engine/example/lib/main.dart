@@ -1,8 +1,9 @@
 // GPU ENGINE PROBE — stage 0 of the GPU engine (gpu-engine-skeleton): a
 // wgpu compute pass fills a texture that Flutter shows without a copy.
 // Measures on THIS device: whether Flutter takes the texture as it is
-// (Windows: whether ANGLE does; Android: whether the window's images take
-// compute stores), the round trip of a frame, memory, and whether the
+// (Windows: whether ANGLE does; Android: whether the device makes a
+// storable AHardwareBuffer image, `screen:`), the round trip of a frame,
+// memory, and whether the
 // screen shows the very bytes the GPU wrote. Whether the GPU wrote the
 // pinned bytes is the crate's `cargo test`, against
 // test/fixtures/fingerprints.json.
@@ -119,12 +120,9 @@ class _ProbeAppState extends State<_ProbeApp> {
           '${luid == null ? '' : ' (LUID ${_hex(luid, digits: 16)})'}')
       ..writeln('video memory at open: ${_videoMemory(engine)}')
       ..writeln('process RSS at open: ${_mib(ProcessInfo.currentRss)}');
-    if (Platform.isAndroid) {
-      await _measureWindow(report, engine);
-    } else {
-      for (final bgra in [true, false]) {
-        await _measureOrder(report, engine, bgra: bgra);
-      }
+    report.writeln('screen: ${engine.screenSaid}');
+    for (final bgra in [true, false]) {
+      await _measureOrder(report, engine, bgra: bgra);
     }
     engine.close();
   }
@@ -163,9 +161,18 @@ class _ProbeAppState extends State<_ProbeApp> {
     // gpu-engine-feasibility ⑤).
     final back = engine.surface(_side, _side, bgra: bgra);
     GpuSurface slot(int i) => i.isOdd ? back : front;
-    final single = SharedTexture.register(front);
-    final slots = SharedTexture.register(front, back: back);
-    final apart = [SharedTexture.register(front), SharedTexture.register(back)];
+    final single = await SharedTexture.register(front);
+    // Android's texture shows one buffer for its life, and refuses a back.
+    SharedTexture? slots;
+    try {
+      slots = await SharedTexture.register(front, back: back);
+    } on GpuRefused catch (refused) {
+      report.writeln('$label double: ${refused.message}');
+    }
+    final apart = [
+      await SharedTexture.register(front),
+      await SharedTexture.register(back),
+    ];
     await _measureArms(report, [
       (
         name: '$label single',
@@ -173,12 +180,13 @@ class _ProbeAppState extends State<_ProbeApp> {
         fill: (i) => front.fill(_seed + i),
         show: (_) => single.show(0),
       ),
-      (
-        name: '$label double',
-        textureId: slots.id,
-        fill: (i) => slot(i).fill(_seed + i),
-        show: (i) => slots.show(i & 1),
-      ),
+      if (slots case final slots?)
+        (
+          name: '$label double',
+          textureId: slots.id,
+          fill: (i) => slot(i).fill(_seed + i),
+          show: (i) => slots.show(i & 1),
+        ),
       (
         name: '$label two textures',
         textureId: apart.first.id,
@@ -190,45 +198,10 @@ class _ProbeAppState extends State<_ProbeApp> {
         },
       ),
     ]);
-    await _unregister([single, slots, ...apart]);
+    await _unregister([single, ?slots, ...apart]);
     report.writeln('video memory with two surfaces: ${_videoMemory(engine)}');
     back.free();
     front.free();
-  }
-
-  /// Android's way to the screen: the engine presents into a window
-  /// Flutter made.
-  Future<void> _measureWindow(StringBuffer report, GpuEngine engine) async {
-    report.writeln('\n== window ==');
-    final written = _written(engine);
-    final shot = await engine.window(_shotSide, _shotSide);
-    report.writeln("the window's images are copied onto: one GPU copy a frame");
-    shot
-      ..fill(_seed)
-      ..present();
-    final shown = await _screenShows(
-      report,
-      shot.textureId,
-      written,
-      bgra: false,
-    );
-    await shot.free();
-    if (!shown) {
-      report.writeln('not on screen: round trip not measured');
-      return;
-    }
-    final window = await engine.window(_side, _side);
-    await _measureArms(report, [
-      (
-        name: 'window',
-        textureId: window.textureId,
-        fill: (i) => window.fill(_seed + i),
-        show: (_) => window.present(),
-      ),
-    ]);
-    report.writeln('process RSS with one $_side² window: '
-        '${_mib(ProcessInfo.currentRss)}');
-    await window.free();
   }
 
   // ANGLE takes a client texture as it is only when it is renderable and
@@ -267,16 +240,6 @@ class _ProbeAppState extends State<_ProbeApp> {
           : 'not renderable or not readable: ANGLE refuses it or copies it');
   }
 
-  /// The fingerprint of what the fill pass writes for [_seed] on a
-  /// [_shotSide]² RGBA surface — for a window, which reads nothing back.
-  int _written(GpuEngine engine) {
-    final reference = engine.surface(_shotSide, _shotSide, bgra: false);
-    reference.fill(_seed);
-    final written = reference.fingerprint();
-    reference.free();
-    return written;
-  }
-
   /// Whether the screen shows exactly the bytes the GPU wrote, through a
   /// shared texture: against the surface's own bytes, read back — no RGBA
   /// surface stands in for a BGRA one, which iOS and macOS alone take.
@@ -288,7 +251,7 @@ class _ProbeAppState extends State<_ProbeApp> {
     final shot = engine.surface(_shotSide, _shotSide, bgra: bgra);
     shot.fill(_seed);
     final written = shot.fingerprint();
-    final texture = SharedTexture.register(shot)..show(0);
+    final texture = (await SharedTexture.register(shot))..show(0);
     final shown = await _screenShows(report, texture.id, written, bgra: bgra);
     await _unregister([texture]);
     shot.free();

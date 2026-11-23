@@ -222,14 +222,6 @@ abstract final class EngineStages {
       '${(place.times / frames).toStringAsFixed(1)}x'
       '${_groups(place.groups / frames)}';
 
-  /// The readout's lines of what a window says of itself
-  /// ([ScreenTexture.windowSaid]), under the stages: none where no window
-  /// is open.
-  static List<String> windowLines(String said) => <String>[
-    for (final line in said.split('\n'))
-      if (line.trim().isNotEmpty) ' ${line.trim()}',
-  ];
-
   /// The readout's lines of [summary]: the frames kept — a frame's
   /// milliseconds on the average, whole, the GPU's and the engine
   /// thread's, then place by place, each with the most it took in one
