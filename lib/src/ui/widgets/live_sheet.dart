@@ -36,8 +36,10 @@ import 'still_raster.dart' show TickSceneLayer;
 /// the tool strips' ground is their dock's, painted around the region,
 /// and a canvas capsule's its own, around its region (`CanvasCapsule`) —
 /// and what something is painted over in place stands aside
-/// ([LiveSheet.inPlace]). ⏳The dock panels paint their ground in their own
-/// region, and stand on none yet (card
+/// ([LiveSheet.inPlace]). Where a ground is painted inside its region — a
+/// panel's header (`EditorPanelHeader`) — the sheet lies on it, and what
+/// stands on the sheet is a layer of its own, so the sheet cuts the
+/// region's image no wider than that layer (card
 /// a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-again).
 ///
 /// ⚠️WHAT A LOOK KEEPS OF ITS BOX: where it stands, how large, and the
