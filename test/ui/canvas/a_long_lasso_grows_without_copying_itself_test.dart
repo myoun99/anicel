@@ -44,6 +44,27 @@ void main() {
     expect(drag.openTrail, hasLength(4));
   });
 
+  test('a line\'s trail is its two ends, a new one at every move — the '
+      'ants walk it as it is dragged', () {
+    final drag = MarqueeDrag(
+      pointer: 1,
+      shapeKind: CanvasShapeKind.line,
+      before: null,
+      at: p(0, 0),
+      guides: CutGuides(),
+      zoom: 1,
+    )..update(p(10, 0));
+    final read = drag.openTrail;
+
+    drag.update(p(20, 5));
+
+    expect(identical(drag.openTrail, read), isFalse);
+    expect(
+      [for (final point in drag.openTrail) (point.x, point.y)],
+      [(0.0, 0.0), (20.0, 5.0)],
+    );
+  });
+
   test('a message of many points costs as many steps, not as many copies '
       'of the trail', () {
     Duration traced(int points) {

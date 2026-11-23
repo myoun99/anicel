@@ -244,7 +244,6 @@ final class MarqueeDrag extends SelectionDrag {
       // The line has no outline for the ants to walk; what they draw while
       // it is dragged is the line itself, end to end.
       _traced.clear();
-      _tracedShown = null;
       _trace([start, _current]);
     }
   }
