@@ -137,7 +137,7 @@ final class MarqueeDrag extends SelectionDrag {
     required bool shiftIsTheFolds,
     required this.byTouch,
   }) : _current = start,
-       _traced = lock == null ? const [] : [start],
+       _traced = [if (lock != null) start],
        _lock = lock,
        _shiftIsTheFolds = shiftIsTheFolds;
 
@@ -186,7 +186,27 @@ final class MarqueeDrag extends SelectionDrag {
   double screenTravel = 0;
 
   CanvasPoint _current;
-  List<CanvasPoint> _traced;
+
+  /// The path traced so far, grown in place. ⛔Never handed out: the ants
+  /// tell a trail that grew by its identity ([openTrail]).
+  ///
+  /// ↩️It was a fresh list per point (`[..._traced, ...]`) — and the trail
+  /// takes every point the OS saw, so the points a stall merged into one
+  /// message cost their count times the trail's length, just when the UI
+  /// had none to spare (card every-path-takes-every-point-the-os-saw ⓐ⑧:
+  /// 20000 points took 4.3 s, 2000 took 13 ms).
+  final List<CanvasPoint> _traced;
+
+  /// The copy of [_traced] last handed out — dropped as the trail grows.
+  List<CanvasPoint>? _tracedShown;
+
+  void _trace(Iterable<CanvasPoint> points) {
+    final before = _traced.length;
+    _traced.addAll(points);
+    if (_traced.length != before) {
+      _tracedShown = null;
+    }
+  }
 
   /// Whether the active shape IS the pointer's path (points accumulate as
   /// the drag runs) rather than being derived from its two corners.
@@ -219,14 +239,13 @@ final class MarqueeDrag extends SelectionDrag {
       if (!shift) {
         _shiftIsTheFolds = false;
       }
-      _traced = [
-        ..._traced,
-        ...lock.follow(at, shift: shift && !_shiftIsTheFolds),
-      ];
+      _trace(lock.follow(at, shift: shift && !_shiftIsTheFolds));
     } else if (shapeKind == CanvasShapeKind.line) {
       // The line has no outline for the ants to walk; what they draw while
       // it is dragged is the line itself, end to end.
-      _traced = [start, _current];
+      _traced.clear();
+      _tracedShown = null;
+      _trace([start, _current]);
     }
   }
 
@@ -234,10 +253,7 @@ final class MarqueeDrag extends SelectionDrag {
   /// ([StrokeLock.finish]) — before the release reads the shape, as a
   /// stroke's lands before its commit.
   void lift() {
-    final held = _lock?.finish() ?? const [];
-    if (held.isNotEmpty) {
-      _traced = [..._traced, ...held];
-    }
+    _trace(_lock?.finish() ?? const []);
   }
 
   /// Whether the two corners are too close to have meant a shape — a
@@ -258,7 +274,10 @@ final class MarqueeDrag extends SelectionDrag {
   /// The path traced so far, for the ants to draw while the drag runs.
   /// Empty for the shapes that are read from their corners instead — but
   /// for the line, whose two ends are all there is to draw.
-  List<CanvasPoint> get openTrail => _traced;
+  /// A trail that grew is a new list, one that did not the same — what the
+  /// ants tell a change by.
+  List<CanvasPoint> get openTrail =>
+      _tracedShown ??= List.unmodifiable(_traced);
 
   /// The in-progress or final marquee polygon; null while degenerate.
   ///
