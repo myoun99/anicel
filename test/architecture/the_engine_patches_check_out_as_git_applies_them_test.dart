@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
 import '../helpers/git_attributes.dart';
 
 /// 🚨A patch handed back with CRLF does not apply.
@@ -20,10 +19,8 @@ import '../helpers/git_attributes.dart';
 void main() {
   test('every patch of the engine Anicel builds checks out as LF', () {
     final patches = <String>[
-      for (final entity
-          in Directory('tool/flutter_engine').listSync(recursive: true))
-        if (entity is File && entity.path.endsWith('.patch'))
-          entity.path.replaceAll(r'\', '/'),
+      for (final file in filesUnder('tool/flutter_engine'))
+        if (file.path.endsWith('.patch')) file.path.replaceAll(r'\', '/'),
     ];
     expect(
       patches,
