@@ -67,6 +67,28 @@ void main() {
         .session;
   }
 
+  test('the log says who said the screen went — the watch by the HRESULT '
+      'Windows gave it, the engine by the EGL error its call failed '
+      'by', () {
+    final seen = DateTime.fromMillisecondsSinceEpoch(1795000000123);
+    expect(
+      LostScreenEvidence.linesOf((
+        reason: 0x887A0006.toSigned(32),
+        seenAt: seen,
+        by: ScreenGoneBy.watch,
+      ), null).first,
+      'screen watch 0x887A0006',
+    );
+    expect(
+      LostScreenEvidence.linesOf((
+        reason: 0x300E,
+        seenAt: seen,
+        by: ScreenGoneBy.engine,
+      ), null).first,
+      "engine's context lost 0x300E",
+    );
+  });
+
   testWidgets('the screen gone while a cut plays, the log says each '
       "device's word, the playback and the cut — once a run", (tester) async {
     final session = await pumpShell(tester);

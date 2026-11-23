@@ -1,11 +1,24 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// The screen's device gone: the reason Windows gave (an HRESULT, as an
-/// int32) and the moment the runner's watch saw it — H63 ③ (관제
+/// Who said the screen's device went.
+enum ScreenGoneBy {
+  /// The runner's watch: its own device on the screen's adapter, which
+  /// Windows removed (`windows/runner/lost_screen.h`).
+  watch,
+
+  /// The engine itself: an EGL call of its own failed by a lost context —
+  /// said only by the engine Anicel builds
+  /// (`tool/flutter_engine/3.47.4`, patch 0002).
+  engine,
+}
+
+/// The screen's device gone: who said it ([by]), the reason — the HRESULT
+/// Windows gave the watch, or the EGL error the engine's call failed by, as
+/// an int32 — and the moment the runner saw or heard it. H63 ③ (관제
 /// 2026-11-18): the log the app writes is stamped when the app hears it,
 /// and the channel and the UI thread lie between the two.
-typedef ScreenGone = ({int reason, DateTime seenAt});
+typedef ScreenGone = ({int reason, DateTime seenAt, ScreenGoneBy by});
 
 /// 🚨★★★A SCREEN WHOSE GRAPHICS DEVICE WENT IS ONE THE APP NO LONGER DRAWS
 /// ON — IT ASKS WITH WINDOWS' WINDOWS, SAVES AND STARTS AGAIN.
@@ -17,6 +30,10 @@ typedef ScreenGone = ({int reason, DateTime seenAt});
 /// (Intel, 11-18 15:08) the first frame drawn after the reset ended the
 /// process. So the Windows runner watches for itself
 /// (`windows/runner/lost_screen.h`) and says it here ([wentMethod]) — and
+/// where the engine is the one Anicel builds, the engine says so itself and
+/// the runner passes its word on ([contextLostMethod]; 🗣️유저 2026-11-22,
+/// board a-real-gpu-reset-went-unheard-on-the-main-pc: the engine is
+/// mended, and its saying so is the first step). Whoever says it first,
 /// from then on:
 ///
 /// - no frame is drawn (`stopDrawingTheScreen`);
@@ -34,6 +51,7 @@ typedef ScreenGone = ({int reason, DateTime seenAt});
 abstract final class LostScreen {
   static const channel = MethodChannel('anicel/screen');
   static const wentMethod = 'went';
+  static const contextLostMethod = 'contextLost';
   static const askMethod = 'askWithWindows';
   static const startAgainMethod = 'startAgain';
   static const endMethod = 'end';
@@ -47,14 +65,21 @@ abstract final class LostScreen {
   static bool get hasGone => _went.value != null;
 
   /// Hears the runner, for the app's lifetime: `main`, once. A platform
-  /// whose runner does not watch never says it.
+  /// whose runner does not watch never says it. The first word of the
+  /// screen going stays, whoever says it: the two say one loss.
   static void listen() {
     channel.setMethodCallHandler((call) async {
+      final by = switch (call.method) {
+        wentMethod => ScreenGoneBy.watch,
+        contextLostMethod => ScreenGoneBy.engine,
+        _ => null,
+      };
       if (call.arguments case [final int reason, final int seenAt]
-          when call.method == wentMethod) {
+          when by != null) {
         _went.value ??= (
           reason: reason,
           seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
+          by: by,
         );
       }
       return null;
@@ -99,10 +124,17 @@ abstract final class LostScreen {
   }
 
   /// Test seam: the screen's device gone, as the runner says it — seen
-  /// [seenAt], or now.
+  /// [seenAt], or now, and said by its watch unless [by] names the engine.
   @visibleForTesting
-  static void debugGo([int reason = 0x887A0007, DateTime? seenAt]) =>
-      _went.value ??= (reason: reason, seenAt: seenAt ?? DateTime.now());
+  static void debugGo([
+    int reason = 0x887A0007,
+    DateTime? seenAt,
+    ScreenGoneBy by = ScreenGoneBy.watch,
+  ]) => _went.value ??= (
+    reason: reason,
+    seenAt: seenAt ?? DateTime.now(),
+    by: by,
+  );
 
   /// Test seam: the screen as a launch finds it.
   @visibleForTesting

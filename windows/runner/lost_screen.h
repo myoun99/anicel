@@ -53,6 +53,14 @@ class ScreenWatch {
   std::thread thread_;
 };
 
+// Now, in milliseconds since 1970 UTC — the moment the runner sees or hears
+// the screen go, which it says beside the reason (H63 ③, 관제 2026-11-18):
+// the log the app writes is stamped when the app hears it, and the channel
+// and the UI thread lie between the two. The watch posts it as it sees its
+// device go; the window reads it as it hears the engine's own word
+// (flutter_window.cpp, kEngineContextLostMessage).
+LPARAM UnixMillisecondsNow();
+
 // 🗣️a-lost-gpu-leaves-the-window-unpainted-Q1 (유저 2026-11-16): 「윈도 창으로
 // 알리고 저장하고 다시 시작할지 묻는다」 — a window Windows draws, as nothing
 // Flutter draws is seen any more. A task dialog: GDI draws it, and it needs

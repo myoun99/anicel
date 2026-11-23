@@ -1,0 +1,27 @@
+Upstream's fix for "[Windows] Local engine rendering stalls without input
+when UI/platform threads are merged" (flutter/flutter issue 192513): pull
+request 193181, "[win32] Remove the predicate from TimerThread condition
+variable", shipped in Flutter 3.47.6. An engine built from the 3.47.4 tag
+on a machine of one's own is the case that issue names; Flutter's own
+prebuilt 3.47.x library did not stall. Taken verbatim from the pull
+request's diff (base blob 08b69a6d20f6a = this tree's file at 3.47.4).
+
+diff --git a/engine/src/flutter/shell/platform/windows/task_runner_window.cc b/engine/src/flutter/shell/platform/windows/task_runner_window.cc
+index 08b69a6d20f6a..1faa72c8c3d92 100644
+--- a/engine/src/flutter/shell/platform/windows/task_runner_window.cc
++++ b/engine/src/flutter/shell/platform/windows/task_runner_window.cc
+@@ -59,10 +59,10 @@ void TimerThread::ScheduleAt(
+ void TimerThread::TimerThreadMain() {
+   std::unique_lock<std::mutex> lock(mutex_);
+   while (callback_ != nullptr) {
+-    cv_.wait_until(lock, next_fire_time_, [this]() {
+-      return std::chrono::high_resolution_clock::now() >= next_fire_time_ ||
+-             callback_ == nullptr;
+-    });
++    cv_.wait_until(lock, next_fire_time_);
++    if (next_fire_time_ > std::chrono::high_resolution_clock::now()) {
++      continue;
++    }
+     auto scheduled_count = schedule_counter_;
+     if (callback_) {
+       lock.unlock();

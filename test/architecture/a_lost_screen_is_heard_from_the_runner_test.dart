@@ -64,22 +64,84 @@ void main() {
       expect(listens, contains(step));
     }
     final handles = sourceBodyOf(source, 'FlutterWindow::MessageHandler(');
-    expect(handles, contains('if (message == kScreenWentMessage) {'));
-    // H63 ③: [the reason as an int32, the moment the watch saw it as an
-    // int64] — the shape `LostScreen.listen` reads.
-    final says = handles.substring(handles.indexOf('kScreenWent,'));
     expect(
-      says,
+      handles,
       stringContainsInOrder([
+        'if (message == kScreenWentMessage) {',
+        'SayTheScreenWent(screen_channel_.get(), kScreenWent, wparam, '
+            'lparam);',
+      ]),
+    );
+    // H63 ③: [the reason as an int32, the moment it was seen as an int64]
+    // — the shape `LostScreen.listen` reads, whoever said the screen went.
+    expect(
+      sourceBodyOf(source, 'void SayTheScreenWent('),
+      stringContainsInOrder([
+        'channel->InvokeMethod(',
+        'method,',
         'std::make_unique<flutter::EncodableValue>(flutter::EncodableList{',
-        'flutter::EncodableValue(static_cast<int32_t>(wparam))',
-        'flutter::EncodableValue(static_cast<int64_t>(lparam))',
+        'flutter::EncodableValue(static_cast<int32_t>(reason))',
+        'flutter::EncodableValue(static_cast<int64_t>(seen_at))',
       ]),
     );
     expect(
       sourceBodyOf(source, 'void FlutterWindow::OnDestroy()'),
       contains('screen_watch_ = nullptr;'),
       reason: 'the watch posts to this window, which is going',
+    );
+  });
+
+  // 🗣️유저 2026-11-22 (board a-real-gpu-reset-went-unheard-on-the-main-pc):
+  // the engine is mended. Its first step: the engine Anicel builds says
+  // that its screen's context is lost, by a window message registered by
+  // a name — which only the patch and the runner spell, and no compiler
+  // holds the two to one spelling.
+  test('the runner hears the engine\'s own word by the name the engine\'s '
+      'patch posts it by, and says it on the channel as the engine\'s, with '
+      'the moment it heard it', () {
+    expect(
+      source,
+      contains(
+        'kScreenContextLost[] = "${LostScreen.contextLostMethod}";',
+      ),
+    );
+    final name = RegExp(
+      r'kEngineContextLostMessage\[\] =\s+L"(\w+)";',
+    ).firstMatch(source)?[1];
+    expect(name, isNotNull, reason: 'premise: the runner names the message');
+    final patch = File(
+      'tool/flutter_engine/3.47.4/'
+      '0002-egl-context-lost-is-posted-to-the-process-windows.patch',
+    ).readAsStringSync();
+    expect(
+      patch,
+      contains('+constexpr wchar_t kContextLostMessageName[] = L"$name";'),
+      reason: 'the engine registers the name the runner registers',
+    );
+    // Said where every failed EGL call of the embedder passes, and with
+    // the EGL error as the WPARAM the runner hands on.
+    expect(
+      patch,
+      stringContainsInOrder([
+        'PostMessageW(window, static_cast<UINT>(message), EGL_CONTEXT_LOST',
+        '::RegisterWindowMessageW(kContextLostMessageName)',
+        ' void LogEGLError(std::string_view message) {',
+        '+  if (error == EGL_CONTEXT_LOST) {',
+        '+    TellContextLost();',
+      ]),
+    );
+    expect(
+      sourceBodyOf(source, 'UINT EngineContextLostMessage()'),
+      contains('::RegisterWindowMessageW(kEngineContextLostMessage)'),
+    );
+    expect(
+      sourceBodyOf(source, 'FlutterWindow::MessageHandler('),
+      stringContainsInOrder([
+        'if (const UINT lost = EngineContextLostMessage();',
+        'lost != 0 && message == lost) {',
+        'SayTheScreenWent(screen_channel_.get(), kScreenContextLost, wparam,',
+        'UnixMillisecondsNow());',
+      ]),
     );
   });
 

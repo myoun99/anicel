@@ -113,11 +113,16 @@ abstract final class LostScreenEvidence {
     ...linesOf(LostScreen.went.value, active),
   ];
 
-  /// What the runner's watch said of the screen's device.
+  /// What was said of the screen's device, and by whom: the runner's watch
+  /// (an HRESULT) or the engine itself (an EGL error) — none where neither
+  /// spoke.
   static List<String> _watchSaid(ScreenGone? gone) => gone == null
       ? const ['screen watch says nothing']
       : [
-          'screen watch '
+          '${switch (gone.by) {
+            ScreenGoneBy.watch => 'screen watch',
+            ScreenGoneBy.engine => "engine's context lost",
+          }} '
               '0x${gone.reason.toUnsigned(32).toRadixString(16).toUpperCase()}',
           'runner saw it ${_moment(gone.seenAt)}',
         ];

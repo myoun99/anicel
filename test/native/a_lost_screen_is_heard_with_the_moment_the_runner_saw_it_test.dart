@@ -7,6 +7,11 @@ import 'package:anicel/src/native/lost_screen.dart';
 /// app writes is stamped when the app hears it, and the channel and the UI
 /// thread lie between the two.
 ///
+/// And who said it is heard with it: the runner's watch, or — where the
+/// engine is the one Anicel builds — the engine itself, whose word the
+/// runner passes on (board a-real-gpu-reset-went-unheard-on-the-main-pc,
+/// 2026-11-23). The two say one loss.
+///
 /// Here the channel is the runner, and says what the runner says; that the
 /// runner does say it is `a_lost_screen_is_heard_from_the_runner_test`'s.
 void main() {
@@ -22,16 +27,20 @@ void main() {
     });
   });
 
-  /// What the Windows runner says once its watch saw the device go:
-  /// [reason] as an int32 and [seenAt] in milliseconds since 1970 UTC.
-  Future<void> runnerSays(int reason, int seenAt) =>
-      messenger.handlePlatformMessage(
-        LostScreen.channel.name,
-        LostScreen.channel.codec.encodeMethodCall(
-          MethodCall(LostScreen.wentMethod, [reason, seenAt]),
-        ),
-        (_) {},
-      );
+  /// What the Windows runner says by [method] — once its watch saw the
+  /// device go, unless another is named: [reason] as an int32 and [seenAt]
+  /// in milliseconds since 1970 UTC.
+  Future<void> runnerSays(
+    int reason,
+    int seenAt, [
+    String method = LostScreen.wentMethod,
+  ]) => messenger.handlePlatformMessage(
+    LostScreen.channel.name,
+    LostScreen.channel.codec.encodeMethodCall(
+      MethodCall(method, [reason, seenAt]),
+    ),
+    (_) {},
+  );
 
   test('the reason and the moment the runner saw it are heard '
       'together', () async {
@@ -43,7 +52,45 @@ void main() {
     expect(LostScreen.went.value, (
       reason: 0x887A0006.toSigned(32),
       seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
+      by: ScreenGoneBy.watch,
     ));
+  });
+
+  test('the engine\'s own word is heard as the engine\'s, with the EGL '
+      'error it failed by and the moment the runner heard it', () async {
+    expect(LostScreen.hasGone, isFalse, reason: '⛔전제: nothing went yet');
+    const heardAt = 1795000000456;
+    // EGL_CONTEXT_LOST.
+    const lost = 0x300E;
+
+    await runnerSays(lost, heardAt, LostScreen.contextLostMethod);
+
+    expect(LostScreen.went.value, (
+      reason: lost,
+      seenAt: DateTime.fromMillisecondsSinceEpoch(heardAt),
+      by: ScreenGoneBy.engine,
+    ));
+    expect(LostScreen.hasGone, isTrue);
+  });
+
+  test('the engine and the watch say one loss: whichever says it first '
+      'is the one kept', () async {
+    await runnerSays(0x300E, 1795000000456, LostScreen.contextLostMethod);
+    await runnerSays(0x887A0006.toSigned(32), 1795000000999);
+    expect(LostScreen.went.value?.by, ScreenGoneBy.engine);
+    expect(LostScreen.went.value?.reason, 0x300E);
+
+    LostScreen.debugForget();
+    await runnerSays(0x887A0006.toSigned(32), 1795000000999);
+    await runnerSays(0x300E, 1795000001456, LostScreen.contextLostMethod);
+    expect(LostScreen.went.value?.by, ScreenGoneBy.watch);
+    expect(LostScreen.went.value?.reason, 0x887A0006.toSigned(32));
+  });
+
+  test('what the runner says by another name is no loss', () async {
+    await runnerSays(0x300E, 1795000000456, LostScreen.standsMethod);
+
+    expect(LostScreen.hasGone, isFalse);
   });
 
   test('the first loss a run hears is the one it keeps', () async {

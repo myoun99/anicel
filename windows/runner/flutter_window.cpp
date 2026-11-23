@@ -176,6 +176,22 @@ constexpr char kEnd[] = "end";
 constexpr char kScreenStands[] = "stands";
 // Posted by the watch's thread: the channel speaks on this one.
 constexpr UINT kScreenWentMessage = WM_APP + 0x153;
+// 🚨THE ENGINE'S OWN WORD THAT ITS SCREEN'S CONTEXT IS LOST, heard where the
+// engine is the one Anicel builds (tool/flutter_engine/3.47.4, patch 0002):
+// an EGL call of the embedder's that fails by EGL_CONTEXT_LOST posts every
+// top-level window of the process the message registered by this name, its
+// WPARAM the EGL error. Flutter's own engine posts none, and the watch above
+// is all that speaks. Said on the channel as the engine's
+// (kScreenContextLost) with the moment the runner heard it: the app does by
+// it what it does by the watch's word, and writes who said it.
+// 🗣️유저 2026-11-22 (board a-real-gpu-reset-went-unheard-on-the-main-pc):
+// 「그게 젤 근본해결이고 버전고정되고 올릴때마다 신경써야하는건
+// 이해하고있고」 — the engine is mended, and this is its first step.
+// test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
+// the name here and in the patch.
+constexpr char kScreenContextLost[] = "contextLost";
+constexpr wchar_t kEngineContextLostMessage[] =
+    L"FlutterWindowsEglContextLost";
 
 // 🚨★★★F-411 — A MODIFIER WINDOWS LET GO OF IS LET GO OF IN THE ENGINE TOO.
 //
@@ -240,6 +256,34 @@ int ModifierAskedOf(WPARAM key) {
 bool IsKeyMessage(UINT message) {
   return message == WM_KEYDOWN || message == WM_SYSKEYDOWN ||
          message == WM_KEYUP || message == WM_SYSKEYUP;
+}
+
+// The id Windows gives the engine's message (kEngineContextLostMessage) this
+// session — the same to every caller that registers the name. Zero where it
+// would not register.
+UINT EngineContextLostMessage() {
+  static const UINT message =
+      ::RegisterWindowMessageW(kEngineContextLostMessage);
+  return message;
+}
+
+// Says on |channel| by |method| that the screen went: the reason and the
+// moment, [int32, int64 ms since 1970 UTC]. Nothing before Dart is listened
+// for.
+void SayTheScreenWent(
+    flutter::MethodChannel<flutter::EncodableValue>* channel,
+    const char* method,
+    WPARAM reason,
+    LPARAM seen_at) {
+  if (channel == nullptr) {
+    return;
+  }
+  channel->InvokeMethod(
+      method,
+      std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
+          flutter::EncodableValue(static_cast<int32_t>(reason)),
+          flutter::EncodableValue(static_cast<int64_t>(seen_at)),
+      }));
 }
 
 }  // namespace
@@ -345,14 +389,14 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
   if (message == kScreenWentMessage) {
-    if (screen_channel_) {
-      screen_channel_->InvokeMethod(
-          kScreenWent,
-          std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
-              flutter::EncodableValue(static_cast<int32_t>(wparam)),
-              flutter::EncodableValue(static_cast<int64_t>(lparam)),
-          }));
-    }
+    SayTheScreenWent(screen_channel_.get(), kScreenWent, wparam, lparam);
+    return 0;
+  }
+  // The engine's word carries no moment: the runner's, as it hears it.
+  if (const UINT lost = EngineContextLostMessage();
+      lost != 0 && message == lost) {
+    SayTheScreenWent(screen_channel_.get(), kScreenContextLost, wparam,
+                     UnixMillisecondsNow());
     return 0;
   }
 
