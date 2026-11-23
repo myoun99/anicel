@@ -9,10 +9,11 @@ import 'raster_watch.dart';
 import 'screen_canary.dart';
 
 /// What the app was doing when the screen's device went ([LostScreen]),
-/// the thread that draws the screen stood ([RasterWatch]), or the screen's
-/// context did not say back a pixel asked of it ([ScreenCanary]) — written
-/// once a run each, the moment it is heard, BEFORE the save and the engine
-/// opened again change any of it ([GpuLossLog]).
+/// the thread that draws the screen stood ([RasterWatch]), the screen's
+/// context did not say back a pixel asked of it ([ScreenCanary]), or the
+/// screen stood again in a context made anew ([LostScreen.stoodAgain]) —
+/// written once a run each, the moment it is heard, BEFORE the save and the
+/// engine opened again change any of it ([GpuLossLog]).
 ///
 /// 🗣️H63 (관제 2026-11-18, after one forced run on a copy did not reset
 /// the device): the next real reset leaves its own evidence — ①why each
@@ -64,6 +65,20 @@ abstract final class LostScreenEvidence {
     }
   }
 
+  /// Writes that this run's screen stood again in a context made anew
+  /// ([LostScreen.stoodAgain]), with [active]'s state — once a run. ⛔Written
+  /// and no more: the screen goes on (patch 0005, step two of board
+  /// a-real-gpu-reset-went-unheard-on-the-main-pc).
+  static void noteTheScreenStoodAgainOnce(EditorSessionManager? active) {
+    final again = LostScreen.stoodAgain.value;
+    if (again != null) {
+      _writeOnce(
+        'the screen stood again',
+        () => stoodAgainLinesOf(again, active),
+      );
+    }
+  }
+
   static void _writeOnce(String title, List<String> Function() lines) {
     if (_noted.add(title)) {
       GpuLossLog.write(title, lines());
@@ -111,6 +126,17 @@ abstract final class LostScreenEvidence {
     'a pixel of ${pixel.asked} asked ${_moment(pixel.askedAt)}: '
         '${pixel.instead}',
     ...linesOf(LostScreen.went.value, active),
+  ];
+
+  /// The lines of a screen that stood again: when, then as a loss
+  /// ([linesOf]) of the word the runner held for the engine's answer.
+  @visibleForTesting
+  static List<String> stoodAgainLinesOf(
+    ScreenStoodAgain again,
+    EditorSessionManager? active,
+  ) => [
+    'stood again ${_moment(again.stoodAt)}',
+    ...linesOf(again.lost, active),
   ];
 
   /// What was said of the screen's device, and by whom: the runner's watch

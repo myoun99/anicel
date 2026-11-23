@@ -20,6 +20,10 @@ enum ScreenGoneBy {
 /// and the channel and the UI thread lie between the two.
 typedef ScreenGone = ({int reason, DateTime seenAt, ScreenGoneBy by});
 
+/// The screen stood again in a context made anew: the loss as it would have
+/// been said, and the moment the runner heard it stood.
+typedef ScreenStoodAgain = ({ScreenGone lost, DateTime stoodAt});
+
 /// 🚨★★★A SCREEN WHOSE GRAPHICS DEVICE WENT IS ONE THE APP NO LONGER DRAWS
 /// ON — IT ASKS WITH WINDOWS' WINDOWS, SAVES AND STARTS AGAIN.
 ///
@@ -46,12 +50,23 @@ typedef ScreenGone = ({int reason, DateTime seenAt, ScreenGoneBy by});
 ///   🗣️Q5 (유저 2026-11-18): 「버튼하나 더 만들어서 저장하지 않고 종료
 ///   추가」, ends unsaved ([end]).
 ///
+/// 🚨★★★WHERE THE ENGINE RESTORES, NONE OF THAT IS SAID AT ALL UNLESS IT
+/// FAILS. 🗣️유저 2026-11-22 (board a-real-gpu-reset-went-unheard-on-the-
+/// main-pc, relayed): 「Flutter 윈도 엔진을 고쳐 화면이 돌아오게 한다」. The
+/// engine Anicel builds (patch 0005) makes its context anew once it hears a
+/// loss, and the runner holds the word of the loss for its answer
+/// (`flutter_window.cpp`, kScreenContextRestored): Dart hears [went] only
+/// where the engine did not stand again, and otherwise [stoodAgain] —
+/// whatever the GPU held before it, the images Flutter made and the app's
+/// own, is gone, and the screen goes on.
+///
 /// The method names are spelled again in `flutter_window.cpp`;
 /// `a_lost_screen_is_heard_from_the_runner_test` reads both.
 abstract final class LostScreen {
   static const channel = MethodChannel('anicel/screen');
   static const wentMethod = 'went';
   static const contextLostMethod = 'contextLost';
+  static const contextRestoredMethod = 'contextRestored';
   static const askMethod = 'askWithWindows';
   static const startAgainMethod = 'startAgain';
   static const endMethod = 'end';
@@ -64,27 +79,56 @@ abstract final class LostScreen {
   /// Whether the screen's device went this run.
   static bool get hasGone => _went.value != null;
 
+  /// The last time this run the screen stood again in a context made anew —
+  /// null till then. Each time is a new value.
+  static ValueListenable<ScreenStoodAgain?> get stoodAgain => _stoodAgain;
+  static final ValueNotifier<ScreenStoodAgain?> _stoodAgain = ValueNotifier(
+    null,
+  );
+
   /// Hears the runner, for the app's lifetime: `main`, once. A platform
   /// whose runner does not watch never says it. The first word of the
   /// screen going stays, whoever says it: the two say one loss.
   static void listen() {
     channel.setMethodCallHandler((call) async {
-      final by = switch (call.method) {
-        wentMethod => ScreenGoneBy.watch,
-        contextLostMethod => ScreenGoneBy.engine,
-        _ => null,
-      };
-      if (call.arguments case [final int reason, final int seenAt]
-          when by != null) {
-        _went.value ??= (
-          reason: reason,
-          seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
-          by: by,
-        );
+      switch ((call.method, call.arguments)) {
+        case (
+              contextRestoredMethod,
+              [
+                final int reason,
+                final int seenAt,
+                final String saidBy,
+                final int stoodAt,
+              ],
+            )
+            when _goneBy(saidBy) != null:
+          _stoodAgain.value = (
+            lost: (
+              reason: reason,
+              seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
+              by: _goneBy(saidBy)!,
+            ),
+            stoodAt: DateTime.fromMillisecondsSinceEpoch(stoodAt),
+          );
+        case (final String method, [final int reason, final int seenAt])
+            when _goneBy(method) != null:
+          _went.value ??= (
+            reason: reason,
+            seenAt: DateTime.fromMillisecondsSinceEpoch(seenAt),
+            by: _goneBy(method)!,
+          );
       }
       return null;
     });
   }
+
+  /// Who says the screen went by [method]: none for a method of another
+  /// word.
+  static ScreenGoneBy? _goneBy(String method) => switch (method) {
+    wentMethod => ScreenGoneBy.watch,
+    contextLostMethod => ScreenGoneBy.engine,
+    _ => null,
+  };
 
   /// Asks [title] and [message] with a window Windows draws, and answers
   /// the index in [buttons] of the one pressed — -1 for the window closed
@@ -136,7 +180,16 @@ abstract final class LostScreen {
     by: by,
   );
 
+  /// Test seam: the screen stood again, as the runner says it — of the
+  /// loss [lost] it held, at [stoodAt], or now.
+  @visibleForTesting
+  static void debugStandAgain(ScreenGone lost, [DateTime? stoodAt]) =>
+      _stoodAgain.value = (lost: lost, stoodAt: stoodAt ?? DateTime.now());
+
   /// Test seam: the screen as a launch finds it.
   @visibleForTesting
-  static void debugForget() => _went.value = null;
+  static void debugForget() {
+    _went.value = null;
+    _stoodAgain.value = null;
+  }
 }

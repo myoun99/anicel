@@ -7,6 +7,7 @@
 #include <flutter/method_channel.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "launch_splash.h"
@@ -54,6 +55,20 @@ class FlutterWindow : public Win32Window {
   // goes, and lets Dart ask with Windows' windows and start again
   // (lost_screen.h).
   void ListenForTheScreen();
+
+  // Watches a device of its own on the adapter the engine says it draws on
+  // now — at the start, and once the engine stood again (a removed device's
+  // watch says no more).
+  void WatchTheScreen();
+
+  // A word that the screen's device or context went: said to Dart by
+  // |method|, as it is said today — or, where the engine restores, held for
+  // the engine's answer (the constants by kScreenContextRestored say why).
+  void HearTheScreenGo(const char* method, WPARAM reason, LPARAM seen_at);
+
+  // The engine's answer to the word held, or none in time: |stands| where
+  // it renders again in a context made anew.
+  void HearTheEngineAnswer(bool stands);
 
   // Puts this window full screen over its monitor, or back where it stood,
   // and says on the channel which it is now.
@@ -121,6 +136,20 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       screen_channel_;
   std::unique_ptr<ScreenWatch> screen_watch_;
+
+  // The first word of a loss, held while an engine that restores answers:
+  // the method it is said to Dart by, its reason and the moment it was seen.
+  struct HeldWord {
+    const char* method;
+    WPARAM reason;
+    LPARAM seen_at;
+  };
+  std::optional<HeldWord> held_word_;
+
+  // When the screen last stood again (ms since 1970 UTC): a word seen
+  // before it is of the loss that was answered — the old watch's, posted
+  // before it was let go of.
+  LPARAM stood_again_at_ = 0;
 
   // Whether the window covers its monitor, and how it stood before — its
   // place, its size, whether it was maximized, and its frame's style.

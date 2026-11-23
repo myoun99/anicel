@@ -103,4 +103,90 @@ void main() {
       DateTime.fromMillisecondsSinceEpoch(1795000000123),
     );
   });
+
+  // Step two (board a-real-gpu-reset-went-unheard-on-the-main-pc): where the
+  // engine restores, the runner says the loss only as part of its answer.
+  /// What the runner says once the engine stood again: the word it held —
+  /// said by [saidBy] — and the moment it stood.
+  Future<void> runnerSaysItStoodAgain(
+    int reason,
+    int seenAt,
+    String saidBy,
+    int stoodAt,
+  ) => messenger.handlePlatformMessage(
+    LostScreen.channel.name,
+    LostScreen.channel.codec.encodeMethodCall(
+      MethodCall(LostScreen.contextRestoredMethod, [
+        reason,
+        seenAt,
+        saidBy,
+        stoodAt,
+      ]),
+    ),
+    (_) {},
+  );
+
+  test('a screen that stood again is heard with the loss as it would have '
+      'been said and the moment it stood — and is no loss', () async {
+    expect(LostScreen.stoodAgain.value, isNull, reason: '⛔전제: none yet');
+
+    await runnerSaysItStoodAgain(
+      0x887A0006.toSigned(32),
+      1795000000123,
+      LostScreen.wentMethod,
+      1795000000456,
+    );
+
+    expect(LostScreen.stoodAgain.value, (
+      lost: (
+        reason: 0x887A0006.toSigned(32),
+        seenAt: DateTime.fromMillisecondsSinceEpoch(1795000000123),
+        by: ScreenGoneBy.watch,
+      ),
+      stoodAt: DateTime.fromMillisecondsSinceEpoch(1795000000456),
+    ));
+    expect(LostScreen.hasGone, isFalse);
+  });
+
+  test('each time it stands again is heard, the engine\'s word as the '
+      'engine\'s', () async {
+    final heard = <ScreenStoodAgain?>[];
+    void hear() => heard.add(LostScreen.stoodAgain.value);
+    LostScreen.stoodAgain.addListener(hear);
+    addTearDown(() => LostScreen.stoodAgain.removeListener(hear));
+
+    await runnerSaysItStoodAgain(
+      0x300E,
+      1795000000123,
+      LostScreen.contextLostMethod,
+      1795000000456,
+    );
+    await runnerSaysItStoodAgain(
+      0x300E,
+      1795000009000,
+      LostScreen.contextLostMethod,
+      1795000009500,
+    );
+
+    expect(heard.map((each) => each?.lost.by), [
+      ScreenGoneBy.engine,
+      ScreenGoneBy.engine,
+    ]);
+    expect(
+      heard.map((each) => each?.stoodAt.millisecondsSinceEpoch),
+      [1795000000456, 1795000009500],
+    );
+  });
+
+  test('a stand again said of a word that says no loss is not '
+      'heard', () async {
+    await runnerSaysItStoodAgain(
+      0x300E,
+      1795000000123,
+      LostScreen.standsMethod,
+      1795000000456,
+    );
+
+    expect(LostScreen.stoodAgain.value, isNull);
+  });
 }

@@ -646,6 +646,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     scheduleMicrotask(_keepTheWorkOfALostScreen);
     RasterWatch.stood.addListener(_noteTheRasterStood);
     ScreenCanary.notSaid.addListener(_noteThePixelNotSaid);
+    LostScreen.stoodAgain.addListener(_noteTheScreenStoodAgain);
     appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
     // A launch is held from before its first frame. `runApp` builds the
     // tree, then draws it: asked between the two — a microtask of that
@@ -1164,6 +1165,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _noteThePixelNotSaid() =>
       LostScreenEvidence.noteThePixelNotSaidOnce(_projects.active);
 
+  /// And so is a screen that stood again in a context made anew
+  /// ([LostScreen.stoodAgain], [LostScreenEvidence.noteTheScreenStoodAgainOnce])
+  /// — nothing is asked: the screen goes on (step two of board
+  /// a-real-gpu-reset-went-unheard-on-the-main-pc). ⚠️What the GPU held
+  /// before it, the app's own images among it, is not made again here yet
+  /// (that card, 11-23 17:44): this is the step that shows whether the
+  /// engine stands again in the app at all.
+  void _noteTheScreenStoodAgain() =>
+      LostScreenEvidence.noteTheScreenStoodAgainOnce(_projects.active);
+
   /// Whether the question stands now: asked once a loss — heard by the
   /// listener, or found by the launch's own look — and again at the app
   /// window's X once it was taken down ([_handleExitRequested]).
@@ -1239,6 +1250,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     LostScreen.went.removeListener(_keepTheWorkOfALostScreen);
     RasterWatch.stood.removeListener(_noteTheRasterStood);
     ScreenCanary.notSaid.removeListener(_noteThePixelNotSaid);
+    LostScreen.stoodAgain.removeListener(_noteTheScreenStoodAgain);
     appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();

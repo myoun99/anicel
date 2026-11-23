@@ -243,4 +243,51 @@ void main() {
     playback.stop();
     await tester.pump();
   });
+
+  // Step two of board a-real-gpu-reset-went-unheard-on-the-main-pc: where
+  // the engine restores, the runner says a loss only with its answer.
+  testWidgets('a screen that stood again while a cut plays, the log says '
+      'when, the word the runner held, each device\'s word, the playback '
+      'and the cut — once a run, nothing asked', (tester) async {
+    final session = await pumpShell(tester);
+    final playback = session.playbackRig.playback;
+    playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    expect(log.existsSync(), isFalse, reason: '⛔전제: nothing written yet');
+
+    List<String> written() => log
+        .readAsLinesSync()
+        .where((line) => line.startsWith(GpuLossLog.opening))
+        .toList();
+    final seen = DateTime.fromMillisecondsSinceEpoch(1795000000123);
+    final stood = DateTime.fromMillisecondsSinceEpoch(1795000000456);
+    LostScreen.debugStandAgain((
+      reason: 0x300E,
+      seenAt: seen,
+      by: ScreenGoneBy.engine,
+    ), stood);
+    await tester.pump();
+    await tester.pump();
+
+    expect(written().single, endsWith('the screen stood again'));
+    expect(
+      log.readAsLinesSync(),
+      containsAllInOrder([
+        'stood again ${stood.toIso8601String()} '
+            '(${stood.toUtc().toIso8601String()})',
+        "engine's context lost 0x300E",
+        'runner saw it ${seen.toIso8601String()} '
+            '(${seen.toUtc().toIso8601String()})',
+        appGpuEngineLossLines.first,
+        allOf(startsWith('playback '), contains('playing=true')),
+        startsWith('cut ${session.requireActiveCut.name} '),
+      ]),
+    );
+    expect(LostScreen.hasGone, isFalse, reason: 'the screen goes on');
+
+    LostScreenEvidence.noteTheScreenStoodAgainOnce(session);
+    expect(written(), hasLength(1), reason: 'once a run');
+    playback.stop();
+    await tester.pump();
+  });
 }

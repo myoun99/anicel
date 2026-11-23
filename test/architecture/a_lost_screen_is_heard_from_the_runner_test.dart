@@ -58,18 +58,19 @@ void main() {
       'EndThisProcess();',
       'kScreenStands',
       'screen_watch_ != nullptr && screen_watch_->Stands()',
-      'GetGraphicsAdapter(&adapter)',
-      'kScreenWentMessage',
+      'WatchTheScreen();',
     ]) {
       expect(listens, contains(step));
     }
+    final watches = sourceBodyOf(source, 'void FlutterWindow::WatchTheScreen()');
+    expect(watches, contains('GetGraphicsAdapter(&adapter)'));
+    expect(watches, contains('kScreenWentMessage'));
     final handles = sourceBodyOf(source, 'FlutterWindow::MessageHandler(');
     expect(
       handles,
       stringContainsInOrder([
         'if (message == kScreenWentMessage) {',
-        'SayTheScreenWent(screen_channel_.get(), kScreenWent, wparam, '
-            'lparam);',
+        'HearTheScreenGo(kScreenWent, wparam, lparam);',
       ]),
     );
     // H63 ③: [the reason as an int32, the moment it was seen as an int64]
@@ -143,8 +144,116 @@ void main() {
       stringContainsInOrder([
         'if (const UINT lost = EngineContextLostMessage();',
         'lost != 0 && message == lost) {',
-        'SayTheScreenWent(screen_channel_.get(), kScreenContextLost, wparam,',
-        'UnixMillisecondsNow());',
+        'HearTheScreenGo(kScreenContextLost, wparam, UnixMillisecondsNow());',
+      ]),
+    );
+  });
+
+  // 🗣️유저 2026-11-22 (relayed): 「Flutter 윈도 엔진을 고쳐 화면이 돌아오게
+  // 한다」 — step two. The engine Anicel builds makes its context anew and
+  // answers by a message registered by a name, and is told of a loss heard
+  // by other means through a function it exports: the patch and the runner
+  // spell both, and no compiler holds them to one spelling.
+  test('where the engine restores, the runner holds the first word of a '
+      'loss for the engine\'s answer and tells the engine the watch\'s '
+      'word; it says the screen stood again with the word held, or the word '
+      'as it is said where the engine does not restore', () {
+    expect(
+      source,
+      contains(
+        'kScreenContextRestored[] = "${LostScreen.contextRestoredMethod}";',
+      ),
+    );
+    final answer = RegExp(
+      r'kEngineContextRestoredMessage\[\] =\s+L"(\w+)";',
+    ).firstMatch(source)?[1];
+    final told = RegExp(
+      r'kEngineToldOfALoss\[\] = "(\w+)";',
+    ).firstMatch(source)?[1];
+    expect(answer, isNotNull, reason: 'premise: the runner names the answer');
+    expect(told, isNotNull, reason: 'premise: the runner names the door');
+    final patch = File(
+      'tool/flutter_engine/3.47.4/'
+      '0005-windows-make-the-egl-display-anew-when-its-context-is-lost.patch',
+    ).readAsStringSync();
+    expect(
+      patch,
+      contains('+constexpr wchar_t kContextRestoredMessageName[] =\n'
+          '+    L"$answer";'),
+      reason: 'the engine registers the name the runner registers',
+    );
+    expect(
+      patch,
+      contains('+FLUTTER_EXPORT void $told();'),
+      reason: 'the engine exports the door the runner looks up',
+    );
+    expect(
+      sourceBodyOf(source, 'UINT EngineContextRestoredMessage()'),
+      contains('::RegisterWindowMessageW(kEngineContextRestoredMessage)'),
+    );
+    expect(
+      sourceBodyOf(source, 'TellTheEngine EngineThatRestores()'),
+      stringContainsInOrder([
+        '::GetModuleHandleW(L"flutter_windows.dll")',
+        '::GetProcAddress(engine, kEngineToldOfALoss)',
+      ]),
+    );
+    expect(
+      sourceBodyOf(source, 'FlutterWindow::MessageHandler('),
+      stringContainsInOrder([
+        'if (const UINT restored = EngineContextRestoredMessage();',
+        'restored != 0 && message == restored) {',
+        'HearTheEngineAnswer(wparam == 1);',
+        'if (message == WM_TIMER && wparam == kEngineAnswerTimer) {',
+        'HearTheEngineAnswer(false);',
+      ]),
+    );
+    expect(
+      sourceBodyOf(source, 'void FlutterWindow::HearTheScreenGo('),
+      stringContainsInOrder([
+        'EngineThatRestores();',
+        'if (tell == nullptr) {',
+        'SayTheScreenWent(screen_channel_.get(), method, reason, seen_at);',
+        'return;',
+        'if (seen_at <= stood_again_at_ || held_word_.has_value()) {',
+        'return;',
+        'held_word_ = HeldWord{method, reason, seen_at};',
+        '::SetTimer(GetHandle(), kEngineAnswerTimer, kEngineAnswersWithin,',
+        'tell();',
+      ]),
+    );
+    expect(
+      sourceBodyOf(source, 'void FlutterWindow::HearTheEngineAnswer('),
+      stringContainsInOrder([
+        '::KillTimer(GetHandle(), kEngineAnswerTimer);',
+        'if (!held_word_.has_value()) {',
+        'return;',
+        'held_word_.reset();',
+        'if (!stands) {',
+        'SayTheScreenWent(screen_channel_.get(), word.method, word.reason,',
+        'word.seen_at);',
+        'return;',
+        'screen_watch_ = nullptr;',
+        'stood_again_at_ = UnixMillisecondsNow();',
+        'WatchTheScreen();',
+        'SayTheScreenStoodAgain(screen_channel_.get(), word.method, '
+            'word.reason,',
+      ]),
+      reason: 'the removed device\'s watch goes before the moment is taken',
+    );
+    // [the reason as an int32, the moment seen as an int64, the method the
+    // word is said by, the moment it stood as an int64] — the shape
+    // `LostScreen.listen` reads.
+    expect(
+      sourceBodyOf(source, 'void SayTheScreenStoodAgain('),
+      stringContainsInOrder([
+        'if (channel == nullptr) {',
+        'return;',
+        'kScreenContextRestored,',
+        'flutter::EncodableValue(static_cast<int32_t>(reason))',
+        'flutter::EncodableValue(static_cast<int64_t>(seen_at))',
+        'flutter::EncodableValue(std::string(said_by))',
+        'flutter::EncodableValue(static_cast<int64_t>(stood_at))',
       ]),
     );
   });
