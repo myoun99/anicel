@@ -17,10 +17,11 @@ import '../helpers/tiles_on_the_engine.dart';
 /// the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2): pen-up hands the
 /// cel the tiles a stroke's steps landed on their way, uncompared, and
 /// [EngineTileLedger.toldOf] asks the GPU what each is beside the tile it
-/// landed on. Till it is told, a tile shows ink, as the stroke showed its
-/// cel drawn under the pen ([BitmapTile.showsInkNow]), and says it does not
-/// know ([BitmapTile.inkWithNoWait]); once told it knows — and nothing of
-/// it was read here for either.
+/// landed on. Till it is told, a tile shows what its stroke showed its cel
+/// under the pen ([BitmapTile.showsInkNow]) — a painting stroke's ink, an
+/// erasing stroke's what the tile under it showed (F-482) —, and says it
+/// does not know ([BitmapTile.inkWithNoWait]); once told it knows — and
+/// nothing of it was read here for either.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -71,7 +72,7 @@ void main() {
       reason: '⛔premise: landed on its way, its ink is not known',
     );
 
-    final told = ledger.toldOf(tiles, by: stroke.toldOf);
+    final told = ledger.toldOf(tiles, by: stroke.toldOf, erases: false);
     expect(
       [for (final (:tile, column: _, row: _) in tiles) tile.showsInkNow],
       everyElement(isTrue),
@@ -109,6 +110,52 @@ void main() {
     );
   });
 
+  test("an erasing stroke's tile shows, till told, what the tile it landed "
+      'on showed — an eraser adds no ink (F-482) — and is told as any is',
+      () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final stroke = GpuStroke(appGpuEngine);
+    addTearDown(stroke.free);
+    // Over ink, over nothing, over a tile with none; and over one still to
+    // be told, of a painting stroke.
+    final [painted] = onItsWay(ledger, [null], 200, from: 3);
+    final paintedTold = ledger.toldOf(
+      [painted],
+      by: stroke.toldOf,
+      erases: false,
+    );
+    final tiles = onItsWay(ledger, [
+      drawn(200),
+      null,
+      drawn(0),
+      painted.tile,
+    ], 0);
+    expect(
+      [for (final (:tile, column: _, row: _) in tiles) tile.inkWithNoWait],
+      everyElement(isNull),
+      reason: '⛔premise: landed on its way, its ink is not known',
+    );
+
+    final told = ledger.toldOf(tiles, by: stroke.toldOf, erases: true);
+    expect(
+      [for (final (:tile, column: _, row: _) in tiles) tile.showsInkNow],
+      [true, false, false, true],
+      reason: 'till told, each shows what the tile under it showed',
+    );
+    expect(
+      [for (final (:tile, column: _, row: _) in tiles) tile.inkTold],
+      everyElement(isNotNull),
+      reason: 'and is told all the same',
+    );
+
+    await patiently(Future.wait([told, paintedTold]));
+    expect(
+      [for (final (:tile, column: _, row: _) in tiles) tile.inkWithNoWait],
+      everyElement(isFalse),
+      reason: 'once told, each knows it holds none',
+    );
+  });
+
   test('a told the GPU refuses leaves the ink not known, and a tile whose '
       'bytes are here is not asked', () async {
     final ledger = EngineTileLedger(appGpuEngine);
@@ -123,6 +170,7 @@ void main() {
           asked = tiles.length;
           throw GpuRefused('the device went');
         },
+        erases: false,
       ),
     );
 

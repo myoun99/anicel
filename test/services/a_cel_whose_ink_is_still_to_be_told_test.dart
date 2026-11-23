@@ -58,9 +58,11 @@ void main() {
       ofTheHand: true,
     );
     final tile = landed.tile!;
-    final told = ledger.toldOf([
-      (tile: tile, column: 0, row: 0),
-    ], by: stroke.toldOf);
+    final told = ledger.toldOf(
+      [(tile: tile, column: 0, row: 0)],
+      by: stroke.toldOf,
+      erases: false,
+    );
     return (
       cel: BitmapSurface(
         canvasSize: CanvasSize(width: side, height: side),

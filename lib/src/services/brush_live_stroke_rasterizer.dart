@@ -714,6 +714,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       engineBlendModeOf(mode, erase: erase),
       dabs,
       shown,
+      erases: erase,
     );
   }
 
@@ -725,8 +726,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     BitmapSurface base,
     int laid,
     List<BrushDab>? dabs,
-    Map<TileCoord, ({BitmapTile tile, int revision})> shown,
-  ) {
+    Map<TileCoord, ({BitmapTile tile, int revision})> shown, {
+    required bool erases,
+  }) {
     // ⏳A blur's reads the cel all round each tile it lands
     // ([_rubOnEngine]): not made of the tile under it alone, and not made
     // again yet.
@@ -744,7 +746,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         unlaid.add(coord);
       }
     }
-    _handedOver(handed.values.toList(), again);
+    _handedOver(handed.values.toList(), again, erases: erases);
     final landed = _landOnEngine(
       _asksOf(unlaid, base),
       laid,
@@ -766,8 +768,13 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// [handed] — tiles the stroke's steps put on their way — kept as a
   /// landing compared keeps its own: made again by [again] should the
   /// device go with them, and what each is beside the tile it landed on
-  /// told, with no wait ([EngineTileLedger.toldOf]).
-  void _handedOver(List<PromotedStrokeTile> handed, LandsAgain? again) {
+  /// told, with no wait ([EngineTileLedger.toldOf]) — shown till then as
+  /// the stroke showed its cel under the pen ([erases]).
+  void _handedOver(
+    List<PromotedStrokeTile> handed,
+    LandsAgain? again, {
+    required bool erases,
+  }) {
     if (handed.isEmpty) {
       return;
     }
@@ -779,7 +786,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (again != null) {
       ledger.makesAgain(tiles, again);
     }
-    unawaited(ledger.toldOf(tiles, by: _engineStroke!.toldOf));
+    unawaited(
+      ledger.toldOf(tiles, by: _engineStroke!.toldOf, erases: erases),
+    );
   }
 
   /// A blur dab rewrote [region]: every tile it reaches is touched, at a

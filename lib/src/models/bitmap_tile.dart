@@ -628,27 +628,36 @@ class BitmapTile implements Finalizable {
   bool? get inkWithNoWait => _hasInk ?? (isOnlyOnEngine ? null : hasInk);
 
   /// Whether it shows anything, said now: one whose ink is still to be told
-  /// ([inkToBeTold]) shows ink, as the stroke that put it showed its cel
-  /// drawn under the pen. 🗣️관제 2026-11-24 (card the-start-of-every-stroke-
-  /// stalls-on-the-galaxy-tab ③-2): 「모름 → 아는 것으로 그리고, 답이 오면
-  /// 고침」 — not as the tile it landed on: a first stroke's block, lit under
-  /// the pen, went grey at pen-up and white again once told (the colour
-  /// head's pin). ⛔Not what a file is told ([hasInk]).
-  bool get showsInkNow => inkWithNoWait ?? (_inkTold != null || hasInk);
+  /// ([inkToBeTold]) shows what the stroke that put it showed its cel under
+  /// the pen. 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-
+  /// the-galaxy-tab ③-2): 「모름 → 아는 것으로 그리고, 답이 오면 고침」 — a
+  /// painting stroke's shows ink, not as the tile it landed on: a first
+  /// stroke's block, lit under the pen, went grey at pen-up and white again
+  /// once told (the colour head's pin). 🗣️F-482 (유저 2026-10-27): 「없던
+  /// 블록에서 지우는 동작은 블록 채우지 않도록 근본/구조적으로」 — an erasing
+  /// stroke's shows what the tile under it did: an eraser adds no ink, and
+  /// shown as ink, an empty block erased went white at pen-up (11-24, the
+  /// eraser's block pin — ③-2 had every handed tile shown so). ⛔Not what a
+  /// file is told ([hasInk]).
+  bool get showsInkNow => inkWithNoWait ?? _toBeTold?.shows ?? hasInk;
 
   /// When its ink is told, where it is still to be ([inkToBeTold]).
-  Future<void>? get inkTold => _inkTold;
-  Future<void>? _inkTold;
+  Future<void>? get inkTold => _toBeTold?.told;
 
-  /// Its ink to be told by [told] ([toldInk]) — shown as ink till then.
-  void inkToBeTold(Future<void> told) =>
-      _inkTold = _hasInk == null ? told : null;
+  /// Its ink still to be told — when, and what it shows till then; null
+  /// once told, or where it was never to be.
+  ({Future<void> told, bool shows})? _toBeTold;
+
+  /// Its ink to be told by [told] ([toldInk]), [showsInk] what it shows
+  /// till then ([showsInkNow]).
+  void inkToBeTold(Future<void> told, {required bool showsInk}) =>
+      _toBeTold = _hasInk == null ? (told: told, shows: showsInk) : null;
 
   /// What was told of its ink — null says nothing —, the first writer
   /// winning as [rememberInkBounds]'s does.
   void toldInk(bool? hasInk) {
     _hasInk ??= hasInk;
-    _inkTold = null;
+    _toBeTold = null;
   }
 
   TileInkBounds? _inkBounds;
@@ -709,7 +718,7 @@ class BitmapTile implements Finalizable {
     assert(isOnEngine, 'only a tile the engine made loses its pixels');
     _hasInk = null;
     _inkBounds = null;
-    _inkTold = null;
+    _toBeTold = null;
   }
 
   /// The reference scan: this tile's words, in Dart.

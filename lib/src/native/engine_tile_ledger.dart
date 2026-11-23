@@ -773,7 +773,9 @@ final GpuEngine _engine;
   /// [row] — is beside the tile it landed on ([_Slot.under]), asked by [by]
   /// with no wait for the GPU (`GpuStroke.toldOf`) and told once it has
   /// said: each one's ink, its own from then on ([BitmapTile.toldInk]).
-  /// Till then each shows ink ([BitmapTile.inkToBeTold]). Where the engine
+  /// Till then each shows what its stroke showed under the pen
+  /// ([BitmapTile.showsInkNow]): ink, or where [erases], what the tile it
+  /// landed on showed — an eraser adds no ink. Where the engine
   /// could not tell (a tile that lies folded), each is read as
   /// it would have been ([BitmapTile.hasInk]). Done once all are told.
   ///
@@ -790,6 +792,7 @@ final GpuEngine _engine;
   Future<void> toldOf(
     List<({BitmapTile tile, int column, int row})> tiles, {
     required ToldBy by,
+    required bool erases,
   }) async {
     final told = Completer<void>();
     final asked = <({BitmapTile tile, BitmapTile? under})>[];
@@ -800,7 +803,10 @@ final GpuEngine _engine;
         continue;
       }
       final under = slot.under;
-      tile.inkToBeTold(told.future);
+      tile.inkToBeTold(
+        told.future,
+        showsInk: !erases || (under?.showsInkNow ?? false),
+      );
       asked.add((tile: tile, under: under));
       asks.add((column: column, row: row, under: under));
     }
