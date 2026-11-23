@@ -8,6 +8,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/red_and_blue_swapped.dart';
 import '../../native/screen_texture.dart';
+import '../text/pixel_size_label.dart';
 import 'frame_stats.dart';
 
 /// 🔬WHETHER FLUTTER SHOWS THE BYTES THE ENGINE WROTE, read off this
@@ -145,7 +146,7 @@ class _ScreenCheckState extends State<ScreenCheck> {
     final image = await boundary.toImage(pixelRatio: ratio);
     try {
       if (image.width != ScreenCheck.side || image.height != ScreenCheck.side) {
-        throw StateError('read ${image.width}×${image.height}');
+        throw StateError('read ${pixelSizeLabel(image.width, image.height)}');
       }
       final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       return fingerprintBytes(

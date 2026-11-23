@@ -20,7 +20,7 @@ class GpuEnginePlugin :
     MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
     private lateinit var textures: TextureRegistry
-    private val entries = HashMap<Long, TextureRegistry.HardwareBufferTextureEntry>()
+    private val entries = HashMap<Long, TextureRegistry.TextureEntry>()
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         // Before Dart's main can open a sound device: cpal's AAudio host
@@ -45,7 +45,7 @@ class GpuEnginePlugin :
                 }
                 val entry =
                     try {
-                        textures.createHardwareBufferTexture(buffer)
+                        hardwareBufferTexture(buffer)
                     } catch (refused: UnsupportedOperationException) {
                         buffer.close()
                         result.error("no_texture", "Flutter takes no HardwareBuffer texture: ${refused.message}", null)
@@ -66,6 +66,29 @@ class GpuEnginePlugin :
         channel.setMethodCallHandler(null)
         entries.values.forEach { it.release() }
         entries.clear()
+    }
+
+    /**
+     * Flutter's `createHardwareBufferTexture(buffer)`, which only Anicel's
+     * engine has (patch 0006). Asked for by name, not linked, so the app
+     * still builds against Flutter's own engine — CI's debug APK, or a
+     * build made without the patched artifacts — where the screen is then
+     * refused by name (`path … refused: Flutter takes no HardwareBuffer
+     * texture`) instead of the build failing (board
+     * the-galaxy-tab-canvas-went-slow-on-build-1095, 관제 2026-11-24).
+     */
+    private fun hardwareBufferTexture(buffer: HardwareBuffer): TextureRegistry.TextureEntry {
+        val create =
+            try {
+                textures.javaClass.getMethod("createHardwareBufferTexture", HardwareBuffer::class.java)
+            } catch (missing: NoSuchMethodException) {
+                throw UnsupportedOperationException("this engine is not Anicel's (patch 0006)")
+            }
+        return try {
+            create.invoke(textures, buffer) as TextureRegistry.TextureEntry
+        } catch (thrown: java.lang.reflect.InvocationTargetException) {
+            throw thrown.targetException
+        }
     }
 
     /**
