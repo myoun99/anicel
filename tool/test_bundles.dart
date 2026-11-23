@@ -35,8 +35,11 @@ String bundleConfigSource(String toRoot) =>
 /// alone — each with what it leans on. They run as files of their own.
 /// ⚖️Where the census measured that one file, green itself, leaves what
 /// every file after it trips on, that file is the line and the ones it
-/// trips are not (11-23, the_shell_says_the_device_started_again): run
-/// alone, it leaves nothing to anyone.
+/// trips are not: run alone, it leaves nothing to anyone. ↩️The one so far
+/// (11-23, the_shell_says_the_device_started_again) left the opening of
+/// the app's engine made on its own test's clock, and left the line once
+/// that was kept as itself (`MadeOnce`, card
+/// an-engine-setup-hangs-in-a-batch).
 /// 🧭The census fills it (전 파일을 묶어 정순 · 역순 두 번 + 파일별 대조,
 /// 관제 11-20); a file leaves it when its test stops leaning.
 /// Where what a file leans on is not read yet, its line says what the
@@ -189,13 +192,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'workspace_flip_axis_follows_the_timeline (1 of 17 tests red); green '
       'alone.',
-  'test/ui/the_shell_says_the_device_started_again_test.dart':
-      'census 11-23 forward (the wide run, then bundles of two and three '
-      'files): green itself, the file after it whose setUpAll opens the '
-      "app's engine (openAppGpuEngine) waits for good — TimeoutException "
-      'after 12 minutes, 3 of 3 with it before, green with it last; the '
-      'one that leaves is the line, not each one that waits (card '
-      'an-engine-setup-hangs-in-a-batch).',
   'test/ui/timeline/a_block_is_whole_across_a_tile_seam_test.dart':
       'census 11-20 forward: red 4/9 in a bundle, after '
       'a_graph_pen_lands_on_the_line (1 red) — TimeoutException after '
