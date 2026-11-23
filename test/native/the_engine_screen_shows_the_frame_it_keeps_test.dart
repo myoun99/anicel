@@ -944,6 +944,21 @@ void main() {
             whole(screen, camera),
             reason: '${camera.name}: a lay between',
           );
+          // Through the very camera again, a lay since: nothing is moved.
+          await screen.compose(
+            frameOf(celOf(const [5, 7, 5])),
+            changed: inTheFirst,
+          );
+          expect(
+            askedOn(target, screen, camera)?.moved,
+            isNull,
+            reason: '${camera.name}: shown again',
+          );
+          expect(
+            target.fingerprint(),
+            whole(screen, camera),
+            reason: '${camera.name}: shown again',
+          );
         } finally {
           target.free();
           screen.free();
@@ -989,6 +1004,43 @@ void main() {
           target.fingerprint(),
           whole(screen, camera),
           reason: camera.name,
+        );
+      }
+    });
+
+    // A view's corner on the texel `corner` of its target is the view
+    // panned by as many device pixels — a target with room stands its
+    // view inside (`_RenderFrameScreen`): one camera, byte for byte.
+    test('a view whose corner stands on a texel of its target shows what it '
+        'does panned by as many', () async {
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      await screen.compose(frameOf(celOf(const [5, 7, 5])));
+      for (final (ratio, corner) in const [(1.0, (64, 16)), (1.5, (30, 9))]) {
+        final (cornerX, cornerY) = corner;
+        final target = shownSurfaceOf(roomy.$1, roomy.$2);
+        addTearDown(target.free);
+        screen.show(
+          target,
+          roomy,
+          viewport: CanvasViewport(zoom: 0.5, panX: 10, panY: 4),
+          devicePixelRatio: ratio,
+          corner: corner,
+        );
+        expect(
+          target.fingerprint(),
+          whole(screen, (
+            name: 'panned by the corner',
+            viewport: CanvasViewport(
+              zoom: 0.5,
+              panX: 10 + cornerX / ratio,
+              panY: 4 + cornerY / ratio,
+            ),
+            devicePixelRatio: ratio,
+            size: roomy,
+            drawn: null,
+          )),
+          reason: 'the corner on $corner at $ratio device pixels a pixel',
         );
       }
     });
