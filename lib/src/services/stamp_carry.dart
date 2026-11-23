@@ -92,10 +92,9 @@ final class QuadCarry extends StampCarry {
   /// degenerate to warp through moves no pixel.
   @override
   BrushDab through(BrushDab stamp, {SelectionVisibleRect? visible}) =>
-      transformStampDabQuad(
+      transformStampDabThroughQuad(
         stamp,
-        corners,
-        from: base,
+        (from: base, to: corners),
         mode: mode,
         visible: visible ?? within,
       );

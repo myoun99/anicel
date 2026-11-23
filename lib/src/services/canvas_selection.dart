@@ -493,46 +493,58 @@ BrushDab? stampDabMovedWholesale(
 /// path uses. Corners exactly at the source rect = untouched; every corner
 /// moved by the SAME delta is a pure translation and travels byte-exact; a
 /// degenerate quad refuses (returns the dab unchanged).
-///
-/// [from] is the quad [corners] are where went — the stamp rect's own
-/// corners unless a box standing on another rect says so: the float past
-/// the box it stands on (F-570), another cel's picture ([StampCarry]).
-/// The stamp then goes where that one mapping sends it, up to [visible]
-/// ([_quadLanding]).
 BrushDab transformStampDabQuad(
   BrushDab stampDab,
   List<CanvasPoint> corners, {
-  List<CanvasPoint>? from,
+  ResampleMode mode = ResampleMode.blend,
+  SelectionVisibleRect? visible,
+}) {
+  final own = stampCornersOf(stampDab);
+  return own == null
+      ? stampDab
+      : transformStampDabThroughQuad(
+          stampDab,
+          (from: own, to: corners),
+          mode: mode,
+          visible: visible,
+        );
+}
+
+/// A free quad's four corners, TL · TR · BR · BL: where they stood and
+/// where they went.
+typedef QuadWarp = ({List<CanvasPoint> from, List<CanvasPoint> to});
+
+/// [stampDab] through [quad] — the canvas follows the homography from its
+/// corners to where they went —, as [transformStampDabQuad] carries a
+/// stamp through a quad standing on its own rect: the float past the box
+/// it stands on (F-570), another cel's picture ([StampCarry]). It goes
+/// where that one mapping sends it, up to [visible] ([_quadLanding]).
+BrushDab transformStampDabThroughQuad(
+  BrushDab stampDab,
+  QuadWarp quad, {
   ResampleMode mode = ResampleMode.blend,
   SelectionVisibleRect? visible,
 }) {
   final stamp = stampDab.stamp;
-  if (stamp == null) {
+  final own = stampCornersOf(stampDab);
+  if (stamp == null || own == null) {
     return stampDab;
   }
+  final (:from, to: corners) = quad;
   assert(corners.length == 4);
-  final srcLeft = stampDab.center.x - stamp.width / 2;
-  final srcTop = stampDab.center.y - stamp.height / 2;
-  final own = [
-    CanvasPoint(x: srcLeft, y: srcTop),
-    CanvasPoint(x: srcLeft + stamp.width, y: srcTop),
-    CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
-    CanvasPoint(x: srcLeft, y: srcTop + stamp.height),
-  ];
-  final base = from ?? own;
-  final moved = stampDabMovedWholesale(stampDab, base, corners);
+  final srcLeft = own[0].x;
+  final srcTop = own[0].y;
+  final moved = stampDabMovedWholesale(stampDab, from, corners);
   if (moved != null) {
     return moved;
   }
   // dst → src directly: no matrix inversion, one solve.
-  final h = solveHomography(corners, base);
+  final h = solveHomography(corners, from);
   if (h == null) {
     return stampDab;
   }
 
-  final out = selectionWarpOutputRect(
-    _quadLanding(h, own: own, base: base, corners: corners, within: visible),
-  );
+  final out = selectionWarpOutputRect(_quadLanding(h, quad, own, visible));
   // The per-pixel `w ≈ 0` guard the old loop carried lives in the kernel
   // now, along with a non-finite check the old one did not have. Both write
   // the outside token where this used to leave the pixel untouched, which
@@ -554,10 +566,10 @@ BrushDab transformStampDabQuad(
   );
 }
 
-/// Where the picture on [own] lands through the quad taking [base] to
-/// [corners] — [toSource] its way back, destination to source —, as the
-/// points whose bounds are the output rect: [corners] when the picture
-/// stands on the box's own rect, else [own]'s corners carried on.
+/// Where the picture on [own] lands through [quad] — [toSource] its way
+/// back, destination to source —, as the points whose bounds are the
+/// output rect: where the quad's corners went when the picture stands on
+/// the rect they stood on, else [own]'s corners carried on.
 ///
 /// ⛔A corner on the box's own goes where the box put it, to the bit:
 /// carrying it there and back leaves a residue, and the picture must land
@@ -576,13 +588,13 @@ BrushDab transformStampDabQuad(
 /// — the preview went back to the float unwarped, and once the float
 /// vanished on Enter.
 List<CanvasPoint> _quadLanding(
-  Float64List toSource, {
-  required List<CanvasPoint> own,
-  required List<CanvasPoint> base,
-  required List<CanvasPoint> corners,
-  required SelectionVisibleRect? within,
-}) {
+  Float64List toSource,
+  QuadWarp quad,
+  List<CanvasPoint> own,
+  SelectionVisibleRect? within,
+) {
   final h = toSource;
+  final (from: base, to: corners) = quad;
   var whole = true;
   for (var i = 0; i < 4; i += 1) {
     whole = whole && own[i] == base[i];
