@@ -1304,7 +1304,9 @@ impl Poll {
 
     /// Waits for it — till [`WAIT_LIMIT`], and no longer — and for nothing
     /// else of a wait's: no failure named, and no refusal told, which the
-    /// next wait is to fail by. A timed submit's ([`Queue::submit`]).
+    /// next wait is to fail by. A test's
+    /// ([`Engine::through_with_all_submitted`]).
+    #[cfg(test)]
     fn through(self) {
         if let Ok(answer) = self.answer {
             let _ = answer.recv_timeout(WAIT_LIMIT);

@@ -29,7 +29,7 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 16] = [
+const ON_THEIR_CALLERS: [(&str, &str); 18] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
@@ -80,6 +80,14 @@ const ON_THEIR_CALLERS: [(&str, &str); 16] = [
         "gpu_engine_timed",
         "throws the engine's own switch (`Took::times`): no device is asked, and the \
          statistics throw it on the UI's thread, where a frame is built",
+    ),
+    (
+        "gpu_engine_clocked",
+        "the engine's own word of whether its device stamps a submit (`Clock::of`, at the          engine's making): no device is asked",
+    ),
+    (
+        "gpu_engine_submits_behind",
+        "the engine's own ledger of its submits, under a lock of its own (`Submits`): no device          is asked, and the frame statistics read it on the UI's thread as each frame is timed",
     ),
     (
         "gpu_engine_took",

@@ -1933,7 +1933,9 @@ fn walks_told(engine: &Engine) -> Vec<String> {
 // statistics' stages part (H66, 2026-11-23) —, and the submit's own line
 // told them as one. A chained plan walks again once its chains ran, and
 // that walk's submit is the same door's. On a device of its own: what is
-// told is the engine's, every test's on the shared one.
+// told is the engine's, every test's on the shared one. Told once the GPU
+// has written the submit's stamps (clock.rs) — and on a device with no
+// clock, of no walk at all.
 #[test]
 fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
     let turn = a_device_of_its_own();
@@ -1943,11 +1945,19 @@ fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
     let (pages, chained_pages) = (scene.pool.upload(&engine), chained.pool.upload(&engine));
     // SAFETY: a live engine.
     unsafe { crate::device::gpu_engine_timed(&raw const engine, true) };
+    let told = |engine: &Engine| {
+        crate::testing::done_here(engine).expect("the GPU done");
+        walks_told(engine)
+    };
 
     let done = composite
         .run(&engine, &scene.plan(&pages), &scene.tiles, CANVAS, composite.widest())
         .expect("composite the canvas");
-    let ran = walks_told(&engine);
+    let ran = told(&engine);
+    if engine.queue.clock.is_none() {
+        assert!(ran.is_empty(), "a device with no clock tells no walk's GPU time: {ran:?}");
+        return;
+    }
     assert_eq!(ran.len(), 1, "a run is one submit: {ran:?}");
 
     let sets = [canvas_set()];
@@ -1964,14 +1974,14 @@ fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
     };
     let texture = surface_on(&engine, SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
     composite.show(&engine, &plan, &texture, whole_screen(), composite.widest()).expect("show");
-    let shown = walks_told(&engine);
+    let shown = told(&engine);
     assert_eq!(shown.len(), 1, "a show is one submit: {shown:?}");
     assert_ne!(ran, shown, "⛔a run and a show are told at one place");
 
     composite
         .run(&engine, &chained.plan(&chained_pages), &chained.tiles, NO_EDGE, composite.widest())
         .expect("composite the chained rows");
-    let walked_again = walks_told(&engine);
+    let walked_again = told(&engine);
     assert!(walked_again.contains(&ran[0]), "⛔the walk after its chains is not the door's: {walked_again:?}");
 }
 
