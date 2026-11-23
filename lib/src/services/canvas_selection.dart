@@ -635,8 +635,9 @@ List<CanvasPoint> _quadLanding(
           'it at must be given',
     );
   }
-  // In front (side·W >= 0) and back on [own]: left <= X/W <= right and
-  // top <= Y/W <= bottom, each linear once multiplied through by side·W.
+  // Back on [own] in front: left <= X/W <= right and top <= Y/W <= bottom,
+  // each linear once multiplied through by side·W — and the two bounds of
+  // either axis added are (right − left)·side·W >= 0, in front.
   final (left, top, right, bottom) = (own[0].x, own[0].y, own[2].x, own[2].y);
   var kept = [
     Offset(within.left, within.top),
@@ -645,7 +646,6 @@ List<CanvasPoint> _quadLanding(
     Offset(within.left, within.bottom),
   ];
   for (final (a, b, c) in [
-    (h[6], h[7], h[8]),
     (h[0] - left * h[6], h[1] - left * h[7], h[2] - left * h[8]),
     (right * h[6] - h[0], right * h[7] - h[1], right * h[8] - h[2]),
     (h[3] - top * h[6], h[4] - top * h[7], h[5] - top * h[8]),
