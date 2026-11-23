@@ -290,11 +290,10 @@ void main() {
       'the switch is on, and not while it is off', (tester) async {
     addTearDown(() => ScreenTexture.tookAsItWentUp = null);
     MeasurementMode.frameStats.value = true;
+    // Hosted as the app hosts it: placed under the top strip, as tall as
+    // its lines.
     await tester.pumpWidget(
-      const Directionality(
-        textDirection: TextDirection.ltr,
-        child: FrameStatsReadout(),
-      ),
+      const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
     );
     Finder line(String text) => find.textContaining(text);
 
