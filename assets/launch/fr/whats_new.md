@@ -2,12 +2,11 @@
 
 ## Améliorations
 
-- **L'écran pendant le tracé au stylet** — sur les tablettes où de nombreuses étapes du trait s'accumulent entre deux images de l'écran, le relevé de « ce qui a changé » ne suffisait plus et tout l'écran était redessiné. Seul ce qui a changé est désormais redessiné : le tracé saccade moins.
-- **Déplacer le canevas en vue réduite** — déplacer le canevas sous 100 % redessinait tout l'écran. Ce qui est déjà dessiné est désormais décalé et seule la partie nouvellement découverte est dessinée : le déplacement saccade moins.
-- **Choisir une image** — quand vous choisissez de nouveau une image après avoir déplacé ou tracé sur le canevas, le dock du bas et la Feuille de temps ne sont plus redessinés plusieurs fois pour rien.
-- **Appareils aux limites graphiques basses** — le moteur de dessin ne demande à l'appareil que ce qu'il utilise réellement. Le canevas s'ouvre désormais sur les appareils où des limites basses l'empêchaient de s'ouvrir (comme l'émulateur Android).
-- **Flou d'objectif à grand rayon** — le travail confié en une fois est découpé selon la vitesse de l'appareil : le GPU ne s'arrête plus sur un délai dépassé sur les appareils lents.
+- **Dessin au stylet quand le GPU prend du retard** — Un trait est confié au moteur de dessin une seule fois par image affichée. Quand l'écran ne suit pas, le travail des traits ne s'accumule plus sur le GPU et ne ralentit plus le canevas.
+- **Le canevas sur Android** — Le canevas s'affiche de la même façon que sur toutes les autres plateformes. C'est cette différence qui faisait sauter le canevas d'une image, sauf la caméra, quand le stylet touchait l'écran après un panoramique.
+- **Certains appareils Android** — Là où le moteur de dessin ne peut pas écrire directement dans le tampon de l'écran, le canevas s'affiche en recopiant seulement ce qui a changé.
+- **L'écran des statistiques d'images** — Il montre les pas d'un trait, le retard du GPU et la mémoire, le temps jusqu'au premier pas d'un trait et du lever du stylet à son enregistrement, ainsi que la voie d'affichage du canevas et sa vérification.
 
 ## Corrections
 
-- La vue du canevas restait décalée au lieu de revenir à sa place après avoir tourné l'écran puis l'avoir remis : c'est corrigé.
+- Réduire un côté de la boîte de transformation presque à un point affichait l'aperçu sans déformation, et appuyer sur Entrée faisait disparaître l'image. Corrigé.
