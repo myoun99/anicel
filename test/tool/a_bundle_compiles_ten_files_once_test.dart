@@ -623,18 +623,4 @@ void main() {
     // A time skips no run, and the CI shards deal by it (_bundledRuns).
     expect(bundledRuns, contains('_keepTimes(runs);'));
   });
-
-  // 🗣️유저 2026-11-21, what-more-ci-can-do-paid-gpu-runners-included-Q1 a
-  // 「돈 안 드는 길부터」 — its ② 「묶어 컴파일을 CI 조각에도」.
-  test('a CI shard runs its slice bundled, as the machine does', () {
-    final action = File('.github/actions/test-shard/action.yml')
-        .readAsStringSync()
-        .replaceAll('\r\n', '\n');
-    final run = RegExp(r'dart tool/affected_tests\.dart \\\n'
-            r'\s+--files-from "\$RUNNER_TEMP/shard_tests\.txt" \\\n'
-            r'\s+([^\n]+)\n')
-        .firstMatch(action);
-    expect(run, isNotNull, reason: 'the shard runs its slice elsewhere');
-    expect(run![1]!.split(' '), contains('--bundle'));
-  });
 }

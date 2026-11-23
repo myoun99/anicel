@@ -272,11 +272,15 @@ void main() {
 
   group('CI', () {
     test('🚨each shard runs its slice by the plan, outside the line, at the '
-        'suites package:test gave it — in the step it already has', () {
+        'suites package:test gave it, ten files a compile — in the step it '
+        'already has', () {
       // ci-shards-crowd-the-collector-pins (10-24): one `flutter test` for
       // the slice put the collector's pins in the crowd and every file on
       // Skia, under a command-line limit copied from the plan. The
       // suspension of 2026-08-31 came from CI usage, and a job is usage.
+      // 🗣️--bundle: 유저 2026-11-21, what-more-ci-can-do-paid-gpu-runners-
+      // included-Q1 a 「돈 안 드는 길부터」 — its ② 「묶어 컴파일을 CI
+      // 조각에도」.
       final shard = _read('.github/actions/test-shard/action.yml');
       expect(
         shard,
@@ -284,7 +288,7 @@ void main() {
             '        [ "\$half" -ge 1 ] || half=1\n'
             '        dart tool/affected_tests.dart \\\n'
             '          --files-from "\$RUNNER_TEMP/shard_tests.txt" \\\n'
-            '          --outside-the-line --concurrency "\$half"\n'),
+            '          --outside-the-line --concurrency "\$half" --bundle\n'),
       );
       expect(shard, isNot(contains('xargs -0 -s')));
     });
