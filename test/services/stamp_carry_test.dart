@@ -410,6 +410,47 @@ void main() {
         });
       }
 
+      test('what a float holds between the box and the horizon goes on to '
+          'the wall', () {
+        // Ink on the box's bottom edge, reaching a row past it — in front
+        // of the horizon, under a pixel and a half further on.
+        final edge = CanvasPoint(x: 1350, y: 811);
+        final float = stampOver(
+          left: 1280,
+          top: 696,
+          width: 141,
+          height: 119,
+          ink: [edge],
+        );
+        final corners = pinchedTo(2);
+        final there = solveHomography(box, corners)!;
+        expect(
+          there[6] * 1350 + there[7] * 811.5 + there[8],
+          greaterThan(0),
+          reason: '⛔premise: the row past the box is in front of the horizon',
+        );
+
+        final carried = QuadCarry(
+          base: box,
+          corners: corners,
+          mode: mode,
+          within: wall,
+        ).through(float);
+
+        final made = carried.stamp!;
+        final top = (carried.center.y - made.height / 2).round();
+        expect(top + made.height, wall.bottom);
+        var lowest = 0;
+        for (var y = 0; y < made.height; y += 1) {
+          for (var x = 0; x < made.width; x += 1) {
+            if (made.rgba[(y * made.width + x) * 4 + 3] != 0) {
+              lowest = math.max(lowest, top + y);
+            }
+          }
+        }
+        expect(lowest, greaterThan(wall.bottom - 10));
+      });
+
       test('a picture wholly past the horizon lands nothing', () {
         // Another cel's, under the box — past the horizon a pixel and a
         // bit under it, where the mapping comes back from the far side.
