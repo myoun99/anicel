@@ -1038,11 +1038,10 @@ cmd_crate() {
       todo="$todo $profile"
     fi
   done
-  crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \
-    || red=" aarch64-linux-android(compile)"
+  # Both profiles green here: what is left to ask is the Android build.
   if [ -z "$todo" ]; then
-    [ -z "$red" ] \
-      || die "the GPU engine crate's tests are red in$red — this is refusal 8; the whole log: $log"
+    crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \
+      || die "the GPU engine crate's tests do not compile for aarch64-linux-android — this is refusal 8; the whole log: $log"
     return 0
   fi
   # The fx SDK example as WebAssembly, the module the fx tests open on each
@@ -1123,6 +1122,8 @@ cmd_crate() {
     echo "lane: crate — $profile green ($passed passed)"
     keep_crate_green "$input" "$profile" "$passed passed"
   done
+  crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \
+    || red="$red aarch64-linux-android(compile)"
   [ -z "$red" ] \
     || die "the GPU engine crate's tests are red in$red — this is refusal 8; the whole log: $log"
 }

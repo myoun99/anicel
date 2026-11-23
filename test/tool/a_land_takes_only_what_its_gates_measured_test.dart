@@ -188,20 +188,22 @@ void main() {
     test('🚨the crate\'s tests compile for Android too, with the NDK\'s '
         'clang, whatever the profiles\' greens say', () {
       final crate = codeOf('cmd_crate');
-      final compile = at(
-        crate,
-        r'crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \',
-      );
-      expect(compile, isNot(-1));
+      const asked =
+          r'crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \';
+      final whenGreen = at(crate, r'if [ -z "$todo" ]; then');
       expect(
-        compile,
-        lessThan(at(crate, r'if [ -z "$todo" ]; then')),
-        reason: 'asked before the profiles\' greens can end the gate',
+        at(crate.sublist(whenGreen, whenGreen + 2), asked),
+        1,
+        reason: 'asked when the profiles\' greens end the gate',
       );
+      final afterRuns = crate.lastIndexWhere((line) => line.contains(asked));
+      expect(afterRuns, greaterThan(at(crate, r'for profile in $todo; do')));
       expect(
-        at(crate, '|| red=" aarch64-linux-android(compile)"'),
-        isNot(-1),
+        crate[afterRuns + 1],
+        contains(r'|| red="$red aarch64-linux-android(compile)"'),
+        reason: 'and after the profiles run, named in the one refusal',
       );
+      expect(afterRuns, lessThan(at(crate, 'tests are red in')));
       final check = codeOf('crate_compiles_for');
       expect(
         at(
