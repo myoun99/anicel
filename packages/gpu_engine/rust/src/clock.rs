@@ -199,4 +199,27 @@ mod tests {
         assert!(clock.taken(engine.device()).is_none(), "past the room, a submit goes unstamped");
         assert_eq!(out.len(), ROOM);
     }
+
+    // Stamps are taken by a timed submit alone, and kept once read for the
+    // next: an untimed engine pays the GPU's clock nothing, and a timed one
+    // makes its stamps once.
+    #[test]
+    fn stamps_are_taken_by_a_timed_submit_alone_and_kept_for_the_next() {
+        let turn = crate::testing::a_device_of_its_own();
+        let engine = turn.engine();
+        let Some(clock) = engine.queue.clock.clone() else {
+            return;
+        };
+        let kept = || (*lock(&clock.stamps.out), lock(&clock.stamps.free).len());
+        engine.queue.submit([]);
+        crate::testing::done_here(&engine).expect("the GPU done");
+        assert_eq!(kept(), (0, 0), "an untimed submit takes no stamps");
+        // SAFETY: a live engine.
+        unsafe { crate::device::gpu_engine_timed(&raw const engine, true) };
+        for _ in 0..3 {
+            engine.queue.submit([]);
+            crate::testing::done_here(&engine).expect("the GPU done");
+            assert_eq!(kept(), (0, 1), "a timed submit's stamps, read, kept for the next");
+        }
+    }
 }
