@@ -133,10 +133,18 @@ enum GpuDeviceWent {
       code >= 0 && code < values.length ? values[code] : unsaid;
 }
 
-String _lastError() => using((arena) {
-  const capacity = 1024;
+String _lastError() => _copiedOut(1024, rust.lastError);
+
+/// The text one of the engine's functions copies out: [copy] writes up to
+/// [capacity] bytes of its UTF-8 into the buffer it is handed and returns
+/// the text's whole length (rust/src/lib.rs, `copy_out`) — what fit is
+/// read.
+String _copiedOut(
+  int capacity,
+  int Function(Pointer<Uint8> buffer, int capacity) copy,
+) => using((arena) {
   final buffer = arena<Uint8>(capacity);
-  final length = rust.lastError(buffer, capacity);
+  final length = copy(buffer, capacity);
   final count = length < capacity ? length : capacity;
   return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
 });
@@ -313,13 +321,10 @@ class GpuEngine {
     return texture;
   }
 
-  String get adapterName => using((arena) {
-    const capacity = 256;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineAdapterName(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
+  String get adapterName => _copiedOut(
+    256,
+    (buffer, capacity) => rust.engineAdapterName(_engine, buffer, capacity),
+  );
 
   /// This process's use of the adapter's memory, as the OS says it
   /// ([GpuVideoMemory]).
@@ -461,13 +466,10 @@ class GpuEngine {
   /// `microsecondsSinceEpoch` reads.
   /// Asks nothing of the engine's thread or the device: what the app
   /// writes down as a device goes (H63).
-  String get unfinishedSubmits => using((arena) {
-    const capacity = 16384;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineUnfinished(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
+  String get unfinishedSubmits => _copiedOut(
+    16384,
+    (buffer, capacity) => rust.engineUnfinished(_engine, buffer, capacity),
+  );
 
   /// How many submits of this engine the GPU has not said it finished — as
   /// of the device's last poll (rust/src/submits.rs, `Submits::behind`).
@@ -490,15 +492,12 @@ class GpuEngine {
   /// What each place of this engine took since this was last asked
   /// ([GpuPlaceTook]) — none while it is not timed ([timesItsPlaces]).
   /// Asks nothing of the engine's thread or the device.
-  List<GpuPlaceTook> took() => using((arena) {
-    const capacity = 16384;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineTook(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return placesTook(
-      utf8.decode(buffer.asTypedList(count), allowMalformed: true),
-    );
-  });
+  List<GpuPlaceTook> took() => placesTook(
+    _copiedOut(
+      16384,
+      (buffer, capacity) => rust.engineTook(_engine, buffer, capacity),
+    ),
+  );
 
   /// The places [told] says took anything, as the engine tells them a
   /// line each (rust/src/took.rs, `Took::told`): what [took] reads.
@@ -527,16 +526,13 @@ class GpuEngine {
   /// by yet, or null — taken, so no job is refused by it after. An error
   /// on a way that never waits is told to no one, and a test asks as it
   /// ends.
-  String? debugTakeNoted() => using((arena) {
-    const capacity = 1024;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineNoted(_engine, buffer, capacity);
-    if (length == 0) {
-      return null;
-    }
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
+  String? debugTakeNoted() {
+    final noted = _copiedOut(
+      1024,
+      (buffer, capacity) => rust.engineNoted(_engine, buffer, capacity),
+    );
+    return noted.isEmpty ? null : noted;
+  }
 
   /// How many waits for the GPU passed the engine's limit with its
   /// device standing (rust/src/device.rs, `Refusals::past`) — the GPU at
@@ -614,13 +610,10 @@ class GpuEngine {
     if (_closed) {
       return 'the engine was closed before the GPU had finished';
     }
-    return using((arena) {
-      const capacity = 1024;
-      final buffer = arena<Uint8>(capacity);
-      final length = rust.doneFailure(_engine, wait, buffer, capacity);
-      final count = length < capacity ? length : capacity;
-      return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-    });
+    return _copiedOut(
+      1024,
+      (buffer, capacity) => rust.doneFailure(_engine, wait, buffer, capacity),
+    );
   }
 
   /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra] — laid
@@ -645,7 +638,14 @@ class GpuEngine {
     if (surface == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuSurface._(this, surface, width, height, bgra);
+    return GpuSurface._(
+      this,
+      surface,
+      width,
+      height,
+      bgra,
+      asTheDriverChooses: asTheDriverChooses,
+    );
   }
 
   /// 🔬The way a [surface] reaches Flutter's screen on this engine, for the
@@ -653,13 +653,10 @@ class GpuEngine {
   /// AHardwareBuffer, else `ahb no — ` and what stands in the way: the
   /// extension, Vulkan 1.1, or the device's answer for a storable image
   /// (rust/src/platform/android.rs, `screen_said`).
-  String get screenSaid => using((arena) {
-    const capacity = 1024;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.screenSaid(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
+  String get screenSaid => _copiedOut(
+    1024,
+    (buffer, capacity) => rust.screenSaid(_engine, buffer, capacity),
+  );
 
   /// Test seam: the engine keeps none of its kernels, as a launch finds it
   /// (rust/src/device.rs, `Kernels`) — what holds one keeps it, and the
@@ -828,8 +825,9 @@ class GpuSurface extends GpuTarget {
     this._surface,
     this.width,
     this.height,
-    this.bgra,
-  );
+    this.bgra, {
+    required this.asTheDriverChooses,
+  });
 
   final Pointer<rust.Surface> _surface;
   @override
@@ -837,6 +835,17 @@ class GpuSurface extends GpuTarget {
   @override
   final int height;
   final bool bgra;
+
+  /// The layout it was asked for ([GpuEngine.surface]).
+  final bool asTheDriverChooses;
+
+  /// How its buffer was laid out, read back off it: on Android its
+  /// AHardwareBuffer's usage — what the driver kept of what was asked —,
+  /// empty elsewhere (rust/src/platform/android.rs, `laid_said`).
+  String get laidSaid => _copiedOut(
+    64,
+    (buffer, capacity) => rust.surfaceLaidSaid(_surface, buffer, capacity),
+  );
 
   Pointer<Void> get _handle => rust.surfaceHandle(_surface);
 

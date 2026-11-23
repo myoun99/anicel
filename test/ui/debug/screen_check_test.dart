@@ -3,6 +3,7 @@ import 'dart:ui' show FrameTiming;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
@@ -21,14 +22,38 @@ void main() {
     );
   });
 
-  test('says both probes — the layout a screen asks for first, the '
-      'driver\'s own beside it', () {
+  test('probes two layouts, not one twice — the one a screen asks for '
+      'first, the driver\'s own beside it', () {
+    expect(ScreenCheck.probes, [
+      (name: 'cpu', asTheDriverChooses: false),
+      (name: 'driver', asTheDriverChooses: true),
+    ]);
+  });
+
+  test('makes each probe\'s surface in the layout it names', () {
+    for (final probe in ScreenCheck.probes) {
+      final surface = ScreenCheck.surfaceOf(appGpuEngine, probe);
+      addTearDown(surface.free);
+      expect(surface.asTheDriverChooses, probe.asTheDriverChooses,
+          reason: probe.name);
+      expect((surface.width, surface.height),
+          (ScreenCheck.side, ScreenCheck.side));
+    }
+  });
+
+  test('says each probe — its name, what it found, and its buffer read '
+      'back where the platform says one', () {
     expect(
-      ScreenCheck.both(
-        forTheCpuToo: 'same 0badf00d',
-        driversOwn: 'differs  shown 00000012  written 0badf00d',
-      ),
-      'cpu same 0badf00d  ·  driver differs  shown 00000012  written 0badf00d',
+      ScreenCheck.row([
+        (name: 'cpu', found: 'same 0badf00d', laid: 'usage 0x102'),
+        (
+          name: 'driver',
+          found: 'differs  shown 00000012  written 0badf00d',
+          laid: '',
+        ),
+      ]),
+      'cpu same 0badf00d  usage 0x102  ·  '
+      'driver differs  shown 00000012  written 0badf00d',
     );
   });
 

@@ -17,6 +17,12 @@ impl SharedHandle {
     pub fn shown(&self) -> Option<&wgpu::Texture> {
         None
     }
+
+    /// How the buffer was laid out, read back off it — where the platform
+    /// lets the engine say ([`super::Laid`]): never here.
+    pub fn laid_said(&self) -> String {
+        String::new()
+    }
 }
 
 pub fn create(

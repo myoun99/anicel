@@ -204,6 +204,43 @@ pub enum Laid {
     AsTheDriverChooses,
 }
 
+/// AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE (hardware_buffer.h).
+const AHB_USAGE_GPU_SAMPLED_IMAGE: u64 = 1 << 8;
+/// AHARDWAREBUFFER_USAGE_CPU_READ_RARELY (hardware_buffer.h).
+const AHB_USAGE_CPU_READ_RARELY: u64 = 2;
+
+/// The AHardwareBuffer usage a surface laid `laid` is allocated with on
+/// Android (android.rs, `allocated`): Flutter samples it, and the CPU may
+/// read it now and then where [`Laid::ForTheCpuToo`]. Written here rather
+/// than there because a host test reads it — no test machine compiles the
+/// Android file (관제 2026-11-24 02:36: the check's two layouts must be
+/// two in fact, card the-galaxy-tab-canvas-went-slow-on-build-1095).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) const fn ahb_usage(laid: Laid) -> u64 {
+    match laid {
+        Laid::ForTheCpuToo => AHB_USAGE_GPU_SAMPLED_IMAGE | AHB_USAGE_CPU_READ_RARELY,
+        Laid::AsTheDriverChooses => AHB_USAGE_GPU_SAMPLED_IMAGE,
+    }
+}
+
+#[cfg(test)]
+mod laid_tests {
+    use super::*;
+
+    /// The CPU's usage bits of an AHardwareBuffer (hardware_buffer.h:
+    /// CPU_READ_MASK 0xF, CPU_WRITE_MASK 0xF0).
+    const CPU: u64 = 0xFF;
+
+    #[test]
+    fn a_screen_asks_for_the_cpu_too_and_the_drivers_own_for_none_of_it() {
+        assert_eq!(ahb_usage(Laid::ForTheCpuToo) & CPU, AHB_USAGE_CPU_READ_RARELY);
+        assert_eq!(ahb_usage(Laid::AsTheDriverChooses) & CPU, 0);
+        for laid in [Laid::ForTheCpuToo, Laid::AsTheDriverChooses] {
+            assert_ne!(ahb_usage(laid) & AHB_USAGE_GPU_SAMPLED_IMAGE, 0, "Flutter samples both");
+        }
+    }
+}
+
 impl Surface {
     fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat, laid: Laid) -> Option<Self> {
         // Android's window refused one before it was a surface (2026-11-23):
@@ -345,6 +382,25 @@ pub unsafe extern "C" fn gpu_engine_screen_said(
     let engine = unsafe { &*engine };
     let said = engine.on_thread(|| native::screen_said(engine.device()));
     crate::copy_out(&said, buffer, capacity)
+}
+
+/// Copies how `surface`'s buffer was laid out, read back off it — on
+/// Android its AHardwareBuffer's usage, empty elsewhere
+/// (`SharedHandle::laid_said`) — into `buffer` (UTF-8) and returns its full
+/// length, for the debug screen's check.
+///
+/// # Safety
+/// `surface` came from `gpu_engine_surface_new` and is live, and `buffer`
+/// holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_surface_laid_said(
+    surface: *const Surface,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let surface = unsafe { &*surface };
+    crate::copy_out(&surface.shared.laid_said(), buffer, capacity)
 }
 
 /// What Flutter opens the surface by — on Windows, an NT handle; on iOS

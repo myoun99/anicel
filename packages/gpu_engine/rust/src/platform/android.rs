@@ -51,7 +51,7 @@ use std::ptr::NonNull;
 use ash::vk;
 use wgpu::hal::api::Vulkan;
 
-use super::Laid;
+use super::{Laid, ahb_usage};
 use crate::device::storage_texture;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
@@ -62,10 +62,6 @@ const AHB: vk::ExternalMemoryHandleTypeFlags =
 
 /// AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM (hardware_buffer.h).
 const AHB_FORMAT_R8G8B8A8_UNORM: u32 = 1;
-/// AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE (hardware_buffer.h).
-const AHB_USAGE_GPU_SAMPLED_IMAGE: u64 = 1 << 8;
-/// AHARDWAREBUFFER_USAGE_CPU_READ_RARELY (hardware_buffer.h).
-const AHB_USAGE_CPU_READ_RARELY: u64 = 2;
 
 /// AHardwareBuffer_Desc (hardware_buffer.h).
 #[repr(C)]
@@ -84,6 +80,7 @@ struct BufferDesc {
 unsafe extern "C" {
     fn AHardwareBuffer_allocate(desc: *const BufferDesc, out: *mut *mut vk::AHardwareBuffer) -> i32;
     fn AHardwareBuffer_release(buffer: *mut vk::AHardwareBuffer);
+    fn AHardwareBuffer_describe(buffer: *const vk::AHardwareBuffer, out: *mut BufferDesc);
     fn AHardwareBuffer_toHardwareBuffer(env: *mut c_void, buffer: *mut vk::AHardwareBuffer) -> *mut c_void;
 }
 
@@ -114,6 +111,26 @@ impl SharedHandle {
     /// onto ([`Way::Copied`]); none where the kernels store into it.
     pub fn shown(&self) -> Option<&wgpu::Texture> {
         self.shown.as_ref()
+    }
+
+    /// The usage the buffer was allocated with, read back off it — what
+    /// the driver kept of what was asked ([`allocated`]), for the debug
+    /// screen's check to say beside each layout it measured.
+    pub fn laid_said(&self) -> String {
+        let mut desc = BufferDesc {
+            width: 0,
+            height: 0,
+            layers: 0,
+            format: 0,
+            usage: 0,
+            stride: 0,
+            rfu0: 0,
+            rfu1: 0,
+        };
+        // SAFETY: the reference is live while `self` is, and `desc` is a
+        // place for the description.
+        unsafe { AHardwareBuffer_describe(self.buffer.as_ptr(), &mut desc) };
+        format!("usage {:#x}", desc.usage)
     }
 }
 
@@ -250,16 +267,12 @@ pub fn screen_said(device: &wgpu::Device) -> String {
 /// screen's check measures both layouts, so one look at a device says
 /// whether it was needed.
 fn allocated(width: u32, height: u32, laid: Laid) -> Result<NonNull<vk::AHardwareBuffer>, String> {
-    let cpu = match laid {
-        Laid::ForTheCpuToo => AHB_USAGE_CPU_READ_RARELY,
-        Laid::AsTheDriverChooses => 0,
-    };
     let desc = BufferDesc {
         width,
         height,
         layers: 1,
         format: AHB_FORMAT_R8G8B8A8_UNORM,
-        usage: AHB_USAGE_GPU_SAMPLED_IMAGE | cpu,
+        usage: ahb_usage(laid),
         stride: 0,
         rfu0: 0,
         rfu1: 0,

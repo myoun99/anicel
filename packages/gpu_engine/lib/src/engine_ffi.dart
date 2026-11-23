@@ -341,6 +341,15 @@ external Pointer<Surface> surfaceNew(
   bool forTheCpuToo,
 );
 
+@Native<Size Function(Pointer<Surface>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_surface_laid_said',
+)
+external int surfaceLaidSaid(
+  Pointer<Surface> surface,
+  Pointer<Uint8> buffer,
+  int capacity,
+);
+
 @Native<Void Function(Pointer<Surface>)>(symbol: 'gpu_engine_surface_free')
 external void surfaceFree(Pointer<Surface> surface);
 

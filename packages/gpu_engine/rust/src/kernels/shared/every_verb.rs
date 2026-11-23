@@ -176,6 +176,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_grid_most_side",
             "gpu_engine_surface_texture",
             "gpu_engine_surface_handle",
+            "gpu_engine_surface_laid_said",
         ],
     ),
     (
