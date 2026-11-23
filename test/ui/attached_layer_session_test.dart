@@ -986,6 +986,50 @@ void main() {
       expect(folderStructureProblem(restored), isNull);
     });
 
+    // 🗣️a-row-pasted-linked-takes-its-source-when-deleted-Q1 (유저
+    // 2026-11-23): 「그 줄만 지운다」 — the sweep asks only what the delete
+    // takes, so the organizer its source sits alone in stays.
+    test('deleting an attach row pasted linked into its own cut leaves the '
+        'organizer its source sits alone in', () {
+      final (s, base) = sessionWithBase();
+      s.createDrawingAtCurrentFrame();
+      s.folders.addAttachedLayer(AttachedPlacement.above);
+      final sourceId = s.activeLayer!.id;
+      groupTheActiveAttachIntoAFolder(s);
+      final organizerId = cutLayers(
+        s,
+      ).firstWhere((l) => l.id == sourceId).folderId!;
+      final before = cutLayers(s).map((l) => l.id).toSet();
+      s.selectLayer(base.id);
+      linkDuplicateActiveRow(s);
+      final copy = cutLayers(
+        s,
+      ).firstWhere((l) => !before.contains(l.id) && isAttachedLayer(l));
+      expect(
+        s.repository.requireProject().linkRegistry.useCountOf(
+          cutId: s.requireActiveCut.id,
+          layerId: copy.id,
+        ),
+        2,
+        reason: '⛔전제: the copy is linked to its source',
+      );
+      expect(
+        copy.folderId,
+        isNot(organizerId),
+        reason: '⛔전제: the source sits alone in its organizer',
+      );
+
+      s.selectLayer(copy.id);
+      s.layerVerbs.deleteActiveLayer();
+
+      final ids = cutLayers(s).map((l) => l.id).toSet();
+      expect(ids, isNot(contains(copy.id)));
+      expect(ids, isNot(contains(copy.folderId)),
+          reason: 'the organizer the copy emptied goes');
+      expect(ids, containsAll([sourceId, organizerId]));
+      expect(folderStructureProblem(cutLayers(s)), isNull);
+    });
+
     test('link-duplicating a group with an organizer remaps the copies '
         'onto the copied folder row', () {
       final (s, base) = sessionWithBase();
