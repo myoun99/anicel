@@ -2,7 +2,8 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, visibleForTesting;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
@@ -26,7 +27,8 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
-import '../../services/media/media_byte_source.dart' show HeldMediaBytes;
+import '../../services/media/media_byte_source.dart'
+    show HeldMediaBytes, HoldMediaBytes;
 import '../../services/media/media_facts.dart';
 import '../../services/media/movie_bytes.dart' show readHeldMovieInfo;
 import '../audio/audio_conform_store.dart';
@@ -109,6 +111,18 @@ class ImportDialog extends StatefulWidget {
   });
 
   final EditorSessionManager session;
+
+  /// Test seam: how a listed file's facts are read ([readMediaFacts]) — for
+  /// a test that holds them back, to ask a row before they are in (board
+  /// a-three-frame-gif-reads-as-one-picture-in-the-wide-check: a row asked
+  /// before its pictures were counted answered for one).
+  @visibleForTesting
+  static Future<MediaFacts?> Function(
+    MediaAssetKind kind,
+    String path,
+    HoldMediaBytes hold,
+  )
+  readFacts = readMediaFacts;
 
   /// Files the app already holds, handed in by path (files or one folder) —
   /// a media row placed, a drag from the pool.
@@ -909,7 +923,7 @@ class _ImportDialogState extends State<ImportDialog> {
       final kind = mediaAssetKindForPath(path);
       final facts = kind == null
           ? null
-          : await readMediaFacts(kind, path, _holdBytes);
+          : await ImportDialog.readFacts(kind, path, _holdBytes);
       if (mounted) {
         _facts[key] = facts;
         _showFactsSoon();

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/media/media_facts.dart' show readMediaFacts;
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
@@ -175,11 +177,17 @@ void main() {
   // folder's picture; a file of one picture is the same family. 🗣️유저
   // 2026-11-17 (Q4): 「기본 그림한장은 이미지」, a preset's to say.
   group('a picture\'s kind', () {
+    ImportColumn<Object?> optionShown(WidgetTester tester) => tester
+        .widget<ImportFileTable>(find.byType(ImportFileTable))
+        .columns
+        .singleWhere((column) => column.id == 'option');
+
     Future<ImportColumn<Object?>> optionOf(
       WidgetTester tester,
       EditorSessionManager s,
       String path, {
       bool placeOnly = false,
+      Future<void> Function()? onceShown,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -193,6 +201,7 @@ void main() {
         ),
       );
       await settleLoadedPages(tester);
+      await onceShown?.call();
       // 🚨ASKED ONCE ITS PICTURES ARE COUNTED: the window answers for ONE
       // picture till its file's facts are read (`_picturesKept(path) ?? 1`),
       // a read of its own beside the preview's — and the preview can land
@@ -216,10 +225,7 @@ void main() {
         isTrue,
         reason: "the file's facts were never read",
       );
-      return tester
-          .widget<ImportFileTable>(find.byType(ImportFileTable))
-          .columns
-          .singleWhere((column) => column.id == 'option');
+      return optionShown(tester);
     }
 
     String said(LayerKind kind) => layerKindDisplayName(kind);
@@ -329,7 +335,32 @@ void main() {
         (await tester.runAsync(() => writeThreeFrameGif(tempDir, 'b.gif')))!,
       );
 
-      final option = await optionOf(tester, s, path);
+      // The test holds the order the wide check's load once dealt (board
+      // a-three-frame-gif-reads-as-one-picture-in-the-wide-check): the
+      // preview lands while the file's facts are still held back — so a
+      // row asked before its pictures are counted is caught every run, not
+      // only under load.
+      final held = Completer<void>();
+      ImportDialog.readFacts = (kind, file, hold) async {
+        await held.future;
+        return readMediaFacts(kind, file, hold);
+      };
+      addTearDown(() => ImportDialog.readFacts = readMediaFacts);
+
+      final option = await optionOf(
+        tester,
+        s,
+        path,
+        onceShown: () async {
+          expect(
+            optionShown(tester).enabledFor(path, LayerKind.image),
+            isTrue,
+            reason: 'CONTROL: its pictures not yet counted, the row '
+                'answers for one',
+          );
+          held.complete();
+        },
+      );
 
       expect(option.enabledFor(path, LayerKind.image), isFalse);
       expect(option.cellWordOf(path), said(LayerKind.animation));
