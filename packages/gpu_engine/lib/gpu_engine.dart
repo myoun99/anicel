@@ -2085,6 +2085,42 @@ class GpuStroke {
     ),
   );
 
+  /// What each of [tiles] — tiles this stroke's landings put on [pool],
+  /// as they are now, each with its ask: the cel's tile under it — is
+  /// beside that tile, in their order: asked behind every put handed over
+  /// before, with no wait and no slot taken, and told once the GPU has
+  /// said (rust/src/kernels/dab/abi.rs,
+  /// `gpu_engine_stroke_tiles_told_unwaited`, has why). What it finished:
+  /// its [GpuFinished.changes] to read and it to free, its tiles landed by
+  /// none. Fails as [GpuRefused] where it was not finished — a tile that
+  /// lies folded, or none asked.
+  Future<GpuFinished> toldOf(
+    GpuPool pool,
+    List<(GpuTile, GpuTileAsk)> tiles,
+  ) => GpuFinished._of(
+    _engine,
+    (out, told, number) => using((arena) {
+      final (:coordinates, :under) = _asked(arena, [
+        for (final (_, ask) in tiles) ask,
+      ]);
+      rust.strokeTilesToldUnwaited(
+        _stroke,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        _tileWords(arena, tiles.length, 1, [
+          for (final (tile, _) in tiles) tile,
+        ]),
+        coordinates,
+        under,
+        tiles.length,
+        out,
+        told,
+        number,
+      );
+      return true;
+    }),
+  );
+
   /// Clears what the stroke wrote and lets its tiles go; the pages stay.
   void clear() => rust.strokeClear(_stroke, _engine._engine);
 

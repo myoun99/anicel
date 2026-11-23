@@ -754,6 +754,86 @@ final GpuEngine _engine;
     }
   }
 
+  /// [tiles] — each the engine's alone, landed here at its [column] and
+  /// [row] — made again by [by] should the device go with them: what a
+  /// landing handed [land]'s `again` keeps of each it made ([_Slot.made]).
+  void makesAgain(
+    List<({BitmapTile tile, int column, int row})> tiles,
+    LandsAgain by,
+  ) {
+    for (final (:tile, :column, :row) in tiles) {
+      final slot = _slotNow(tile);
+      if (slot != null && tile.isOnlyOnEngine) {
+        slot.made = (by: by, column: column, row: row);
+      }
+    }
+  }
+
+  /// What each of [tiles] — tiles landed here, each at its [column] and
+  /// [row] — is beside the tile it landed on ([_Slot.under]), asked by [by]
+  /// with no wait for the GPU (`GpuStroke.toldOf`) and told once it has
+  /// said: each one's ink, its own from then on ([BitmapTile.toldInk]).
+  /// Till then each shows ink ([BitmapTile.inkToBeTold]). Where the engine
+  /// could not tell (a tile that lies folded), each is read as
+  /// it would have been ([BitmapTile.hasInk]). Done once all are told.
+  ///
+  /// Asked of the tiles the engine alone holds: one whose bytes are here
+  /// reads its ink for nothing, and one with no slot here was not landed
+  /// here.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-2): pen-up hands the cel the tiles the stroke's steps put on
+  /// their way ([land], uncompared — their ink not known), where it laid
+  /// the stroke again compared, the UI's thread waiting for the GPU to say
+  /// what each is. 「모름 → 아는 것으로 그리고, 답이 오면 고침」: what [land]
+  /// compared waits for, this is told — as a cut ahead is ([landOnceTold]).
+  Future<void> toldOf(
+    List<({BitmapTile tile, int column, int row})> tiles, {
+    required ToldBy by,
+  }) async {
+    final told = Completer<void>();
+    final asked = <({BitmapTile tile, BitmapTile? under})>[];
+    final asks = <TileAsk>[];
+    for (final (:tile, :column, :row) in tiles) {
+      final slot = _slotNow(tile);
+      if (slot == null || !tile.isOnlyOnEngine) {
+        continue;
+      }
+      final under = slot.under;
+      tile.inkToBeTold(told.future);
+      asked.add((tile: tile, under: under));
+      asks.add((column: column, row: row, under: under));
+    }
+    List<GpuChange>? changes;
+    try {
+      if (asked.isNotEmpty) {
+        final finished = await held(
+          (hold) => by(pool, [
+            for (final (at, ask) in _askedOf(hold, asks).indexed)
+              (_slotNow(asked[at].tile)!.at, ask),
+          ]),
+        );
+        try {
+          changes = finished.changes;
+        } finally {
+          finished.free();
+        }
+      }
+    } on GpuRefused {
+      changes = null;
+    } finally {
+      for (final (at, (:tile, :under)) in asked.indexed) {
+        tile.toldInk(switch (changes?[at]) {
+          GpuChange.inked => true,
+          GpuChange.cleared => false,
+          GpuChange.same => under == null ? false : under.inkWithNoWait,
+          null => null,
+        });
+      }
+      told.complete();
+    }
+  }
+
   /// Every tile of [rect] — a rectangle of tiles on the canvas's grid: its
   /// first tile's column and row, and how many columns and rows it spans —
   /// landed by [by] on the pages of what lands ([landedCel]), each a tile
@@ -1654,6 +1734,15 @@ typedef LandedBy =
 /// finished takes its slots once told.
 typedef FinishedBy =
     Future<GpuFinished> Function(GpuPool pool, List<GpuTileAsk> asked);
+
+/// What asks the engine what tiles landed are, each beside the tile it
+/// landed on, on a pool, and is told it ([EngineTileLedger.toldOf]):
+/// `GpuStroke.toldOf`.
+typedef ToldBy =
+    Future<GpuFinished> Function(
+      GpuPool pool,
+      List<(GpuTile, GpuTileAsk)> tiles,
+    );
 
 /// How a landing is made again once the engine it was made on is gone:
 /// what it laid, as values — nothing of that engine's, which a [LandedBy]

@@ -4,16 +4,20 @@
 //! it finished ([`gpu_engine_finished_land_unwaited`]) and the lift
 //! (`gpu_engine_cel_pixels_lift_picture_unwaited`) through the C ABI, each
 //! beside the waited verb it is the unwaited road of — on a device of the
-//! test's own, whose thread a test can make stand still.
+//! test's own, whose thread a test can make stand still. And what a
+//! stroke's tiles put already are told to be
+//! ([`gpu_engine_stroke_tiles_told_unwaited`]): the answer a compared
+//! landing waits for, with no wait.
 
 use std::time::{Duration, Instant};
 
 use super::{
-    Finished, StampLanding, StampPicture, gpu_engine_finished_changes, gpu_engine_finished_free,
+    Finished, StampLanding, StampPicture, Stroke, gpu_engine_finished_changes, gpu_engine_finished_free,
     gpu_engine_finished_land_unwaited, gpu_engine_stamp_finish_mask_unwaited, gpu_engine_stamp_finish_unwaited,
     gpu_engine_stamp_land, gpu_engine_stamp_land_mask, gpu_engine_stamp_landing_free,
     gpu_engine_stamp_landing_new, gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new,
-    gpu_engine_stamp_picture_read,
+    gpu_engine_stamp_picture_read, gpu_engine_stroke_free, gpu_engine_stroke_new,
+    gpu_engine_stroke_tiles_told_unwaited,
 };
 use crate::device::{Engine, gpu_engine_close, gpu_engine_open_first, gpu_engine_stand_still};
 use crate::kernels::blend::mode::{ERASE, NORMAL};
@@ -26,9 +30,11 @@ use crate::kernels::composite::abi::{
     gpu_engine_mask_new,
 };
 use crate::kernels::composite::{Composite, NO_TILE, TILE_BYTES, TileAt};
-use crate::kernels::pool::folded_tests::{numbered, told, told_within};
+use crate::kernels::composite::tests::rig;
+use crate::kernels::pool::folded_tests::{numbered, settled, tile, told, told_within};
 use crate::kernels::pool::{
     Cel, Pool, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_read,
+    gpu_engine_pool_store,
 };
 use crate::testing::{DeviceTurn, a_device_of_its_own, done_here, last_error};
 
@@ -619,5 +625,167 @@ fn a_lift_asked_with_no_wait_takes_what_a_waited_one_takes() {
         gpu_engine_mask_free(mask);
         gpu_engine_cel_pixels_free(kernels);
         close(own);
+    }
+}
+
+/// What a stroke's tiles `tiles` — each over the cel's `under` — are
+/// told to be with no wait ([`gpu_engine_stroke_tiles_told_unwaited`]),
+/// told by `number`: where what it finished is written.
+///
+/// # Safety
+/// `engine`, `pool` and `stroke` are live, on one engine; `tiles` and
+/// `under` hold one each.
+unsafe fn tell(
+    (engine, pool, stroke): (*const Engine, *const Pool, *const Stroke),
+    tiles: &[u32],
+    under: &[u32],
+    number: u64,
+) -> Box<*mut Finished> {
+    let (asks, _) = asked(under.len());
+    let mut out = out_of();
+    // SAFETY: see the function's contract; `out` is live till it is told.
+    unsafe {
+        gpu_engine_stroke_tiles_told_unwaited(
+            stroke,
+            engine,
+            pool,
+            tiles.as_ptr(),
+            asks.as_ptr(),
+            under.as_ptr(),
+            tiles.len(),
+            &mut *out,
+            told,
+            number,
+        );
+    }
+    out
+}
+
+/// [`tell`] on [`open`]'s engine, waited for till it is told: what each
+/// tile is ([`changes_of`]), what was finished let go of.
+///
+/// # Safety
+/// As [`tell`]'s.
+unsafe fn told_of(own: &Own, stroke: *const Stroke, tiles: &[u32], under: &[u32]) -> Vec<u8> {
+    let number = numbered();
+    // SAFETY: see the function's contract.
+    let out = unsafe { tell((own.engine, own.pool, stroke), tiles, under, number) };
+    assert_eq!(told_within(number, LONG), Some(true), "{}", last_error());
+    assert!(!out.is_null(), "told finished, and none written");
+    // SAFETY: what was finished is live till here.
+    unsafe {
+        let changes = changes_of(*out);
+        gpu_engine_finished_free(*out);
+        changes
+    }
+}
+
+/// A stroke made on [`open`]'s engine.
+///
+/// # Safety
+/// `own` came from [`open`].
+unsafe fn a_stroke(own: &Own) -> *mut Stroke {
+    // SAFETY: see the function's contract.
+    let stroke = unsafe { gpu_engine_stroke_new(own.engine) };
+    assert!(!stroke.is_null(), "{}", last_error());
+    stroke
+}
+
+// A stroke's tiles put already are told what a compared landing tells of
+// the tiles it makes: the same as the tile under it — or as nothing,
+// where none is under it —, unlike it with ink, unlike it with none.
+#[test]
+fn a_stroke_s_tiles_are_told_what_a_compared_landing_says_of_its_own() {
+    // SAFETY: as the first test's; the stroke is let go of after its use.
+    unsafe {
+        let own = open();
+        let stroke = a_stroke(&own);
+        let clear = [0u8; 4];
+        let under = [stored(&own, UNDER), stored(&own, OTHER), stored(&own, UNDER), NO_TILE, NO_TILE];
+        let tiles = [stored(&own, UNDER), stored(&own, INK), stored(&own, clear), stored(&own, clear), stored(&own, INK)];
+        assert_ne!(tiles[0], under[0], "⛔premise: a tile of its own, of the same bytes");
+        assert_eq!(told_of(&own, stroke, &tiles, &under), [0, 1, 2, 0, 1], "same, inked, cleared, same, inked");
+        gpu_engine_stroke_free(stroke);
+        close(own);
+    }
+}
+
+// The telling waits for no turn of the engine's thread, and reads a tile
+// behind every put handed over before it: one stored with no wait just
+// before it was asked is told as its bytes, not as the slot's nothing.
+#[test]
+fn a_stroke_s_tiles_are_told_with_no_wait_and_behind_the_puts_before() {
+    // SAFETY: as the first test's; the stroke is let go of after its use,
+    // the tile's bytes after its store is told.
+    unsafe {
+        let own = open();
+        let stroke = a_stroke(&own);
+        // ⛔premise: the kernels' passes compiled and the pool's page made
+        // — the engine's thread's work, which stands still below.
+        assert_eq!(told_of(&own, stroke, &[stored(&own, INK)], &[NO_TILE]), [1]);
+        gpu_engine_stand_still(own.engine, 2_000);
+        let started = Instant::now();
+        let bytes = INK.repeat(TILE_BYTES as usize / 4);
+        let (tiles, mut page, mut slot, put) = ([bytes.as_ptr()], 0u16, 0u16, numbered());
+        let given = gpu_engine_pool_store(own.pool, own.engine, own.cel, tiles.as_ptr(), 1, &mut page, &mut slot, told, put);
+        assert_eq!(given, 1, "{}", last_error());
+        let word = TileAt { page, slot }.word();
+        let number = numbered();
+        let out = tell((own.engine, own.pool, stroke), &[word], &[NO_TILE], number);
+        let took = started.elapsed();
+        assert!(took < Duration::from_millis(1_000), "waited {took:?} for the engine's thread");
+        assert_eq!(told_within(number, Duration::ZERO), None, "not told while the thread stands");
+        assert_eq!((told_within(put, LONG), told_within(number, LONG)), (Some(true), Some(true)));
+        assert_eq!(changes_of(*out), [1], "the tile put before it was asked, as put");
+        gpu_engine_finished_free(*out);
+        gpu_engine_stroke_free(stroke);
+        close(own);
+    }
+}
+
+// What cannot be told is told false, null written: a tile that names
+// none, and no tile asked.
+#[test]
+fn a_stroke_s_tiles_that_name_none_or_none_at_all_are_told_false() {
+    // SAFETY: as the first test's; the stroke is let go of after its use.
+    unsafe {
+        let own = open();
+        let stroke = a_stroke(&own);
+        for (tiles, under) in [(&[NO_TILE][..], &[NO_TILE][..]), (&[][..], &[][..])] {
+            let number = numbered();
+            let out = tell((own.engine, own.pool, stroke), tiles, under, number);
+            assert_eq!(told_within(number, LONG), Some(false), "{} asked", tiles.len());
+            assert!(out.is_null(), "null written where nothing finished");
+        }
+        gpu_engine_stroke_free(stroke);
+        close(own);
+    }
+}
+
+// A tile that lies folded is told false: the engine's thread has no fold
+// to hand to unfold it, where the pool's own reads have.
+#[test]
+fn a_stroke_s_tile_that_lies_folded_is_told_false() {
+    let engine = rig().engine;
+    // SAFETY: the pool and the stroke are the test's own, made on the
+    // rig's engine and let go of after their last use.
+    unsafe {
+        let pool = gpu_engine_pool_new(engine, u64::MAX, u64::MAX);
+        let stroke = gpu_engine_stroke_new(engine);
+        assert!(!stroke.is_null(), "{}", last_error());
+        let one = tile(1, 1);
+        let cel = (&mut *pool).cel();
+        let places = (&mut *pool).store(engine, cel, &[one.as_slice()]).expect("store");
+        let (at_rest, number) = (places[0].word(), numbered());
+        let out = tell((engine, pool, stroke), &[at_rest], &[NO_TILE], number);
+        assert_eq!(told_within(number, LONG), Some(true), "⛔premise: told as it lies as it is");
+        gpu_engine_finished_free(*out);
+        assert_eq!(settled(&mut *pool, &places), 1, "⛔premise: folded");
+        let number = numbered();
+        let out = tell((engine, pool, stroke), &[at_rest], &[NO_TILE], number);
+        assert_eq!(told_within(number, LONG), Some(false), "folded");
+        assert!(out.is_null(), "null written where nothing finished");
+        gpu_engine_stroke_free(stroke);
+        gpu_engine_pool_free(pool);
     }
 }

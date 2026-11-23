@@ -151,7 +151,7 @@ void main() {
 
       // No picture of it was read — the screen that asks what moved draws
       // none — and the coordinate leaves the overlay all the same.
-      model.takeTileImageAt(farTile, revision: 1);
+      model.takeTileImageAt(farTile, revision: 1, landing: tile);
       expect(
         model.shownBy.containsKey(farTile),
         isFalse,

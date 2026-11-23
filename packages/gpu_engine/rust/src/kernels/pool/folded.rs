@@ -919,28 +919,47 @@ impl Pool {
     /// whatever it lies as.
     pub(super) fn gathered(&self, engine: &Engine, places: &[TileAt], into: &wgpu::Buffer) -> Option<()> {
         let lying: Vec<TileAt> = places.iter().map(|&at| self.lies(at)).collect();
-        let mut encoder = engine
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let mut folded = Vec::new();
-        for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(lying) {
-            match at.as_it_is() {
-                Some(from) => {
-                    let page = &self.buffers[usize::from(at.page)];
-                    encoder.copy_buffer_to_buffer(page, from, into, to, TILE_BYTES);
-                }
-                None => folded.push((to, at)),
-            }
-        }
-        if !folded.is_empty() {
+        gathered_as_they_lie(engine, &self.buffers, &lying, into, |encoder, folded| {
             let fold = kept_or_made(&self.fold, || Fold::new(engine)).as_ref()?;
-            let places: Vec<TileAt> = folded.iter().map(|&(_, at)| at).collect();
-            let unfolded = fold.unfolded(engine, &mut encoder, &self.buffers, &places)?;
-            for (from, &(to, _)) in (0..).step_by(TILE_BYTES as usize).zip(&folded) {
-                encoder.copy_buffer_to_buffer(&unfolded, from, into, to, TILE_BYTES);
-            }
-        }
-        engine.queue.submit([encoder.finish()]);
-        Some(())
+            fold.unfolded(engine, encoder, &self.buffers, folded)
+        })
     }
+}
+
+/// Copies the tiles lying at `lying` on `pages` into `into` — a tile's
+/// bytes each, in order — and submits: one as it is off its slot, those
+/// that lie folded handed to `unfold` first, which encodes their bytes
+/// side by side in a buffer of its own. What a pool reads of its tiles
+/// ([`Pool::gathered`]), and what a landing's tiles are told of once put
+/// (`landing::put_already`) — the pool's pages, there, as they stood
+/// where it was asked, with no fold to hand.
+pub(crate) fn gathered_as_they_lie(
+    engine: &Engine,
+    pages: &[wgpu::Buffer],
+    lying: &[TileAt],
+    into: &wgpu::Buffer,
+    unfold: impl FnOnce(&mut wgpu::CommandEncoder, &[TileAt]) -> Option<wgpu::Buffer>,
+) -> Option<()> {
+    let mut encoder = engine
+        .device()
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let mut folded = Vec::new();
+    for (to, &at) in (0..).step_by(TILE_BYTES as usize).zip(lying) {
+        match at.as_it_is() {
+            Some(from) => {
+                let page = &pages[usize::from(at.page)];
+                encoder.copy_buffer_to_buffer(page, from, into, to, TILE_BYTES);
+            }
+            None => folded.push((to, at)),
+        }
+    }
+    if !folded.is_empty() {
+        let places: Vec<TileAt> = folded.iter().map(|&(_, at)| at).collect();
+        let unfolded = unfold(&mut encoder, &places)?;
+        for (from, &(to, _)) in (0..).step_by(TILE_BYTES as usize).zip(&folded) {
+            encoder.copy_buffer_to_buffer(&unfolded, from, into, to, TILE_BYTES);
+        }
+    }
+    engine.queue.submit([encoder.finish()]);
+    Some(())
 }

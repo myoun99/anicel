@@ -923,6 +923,65 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
     unsafe { reported(Some(landed), places, changes) }
 }
 
+/// What each of the `count` tiles a stroke's landings put — `tiles`, each
+/// as a tile set names one — is beside the cel's tile under it (`asks`
+/// their column and row, `under` the cel's tile at each), asked with no
+/// wait for its caller and no slot taken: their bytes copied side by side
+/// on the engine's thread, behind every put handed over before this, and
+/// asked what a finished landing's are (`Stroke::told_then`). `told` is
+/// called with `number` from a thread of the engine's once the GPU has
+/// said, `out` written first: what it finished — its changes read
+/// ([`gpu_engine_finished_changes`]), it freed, and its tiles landed by
+/// none —, or null, and `told` false, where a tile names none or lies
+/// folded, none is asked or the test failed.
+///
+/// 🚨WHY (card the-start-of-every-stroke-stalls-on-the-galaxy-tab, 관제
+/// 2026-11-24): pen-up hands the cel the tiles the stroke's last steps put
+/// on their way, as they were shown (유저 09-17) — where the commit laid
+/// the stroke again, compared, and waited for the GPU on the UI's thread
+/// for what each tile is. What each is is told.
+///
+/// # Safety
+/// `stroke`, `engine` and `pool` are live, on `engine`, and `stroke`
+/// let go of after this; `tiles`, `under` hold `count` and `asks`
+/// `2 × count`; `out` is live till `told` is called, and `told` is one
+/// any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stroke_tiles_told_unwaited(
+    stroke: *const Stroke,
+    engine: *const Engine,
+    pool: *const Pool,
+    tiles: *const u32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    out: *mut *mut Finished,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &*pool) };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count, pool) };
+    let lying = pool.lying();
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, count) };
+    let places: Option<Vec<TileAt>> = words.iter().map(|&word| lying.of_word(word)).collect();
+    let finish = move |engine: &Engine, pages: &[wgpu::Buffer], then: Then| {
+        let Some(places) = places else {
+            return then(None);
+        };
+        // SAFETY: let go of on this thread, after this (the function's
+        // contract).
+        let stroke = unsafe { &*stroke };
+        stroke.told_then(engine, pages, &places, &asked, then);
+    };
+    // SAFETY: what `finish` holds is let go of on the engine's thread,
+    // after it; `out` and `told` are the function's contract.
+    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+}
+
 /// Lays the pool's tile set of `columns` × `rows` canvas tiles whose
 /// top-left is column `x0`, row `y0` — `tiles` row by row, as
 /// `gpu_engine_plan_set` takes them — on the `count` tiles asked as

@@ -87,7 +87,11 @@ void main() {
     expect(promoted, isNotEmpty);
     for (final entry in promoted) {
       expect(
-        model.takeTileImageAt(entry.coord, revision: entry.revision),
+        model.takeTileImageAt(
+          entry.coord,
+          revision: entry.revision,
+          landing: entry.tile,
+        ),
         isNotNull,
         reason: '${entry.coord}: the handoff must find the image at the '
             'promoted tile\'s own revision — the miss this closes',
@@ -143,7 +147,11 @@ void main() {
       erase: false,
     )!;
     expect(
-      model.takeTileImageAt(TileCoord(x: 0, y: 0), revision: blended.revision),
+      model.takeTileImageAt(
+        TileCoord(x: 0, y: 0),
+        revision: blended.revision,
+        landing: blended.landed,
+      ),
       isNotNull,
       reason: 'at the revision of the last flush',
     );
@@ -193,7 +201,11 @@ void main() {
     // picture.
     expect(model.tileImages[coord], isNotNull);
     expect(
-      model.takeTileImageAt(coord, revision: 77),
+      model.takeTileImageAt(
+        coord,
+        revision: 77,
+        landing: model.shownTiles[coord]!,
+      ),
       isNotNull,
       reason: 'a read after it does not lay the stroke back over the fill',
     );
@@ -211,7 +223,10 @@ void main() {
     expect(model.shownTiles[coord], same(result));
     // ⛔Mutation: every result pictured as it is shown → of a tile the
     // engine laid, a wait for the GPU apiece, for a picture nobody draws.
-    expect(model.takeTileImageAt(coord, revision: 77), isNull);
+    expect(
+      model.takeTileImageAt(coord, revision: 77, landing: result),
+      isNull,
+    );
   });
 
   test('the picture holds the pre-blended result bytes exactly', () async {

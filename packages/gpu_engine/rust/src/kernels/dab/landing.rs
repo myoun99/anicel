@@ -5,9 +5,10 @@
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode;
+use crate::kernels::composite::spares::out_of;
 use crate::kernels::composite::{Composite, Composited, Plan, Step, TILE, TileAt, TileSet};
 use crate::kernels::mask::Mask;
-use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::pool::{Cel, Pool, gathered_as_they_lie};
 use crate::kernels::shared::ResampleMap;
 use crate::kernels::write::{Change, Write};
 
@@ -190,6 +191,22 @@ pub(crate) fn finished_then(
     write.changed_then(engine, pool, &out, &under, move |changes| {
         then(changes.map(|changes| Finished { out: made, changes }));
     });
+}
+
+/// The tiles lying at `places` on `pool`'s pages — tiles a landing put
+/// already — side by side in a buffer of their own, as a landing makes
+/// its `out` ([`made`]): what [`finished_then`] asks of them, their copy
+/// submitted. Nothing where none is asked, or one lies folded: no fold is
+/// to hand here, on the engine's thread (`Pool::folds_unwaited` has why),
+/// and a tile a landing put lies as it is till a fold has taken it at a
+/// rest.
+pub(crate) fn put_already(engine: &Engine, pool: &[wgpu::Buffer], places: &[TileAt]) -> Option<wgpu::Buffer> {
+    if places.is_empty() {
+        return fail("no tile to tell of");
+    }
+    let out = out_of(engine, places.len());
+    gathered_as_they_lie(engine, pool, places, &out, |_, _| fail("a tile told of lies folded"))?;
+    Some(out)
 }
 
 /// Puts each of `out`'s tiles that `changes` — every one by its index among

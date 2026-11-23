@@ -2620,6 +2620,33 @@ external int strokeLandUnwaited(
 );
 
 @Native<
+  Void Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Pointer<Finished>>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_stroke_tiles_told_unwaited')
+external void strokeTilesToldUnwaited(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Uint32> tiles,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  Pointer<Pointer<Finished>> out,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<
   IntPtr Function(
     Pointer<Engine>,
     Pointer<Composite>,

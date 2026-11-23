@@ -644,6 +644,7 @@ class BrushFrameStore {
     // detector that crossed on one rule while the paint read another is how
     // the block came to disagree with the drawing in the first place.
     final has = celHasRenderableContent(canonicalKey);
+    _askAgainOnceTold(canonicalKey);
     final had = _celsWithContent.contains(canonicalKey);
     if (has == had) {
       return;
@@ -654,6 +655,28 @@ class BrushFrameStore {
       _celsWithContent.remove(canonicalKey);
     }
     _crossing.add(canonicalKey);
+  }
+
+  /// [canonicalKey]'s cel asked again ([_noteCelContent]) once the tiles of
+  /// it whose ink is still to be told are told ([BitmapTile.inkTold]) —
+  /// drawn meanwhile, as under the pen ([BitmapSurface.showsSomethingNow]):
+  /// asked as it stands then, so a cel that has moved on crosses no more.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-2): 「모름 → 아는 것으로 그리고, 답이 오면 고침」 — a crossing told
+  /// then is told as every other is ([celContentRevision]).
+  void _askAgainOnceTold(BrushFrameKey canonicalKey) {
+    final told = [
+      for (final tile
+          in _bakedSurfaces[canonicalKey]?.tiles.values ??
+              const <BitmapTile>[])
+        ?tile.inkTold,
+    ];
+    if (told.isNotEmpty) {
+      unawaited(
+        Future.wait(told).then((_) => _noteCelContent(canonicalKey)),
+      );
+    }
   }
 
   /// One bump of [celContentRevision] for every cel crossed since the last
@@ -2776,7 +2799,10 @@ class BrushFrameStore {
       // it: the block stayed white and the pixel buttons stayed lit (유저
       // 2026-08-27: 「삭제눌렀으면 그림이 사라진거니 블록이 회색되고 버튼도
       // 비활성화되야하는데 둘다 아님」).
-      return baked.showsSomething;
+      // As it shows NOW: a tile whose ink is still to be told shows ink, as
+      // under the pen, and the cel is asked again once told
+      // ([_askAgainOnceTold]).
+      return baked.showsSomethingNow;
     }
     // ⛔Cold and file-backed cels are NOT asked by decoding: that would
     // MATERIALIZE every cel of the project, and this is called per visible

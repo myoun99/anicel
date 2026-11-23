@@ -71,7 +71,7 @@ use crate::kernels::shared::room;
 use crate::kernels::write::Write;
 use crate::platform::{self, VideoMemory};
 
-pub(crate) use folded::{FoldTold, Lying, Taken, told_by};
+pub(crate) use folded::{FoldTold, Lying, Taken, gathered_as_they_lie, told_by};
 use folded::{Arena, Foldings};
 
 /// The most a page holds where a binding holds more (1a ④).

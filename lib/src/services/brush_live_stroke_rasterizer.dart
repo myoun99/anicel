@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -674,11 +675,19 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// The finished tiles of this stroke, ready to be ADOPTED by the cel
   /// surface — the pen-up commit in one move.
   ///
-  /// Every coordinate the stroke reached is laid again on the engine,
-  /// compared with the tile under it ([_promotedFromEngine]); one left
-  /// byte-identical to the base is left out entirely, so the dirty set
-  /// stays the TRUE change set and untouched tiles keep their identity (and
-  /// their decoded image).
+  /// 🚨★WHAT THE STEPS PUT IS HANDED OVER: a coordinate [shown] holds the
+  /// tile the stroke's newest step there put on its way, as the overlay
+  /// showed it ([_landedOnEngine] — the same call, 유저 09-17), and that very
+  /// tile is the cel's from here on — not laid again, no wait for the GPU
+  /// ([_handedOver]). Every other coordinate the stroke reached is laid
+  /// again on the engine, compared with the tile under it; one left
+  /// byte-identical to the base is left out, and untouched tiles keep their
+  /// identity (and their decoded image). 🗣️관제 2026-11-24 (card
+  /// the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2): ↩️every
+  /// coordinate was laid again so till then, the UI's thread waiting at
+  /// pen-up for the GPU to say what each landed tile is. A tile handed over
+  /// is the step's whatever it is beside the base — the same bytes, or
+  /// none left —: what it is is told ([EngineTileLedger.toldOf]).
   ///
   /// The returned tiles are the surface's from here on; [clear] afterwards
   /// lets go of what the stroke still holds.
@@ -691,6 +700,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     required BrushBlendMode mode,
     required bool erase,
     List<BrushDab>? dabs,
+    Map<TileCoord, ({BitmapTile tile, int revision})> shown = const {},
   }) {
     assert(
       base.tileSize == tileSize,
@@ -699,40 +709,77 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (_engineStroke == null) {
       return [];
     }
-    return _promotedFromEngine(base, mode, erase, dabs);
+    return _promotedFromEngine(
+      base,
+      engineBlendModeOf(mode, erase: erase),
+      dabs,
+      shown,
+    );
   }
 
-  /// The finished tiles on the engine: the same call that showed the stroke
-  /// (유저 09-17), comparing each result with the tile under it. A coordinate
-  /// left with no ink is a blank tile, which the commit drops.
+  /// The finished tiles on the engine: each the one [shown] holds where it
+  /// shows the stroke's newest revision there, the rest laid as the steps
+  /// were (유저 09-17) and compared with the tile under it. A coordinate
+  /// laid with no ink left is a blank tile, which the commit drops.
   List<PromotedStrokeTile> _promotedFromEngine(
     BitmapSurface base,
-    BrushBlendMode mode,
-    bool erase,
+    int laid,
     List<BrushDab>? dabs,
+    Map<TileCoord, ({BitmapTile tile, int revision})> shown,
   ) {
-    final coords = _tileCoords.values.where(_lands).toList();
-    final laid = engineBlendModeOf(mode, erase: erase);
+    // ⏳A blur's reads the cel all round each tile it lands
+    // ([_rubOnEngine]): not made of the tile under it alone, and not made
+    // again yet.
+    final again = dabs == null || _blurBase != null
+        ? null
+        : StrokeLandsAgain._(this, dabs, laid);
+    final handed = <TileCoord, PromotedStrokeTile>{};
+    final unlaid = <TileCoord>[];
+    for (final coord in _tileCoords.values.where(_lands)) {
+      final revision = _tileRevisions[_tileKey(coord.x, coord.y)] ?? 0;
+      final step = shown[coord];
+      if (step != null && step.revision == revision) {
+        handed[coord] = PromotedStrokeTile(coord, step.tile, revision);
+      } else {
+        unlaid.add(coord);
+      }
+    }
+    _handedOver(handed.values.toList(), again);
     final landed = _landOnEngine(
-      _asksOf(coords, base),
+      _asksOf(unlaid, base),
       laid,
       compared: true,
-      // ⏳A blur's reads the cel all round each tile it lands
-      // ([_rubOnEngine]): not made of the tile under it alone, and not
-      // made again yet.
-      again: dabs == null || _blurBase != null
-          ? null
-          : StrokeLandsAgain._(this, dabs, laid),
+      again: again,
     );
     return [
+      ...handed.values,
       for (var at = 0; at < landed.length; at += 1)
         if (landed[at].change != GpuChange.same)
           PromotedStrokeTile(
-            coords[at],
+            unlaid[at],
             landed[at].tile ?? BitmapTile.blank(size: tileSize),
-            _tileRevisions[_tileKey(coords[at].x, coords[at].y)] ?? 0,
+            _tileRevisions[_tileKey(unlaid[at].x, unlaid[at].y)] ?? 0,
           ),
     ];
+  }
+
+  /// [handed] — tiles the stroke's steps put on their way — kept as a
+  /// landing compared keeps its own: made again by [again] should the
+  /// device go with them, and what each is beside the tile it landed on
+  /// told, with no wait ([EngineTileLedger.toldOf]).
+  void _handedOver(List<PromotedStrokeTile> handed, LandsAgain? again) {
+    if (handed.isEmpty) {
+      return;
+    }
+    final ledger = EngineTileLedger.instance;
+    final tiles = [
+      for (final one in handed)
+        (tile: one.tile, column: one.coord.x, row: one.coord.y),
+    ];
+    if (again != null) {
+      ledger.makesAgain(tiles, again);
+    }
+    unawaited(ledger.toldOf(tiles, by: _engineStroke!.toldOf));
   }
 
   /// A blur dab rewrote [region]: every tile it reaches is touched, at a

@@ -977,9 +977,16 @@ final class _FrameRows {
         rect: null,
       );
     }
-    var dirty = _whereTheOverlayMoved(kept, now);
+    // 🚨ONE TOKEN A COORDINATE, the overlay's else the cel's: pen-up hands
+    // the cel the tile the overlay showed, which did not move (관제
+    // 2026-11-24 ③-2). ↩️Told apart, every lift drew its stroke's box again.
+    final moved = _movedCoords(
+      {...kept.tiles, ...kept.overlay},
+      {...now.tiles, ...now.overlay},
+    ).toSet();
+    var dirty = _whereTheOverlayMoved(kept, now, moved);
     final tiles = tileCoordsWorldRect(
-      _movedCoords(kept.tiles, now.tiles),
+      _movedCoords(kept.tiles, now.tiles).where(moved.contains),
       painter.surface.tileSize,
     );
     if (tiles != null) {
@@ -1050,10 +1057,10 @@ final class _FrameRows {
     return joined;
   }
 
-  /// What the overlay's pictures moved from [kept] to [now], in the live
-  /// row's space: the pixels the stroke moved
-  /// ([ActiveStrokeOverlayModel.movedSince]) where a change there shows
-  /// there and nowhere else, and the tiles it moved anywhere else.
+  /// What the overlay's pictures moved from [kept] to [now] where what
+  /// shows them did ([shownMoved]), in the live row's space: the pixels the
+  /// stroke moved ([ActiveStrokeOverlayModel.movedSince]) where a change
+  /// there shows there and nowhere else, and the tiles it moved elsewhere.
   ///
   /// 🚨A TILE IS WHAT A PICTURE IS MADE OF, NOT WHAT MOVED. ↩️A step of a
   /// 20 px line wrote about 46,000 texels into the frame's picture to change
@@ -1073,10 +1080,14 @@ final class _FrameRows {
   /// from the frame along the patch's edge
   /// (a-blur-under-a-clip-cuts-its-edge-on-vulkan): left on the tile, that
   /// edge stays off the ink.
-  Rect? _whereTheOverlayMoved(LiveSurfaceTokens kept, LiveSurfaceTokens now) {
+  Rect? _whereTheOverlayMoved(
+    LiveSurfaceTokens kept,
+    LiveSurfaceTokens now,
+    Set<TileCoord> shownMoved,
+  ) {
     final painter = activeSurfacePainter!;
     final tiles = tileCoordsWorldRect(
-      _movedCoords(kept.overlay, now.overlay),
+      _movedCoords(kept.overlay, now.overlay).where(shownMoved.contains),
       painter.surface.tileSize,
     );
     final mark = kept.overlayMoves;

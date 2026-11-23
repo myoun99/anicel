@@ -1194,7 +1194,18 @@ void main() {
   /// `_CutsAhead` to fit: past a told answer its run and region are
   /// whichever run stands then — the run handed in is how the cut knows
   /// its answer is still its own.
-  const wideSignatures = 457;
+  ///
+  /// ⚠️457 → 458 on 2026-11-24, one named as the rule above asks (card
+  /// the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2, 관제
+  /// 2026-11-24): `BrushLiveStrokeRasterizer.promoteStrokeTiles` (five —
+  /// the cel under the stroke, its blend, whether it erases, its dabs, and
+  /// what the overlay shows of it) took what each step put, as shown:
+  /// pen-up hands those tiles over in place of laying the stroke again and
+  /// waiting for the GPU. 🔬`clean_code_diff` against the lane's base
+  /// (`68e631395`) names that one added and nothing gone. ⛔Not kept on the
+  /// stroke to fit: the overlay holds what it shows and lets each go, and
+  /// pen-up asks it, so no tile it let go is handed over.
+  const wideSignatures = 458;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

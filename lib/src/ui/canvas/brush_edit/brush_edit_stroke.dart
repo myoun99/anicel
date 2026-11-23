@@ -744,12 +744,15 @@ class _BrushEditStroke {
       _state._overlay.resetOverlay();
       return;
     }
-    _state._overlay._overlayModel.pictureOwed();
     final promoted = rasterizer.promoteStrokeTiles(
       base: base,
       mode: blendMode,
       erase: erase,
       dabs: sourceDabs,
+      // What each step put, as shown — handed over where it is the
+      // stroke's newest ([ActiveStrokeOverlayModel.landedTiles], which
+      // pictures what it still owes first).
+      shown: _state._overlay._overlayModel.landedTiles,
     );
     rasterizer.clear();
     landPromoted(
@@ -805,6 +808,7 @@ class _BrushEditStroke {
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
+        landing: entry.tile,
       );
       if (image != null) {
         // ★The tile the coordinate SHOWS once this lands — the committed
