@@ -4,6 +4,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_sections.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -190,6 +191,80 @@ void main() {
     expect(folderStructureProblem(stackOf(s)), isNull);
   });
 
+  // 🗣️검증 2026-11-23 (F-596 ④, card
+  // a-selection-across-sections-makes-an-empty-folder): rows picked from
+  // the direction row down to a drawing row made a folder holding NOTHING
+  // — the drawing row neither. 🗣️-Q1 (유저 2026-11-23): 「줄마다 제 칸을
+  // 지킨다 — 디렉션 · 카메라 줄은 그림 폴더에 안 든다」.
+  test('🎯a selection that reaches the direction row: its drawing rows go '
+      'in, the direction row stays in its own place, and the order they '
+      'were picked in says nothing', () {
+    List<String>? shapeBefore;
+    for (final directionFirst in [true, false]) {
+      final s = session();
+      final rows = addRows(s, 2);
+      final direction = _added(s, LayerKind.instruction);
+      select(
+        s,
+        directionFirst ? [direction, ...rows.reversed] : [...rows, direction],
+      );
+
+      final folder = addFolder(s);
+
+      expect(
+        [for (final id in rows) stackOf(s).byId(id)!.folderId],
+        everyElement(folder),
+        reason: 'direction picked ${directionFirst ? 'first' : 'last'}',
+      );
+      _expectInItsOwnPlace(s, direction);
+      expect(folderStructureProblem(stackOf(s)), isNull);
+      shapeBefore ??= shapeOf(s);
+      expect(shapeOf(s), shapeBefore, reason: 'the same rows, the same law');
+    }
+  });
+
+  test('🎯dragged onto a folder, a selection that reaches the direction row '
+      'lands the same whichever of its rows the hand holds', () {
+    ({EditorSessionManager s, List<LayerId> rows, LayerId direction})
+    standing() {
+      final s = session();
+      final bottom = s.activeLayerId!;
+      final rows = addRows(s, 2);
+      final direction = _added(s, LayerKind.instruction);
+      // The folder under the rows picked, out of the span they carry.
+      s.selectLayer(bottom);
+      s.rowSelection.value = const [];
+      final folder = addFolder(s);
+      expect(
+        stackOf(s).indexWhere((layer) => layer.id == folder),
+        lessThan(stackOf(s).indexWhere((layer) => layer.id == rows.first)),
+        reason: '⛔premise: the folder stands under the rows',
+      );
+      select(s, [direction, ...rows.reversed]);
+      return (s: s, rows: rows, direction: direction);
+    }
+
+    LayerId folderOf(EditorSessionManager s) => stackOf(
+      s,
+    ).firstWhere((layer) => layer.kind == LayerKind.folder).id;
+
+    final byDrawing = standing();
+    _dropOn(byDrawing.s, byDrawing.rows.last, folderOf(byDrawing.s));
+    final byDirection = standing();
+    _dropOn(byDirection.s, byDirection.direction, folderOf(byDirection.s));
+
+    expect(
+      [
+        for (final id in byDrawing.rows)
+          stackOf(byDrawing.s).byId(id)!.folderId,
+      ],
+      everyElement(folderOf(byDrawing.s)),
+      reason: 'the drawing rows go in',
+    );
+    _expectInItsOwnPlace(byDrawing.s, byDrawing.direction);
+    expect(shapeOf(byDirection.s), shapeOf(byDrawing.s));
+  });
+
   test('a track\'s row picked first with the cut\'s — the cut\'s go in', () {
     final s = session();
     final rows = addRows(s, 2);
@@ -210,6 +285,22 @@ void main() {
 LayerId _added(EditorSessionManager s, LayerKind kind) {
   s.layerStack.addLayerOfKind(kind);
   return s.activeLayerId!;
+}
+
+/// [direction] in no folder, above every drawing row of the cut — the
+/// camera section's, where A5-4 keeps it.
+void _expectInItsOwnPlace(EditorSessionManager s, LayerId direction) {
+  final stack = sectionedLayerOrder(s.requireActiveCut.layers);
+  final at = stack.indexWhere((layer) => layer.id == direction);
+  expect(stack[at].folderId, isNull, reason: 'the direction row in a folder');
+  expect(
+    stack.sublist(at + 1).where(
+      (layer) =>
+          timelineSectionForLayerKind(layer.kind) == TimelineSection.drawing,
+    ),
+    isEmpty,
+    reason: 'a drawing row above the direction row',
+  );
 }
 
 /// One whole drag of [moving]'s row — the selection it is in with it —

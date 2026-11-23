@@ -34,6 +34,7 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../models/timeline_row_address.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
@@ -114,6 +115,57 @@ class LayerDropPlan {
     }
   }
   return (start: start, endExclusive: endExclusive);
+}
+
+/// The row selection a drag of [movingId] carries, as it lands in the
+/// place of a row of [landing] kind: only the rows that stand in that place
+/// — one section, and in the camera section one rank ([_inOnePlace]) — and
+/// the hand's row, or where it stands in another place, the row of those
+/// nearest it in [stack]. Null where none stands there. A drag that carries
+/// no selection ([layerDragRun]) is handed back as it is: where ONE row may
+/// land is [_leavesSection]'s question.
+///
+/// 🗣️a-selection-across-sections-makes-an-empty-folder-Q1 (유저
+/// 2026-11-23): 「줄마다 제 칸을 지킨다 — 디렉션 · 카메라 줄은 그림 폴더에
+/// 안 든다」 — rows picked from the direction row down to a drawing row
+/// made a folder holding nothing, and dragged onto a drawing folder they
+/// moved only where the hand held a drawing row (검증 11-23 19:17). The
+/// rows of another place stay where they stand, and which row the hand
+/// holds says nothing. A5-4 is why a direction row has no place among the
+/// drawing rows.
+({LayerId movingId, Set<LayerId> alsoMoving})? selectionLandingIn(
+  List<Layer> stack,
+  LayerId movingId,
+  Set<LayerId> alsoMoving,
+  LayerKind landing,
+) {
+  if (alsoMoving.length <= 1 || !alsoMoving.contains(movingId)) {
+    return (movingId: movingId, alsoMoving: alsoMoving);
+  }
+  final staying = <LayerId>{};
+  int? handAt;
+  for (var at = 0; at < stack.length; at += 1) {
+    final row = stack[at];
+    if (row.id == movingId) {
+      handAt = at;
+    }
+    if (alsoMoving.contains(row.id) && _kindsInOnePlace(row.kind, landing)) {
+      staying.add(row.id);
+    }
+  }
+  if (handAt == null || staying.isEmpty) {
+    return null;
+  }
+  if (staying.contains(movingId)) {
+    return (movingId: movingId, alsoMoving: staying);
+  }
+  final from = handAt;
+  int distance(LayerId id) =>
+      (stack.indexWhere((row) => row.id == id) - from).abs();
+  final nearest = staying.reduce(
+    (a, b) => distance(b) < distance(a) ? b : a,
+  );
+  return (movingId: nearest, alsoMoving: staying);
 }
 
 /// What ONE row carries, before a selection has its say.
@@ -391,8 +443,25 @@ LayerDropPlan? resolveLayerDropOnRow({
     return null;
   }
   final targetIndex = stack.indexWhere((layer) => layer.id == targetId);
+  if (targetIndex < 0) {
+    return null;
+  }
+  // What lands is what stands in the target's place ([selectionLandingIn]):
+  // the rest of the selection is no part of the run, nor of what the target
+  // could stand inside.
+  final kept = selectionLandingIn(
+    stack,
+    movingId,
+    alsoMoving,
+    stack[targetIndex].kind,
+  );
+  if (kept == null) {
+    return null;
+  }
+  movingId = kept.movingId;
+  alsoMoving = kept.alsoMoving;
   final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
-  if (targetIndex < 0 || run == null) {
+  if (run == null) {
     return null;
   }
   // Onto something the run carries — a folder onto one of its own members —
@@ -657,11 +726,26 @@ _Lift? _liftIfLanding(
   required Set<LayerId> alsoMoving,
   required RowPointer? pointer,
 }) {
-  final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
-  if (run == null || !_lands(run, insertAt, stackLength: stack.length)) {
+  final whole = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
+  if (whole == null || !_lands(whole, insertAt, stackLength: stack.length)) {
     return null;
   }
-  final lift = _Lift.of(stack, movingId, run, insertAt, pointer);
+  // The place the gap stands in, asked with all the selection carries
+  // lifted: the rows of another place stay ([selectionLandingIn]).
+  final asked = _Lift.of(stack, movingId, whole, insertAt, pointer);
+  final landing = asked.below ?? asked.above;
+  final kept = landing == null
+      ? (movingId: movingId, alsoMoving: alsoMoving)
+      : selectionLandingIn(stack, movingId, alsoMoving, landing.kind);
+  if (kept == null) {
+    return null;
+  }
+  final run = layerDragRun(
+    stack,
+    kept.movingId,
+    alsoMoving: kept.alsoMoving,
+  )!;
+  final lift = _Lift.of(stack, kept.movingId, run, insertAt, pointer);
   return _leavesSection(lift) ? null : lift;
 }
 
@@ -715,10 +799,12 @@ bool _leavesSection(_Lift lift) {
 /// Whether two rows stand in one place of the order: one section, and in
 /// the camera section one rank — the place a landing may not leave (A5-4),
 /// and the place a line must lie against ([_gapBordersItsSeat]).
-bool _inOnePlace(Layer a, Layer b) =>
-    timelineSectionForLayerKind(a.kind) ==
-        timelineSectionForLayerKind(b.kind) &&
-    timelineCameraSectionRank(a.kind) == timelineCameraSectionRank(b.kind);
+bool _inOnePlace(Layer a, Layer b) => _kindsInOnePlace(a.kind, b.kind);
+
+/// [_inOnePlace], of the rows' kinds — what a place is made of.
+bool _kindsInOnePlace(LayerKind a, LayerKind b) =>
+    timelineSectionForLayerKind(a) == timelineSectionForLayerKind(b) &&
+    timelineCameraSectionRank(a) == timelineCameraSectionRank(b);
 
 /// MEMBERSHIP: the folder the slot sits inside is the folder of the row
 /// BELOW it — a member names its own folder, and a folder row (whose run

@@ -37,7 +37,7 @@ import '../../services/commands/cut_command_input_planner.dart'
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
 import '../timeline/layer_drop_policy.dart'
-    show layerDragRun, resolveLayerDropOnRow;
+    show layerDragRun, resolveLayerDropOnRow, selectionLandingIn;
 import '../timeline/timeline_cel_content_source.dart' show RowNamingRevision;
 import '../timeline/timeline_section_policy.dart' show sectionedLayerOrder;
 import '../canvas/stroke_in_flight.dart';
@@ -250,9 +250,15 @@ class LayerStack {
       for (final id in selected)
         if (listed.byId(id) != null) id,
     };
-    final run = held.isEmpty
+    // What a drag of them let go ON a folder carries: the rows that stand
+    // where a folder does (a-selection-across-sections-makes-an-empty-
+    // folder-Q1, [selectionLandingIn]) — the folder is born above THEM.
+    final kept = held.isEmpty
         ? null
-        : layerDragRun(listed, held.first, alsoMoving: held);
+        : selectionLandingIn(listed, held.first, held, LayerKind.folder);
+    final run = kept == null
+        ? null
+        : layerDragRun(listed, kept.movingId, alsoMoving: kept.alsoMoving);
     _project.historyManager.runAsOneStep('Add folder', () {
       _layerVerbs.addRow(
         (cut) => createFolderLayer(id: folderId, name: nextFolderName(cut)),
@@ -268,9 +274,9 @@ class LayerStack {
           ? null
           : resolveLayerDropOnRow(
               stack: sectionedLayerOrder(now.layers),
-              movingId: held.first,
+              movingId: kept!.movingId,
               targetId: folderId,
-              alsoMoving: held,
+              alsoMoving: kept.alsoMoving,
             );
       if (plan == null) {
         return;
