@@ -2087,7 +2087,19 @@ void main() {
   /// ceiling of 83, `ShortcutSettingsDialogState` having crossed there
   /// since `55fcd0e8b` (82 → 83 by the same diff). ⛔Not split to fit: each
   /// answer stands beside the reset it answers for.
-  const longClasses = 86;
+  ///
+  /// ⚠️86 → 87 on 2026-11-23, ONE name: `_StillLayer` crossed (592 → 644)
+  /// when a live tick that stood still came to be taken back into its
+  /// stratum in a gap in the frames, in one image, and no longer in the
+  /// frame its count ran out (card a-frame-pick-recuts-and-rebakes-the-
+  /// docks-ticks — measured in the real app against the law before it).
+  /// 🔬`clean_code_diff` against master (`350b24871`) names this one and
+  /// no other class. It stood at 693 first: the stay a tick learns was
+  /// written into the region, reading and writing four of the tick's own
+  /// fields — it went to the tick (`TickSceneLayer._movedAloneIn`), whose
+  /// fields they are. ⛔Not split further to fit: what is left is when the
+  /// region takes its own image again, which a seam would say in two places.
+  const longClasses = 87;
 
   late CleanCodeScan scan;
   setUpAll(() {

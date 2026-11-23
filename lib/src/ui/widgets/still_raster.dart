@@ -676,42 +676,33 @@ class _StillLayer extends OffsetLayer {
   /// frames ([_takeInAGap]) — with whatever else stood still by then, in
   /// one image.
   /// ↩️「…and every tick drawn live still moves」: the strata were thrown
-  /// away in the frame a tick's [_movingFor] ran out and taken again in it
-  /// (F-244-drag-start) — each tick by its own count, so a frame picked on
-  /// the timeline took the dock's image four times, all in frames: the
-  /// pointer coming over the dock (its tab strip's tick), the pick (the
-  /// ruler's ticks, the cursor's), and one more as each of the two ran out
-  /// while the pointer hovered over the canvas. 🔬The real app, the main
-  /// PC, S5_BA cut 352, 144 Hz, laws walked in turn inside one run: images
-  /// of the bottom dock taken in a frame, a cycle of pick → hover / pick →
-  /// rest / pick → stroke — 4.9 / 5.9 / 8.4, and 4.1 / 2.4 / 0.5 with the
-  /// taking back left to a gap; frames over 6.94 ms 300 against 181. The
-  /// law as it is written here ([_noteWhoMovedAlone]'s with it), the same
-  /// way on 11-23: 6.9 / 5.6 / 8.1 and 3.2 / 1.6 / 1.0; frames over
-  /// 6.94 ms 653 against 260, the median frame of pick → hover 2.49 →
-  /// 2.69 ms. ⚠️No weak device was measured: a tick stays live while the
-  /// frames flow, and what a frame pays for that there is not known.
+  /// away in the frame a tick's [TickSceneLayer._movingFor] ran out and
+  /// taken again in it (F-244-drag-start) — each tick by its own count, so
+  /// a frame picked on the timeline took the dock's image four times, all
+  /// in frames: the pointer coming over the dock (its tab strip's tick),
+  /// the pick (the ruler's ticks, the cursor's), and one more as each of
+  /// the two ran out while the pointer hovered over the canvas. 🔬The real
+  /// app, the main PC, S5_BA cut 352, 144 Hz, laws walked in turn inside
+  /// one run: images of the bottom dock taken in a frame, a cycle of pick →
+  /// hover / pick → rest / pick → stroke — 4.9 / 5.9 / 8.4, and 4.1 / 2.4 /
+  /// 0.5 with the taking back left to a gap; frames over 6.94 ms 300
+  /// against 181. The law as it is written here (a tick's own stay with it,
+  /// [TickSceneLayer._movedAloneIn]), the same way on 11-23: 6.9 / 5.6 /
+  /// 8.1 and 3.2 / 1.6 / 1.0; frames over 6.94 ms 653 against 260, the
+  /// median frame of pick → hover 2.49 → 2.69 ms. ⚠️No weak device was
+  /// measured: a tick stays live while the frames flow, and what a frame
+  /// pays for that there is not known.
   bool _stillShows(_Strata strata) =>
       _owner._gate() == StillStandDown.none &&
       _owner._gridFit() == strata.fit &&
       listEquals(_signatureOf(strata.live.contains), _imageSignature);
 
-  /// How long a tick that changed stays one that moves: a film frame's
-  /// tick changes every few refreshes, a row's tile landing once.
-  static const int _movingFor = StillRaster.maxStillFrames;
-
-  /// The longest a tick stays one that moves, having learned
-  /// ([_noteWhoMovedAlone]) — as far past the shortest as a region's wait
-  /// goes past its own ([StillRaster.maxStillFrames]).
-  static const int _movingForMost =
-      _movingFor * (StillRaster.maxStillFrames ~/ StillRaster.stillFrames);
-
-  /// Whether [tick] changed what it holds in the last [_movingFor] frames —
-  /// or the longer it has learned to stay ([TickSceneLayer._staysMovingFor])
-  /// — WHILE THE REST OF THE REGION STOOD STILL — in a frame the region had
-  /// no change of its own in. One that changes only with the region moves
-  /// with it, and is taken with the rest: a playing timeline's rows each
-  /// hold a tick that a page turn moves with the page, and nothing else.
+  /// Whether [tick] changed what it holds lately WHILE THE REST OF THE
+  /// REGION STOOD STILL — in a frame the region had no change of its own
+  /// in ([TickSceneLayer._movingIn]). One that changes only with the
+  /// region moves with it, and is taken with the rest: a playing
+  /// timeline's rows each hold a tick that a page turn moves with the
+  /// page, and nothing else.
   /// ↩️Read live for the 48 frames after every page, they were taken into
   /// the strata in an image of their own when those ran out — two images a
   /// page (10-12, cut 302). ↩️Asked as "changed after the region's own
@@ -719,68 +710,28 @@ class _StillLayer extends OffsetLayer {
   /// turn read as standing still: taken into the strata, which the next
   /// film frame threw away — two images a page again, and the first film
   /// frame after every turn drawn live (10-12, cut 302: 55 of 55).
-  bool _moving(TickSceneLayer tick) =>
-      tick.alwaysLive ||
-      _frame - tick._movedAloneAt <= tick._staysMovingFor;
+  bool _moving(TickSceneLayer tick) => tick._movingIn(_frame);
 
-  /// Marks the ticks that changed in this frame as moved alone, unless the
-  /// region changed in it too. A tick looked at for the first time is a
-  /// layer new to the region, which is a change of the region's: a tick
-  /// never moves alone on its first look.
-  ///
-  /// 🚨A TICK TAKEN BACK THAT MOVES AGAIN BEFORE THAT PAID STAYS LIVE TWICE
-  /// AS LONG THE NEXT TIME; ONE THAT PAID, THE SHORTEST AGAIN (card
-  /// a-frame-pick-recuts-and-rebakes-the-docks-ticks, 11-22) — the law a
-  /// region's own image goes by ([_drop]), a tick at a time. Taken back
-  /// into its stratum, a tick's next move is a change of the region's: the
-  /// strata are thrown away and taken again in that frame
-  /// (F-244-drag-start). The ruler's ticks and the cursor's move at every
-  /// pick, the dock's tab strip's whenever the pointer comes over the dock
-  /// — taken back in the rest after one pick, they cost the next pick an
-  /// image in its frame, each. 🔬The real app, the main PC, S5_BA cut 352,
-  /// 144 Hz, pick → 0.6 s hover → 1.5 s rest: 2.4 images of the bottom dock
-  /// a cycle taken in a frame with the taking back left to a gap alone, 1.1
-  /// with a tick's stay doubled each time it moved again. The law as it is
-  /// written here, the same way on 11-23, 28 cycles a law, pick → hover /
-  /// rest / stroke: 3.7 / 2.3 / 1.5 with the gap alone and 3.2 / 1.6 / 1.0
-  /// with this; frames over 6.94 ms 365 against 260; no median frame
-  /// longer but the rest's (2.60 → 2.68 ms). A stay changed 25 times in
-  /// 120 cycles, and stood for cycles each time: the tab strip's, at 192
-  /// frames, was not taken back in the rest at all.
-  /// ⛔Not weight to take out for how seldom it changes: the gap alone was
-  /// measured beside it, and takes more images.
-  /// ⛔Not doubled alone: a stay that only grows ends with every tick drawn
-  /// live in every frame (🔬the same run, every tick live: the raster's
-  /// median 0.93 → 2.71 ms a frame, frames over 6.94 ms 300 → 663).
+  /// Marks the ticks that changed in this frame as moved alone
+  /// ([TickSceneLayer._movedAloneIn]), unless the region changed in it
+  /// too. A tick looked at for the first time is a layer new to the
+  /// region, which is a change of the region's: a tick never moves alone
+  /// on its first look.
   void _noteWhoMovedAlone() {
     if (_changedAt != _frame) {
       for (final tick in _changedTicks) {
-        final takenBackAt = tick._takenBackAt;
-        if (takenBackAt != null) {
-          tick._staysMovingFor =
-              _frame - takenBackAt < StillRaster.framesToPay
-              ? (tick._staysMovingFor * 2).clamp(_movingFor, _movingForMost)
-              : _movingFor;
-          tick._takenBackAt = null;
-        }
-        tick._movedAloneAt = _frame;
+        tick._movedAloneIn(_frame);
       }
     }
     _changedTicks.clear();
   }
 
-  /// Notes which of the ticks the strata just taken were walked for
-  /// ([_seenTicks]) they draw [live], and which they took back — one drawn
-  /// live until now, in its stratum from this frame on.
+  /// Tells each of the ticks the strata just taken were walked for
+  /// ([_seenTicks]) whether they draw it [live]
+  /// ([TickSceneLayer._takenIn]).
   void _noteWhoWasTakenBack(Set<TickSceneLayer> live) {
     for (final tick in _seenTicks) {
-      if (live.contains(tick)) {
-        tick._drawnLive = true;
-        tick._takenBackAt = null;
-      } else if (tick._drawnLive) {
-        tick._drawnLive = false;
-        tick._takenBackAt = _frame;
-      }
+      tick._takenIn(_frame, live: live.contains(tick));
     }
   }
 
@@ -1736,18 +1687,83 @@ class TickSceneLayer extends OffsetLayer {
   /// whenever anything under it changes, and a region drawing it live adds
   /// it on every frame itself.
   List<Object?>? _held;
-  int _movedAloneAt = -_StillLayer._movingFor - 1;
+  int _movedAloneAt = -_movingFor - 1;
+
+  /// How long a tick that changed stays one that moves: a film frame's
+  /// tick changes every few refreshes, a row's tile landing once.
+  static const int _movingFor = StillRaster.maxStillFrames;
+
+  /// The longest a tick stays one that moves, having learned
+  /// ([_movedAloneIn]) — as far past the shortest as a region's wait goes
+  /// past its own ([StillRaster.maxStillFrames]).
+  static const int _movingForMost =
+      _movingFor * (StillRaster.maxStillFrames ~/ StillRaster.stillFrames);
 
   /// How long the tick stays one that moves after it moved alone — longer
   /// where it was taken back and moved again before that paid
-  /// ([_StillLayer._noteWhoMovedAlone]).
-  int _staysMovingFor = _StillLayer._movingFor;
+  /// ([_movedAloneIn]).
+  int _staysMovingFor = _movingFor;
 
   /// Whether the strata last taken draw the tick live, and the frame they
   /// took it back into its stratum — null while it is drawn live, and for
-  /// one that never was.
+  /// one that never was ([_takenIn]).
   bool _drawnLive = false;
   int? _takenBackAt;
+
+  /// Whether the tick moved alone in the frames it stays one that moves
+  /// for, counted back from [frame] — or is one always drawn live.
+  bool _movingIn(int frame) =>
+      alwaysLive || frame - _movedAloneAt <= _staysMovingFor;
+
+  /// [frame] is one the tick changed in ALONE, the rest of its region
+  /// standing still ([_StillLayer._noteWhoMovedAlone]).
+  ///
+  /// 🚨A TICK TAKEN BACK THAT MOVES AGAIN BEFORE THAT PAID STAYS LIVE TWICE
+  /// AS LONG THE NEXT TIME; ONE THAT PAID, THE SHORTEST AGAIN (card
+  /// a-frame-pick-recuts-and-rebakes-the-docks-ticks, 11-22) — the law a
+  /// region's own image goes by (`_StillLayer._drop`), a tick at a time.
+  /// Taken back into its stratum, a tick's next move is a change of the
+  /// region's: the strata are thrown away and taken again in that frame
+  /// (F-244-drag-start). The ruler's ticks and the cursor's move at every
+  /// pick, the dock's tab strip's whenever the pointer comes over the dock
+  /// — taken back in the rest after one pick, they cost the next pick an
+  /// image in its frame, each. 🔬The real app, the main PC, S5_BA cut 352,
+  /// 144 Hz, pick → 0.6 s hover → 1.5 s rest: 2.4 images of the bottom dock
+  /// a cycle taken in a frame with the taking back left to a gap alone, 1.1
+  /// with a tick's stay doubled each time it moved again. The law as it is
+  /// written here, the same way on 11-23, 28 cycles a law, pick → hover /
+  /// rest / stroke: 3.7 / 2.3 / 1.5 with the gap alone and 3.2 / 1.6 / 1.0
+  /// with this; frames over 6.94 ms 365 against 260; no median frame
+  /// longer but the rest's (2.60 → 2.68 ms). A stay changed 25 times in
+  /// 120 cycles, and stood for cycles each time: the tab strip's, at 192
+  /// frames, was not taken back in the rest at all.
+  /// ⛔Not weight to take out for how seldom it changes: the gap alone was
+  /// measured beside it, and takes more images.
+  /// ⛔Not doubled alone: a stay that only grows ends with every tick drawn
+  /// live in every frame (🔬the same run, every tick live: the raster's
+  /// median 0.93 → 2.71 ms a frame, frames over 6.94 ms 300 → 663).
+  void _movedAloneIn(int frame) {
+    final takenBackAt = _takenBackAt;
+    if (takenBackAt != null) {
+      _staysMovingFor = frame - takenBackAt < StillRaster.framesToPay
+          ? (_staysMovingFor * 2).clamp(_movingFor, _movingForMost)
+          : _movingFor;
+      _takenBackAt = null;
+    }
+    _movedAloneAt = frame;
+  }
+
+  /// The strata taken in [frame] draw the tick [live] — or take it back
+  /// into its stratum, where they drew it live until now.
+  void _takenIn(int frame, {required bool live}) {
+    if (live) {
+      _drawnLive = true;
+      _takenBackAt = null;
+    } else if (_drawnLive) {
+      _drawnLive = false;
+      _takenBackAt = frame;
+    }
+  }
 
   /// Whether what the tick holds changed since its region last looked.
   bool _looked(List<Object?> held) {
