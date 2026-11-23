@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/affected_tests.dart' show rerunsOf;
 import '../../tool/test_bundles.dart';
 import '../../tool/test_seconds.dart';
 
@@ -508,6 +509,39 @@ void main() {
       );
     });
 
+    test('each file that stood runs again in a batch of its own; the reds '
+        'that ended, together', () {
+      // 🔬PR 1504's Linux shard 5 (2026-11-23): its two stood files ran
+      // again as one batch at two suites, were cut with both still running,
+      // and nothing told whose the stop was.
+      expect(
+        rerunsOf(
+          {'test/s_test.dart', 'test/r_test.dart', 'test/a_test.dart',
+              'test/q_test.dart'},
+          {'test/s_test.dart', 'test/a_test.dart'},
+        ),
+        [
+          ['test/a_test.dart'],
+          ['test/s_test.dart'],
+          ['test/q_test.dart', 'test/r_test.dart'],
+        ],
+      );
+      expect(
+        rerunsOf({'test/a_test.dart', 'test/b_test.dart'}, const {}),
+        [
+          ['test/a_test.dart', 'test/b_test.dart'],
+        ],
+        reason: 'reds that ended share a batch, as before',
+      );
+      expect(
+        rerunsOf({'test/a_test.dart'}, {'test/a_test.dart'}),
+        [
+          ['test/a_test.dart'],
+        ],
+        reason: 'no empty batch after the stood ones',
+      );
+    });
+
     test("an entry whose own test went red — the config's after its "
         'files — makes every file of it red, its green ones too', () {
       // Which file left what the config's last check found is not said:
@@ -618,8 +652,8 @@ void main() {
     expect(source, contains('await runAll(selected, bundled: true, ('));
     expect(
       source,
-      contains('await runAll(reds.toList()..sort(), (i, report, result, '
-          'root, _) {'),
+      contains('    for (final files in rerunsOf(reds, stoodInCut)) {\n'
+          '      await runAll(files, (i, report, result, root, _) {'),
     );
     expect(
       source,

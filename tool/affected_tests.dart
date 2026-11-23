@@ -669,6 +669,26 @@ Set<String> _stoodIn(File report, {required String root}) {
   }
 }
 
+/// The batches a red-again pass runs [reds] in: each of [stood] — those
+/// that stood when their bundled batch was cut — in a batch of its own, the
+/// other reds together.
+///
+/// 🚨ALONE IS ONE FILE A BATCH (관제 2026-11-24 06:2x, card the-wide-check-
+/// takes-five-hours): the pass is to tell whose a stop was (관제 11-23 22:3x
+/// (가)), and PR 1504's Linux shard 5 ran its two stood files as one batch
+/// at two suites — cut again after 15 minutes with both still running, so
+/// nothing told whether each stops or one held the other. A red that ended
+/// needs no such answer, so the rest still share a batch.
+List<List<String>> rerunsOf(Set<String> reds, Set<String> stood) {
+  final alone = reds.where(stood.contains).toList()..sort();
+  final together = reds.where((file) => !stood.contains(file)).toList()
+    ..sort();
+  return [
+    for (final file in alone) [file],
+    if (together.isNotEmpty) together,
+  ];
+}
+
 /// Says each file of [lost] — red in a bundle, green alone — with its place
 /// in the bundle it ran in ([bundleOf], [placeInBundle]) and the tests that
 /// were red there ([reds]) — or that it stood when its batch was cut
@@ -1434,15 +1454,18 @@ Future<int> _runTests(
     if (reds.isEmpty) return;
     if (stoodInCut.isNotEmpty) {
       _report('${stoodInCut.length} file(s) stood in a bundle when their '
-          'batch was cut — running them once more alone, to tell whose the '
-          'stop was: ${(stoodInCut.toList()..sort()).join(', ')}');
+          'batch was cut — running them once more, each in a batch of its '
+          'own, to tell whose the stop was: '
+          '${(stoodInCut.toList()..sort()).join(', ')}');
     }
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
     final again = <SuiteRun>[];
-    await runAll(reds.toList()..sort(), (i, report, result, root, _) {
-      again.addAll(_recordBatch(report, null, root: root));
-    });
+    for (final files in rerunsOf(reds, stoodInCut)) {
+      await runAll(files, (i, report, result, root, _) {
+        again.addAll(_recordBatch(report, null, root: root));
+      });
+    }
     // ⚠️「The same inputs」 is measured after the second run, not assumed
     // from the keys taken when this run began ([splitGreenAgain]): a
     // landing into this checkout can change them in between.
