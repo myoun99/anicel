@@ -340,23 +340,26 @@ bool _sameCamera(_Through a, _Through b) {
   return true;
 }
 
+/// How many lays a canvas's screen holds apart ([_Lays]): what a target
+/// falls behind by — a frame's lays where one texture is drawn on at
+/// every frame (Android's window, `_WindowTexture`), two frames' where two
+/// are drawn on in turn (`_AlternatedTextures`). One behind by more is
+/// drawn whole ([_Lays.since]) — the bound costs a whole frame, never a
+/// wrong one.
+///
+/// 🔬The Galaxy Tab's slowest frame of a pen at work laid 41–54 strokes'
+/// steps, the frames between 5–14 (build 1099, 유저's photographs
+/// 2026-11-23, card the-galaxy-tab-canvas-went-slow-on-build-1095): two
+/// such frames are some 110 lays. ↩️Held eight deep (2026-11-22, a few
+/// lays a frame on this PC), its window fell behind by more at every
+/// slow frame of a stroke there: it was drawn whole — 3584×2560 texels,
+/// 43 ms of that tablet's GPU —, the steps piled up meanwhile, and the
+/// next was drawn whole again.
+const int screenLaysKeptApart = 256;
+
 /// WHERE A KEPT FRAME WAS MADE AGAIN, LAY BY LAY: each lay numbered from
 /// one, the newest [_kept] of them held with the world pixels each made
 /// again — null, all of them.
-/// How many lays a canvas's screen holds apart ([_Lays]): what two targets
-/// shown in turn fall behind by. One behind by more is drawn whole
-/// ([_Lays.since]) — the bound costs a whole frame, never a wrong one.
-///
-/// 🔬Two frames of the Galaxy Tab's slowest are some 110 lays (build 1099,
-/// 유저's photographs 2026-11-23, card
-/// the-galaxy-tab-canvas-went-slow-on-build-1095: 41–54 strokes' steps
-/// laid in one frame of a pen at work, 5–14 in the frames between). ↩️Held
-/// eight deep (2026-11-22, a few lays a frame on this PC), a target fell
-/// behind by more at every frame of a stroke there: it was drawn whole —
-/// 3584×2560 texels, 43 ms of that tablet's GPU —, the steps piled up
-/// meanwhile, and the next was drawn whole again.
-const int screenLaysKeptApart = 256;
-
 final class _Lays {
   static const int _kept = screenLaysKeptApart;
 

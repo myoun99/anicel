@@ -793,9 +793,10 @@ void main() {
     });
 
     // 🔬Two frames of the Galaxy Tab's slowest behind — 54 strokes' steps
-    // laid in one frame, two targets in turn (build 1099, 2026-11-23,
-    // `screenLaysKeptApart`) —, a target is drawn where they lay: whole,
-    // it was 43 ms of that tablet's GPU at every frame of a stroke.
+    // laid in one frame (build 1099, 2026-11-23, `screenLaysKeptApart`):
+    // its window, one texture, falls behind by one such frame, two in turn
+    // by two —, a target is drawn where they lay: whole, it was 43 ms of
+    // that tablet's GPU at every slow frame of a stroke.
     test('a target two frames of the Galaxy Tab\'s slowest behind is drawn '
         'where they lay', () async {
       const behind = 2 * 54;
