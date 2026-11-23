@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/made_once.dart';
 import '../../models/app_gpu_settings.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/fx_plugin_run.dart';
@@ -155,14 +156,14 @@ class InstalledFxPlugins extends ChangeNotifier {
     }
   }
 
-  Future<void>? _loading;
+  final _loading = MadeOnce<void>();
 
   /// In the order they were installed.
   List<InstalledFxPlugin> get plugins => _plugins;
 
   /// Reads which plugins this device has — once: a caller after the first
   /// waits for the same read, as [missingFrom] does.
-  Future<void> load() => _loading ??= _read();
+  Future<void> load() => _loading.of(_read);
 
   Future<void> _read() async {
     final plugins = await _service.loadIndex();

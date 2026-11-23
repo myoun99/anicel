@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../core/made_once.dart';
 import '../core/path_names.dart' show folderOfPath, pathInFolder;
 import '../ui/theme/app_theme.dart' show AppTypography;
 
@@ -26,11 +27,10 @@ abstract final class EngineFaces {
   /// ⚠️THE FACES ARE KEPT, NOT THE FUTURE OF THEM: a future answers whoever
   /// awaits it in the zone it was made in, and that zone may be gone — each
   /// widget test runs in one of its own, and a second test awaiting the
-  /// first one's future never woke (11-08).
-  static Future<GpuFaces> bundled() async =>
-      _bundled ??= await (_reading ??= read());
-  static GpuFaces? _bundled;
-  static Future<GpuFaces>? _reading;
+  /// first one's future never woke (11-08). The law of every such keeping
+  /// since 2026-11-23 ([MadeOnce]).
+  static Future<GpuFaces> bundled() => _bundled.of(read);
+  static final _bundled = MadeOnce<GpuFaces>();
 
   /// The bundled families read anew — what [bundled] keeps; a test's own
   /// read is kept by no one. Each file mapped by the engine from where the
@@ -96,14 +96,14 @@ abstract final class EngineFaces {
 
   /// Whether the bundle's have been read ([bundled]): what a paint asks
   /// before [inOrder], waiting for nothing.
-  static bool get areRead => _bundled != null;
+  static bool get areRead => _bundled.isMade;
 
   /// The bundled families in the order [order] names them — each by its
   /// place among [AppTypography.canvasLetterFaces] —, made the first time
   /// that order is asked for and kept. Asked once they are read
   /// ([areRead]).
   static GpuFaces inOrder(List<int> order) {
-    final all = _bundled!;
+    final all = _bundled.orNull!;
     if (listEquals(order, _bundledOrder)) {
       return all;
     }

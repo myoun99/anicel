@@ -51,9 +51,14 @@ abstract final class EngineStrokes {
   /// all on the thread the app's frames are built on, 7.0–10.1 s of a
   /// stopped app within 13 s of the canvas (🗣️관제 06:42: 「같은 선이
   /// 걸린다」).
-  static Future<void> warmBlurStrips() =>
-      _blurStrips.of(() => GpuBlurs.compilingStrips(appGpuEngine));
-  static final _blurStrips = KeptOnTheAppsEngine<Future<void>>();
+  static Future<void> warmBlurStrips() => _blurStrips.once(() async {
+    final engine = appGpuEngine;
+    await GpuBlurs.compilingStrips(engine);
+    return engine;
+  });
+
+  /// The engine the strips were compiled on, which keeps them.
+  static final _blurStrips = KeptOnTheAppsEngine<GpuEngine>();
 
   /// A stroke of no tiles.
   static GpuStroke take() =>

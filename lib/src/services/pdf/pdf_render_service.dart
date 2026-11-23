@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import '../../core/made_once.dart';
 import '../flutter_test_run.dart';
 import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
@@ -55,14 +56,14 @@ abstract final class PdfRenderService {
   /// true — widget tests drive fake documents without any FFI.
   static ViewerDocumentOpener? debugOpenerOverride;
 
-  static bool? _availability;
-  static Future<bool>? _probe;
+  /// The probe, and its verdict once it has one ([MadeOnce]).
+  static MadeOnce<bool> _probe = MadeOnce();
 
   /// The probe's last verdict: null = not probed yet, false = PDFium did
   /// not load (the honest-absence state), true = ready. The runtime path
   /// report reads this without forcing a probe.
   static bool? get availability =>
-      debugOpenerOverride != null ? true : _availability;
+      debugOpenerOverride != null ? true : _probe.orNull;
 
   /// Probes once per process (the app kicks this at startup so the
   /// System page and the import window have a settled answer). Any
@@ -72,20 +73,20 @@ abstract final class PdfRenderService {
     if (debugOpenerOverride != null) {
       return Future<bool>.value(true);
     }
-    return _probe ??= _probeAvailability();
+    return _probe.of(_probeAvailability);
   }
 
   static Future<bool> _probeAvailability() async {
     if (underFlutterTest) {
       // flutter_tester has no bundled native asset and must never try —
       // the same gate the audio device and video encoder use.
-      return _availability = false;
+      return false;
     }
     try {
       await pdfrx.pdfrxFlutterInitialize();
-      return _availability = true;
+      return true;
     } on Object {
-      return _availability = false;
+      return false;
     }
   }
 
@@ -179,8 +180,7 @@ abstract final class PdfRenderService {
   static void debugResetForTests() {
     debugOpenerOverride = null;
     debugPageSpanOverride = null;
-    _availability = null;
-    _probe = null;
+    _probe = MadeOnce();
   }
 }
 
