@@ -315,6 +315,7 @@ pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked
 #[cfg(test)]
 mod tests {
     use crate::kernels::fill::Fill;
+    use crate::platform::Laid;
     use crate::testing::{assert_pinned, first_engine};
 
     // fill's own ledger row (kernels/fill/tests.rs): 70 x 45, so the
@@ -348,7 +349,7 @@ mod tests {
             WIDTH,
             HEIGHT,
             wgpu::TextureFormat::Rgba8Unorm,
-            super::Laid::ForTheCpuToo,
+            Laid::ForTheCpuToo,
         )
         .expect("shared surface");
         Fill::new(engine).run(engine, &texture, 7).expect("fill");
@@ -390,7 +391,7 @@ mod tests {
             WIDTH,
             HEIGHT,
             wgpu::TextureFormat::Bgra8Unorm,
-            super::Laid::ForTheCpuToo,
+            Laid::ForTheCpuToo,
         );
         assert!(made.is_err());
     }
