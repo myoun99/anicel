@@ -13,6 +13,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
+import '../../helpers/settle_async.dart';
 
 /// A session widget test that lends the real clock — to read a screen's
 /// pixels, to wait out a file — ends with playback's warmer between two
@@ -31,7 +33,14 @@ import '../../helpers/draw_on_current_frame.dart';
 /// with nothing to make, one that holds the warmer to its end.
 void main() {
   /// A session whose warmer has asked the engine for a cut's pictures, and
-  /// the real clock lent long enough for the engine to make one.
+  /// the real clock lent till what the engine made for the walk has come
+  /// back — waiting for the fake clock to run it.
+  ///
+  /// ⚠️Till it comes, not for a time (`poll_until.dart` has the law): two
+  /// seconds were lent, and with a bundle's load the engine's answers came
+  /// after them — the premise red three times behind
+  /// the_colour_edit_head_lights_with_its_block, green alone and reversed
+  /// (card bundled-files-find-the-engine-already-open ③, 2026-11-23).
   Future<EditorSessionManager> aPictureMadeInTheLentClock(
     WidgetTester tester,
   ) async {
@@ -46,8 +55,13 @@ void main() {
     for (var step = 0; step < 4; step += 1) {
       await tester.pump();
     }
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(seconds: 2)),
+    final came = await tester.runAsync(
+      () => pollUntil(() => tester.binding.microtaskCount > 0),
+    );
+    expect(
+      came,
+      isTrue,
+      reason: '⛔premise: what the engine made came back in the lent clock',
     );
     return s;
   }
@@ -61,9 +75,7 @@ void main() {
     warmer.landings.addListener(heard);
     addTearDown(() => warmer.landings.removeListener(heard));
 
-    await tester.pump();
-
-    expect(before, isNotEmpty);
+    expect(await settleAsync(tester, () => before.isNotEmpty), isTrue);
     warmer.cancel();
   });
 

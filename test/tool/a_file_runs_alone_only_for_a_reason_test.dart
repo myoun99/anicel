@@ -55,7 +55,7 @@ void main() {
   test('the ledger is the whole of it, counted', () {
     expect(
       kRunsAlone,
-      hasLength(26),
+      hasLength(25),
       reason: 'Going DOWN is the point — update this number with it. Going '
           'UP needs the census line that shows the file red in a bundle and '
           'green alone.',

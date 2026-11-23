@@ -102,11 +102,6 @@ const Map<String, String> kRunsAlone = {
   'test/ui/export/an_output_looks_at_no_head_of_the_cut_test.dart':
       'census 11-21 reversed: red 8/10 in a bundle, after '
       'xsheet_reveals_the_selection (8 of 8 tests red); green alone.',
-  'test/ui/playback/a_warmer_handed_the_real_clock_ends_with_the_test_test.dart':
-      'census 11-20 forward: red 2/9 in a bundle, after '
-      'the_colour_edit_head_lights_with_its_block (1 red) — premise: the '
-      'engine makes a picture in the lent clock, and the walk lands it when '
-      'the …; green alone.',
   'test/ui/playback/voice_record_preview_test.dart':
       'census 11-20 forward: red 3/10 in a bundle, after export_preview_panel '
       '(1 red) — REC1-C: the timeline shows the growing take WITHOUT a '
