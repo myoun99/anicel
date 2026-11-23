@@ -616,19 +616,25 @@ _writeBundles(List<String> batch, int i, String root, {required bool reversed}) 
   );
 }
 
-/// What each file of a bundled batch did ([runsOfFiles]).
+/// What each file of a bundled batch did ([runsOfFiles]), with its times
+/// laid over the machine's record ([_keepTimes]).
 ///
-/// ⏸️KEPT NOWHERE — no green and no time — till the census has measured
-/// whether a bundle gives a green its file alone would not (관제 11-20, the
-/// fake green): kept, one would skip that file's next run.
+/// ⏸️NO GREEN KEPT till the census has measured whether a bundle gives a
+/// green its file alone would not (관제 11-20, the fake green): kept, one
+/// would skip that file's next run.
+/// ↩️Its TIME is kept (2026-11-23, card ci-heaviest-files-draw-on-the-cpu —
+/// till then this kept neither, for the green's reason): a time skips no
+/// run, and the CI shards, bundled since, deal the next run's files by the
+/// times they leave — kept by none, every file would go to the size deal.
 List<SuiteRun> _bundledRuns(
   File report,
   Map<String, List<String>> entries, {
   required String root,
 }) {
   if (!report.existsSync()) return const [];
+  final List<SuiteRun> runs;
   try {
-    return runsOfFiles(
+    runs = runsOfFiles(
       suiteRuns(report.readAsStringSync(), root: root),
       entries,
     );
@@ -636,6 +642,8 @@ List<SuiteRun> _bundledRuns(
     _report('the report of this batch could not be read: ${e.message}');
     return const [];
   }
+  _keepTimes(runs);
+  return runs;
 }
 
 /// The tests [report] says ended red ([redTests]), by their paths from
@@ -697,6 +705,14 @@ List<SuiteRun> _recordBatch(File report, ResultCache? cache, {String? root}) {
     _report('the report of this batch could not be read: ${e.message}');
     return const [];
   }
+  _keepTimes(runs);
+  _keep(cache, runs);
+  return runs;
+}
+
+/// Lays what each file of [runs] took over this machine's times record
+/// ([timesRecord], [merged]).
+void _keepTimes(List<SuiteRun> runs) {
   final file = timesRecord(Platform.environment);
   final measured = timesOf(runs);
   try {
@@ -706,8 +722,6 @@ List<SuiteRun> _recordBatch(File report, ResultCache? cache, {String? root}) {
   } on FileSystemException catch (e) {
     _report('what this batch said was not kept: ${e.message}');
   }
-  _keep(cache, runs);
-  return runs;
 }
 
 /// Lays [runs] over the green record of [cache] ([ResultCache.keep]).
