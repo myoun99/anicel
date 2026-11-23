@@ -4,6 +4,10 @@
 //   flutter run -d windows -t tool/probe/pdf_read_probe_main.dart \
 //     --dart-define=PDF_IN=<a.pdf> --dart-define=PDF_OUT=<report.txt>
 //
+// Then it opens the file ten times more, each with its time of day and a
+// two-minute limit — a callback open once did not end within 600 s
+// (1 of 9, 저장 11-24), and 관제 asked it be tried again, not closed.
+//
 // It runs in the REAL app process: flutter_tester never loads PDFium
 // (PdfRenderService's test doctrine), so the reads PdfOpeningReads counts
 // are only ever counted here (decoder-reads-skip-the-percent, 11-24).
@@ -22,8 +26,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const input = String.fromEnvironment('PDF_IN');
   const output = String.fromEnvironment('PDF_OUT');
-  final report = StringBuffer()
-    ..writeln('file=$input bytes=${File(input).lengthSync()}');
+  final out = File(output).openSync(mode: FileMode.write);
+  void line(String words) {
+    out.writeStringSync('${DateTime.now().toIso8601String()} $words\n');
+    out.flushSync();
+  }
+
+  line('file=$input bytes=${File(input).lengthSync()}');
   try {
     final heard = <double>[];
     final watch = Stopwatch()..start();
@@ -31,7 +40,7 @@ Future<void> main() async {
       const MediaFileBytes(input),
       onRead: heard.add,
     );
-    report.writeln(
+    line(
       'open: ${watch.elapsedMilliseconds}ms pages=${document?.pageCount} '
       'told=${heard.length} first=${heard.firstOrNull} '
       'last=${heard.lastOrNull} rising=${_rising(heard)}',
@@ -44,7 +53,7 @@ Future<void> main() async {
       height: (480 * page.height / page.width).round(),
     );
     image.dispose();
-    report.writeln('after a page: told=${heard.length} (open: $toldAtOpen)');
+    line('after a page: told=${heard.length} (open: $toldAtOpen)');
     await document.dispose();
 
     final cutHeard = <double>[];
@@ -54,19 +63,47 @@ Future<void> main() async {
       (pages) => KeptSpan(length: pages, inFrame: 1, outFrame: 2),
       onRead: cutHeard.add,
     );
-    report.writeln(
+    line(
       'cut: ${watch.elapsedMilliseconds}ms kept=${piece?.kept.first}..'
       '${piece?.kept.last} bytes=${piece?.bytes.length} '
       'told=${cutHeard.length} last=${cutHeard.lastOrNull} '
       'rising=${_rising(cutHeard)}',
     );
+    for (var again = 1; again <= 10; again += 1) {
+      await _openAgain(again, input, line);
+    }
   } on Object catch (error, stack) {
-    report
-      ..writeln('FAILED: $error')
-      ..writeln(stack);
+    line('FAILED: $error\n$stack');
   }
-  File(output).writeAsStringSync('$report');
+  out.closeSync();
   exit(0);
+}
+
+Future<void> _openAgain(
+  int again,
+  String input,
+  void Function(String words) line,
+) async {
+  final told = <double>[];
+  final watch = Stopwatch()..start();
+  line('again $again: opening');
+  try {
+    final document = await PdfRenderService.open(
+      MediaFileBytes(input),
+      onRead: told.add,
+    ).timeout(const Duration(minutes: 2));
+    line(
+      'again $again: open ${watch.elapsedMilliseconds}ms '
+      'pages=${document?.pageCount} told=${told.length} '
+      'last=${told.lastOrNull}',
+    );
+    await document?.dispose();
+  } on Object catch (error) {
+    line(
+      'again $again: NOT OPEN after ${watch.elapsedMilliseconds}ms '
+      'told=${told.length} last=${told.lastOrNull} — $error',
+    );
+  }
 }
 
 bool _rising(List<double> told) {
