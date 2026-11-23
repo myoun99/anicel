@@ -1,0 +1,1246 @@
+[anicel 0005] windows: make the EGL display anew when its context is lost
+
+Board a-real-gpu-reset-went-unheard-on-the-main-pc, step two.
+
+A loss is told once (0002 posts it to the process's windows), and the
+engine then restores on the platform thread, in this order: the raster
+thread is asked whether it answers at all (2 s; one stuck in the driver
+is left as it is), the compositor hears, the engine lets go (0004), what
+the views and textures hold of the lost display is forgotten without a
+call to EGL, the display and its contexts are made anew (eglTerminate,
+eglInitialize), each view that had a surface gets one, and the engine
+stands again. The windows are then posted the message registered by the
+name "FlutterWindowsEglContextRestored", WPARAM 1 where it renders again
+and 0 where not.
+
+A backing store of a lost context is collected without OpenGL: the same
+numbers may name other objects in the context made anew.
+
+FlutterDesktopGLContextWasLost tells the engine of a loss heard by other
+means; a library that exports it restores.
+
+diff --git a/engine/src/flutter/shell/platform/windows/BUILD.gn b/engine/src/flutter/shell/platform/windows/BUILD.gn
+index a6af78f4f44..f35c3f1af12 100644
+--- a/engine/src/flutter/shell/platform/windows/BUILD.gn
++++ b/engine/src/flutter/shell/platform/windows/BUILD.gn
+@@ -228,6 +228,7 @@ executable("flutter_windows_unittests") {
+     "direct_manipulation_unittests.cc",
+     "display_manager_unittests.cc",
+     "dpi_utils_unittests.cc",
++    "egl/egl_unittests.cc",
+     "flutter_project_bundle_unittests.cc",
+     "flutter_window_unittests.cc",
+     "flutter_windows_engine_unittests.cc",
+diff --git a/engine/src/flutter/shell/platform/windows/compositor.h b/engine/src/flutter/shell/platform/windows/compositor.h
+index e2f920ec139..78578e324ed 100644
+--- a/engine/src/flutter/shell/platform/windows/compositor.h
++++ b/engine/src/flutter/shell/platform/windows/compositor.h
+@@ -36,6 +36,11 @@ class Compositor {
+   virtual bool Present(FlutterWindowsView* view,
+                        const FlutterLayer** layers,
+                        size_t layers_count) = 0;
++
++  // [anicel 0005] The OpenGL context the backing stores were created in is
++  // lost. What was created in it is collected, from here on, without a call
++  // to OpenGL. Called on the raster thread.
++  virtual void GLContextLost() {}
+ };
+ 
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/compositor_opengl.cc b/engine/src/flutter/shell/platform/windows/compositor_opengl.cc
+index d1b1f5bc71a..b0b8b1ae768 100644
+--- a/engine/src/flutter/shell/platform/windows/compositor_opengl.cc
++++ b/engine/src/flutter/shell/platform/windows/compositor_opengl.cc
+@@ -21,6 +21,9 @@ struct FramebufferBackingStore {
+   uint32_t texture_id = 0;
+   uint32_t color_renderbuffer_id = 0;
+   uint32_t depth_stencil_id = 0;
++  // [anicel 0005] The context the store was created in, as the compositor
++  // counts them (CompositorOpenGL::context_generation_).
++  uint64_t context_generation = 0;
+ };
+ 
+ typedef const impeller::GLProc<decltype(glBlitFramebuffer)> BlitFramebufferProc;
+@@ -52,6 +55,7 @@ bool CompositorOpenGL::CreateBackingStore(
+   }
+ 
+   auto store = std::make_unique<FramebufferBackingStore>();
++  store->context_generation = context_generation_;
+ 
+   gl_->GenFramebuffers(1, &store->framebuffer_id);
+   gl_->BindFramebuffer(GL_FRAMEBUFFER, store->framebuffer_id);
+@@ -158,28 +162,41 @@ bool CompositorOpenGL::CreateBackingStore(
+ }
+ 
+ bool CompositorOpenGL::CollectBackingStore(const FlutterBackingStore* store) {
+-  FML_DCHECK(is_initialized_);
+   FML_DCHECK(store->type == kFlutterBackingStoreTypeOpenGL);
+   FML_DCHECK(store->open_gl.type == kFlutterOpenGLTargetTypeFramebuffer);
+ 
+   auto user_data = static_cast<FramebufferBackingStore*>(
+       store->open_gl.framebuffer.user_data);
+ 
+-  gl_->DeleteFramebuffers(1, &user_data->framebuffer_id);
+-  if (user_data->texture_id != 0) {
+-    gl_->DeleteTextures(1, &user_data->texture_id);
+-  }
+-  if (user_data->color_renderbuffer_id != 0) {
+-    gl_->DeleteRenderbuffers(1, &user_data->color_renderbuffer_id);
+-  }
+-  if (user_data->depth_stencil_id != 0) {
+-    gl_->DeleteRenderbuffers(1, &user_data->depth_stencil_id);
++  // [anicel 0005] A STORE OF A CONTEXT THAT WAS LOST NAMES NOTHING. Its
++  // objects went with the context; in the context made anew the same numbers
++  // may name other objects, and deleting by them would take those.
++  if (user_data->context_generation == context_generation_) {
++    FML_DCHECK(is_initialized_);
++
++    gl_->DeleteFramebuffers(1, &user_data->framebuffer_id);
++    if (user_data->texture_id != 0) {
++      gl_->DeleteTextures(1, &user_data->texture_id);
++    }
++    if (user_data->color_renderbuffer_id != 0) {
++      gl_->DeleteRenderbuffers(1, &user_data->color_renderbuffer_id);
++    }
++    if (user_data->depth_stencil_id != 0) {
++      gl_->DeleteRenderbuffers(1, &user_data->depth_stencil_id);
++    }
+   }
+ 
+   delete user_data;
+   return true;
+ }
+ 
++void CompositorOpenGL::GLContextLost() {
++  context_generation_ += 1;
++  // The context made anew is asked what it can do as the next backing store
++  // is created, or the next empty frame presented.
++  is_initialized_ = false;
++}
++
+ bool CompositorOpenGL::Present(FlutterWindowsView* view,
+                                const FlutterLayer** layers,
+                                size_t layers_count) {
+diff --git a/engine/src/flutter/shell/platform/windows/compositor_opengl.h b/engine/src/flutter/shell/platform/windows/compositor_opengl.h
+index 0304d168d42..7eb7ddc3af9 100644
+--- a/engine/src/flutter/shell/platform/windows/compositor_opengl.h
++++ b/engine/src/flutter/shell/platform/windows/compositor_opengl.h
+@@ -34,6 +34,9 @@ class CompositorOpenGL : public Compositor {
+                const FlutterLayer** layers,
+                size_t layers_count) override;
+ 
++  /// |Compositor|
++  void GLContextLost() override;
++
+  private:
+   // The Flutter engine that manages the views to render.
+   FlutterWindowsEngine* engine_;
+@@ -69,6 +72,11 @@ class CompositorOpenGL : public Compositor {
+   // Whether the OpenGL context supports offscreen MSAA.
+   bool supports_offscreen_msaa_ = false;
+ 
++  // [anicel 0005] Counts the OpenGL contexts this compositor created backing
++  // stores in: one more for each that was lost. A backing store is of the
++  // context that stood as it was created.
++  uint64_t context_generation_ = 0;
++
+   // Initialize the compositor. This must run on the raster thread.
+   bool Initialize();
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/compositor_opengl_unittests.cc b/engine/src/flutter/shell/platform/windows/compositor_opengl_unittests.cc
+index 14c2d9adcbc..a1c22ff322e 100644
+--- a/engine/src/flutter/shell/platform/windows/compositor_opengl_unittests.cc
++++ b/engine/src/flutter/shell/platform/windows/compositor_opengl_unittests.cc
+@@ -511,5 +511,60 @@ TEST_F(CompositorOpenGLTest, PresentUsingANGLEBlitExtension) {
+   ASSERT_TRUE(compositor.CollectBackingStore(&backing_store));
+ }
+ 
++// [anicel 0005] A backing store names objects of the context it was created
++// in: once that context is lost the store is collected without a call to
++// OpenGL, and the compositor asks the context made anew what it can do.
++TEST_F(CompositorOpenGLTest,
++       ABackingStoreOfALostContextIsCollectedWithoutOpenGL) {
++  UseHeadlessEngine();
++
++  static int deletions = 0;
++  deletions = 0;
++
++  const impeller::ProcTableGLES::Resolver resolver =
++      [](const char* name) -> void* {
++    std::string_view function_name{name};
++    // The mock names what it creates, so that there is something to delete.
++    if (function_name == "glGenFramebuffers" ||
++        function_name == "glGenTextures" ||
++        function_name == "glGenRenderbuffers") {
++      return reinterpret_cast<void*>(
++          +[](GLsizei, GLuint* names) { *names = 7; });
++    }
++    if (function_name == "glDeleteFramebuffers" ||
++        function_name == "glDeleteTextures" ||
++        function_name == "glDeleteRenderbuffers") {
++      return reinterpret_cast<void*>(
++          +[](GLsizei, const GLuint*) { deletions++; });
++    }
++    return kMockResolver(name);
++  };
++
++  auto compositor =
++      CompositorOpenGL{engine(), resolver, /*enable_impeller=*/true};
++  FlutterBackingStoreConfig config = {};
++
++  // Once as the first store is created, and once more for the context made
++  // anew.
++  EXPECT_CALL(*render_context(), MakeCurrent)
++      .Times(2)
++      .WillRepeatedly(Return(true));
++
++  FlutterBackingStore of_the_lost_context = {};
++  ASSERT_TRUE(compositor.CreateBackingStore(config, &of_the_lost_context));
++
++  compositor.GLContextLost();
++
++  ASSERT_TRUE(compositor.CollectBackingStore(&of_the_lost_context));
++  EXPECT_EQ(deletions, 0);
++
++  // A store of the context made anew is deleted as ever: its framebuffer,
++  // its texture and its depth and stencil buffer.
++  FlutterBackingStore of_the_context_made_anew = {};
++  ASSERT_TRUE(compositor.CreateBackingStore(config, &of_the_context_made_anew));
++  ASSERT_TRUE(compositor.CollectBackingStore(&of_the_context_made_anew));
++  EXPECT_EQ(deletions, 3);
++}
++
+ }  // namespace testing
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/egl/context.cc b/engine/src/flutter/shell/platform/windows/egl/context.cc
+index 235b3597d20..fdcc4298afe 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/context.cc
++++ b/engine/src/flutter/shell/platform/windows/egl/context.cc
+@@ -52,5 +52,10 @@ const EGLContext& Context::GetHandle() const {
+   return context_;
+ }
+ 
++void Context::Abandon() {
++  display_ = EGL_NO_DISPLAY;
++  context_ = EGL_NO_CONTEXT;
++}
++
+ }  // namespace egl
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/egl/context.h b/engine/src/flutter/shell/platform/windows/egl/context.h
+index acbff12a8d1..5104711bcdf 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/context.h
++++ b/engine/src/flutter/shell/platform/windows/egl/context.h
+@@ -38,6 +38,11 @@ class Context {
+   // Get the raw EGL context.
+   virtual const EGLContext& GetHandle() const;
+ 
++  // [anicel 0005] The display this context was of is terminated, and the
++  // context went with it: forgets the context without asking EGL to destroy
++  // it.
++  void Abandon();
++
+  private:
+   EGLDisplay display_ = EGL_NO_DISPLAY;
+   EGLContext context_ = EGL_NO_CONTEXT;
+diff --git a/engine/src/flutter/shell/platform/windows/egl/egl.cc b/engine/src/flutter/shell/platform/windows/egl/egl.cc
+index f08f3c59617..a59c1e9f83a 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/egl.cc
++++ b/engine/src/flutter/shell/platform/windows/egl/egl.cc
+@@ -9,6 +9,9 @@
+ #include <EGL/egl.h>
+ 
+ #include <atomic>
++#include <functional>
++#include <mutex>
++#include <utility>
+ 
+ #include "flutter/fml/logging.h"
+ 
+@@ -57,34 +60,94 @@ const char* EGLErrorToString(EGLint error) {
+ // [anicel 0002] The embedder never hears that the context its screen is
+ // drawn with is lost: a call fails, a line is logged, and the window stays
+ // on its last picture. Every failed EGL call of this embedder passes
+-// LogEGLError, so the loss is said there, once a process: each top-level
++// LogEGLError, so the loss is said there, once a loss: each top-level
+ // window of the process is posted the message registered by this name,
+ // its WPARAM the EGL error. A runner hears it by registering the same
+ // name; one that does not is posted a message it has no handler for.
+ constexpr wchar_t kContextLostMessageName[] = L"FlutterWindowsEglContextLost";
+ 
+-BOOL CALLBACK PostContextLost(HWND window, LPARAM message) {
++// [anicel 0005] How the loss ended is said the same way: the message
++// registered by this name, its WPARAM 1 where the contexts were made anew
++// and the engine renders again, 0 where they were not.
++constexpr wchar_t kContextRestoredMessageName[] =
++    L"FlutterWindowsEglContextRestored";
++
++// A message for every top-level window of this process.
++struct Notice {
++  UINT message;
++  WPARAM wparam;
++};
++
++BOOL CALLBACK PostNotice(HWND window, LPARAM notice_address) {
++  const auto* notice = reinterpret_cast<const Notice*>(notice_address);
+   DWORD process = 0;
+   ::GetWindowThreadProcessId(window, &process);
+   if (process == ::GetCurrentProcessId()) {
+-    ::PostMessageW(window, static_cast<UINT>(message), EGL_CONTEXT_LOST, 0);
++    ::PostMessageW(window, notice->message, notice->wparam, 0);
+   }
+   return TRUE;
+ }
+ 
++void TellWindowsOfThisProcess(const wchar_t* name, WPARAM wparam) {
++  const UINT message = ::RegisterWindowMessageW(name);
++  if (message == 0) {
++    return;
++  }
++  const Notice notice{message, wparam};
++  ::EnumWindows(PostNotice, reinterpret_cast<LPARAM>(&notice));
++}
++
++// Whether the loss at hand was told. A loss is told once: every EGL call
++// fails once the context is lost, and each failure passes LogEGLError.
++std::atomic<bool> g_context_loss_told{false};
++
++// [anicel 0005] What the engine of this process does about a lost context.
++// Neither is ever destroyed: a thread may be logging an EGL error as the
++// process ends.
++std::mutex& ContextLostHandlerMutex() {
++  static auto* mutex = new std::mutex();
++  return *mutex;
++}
++
++std::function<void()>& ContextLostHandler() {
++  static auto* handler = new std::function<void()>();
++  return *handler;
++}
++
+ void TellContextLost() {
+-  static std::atomic<bool> told{false};
+-  if (told.exchange(true)) {
++  if (g_context_loss_told.exchange(true)) {
+     return;
+   }
+-  const UINT message = ::RegisterWindowMessageW(kContextLostMessageName);
+-  if (message != 0) {
+-    ::EnumWindows(PostContextLost, static_cast<LPARAM>(message));
++  TellWindowsOfThisProcess(kContextLostMessageName, EGL_CONTEXT_LOST);
++  // [anicel 0005] THE WINDOWS ARE TOLD FIRST: a runner hears that the context
++  // is lost before it hears how that ended. And the handler is called under
++  // the lock, so that an engine that took its handler back as it was
++  // destroyed is not called after.
++  std::scoped_lock lock(ContextLostHandlerMutex());
++  if (ContextLostHandler()) {
++    ContextLostHandler()();
+   }
+ }
+ 
+ }  // namespace
+ 
++void SetContextLostHandler(std::function<void()> handler) {
++  std::scoped_lock lock(ContextLostHandlerMutex());
++  ContextLostHandler() = std::move(handler);
++}
++
++void ContextWasLost() {
++  TellContextLost();
++}
++
++void TellContextRestored(bool restored) {
++  if (restored) {
++    // The loss was answered: the next one is told again.
++    g_context_loss_told = false;
++  }
++  TellWindowsOfThisProcess(kContextRestoredMessageName, restored ? 1 : 0);
++}
++
+ void LogEGLError(std::string_view message) {
+   const EGLint error = ::eglGetError();
+   if (error == EGL_CONTEXT_LOST) {
+diff --git a/engine/src/flutter/shell/platform/windows/egl/egl.h b/engine/src/flutter/shell/platform/windows/egl/egl.h
+index a0c81a2993c..8e924103914 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/egl.h
++++ b/engine/src/flutter/shell/platform/windows/egl/egl.h
+@@ -5,6 +5,7 @@
+ #ifndef FLUTTER_SHELL_PLATFORM_WINDOWS_EGL_EGL_H_
+ #define FLUTTER_SHELL_PLATFORM_WINDOWS_EGL_EGL_H_
+ 
++#include <functional>
+ #include <string_view>
+ 
+ namespace flutter {
+@@ -18,6 +19,24 @@ void LogEGLError(std::string_view file, int line);
+ 
+ #define WINDOWS_LOG_EGL_ERROR LogEGLError(__FILE__, __LINE__);
+ 
++/// [anicel 0005] Sets what is called as an EGL call of this process is
++/// refused for a lost context: once a loss, on the thread that made the
++/// call, after the process's windows were told. Empty to clear. One a
++/// process.
++void SetContextLostHandler(std::function<void()> handler);
++
++/// [anicel 0005] Has the context taken for lost, as a refused EGL call
++/// does: the windows are told and the handler is called. Nothing, where a
++/// loss is being answered already.
++void ContextWasLost();
++
++/// [anicel 0005] Tells the process's windows how a loss ended: each
++/// top-level window is posted the message registered by the name
++/// "FlutterWindowsEglContextRestored", its WPARAM 1 where the contexts were
++/// made anew and the engine renders again, 0 where not. Where restored, the
++/// next loss is told again.
++void TellContextRestored(bool restored);
++
+ }  // namespace egl
+ }  // namespace flutter
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/egl/egl_unittests.cc b/engine/src/flutter/shell/platform/windows/egl/egl_unittests.cc
+new file mode 100644
+index 00000000000..9fb6e8497ca
+--- /dev/null
++++ b/engine/src/flutter/shell/platform/windows/egl/egl_unittests.cc
+@@ -0,0 +1,72 @@
++// Copyright 2013 The Flutter Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++// [anicel 0005] A lost context is said once a loss, to the handler the
++// engine set, and said again only once the loss before it was answered.
++
++#include "flutter/shell/platform/windows/egl/egl.h"
++
++#include "gtest/gtest.h"
++
++namespace flutter {
++namespace testing {
++
++namespace {
++
++// Counts the losses the handler heard, and takes the handler back as the
++// test ends. Every test begins with no loss at hand.
++class ContextLostHandlerTest : public ::testing::Test {
++ protected:
++  void SetUp() override {
++    flutter::egl::SetContextLostHandler(nullptr);
++    flutter::egl::TellContextRestored(true);
++    flutter::egl::SetContextLostHandler([this] { heard_ += 1; });
++  }
++
++  void TearDown() override {
++    flutter::egl::SetContextLostHandler(nullptr);
++    flutter::egl::TellContextRestored(true);
++  }
++
++  int heard() const { return heard_; }
++
++ private:
++  int heard_ = 0;
++};
++
++}  // namespace
++
++TEST_F(ContextLostHandlerTest, ALossIsSaidOnce) {
++  flutter::egl::ContextWasLost();
++  flutter::egl::ContextWasLost();
++
++  EXPECT_EQ(heard(), 1);
++}
++
++TEST_F(ContextLostHandlerTest, TheNextLossIsSaidOnceTheOneBeforeWasRestored) {
++  flutter::egl::ContextWasLost();
++  flutter::egl::TellContextRestored(true);
++  flutter::egl::ContextWasLost();
++
++  EXPECT_EQ(heard(), 2);
++}
++
++TEST_F(ContextLostHandlerTest, NoLossIsSaidAfterOneThatWasNotRestored) {
++  flutter::egl::ContextWasLost();
++  flutter::egl::TellContextRestored(false);
++  flutter::egl::ContextWasLost();
++
++  EXPECT_EQ(heard(), 1);
++}
++
++TEST_F(ContextLostHandlerTest, AHandlerTakenBackIsNotCalled) {
++  flutter::egl::SetContextLostHandler(nullptr);
++
++  flutter::egl::ContextWasLost();
++
++  EXPECT_EQ(heard(), 0);
++}
++
++}  // namespace testing
++}  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/egl/manager.cc b/engine/src/flutter/shell/platform/windows/egl/manager.cc
+index 64fb765bf54..46ef6197d3b 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/manager.cc
++++ b/engine/src/flutter/shell/platform/windows/egl/manager.cc
+@@ -23,7 +23,8 @@ std::unique_ptr<Manager> Manager::Create(GpuPreference gpu_preference) {
+   return std::move(manager);
+ }
+ 
+-Manager::Manager(GpuPreference gpu_preference) {
++Manager::Manager(GpuPreference gpu_preference)
++    : gpu_preference_(gpu_preference) {
+   ++instance_count_;
+ 
+   if (!InitializeDisplay(gpu_preference)) {
+@@ -276,6 +277,48 @@ void Manager::CleanUp() {
+   }
+ }
+ 
++bool Manager::MakeAnew() {
++  // The display is shared by every manager of the process (see CleanUp):
++  // terminating it would take another engine's contexts with it.
++  if (instance_count_ != 1) {
++    return false;
++  }
++
++  is_valid_ = false;
++
++  // Needs to be reset before destroying the contexts.
++  resolved_device_.Reset();
++
++  // [anicel 0005] THE CONTEXTS ARE NOT DESTROYED ONE BY ONE. A display that
++  // lost its device refuses to destroy them (EGL_CONTEXT_LOST); they go with
++  // the display as it is terminated, and the objects here only forget them.
++  if (render_context_) {
++    render_context_->Abandon();
++    render_context_.reset();
++  }
++  if (resource_context_) {
++    resource_context_->Abandon();
++    resource_context_.reset();
++  }
++
++  if (display_ != EGL_NO_DISPLAY) {
++    if (::eglTerminate(display_) != EGL_TRUE) {
++      LogEGLError("Failed to terminate the EGL display");
++      return false;
++    }
++    display_ = EGL_NO_DISPLAY;
++  }
++  config_ = nullptr;
++
++  if (!InitializeDisplay(gpu_preference_) || !InitializeConfig() ||
++      !InitializeContexts()) {
++    return false;
++  }
++
++  is_valid_ = true;
++  return true;
++}
++
+ bool Manager::IsValid() const {
+   return is_valid_;
+ }
+diff --git a/engine/src/flutter/shell/platform/windows/egl/manager.h b/engine/src/flutter/shell/platform/windows/egl/manager.h
+index ca44a4b86fe..1c0a430ec47 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/manager.h
++++ b/engine/src/flutter/shell/platform/windows/egl/manager.h
+@@ -83,6 +83,19 @@ class Manager {
+   // Get the EGL context used for async texture uploads.
+   virtual Context* resource_context() const;
+ 
++  // [anicel 0005] Makes the display and its two contexts anew, after the
++  // device they were of was lost: the display is terminated, and what was
++  // of it -- contexts, surfaces -- goes with it, then all is initialized as
++  // when the manager was created.
++  //
++  // No context of the display may be current on any thread: a display one
++  // of whose contexts is current somewhere is not terminated in full.
++  //
++  // Returns false, and leaves the manager invalid, where the display could
++  // not be made anew; false, and nothing done, where another manager of the
++  // process draws by the same display.
++  virtual bool MakeAnew();
++
+   static std::optional<LUID> GetLowPowerGpuLuid();
+ 
+   static std::optional<LUID> GetHighPerformanceGpuLuid();
+@@ -117,6 +130,9 @@ class Manager {
+   // Whether the manager was initialized successfully.
+   bool is_valid_ = false;
+ 
++  // The GPU the manager was asked for, to ask for again in MakeAnew.
++  GpuPreference gpu_preference_ = GpuPreference::NoPreference;
++
+   // EGL representation of native display.
+   EGLDisplay display_ = EGL_NO_DISPLAY;
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/egl/surface.cc b/engine/src/flutter/shell/platform/windows/egl/surface.cc
+index f6534a913a0..30aa0b55e1d 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/surface.cc
++++ b/engine/src/flutter/shell/platform/windows/egl/surface.cc
+@@ -69,5 +69,10 @@ const EGLSurface& Surface::GetHandle() const {
+   return surface_;
+ }
+ 
++void Surface::Abandon() {
++  is_valid_ = false;
++  surface_ = EGL_NO_SURFACE;
++}
++
+ }  // namespace egl
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/egl/surface.h b/engine/src/flutter/shell/platform/windows/egl/surface.h
+index 6f1b107bd68..766d44cd1b8 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/surface.h
++++ b/engine/src/flutter/shell/platform/windows/egl/surface.h
+@@ -44,6 +44,11 @@ class Surface {
+   // Get the raw EGL surface.
+   virtual const EGLSurface& GetHandle() const;
+ 
++  // [anicel 0005] The display this surface was of is terminated, and the
++  // surface went with it: invalidates this object without asking EGL to
++  // destroy the surface.
++  virtual void Abandon();
++
+  protected:
+   bool is_valid_ = true;
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/external_texture.h b/engine/src/flutter/shell/platform/windows/external_texture.h
+index 26e9287edd4..711db06da9a 100644
+--- a/engine/src/flutter/shell/platform/windows/external_texture.h
++++ b/engine/src/flutter/shell/platform/windows/external_texture.h
+@@ -26,6 +26,11 @@ class ExternalTexture {
+   virtual bool PopulateTexture(size_t width,
+                                size_t height,
+                                FlutterOpenGLTexture* opengl_texture) = 0;
++
++  // [anicel 0005] The OpenGL context this texture's objects were made in is
++  // lost: forgets them without a call to OpenGL or EGL. They are made again,
++  // in the context that stands by then, as the texture is next populated.
++  virtual void GLContextLost() = 0;
+ };
+ 
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/external_texture_d3d.cc b/engine/src/flutter/shell/platform/windows/external_texture_d3d.cc
+index d09ed3fc07a..6927a8a2dda 100644
+--- a/engine/src/flutter/shell/platform/windows/external_texture_d3d.cc
++++ b/engine/src/flutter/shell/platform/windows/external_texture_d3d.cc
+@@ -51,6 +51,14 @@ bool ExternalTextureD3d::PopulateTexture(size_t width,
+   return true;
+ }
+ 
++void ExternalTextureD3d::GLContextLost() {
++  gl_texture_ = 0;
++  // The surface went with the display it was of. The handle it was made
++  // from is forgotten with it, so that the same handle makes a surface anew.
++  egl_surface_ = EGL_NO_SURFACE;
++  last_surface_handle_ = nullptr;
++}
++
+ void ExternalTextureD3d::ReleaseImage() {
+   if (egl_surface_ != EGL_NO_SURFACE) {
+     eglReleaseTexImage(egl_manager_->egl_display(), egl_surface_,
+diff --git a/engine/src/flutter/shell/platform/windows/external_texture_d3d.h b/engine/src/flutter/shell/platform/windows/external_texture_d3d.h
+index 628c206503e..f1559b7a3cd 100644
+--- a/engine/src/flutter/shell/platform/windows/external_texture_d3d.h
++++ b/engine/src/flutter/shell/platform/windows/external_texture_d3d.h
+@@ -31,6 +31,9 @@ class ExternalTextureD3d : public ExternalTexture {
+                        size_t height,
+                        FlutterOpenGLTexture* opengl_texture) override;
+ 
++  // |ExternalTexture|
++  void GLContextLost() override;
++
+  private:
+   // Creates or updates the backing texture and associates it with the provided
+   // surface.
+diff --git a/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.cc b/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.cc
+index cb41f7d137b..ae7c3a6482f 100644
+--- a/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.cc
++++ b/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.cc
+@@ -40,6 +40,10 @@ bool ExternalTexturePixelBuffer::PopulateTexture(
+   return true;
+ }
+ 
++void ExternalTexturePixelBuffer::GLContextLost() {
++  gl_texture_ = 0;
++}
++
+ bool ExternalTexturePixelBuffer::CopyPixelBuffer(size_t& width,
+                                                  size_t& height) {
+   const FlutterDesktopPixelBuffer* pixel_buffer =
+diff --git a/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.h b/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.h
+index 0bd31b49830..c066456e384 100644
+--- a/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.h
++++ b/engine/src/flutter/shell/platform/windows/external_texture_pixelbuffer.h
+@@ -27,6 +27,9 @@ class ExternalTexturePixelBuffer : public ExternalTexture {
+                        size_t height,
+                        FlutterOpenGLTexture* opengl_texture) override;
+ 
++  // |ExternalTexture|
++  void GLContextLost() override;
++
+  private:
+   // Attempts to copy the pixel buffer returned by |texture_callback_| to
+   // OpenGL.
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows.cc b/engine/src/flutter/shell/platform/windows/flutter_windows.cc
+index 616fcbaa319..819d411bc4f 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows.cc
+@@ -18,6 +18,7 @@
+ #include "flutter/shell/platform/common/path_utils.h"
+ #include "flutter/shell/platform/embedder/embedder.h"
+ #include "flutter/shell/platform/windows/dpi_utils.h"
++#include "flutter/shell/platform/windows/egl/egl.h"
+ #include "flutter/shell/platform/windows/flutter_project_bundle.h"
+ #include "flutter/shell/platform/windows/flutter_window.h"
+ #include "flutter/shell/platform/windows/flutter_windows_engine.h"
+@@ -218,6 +219,10 @@ uint64_t FlutterDesktopEngineProcessMessages(FlutterDesktopEngineRef engine) {
+   return std::chrono::nanoseconds::max().count();
+ }
+ 
++void FlutterDesktopGLContextWasLost() {
++  flutter::egl::ContextWasLost();
++}
++
+ void FlutterDesktopEngineReloadSystemFonts(FlutterDesktopEngineRef engine) {
+   EngineFromHandle(engine)->ReloadSystemFonts();
+ }
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_engine.cc b/engine/src/flutter/shell/platform/windows/flutter_windows_engine.cc
+index d9f797ca257..f8611127c29 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_engine.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_engine.cc
+@@ -22,6 +22,7 @@
+ #include "flutter/shell/platform/windows/compositor_opengl.h"
+ #include "flutter/shell/platform/windows/compositor_software.h"
+ #include "flutter/shell/platform/windows/display_manager.h"
++#include "flutter/shell/platform/windows/egl/egl.h"
+ #include "flutter/shell/platform/windows/flutter_windows_view.h"
+ #include "flutter/shell/platform/windows/keyboard_key_channel_handler.h"
+ #include "flutter/shell/platform/windows/system_utils.h"
+@@ -265,6 +266,9 @@ FlutterWindowsEngine::FlutterWindowsEngine(
+ }
+ 
+ FlutterWindowsEngine::~FlutterWindowsEngine() {
++  // [anicel 0005] Taken back before anything else goes: the handler posts to
++  // this engine's task runner from the raster thread.
++  egl::SetContextLostHandler(nullptr);
+   messenger_->SetEngine(nullptr);
+   Stop();
+ }
+@@ -543,6 +547,15 @@ bool FlutterWindowsEngine::Run(std::string_view entrypoint) {
+     return false;
+   }
+ 
++  // [anicel 0005] A lost context is seen on the thread whose EGL call was
++  // refused -- the raster thread, as a rule -- and answered on the platform
++  // thread. One engine a process: the handler of an engine run later takes
++  // this one's place, and egl::Manager::MakeAnew refuses where two managers
++  // draw by the one display.
++  egl::SetContextLostHandler([this] {
++    task_runner_->PostTask([this] { AnswerGLContextLoss(); });
++  });
++
+   display_manager_->UpdateDisplays();
+ 
+   SendSystemLocales();
+@@ -1004,6 +1017,89 @@ bool FlutterWindowsEngine::MarkExternalTextureFrameAvailable(
+               engine_, texture_id) == kSuccess);
+ }
+ 
++void FlutterWindowsEngine::AnswerGLContextLoss() {
++  egl::TellContextRestored(RestoreGLContext());
++}
++
++bool FlutterWindowsEngine::RestoreGLContext() {
++  FML_DCHECK(task_runner_->RunsTasksOnCurrentThread());
++
++  // Only an engine that renders with Impeller stands again in a context made
++  // anew (FlutterEngineNotifyGLContextLost).
++  if (!running() || !egl_manager_ || !enable_impeller_) {
++    return false;
++  }
++
++  // [anicel 0005] THE ORDER IS THE LAW, each step for the one after it.
++  //
++  // 0. 🚨THE RASTER THREAD IS ASKED FIRST WHETHER IT ANSWERS AT ALL. Every
++  //    step after waits on it from this thread, and a raster thread stuck in
++  //    the driver (board a-real-gpu-reset-went-unheard-on-the-main-pc,
++  //    2026-11-22: the window stood on its last picture) would hold the
++  //    platform thread for good -- and with it the question that saves the
++  //    work. One that does not answer is left as it is: the app asks, as it
++  //    did before the engine could restore.
++  if (!RasterThreadAnswers()) {
++    FML_LOG(ERROR) << "The raster thread does not answer: not restored.";
++    return false;
++  }
++
++  // 1. The compositor hears first, on the raster thread: the backing stores
++  //    the engine collects as it lets go are of the lost context, and are
++  //    not to be deleted through OpenGL.
++  PostRasterThreadTask(
++      [compositor = compositor_.get()] { compositor->GLContextLost(); });
++
++  // 2. The engine lets go. When this returns it calls none of the OpenGL
++  //    callbacks, and none of its threads has a context current.
++  if (embedder_api_.NotifyGLContextLost(engine_) != kSuccess) {
++    return false;
++  }
++
++  // 3. What this embedder itself had sent to the raster thread before the
++  //    loss -- a swap interval to set, a surface to destroy -- is waited
++  //    out: such a task makes a context current while it runs, and a display
++  //    one of whose contexts is current is not terminated in full.
++  if (!RasterThreadAnswers()) {
++    FML_LOG(ERROR) << "The raster thread does not answer: not restored.";
++    return false;
++  }
++
++  // 4. What this embedder holds of the lost display is forgotten, with no
++  //    call to EGL or OpenGL: it all goes with the display.
++  std::vector<FlutterWindowsView*> views_that_had_a_surface;
++  {
++    std::shared_lock read_lock(views_mutex_);
++    for (auto& [view_id, view] : views_) {
++      if (view->GLContextLost()) {
++        views_that_had_a_surface.push_back(view);
++      }
++    }
++  }
++  texture_registrar_->GLContextLost();
++
++  // 5. The display and its contexts are made anew.
++  if (!egl_manager_->MakeAnew()) {
++    FML_LOG(ERROR) << "Could not make the EGL display anew.";
++    return false;
++  }
++
++  // 6. Each view that had a surface gets one of the display made anew.
++  for (FlutterWindowsView* view : views_that_had_a_surface) {
++    view->CreateRenderSurface();
++  }
++
++  // 7. The engine stands again in the context made anew, and draws a frame.
++  return embedder_api_.NotifyGLContextRestored(engine_) == kSuccess;
++}
++
++bool FlutterWindowsEngine::RasterThreadAnswers() const {
++  // Shared: a raster thread that answers late answers to no one.
++  auto answered = std::make_shared<fml::AutoResetWaitableEvent>();
++  return PostRasterThreadTask([answered] { answered->Signal(); }) &&
++         !answered->WaitWithTimeout(kRasterThreadAnswersWithin);
++}
++
+ bool FlutterWindowsEngine::PostRasterThreadTask(fml::closure callback) const {
+   struct Captures {
+     fml::closure callback;
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_engine.h b/engine/src/flutter/shell/platform/windows/flutter_windows_engine.h
+index 720a65a7dd8..3296cd22a36 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_engine.h
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_engine.h
+@@ -17,6 +17,7 @@
+ 
+ #include "flutter/fml/closure.h"
+ #include "flutter/fml/macros.h"
++#include "flutter/fml/time/time_delta.h"
+ #include "flutter/shell/platform/common/accessibility_bridge.h"
+ #include "flutter/shell/platform/common/app_lifecycle_state.h"
+ #include "flutter/shell/platform/common/client_wrapper/binary_messenger_impl.h"
+@@ -245,6 +246,26 @@ class FlutterWindowsEngine {
+   // Posts the given callback onto the raster thread.
+   virtual bool PostRasterThreadTask(fml::closure callback) const;
+ 
++  // [anicel 0005] Makes the OpenGL contexts anew after they were lost (the
++  // GPU was reset, or its driver replaced), and has the engine render again
++  // in them: the engine lets go of the lost context, the EGL display is
++  // terminated and initialized again, every view gets a surface of it, and
++  // the engine stands again in the context made anew.
++  //
++  // Only an engine that renders with Impeller is restored. Must be called on
++  // the platform thread.
++  //
++  // Returns whether the engine renders again: false, and nothing done, where
++  // the raster thread does not answer within |kRasterThreadAnswersWithin|.
++  bool RestoreGLContext();
++
++  // [anicel 0005] How long the restore waits for the raster thread to answer
++  // before it leaves the engine as it is (RestoreGLContext).
++  // ⏳My number, not measured: far past a frame, and short enough that the
++  // question that saves the work comes soon.
++  static constexpr fml::TimeDelta kRasterThreadAnswersWithin =
++      fml::TimeDelta::FromSeconds(2);
++
+   // Invoke on the embedder's vsync callback to schedule a frame.
+   void OnVsync(intptr_t baton);
+ 
+@@ -372,6 +393,15 @@ class FlutterWindowsEngine {
+   // Allows swapping out embedder_api_ calls in tests.
+   friend class EngineModifier;
+ 
++  // [anicel 0005] What this engine does as an EGL call is refused for a lost
++  // context (egl::SetContextLostHandler), on the platform thread: restores,
++  // and tells the process's windows how that ended.
++  void AnswerGLContextLoss();
++
++  // [anicel 0005] Whether the raster thread runs a task posted to it within
++  // |kRasterThreadAnswersWithin| -- and so has run every task posted before.
++  bool RasterThreadAnswers() const;
++
+   // Maps a Flutter cursor name to an HCURSOR.
+   //
+   // Returns the arrow cursor for unknown constants.
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.cc b/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.cc
+index f71da67bd9d..97bd13f96df 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.cc
+@@ -125,4 +125,11 @@ bool FlutterWindowsTextureRegistrar::PopulateTexture(
+   return texture->PopulateTexture(width, height, opengl_texture);
+ }
+ 
++void FlutterWindowsTextureRegistrar::GLContextLost() {
++  std::lock_guard<std::mutex> lock(map_mutex_);
++  for (auto& [texture_id, texture] : textures_) {
++    texture->GLContextLost();
++  }
++}
++
+ };  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.h b/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.h
+index e065f0e7097..00f1fb86851 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.h
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_texture_registrar.h
+@@ -45,6 +45,11 @@ class FlutterWindowsTextureRegistrar {
+                        size_t height,
+                        FlutterOpenGLTexture* texture);
+ 
++  // [anicel 0005] The OpenGL context the textures' objects were made in is
++  // lost: every registered texture forgets them. Called while the raster
++  // thread is idle.
++  void GLContextLost();
++
+  private:
+   FlutterWindowsEngine* engine_ = nullptr;
+   std::shared_ptr<egl::ProcTable> gl_;
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc b/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc
+index cc0505d6232..8a18fc60b1f 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc
+@@ -819,6 +819,18 @@ void FlutterWindowsView::CreateRenderSurface() {
+   }
+ }
+ 
++bool FlutterWindowsView::GLContextLost() {
++  std::unique_lock<std::mutex> lock(resize_mutex_);
++
++  if (surface_ == nullptr) {
++    return false;
++  }
++
++  surface_->Abandon();
++  surface_.reset();
++  return true;
++}
++
+ bool FlutterWindowsView::ResizeRenderSurface(size_t width, size_t height) {
+   FML_DCHECK(surface_ != nullptr);
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_view.h b/engine/src/flutter/shell/platform/windows/flutter_windows_view.h
+index 4e5c47fb5c6..f07d22dbd77 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_view.h
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_view.h
+@@ -84,6 +84,15 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
+   // This is a no-op if using software rasterization.
+   void CreateRenderSurface();
+ 
++  // [anicel 0005] The display the rendering surface was of is lost and about
++  // to be terminated: the view forgets its surface without asking EGL to
++  // destroy it. Called on the platform thread while the raster thread is
++  // idle.
++  //
++  // Returns whether the view had a surface -- one to be created again with
++  // |CreateRenderSurface| once the display is made anew.
++  bool GLContextLost();
++
+   // Get the EGL surface that backs the Flutter view.
+   //
+   // This might be nullptr or an invalid surface.
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc b/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc
+index b66b42052af..c1aaef055cb 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc
+@@ -1948,5 +1948,210 @@ TEST(FlutterWindowsViewTest, FirstFrameCallbackSkippedOnFailedSoftwarePresent) {
+   EXPECT_FALSE(callback_fired);
+ }
+ 
++// [anicel 0005] The OpenGL contexts are lost and made anew
++// (FlutterWindowsEngine::RestoreGLContext).
++
++namespace {
++
++class MockCompositor : public Compositor {
++ public:
++  MockCompositor() = default;
++
++  MOCK_METHOD(bool,
++              CreateBackingStore,
++              (const FlutterBackingStoreConfig&, FlutterBackingStore*),
++              (override));
++  MOCK_METHOD(bool,
++              CollectBackingStore,
++              (const FlutterBackingStore*),
++              (override));
++  MOCK_METHOD(bool,
++              Present,
++              (FlutterWindowsView*, const FlutterLayer**, size_t),
++              (override));
++  MOCK_METHOD(void, GLContextLost, (), (override));
++
++ private:
++  FML_DISALLOW_COPY_AND_ASSIGN(MockCompositor);
++};
++
++// A running engine with one view, over mocks that write down what was asked
++// of them and in what order.
++struct RestoringEngine {
++  std::vector<std::string> steps;
++  std::unique_ptr<NiceMock<MockFlutterWindowsEngine>> engine;
++  NiceMock<egl::MockManager>* egl_manager = nullptr;
++  NiceMock<egl::MockWindowSurface>* surface_of_the_lost_display = nullptr;
++  FlutterEngineResult the_engine_lets_go = kSuccess;
++  FlutterEngineResult the_engine_stands_again = kSuccess;
++  std::unique_ptr<FlutterWindowsView> view;
++
++  explicit RestoringEngine(bool the_view_has_a_surface = true) {
++    engine = std::make_unique<NiceMock<MockFlutterWindowsEngine>>(
++        std::make_shared<NiceMock<MockWindowsProcTable>>());
++    ON_CALL(*engine, running).WillByDefault(Return(true));
++    ON_CALL(*engine, PostRasterThreadTask)
++        .WillByDefault([](fml::closure callback) {
++          callback();
++          return true;
++        });
++
++    EngineModifier modifier{engine.get()};
++
++    auto compositor = std::make_unique<NiceMock<MockCompositor>>();
++    ON_CALL(*compositor, GLContextLost).WillByDefault([this] {
++      steps.push_back("the compositor hears");
++    });
++    modifier.SetCompositor(std::move(compositor));
++
++    auto manager = std::make_unique<NiceMock<egl::MockManager>>();
++    egl_manager = manager.get();
++    ON_CALL(*egl_manager, MakeAnew).WillByDefault([this] {
++      steps.push_back("the display is made anew");
++      return true;
++    });
++    modifier.SetEGLManager(std::move(manager));
++
++    modifier.embedder_api().NotifyGLContextLost =
++        MOCK_ENGINE_PROC(NotifyGLContextLost, ([this](auto engine) {
++                           steps.push_back("the engine lets go");
++                           return the_engine_lets_go;
++                         }));
++    modifier.embedder_api().NotifyGLContextRestored =
++        MOCK_ENGINE_PROC(NotifyGLContextRestored, ([this](auto engine) {
++                           steps.push_back("the engine stands again");
++                           return the_engine_stands_again;
++                         }));
++
++    // The view's first surface, of the display that is to be lost.
++    if (the_view_has_a_surface) {
++      auto surface = std::make_unique<NiceMock<egl::MockWindowSurface>>();
++      surface_of_the_lost_display = surface.get();
++      ON_CALL(*surface_of_the_lost_display, Abandon).WillByDefault([this] {
++        steps.push_back("the view forgets its surface");
++      });
++      EXPECT_CALL(*egl_manager, CreateWindowSurface)
++          .WillOnce(Return(::testing::ByMove(
++              std::unique_ptr<flutter::egl::WindowSurface>(
++                  std::move(surface)))));
++    } else {
++      EXPECT_CALL(*egl_manager, CreateWindowSurface)
++          .WillOnce(Return(::testing::ByMove(
++              std::unique_ptr<flutter::egl::WindowSurface>())));
++    }
++    view = engine->CreateView(
++        std::make_unique<NiceMock<MockWindowBindingHandler>>(),
++        /*is_sized_to_content=*/false, BoxConstraints());
++    ::testing::Mock::VerifyAndClearExpectations(egl_manager);
++  }
++
++  // The surface the view asks for once the display was made anew.
++  void ExpectASurfaceOfTheDisplayMadeAnew() {
++    EXPECT_CALL(*egl_manager, CreateWindowSurface)
++        .WillOnce([this](HWND, size_t, size_t)
++                      -> std::unique_ptr<flutter::egl::WindowSurface> {
++          steps.push_back("the view gets a surface");
++          return std::make_unique<NiceMock<egl::MockWindowSurface>>();
++        });
++  }
++};
++
++}  // namespace
++
++TEST(RestoreGLContextTest, TheDisplayIsMadeAnewBetweenTheEnginesTwoDoors) {
++  RestoringEngine rig;
++  // The surface of the lost display is forgotten: EGL is not asked to destroy
++  // what goes with the display.
++  EXPECT_CALL(*rig.surface_of_the_lost_display, Destroy).Times(0);
++  rig.ExpectASurfaceOfTheDisplayMadeAnew();
++
++  EXPECT_TRUE(rig.engine->RestoreGLContext());
++
++  EXPECT_THAT(rig.steps, ::testing::ElementsAre(
++                             "the compositor hears", "the engine lets go",
++                             "the view forgets its surface",
++                             "the display is made anew",
++                             "the view gets a surface",
++                             "the engine stands again"));
++}
++
++TEST(RestoreGLContextTest, ARasterThreadThatDoesNotAnswerIsLeftAsItIs) {
++  RestoringEngine rig;
++  // Taken and never run, as by a raster thread that stands.
++  ON_CALL(*rig.engine, PostRasterThreadTask)
++      .WillByDefault([](fml::closure callback) { return true; });
++  EXPECT_CALL(*rig.egl_manager, CreateWindowSurface).Times(0);
++
++  const auto started = std::chrono::steady_clock::now();
++  EXPECT_FALSE(rig.engine->RestoreGLContext());
++  const auto waited = std::chrono::steady_clock::now() - started;
++
++  EXPECT_THAT(rig.steps, ::testing::IsEmpty());
++  // It waited, and no longer than it was to.
++  EXPECT_GE(waited, std::chrono::milliseconds(
++                        FlutterWindowsEngine::kRasterThreadAnswersWithin
++                            .ToMilliseconds()));
++  EXPECT_LT(waited, std::chrono::seconds(10));
++}
++
++TEST(RestoreGLContextTest, AnEngineThatIsNotRunningIsNotRestored) {
++  RestoringEngine rig;
++  ON_CALL(*rig.engine, running).WillByDefault(Return(false));
++  EXPECT_CALL(*rig.egl_manager, CreateWindowSurface).Times(0);
++
++  EXPECT_FALSE(rig.engine->RestoreGLContext());
++
++  EXPECT_THAT(rig.steps, ::testing::IsEmpty());
++}
++
++TEST(RestoreGLContextTest,
++     WhereTheEngineDoesNotLetGoNothingOfTheDisplayIsTouched) {
++  RestoringEngine rig;
++  rig.the_engine_lets_go = kInvalidArguments;
++  EXPECT_CALL(*rig.egl_manager, CreateWindowSurface).Times(0);
++
++  EXPECT_FALSE(rig.engine->RestoreGLContext());
++
++  EXPECT_THAT(rig.steps, ::testing::ElementsAre("the compositor hears",
++                                              "the engine lets go"));
++}
++
++TEST(RestoreGLContextTest,
++     WhereTheDisplayCannotBeMadeAnewTheEngineIsNotToldToStandAgain) {
++  RestoringEngine rig;
++  ON_CALL(*rig.egl_manager, MakeAnew).WillByDefault([&rig] {
++    rig.steps.push_back("the display is not made anew");
++    return false;
++  });
++  EXPECT_CALL(*rig.egl_manager, CreateWindowSurface).Times(0);
++
++  EXPECT_FALSE(rig.engine->RestoreGLContext());
++
++  EXPECT_THAT(rig.steps, ::testing::ElementsAre(
++                             "the compositor hears", "the engine lets go",
++                             "the view forgets its surface",
++                             "the display is not made anew"));
++}
++
++TEST(RestoreGLContextTest, WhereTheEngineDoesNotStandAgainItIsNotRestored) {
++  RestoringEngine rig;
++  rig.the_engine_stands_again = kInternalInconsistency;
++  rig.ExpectASurfaceOfTheDisplayMadeAnew();
++
++  EXPECT_FALSE(rig.engine->RestoreGLContext());
++}
++
++TEST(RestoreGLContextTest, AViewThatHadNoSurfaceGetsNone) {
++  RestoringEngine rig{/*the_view_has_a_surface=*/false};
++  EXPECT_CALL(*rig.egl_manager, CreateWindowSurface).Times(0);
++
++  EXPECT_TRUE(rig.engine->RestoreGLContext());
++
++  EXPECT_THAT(rig.steps, ::testing::ElementsAre(
++                             "the compositor hears", "the engine lets go",
++                             "the display is made anew",
++                             "the engine stands again"));
++}
++
+ }  // namespace testing
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/windows/public/flutter_windows.h b/engine/src/flutter/shell/platform/windows/public/flutter_windows.h
+index 2194cca1720..0c81881f67f 100644
+--- a/engine/src/flutter/shell/platform/windows/public/flutter_windows.h
++++ b/engine/src/flutter/shell/platform/windows/public/flutter_windows.h
+@@ -242,6 +242,21 @@ FLUTTER_EXPORT bool FlutterDesktopEngineRun(FlutterDesktopEngineRef engine,
+ FLUTTER_EXPORT uint64_t
+ FlutterDesktopEngineProcessMessages(FlutterDesktopEngineRef engine);
+ 
++// [anicel 0005] Tells this process's engine that its OpenGL context is
++// lost, as an EGL call that fails by EGL_CONTEXT_LOST tells it -- for a loss
++// heard by other means (a runner's own device on the screen's adapter,
++// removed with it, while the engine made no call that failed) and for a
++// test. The windows of the process are posted the message registered by the
++// name "FlutterWindowsEglContextLost" -- once, till the engine stands again
++// -- the engine makes its contexts anew, and the windows are posted the
++// message registered by the name "FlutterWindowsEglContextRestored" (WPARAM
++// 1 where the engine renders again, 0 where not). Returns at once; the rest
++// follows on the platform thread.
++//
++// A library that exports this is one whose engine restores: a runner may
++// tell by looking the name up.
++FLUTTER_EXPORT void FlutterDesktopGLContextWasLost();
++
+ FLUTTER_EXPORT void FlutterDesktopEngineReloadSystemFonts(
+     FlutterDesktopEngineRef engine);
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/testing/egl/mock_manager.h b/engine/src/flutter/shell/platform/windows/testing/egl/mock_manager.h
+index 1cc9f728d42..1743fff587d 100644
+--- a/engine/src/flutter/shell/platform/windows/testing/egl/mock_manager.h
++++ b/engine/src/flutter/shell/platform/windows/testing/egl/mock_manager.h
+@@ -25,6 +25,7 @@ class MockManager : public flutter::egl::Manager {
+ 
+   MOCK_METHOD(flutter::egl::Context*, render_context, (), (const, override));
+   MOCK_METHOD(flutter::egl::Context*, resource_context, (), (const, override));
++  MOCK_METHOD(bool, MakeAnew, (), (override));
+ 
+  private:
+   FML_DISALLOW_COPY_AND_ASSIGN(MockManager);
+diff --git a/engine/src/flutter/shell/platform/windows/testing/egl/mock_window_surface.h b/engine/src/flutter/shell/platform/windows/testing/egl/mock_window_surface.h
+index 7bfd739c1f2..c062d1c5d27 100644
+--- a/engine/src/flutter/shell/platform/windows/testing/egl/mock_window_surface.h
++++ b/engine/src/flutter/shell/platform/windows/testing/egl/mock_window_surface.h
+@@ -24,6 +24,7 @@ class MockWindowSurface : public flutter::egl::WindowSurface {
+   MOCK_METHOD(bool, MakeCurrent, (), (const, override));
+   MOCK_METHOD(bool, SwapBuffers, (), (const, override));
+   MOCK_METHOD(bool, SetVSyncEnabled, (bool), (override));
++  MOCK_METHOD(void, Abandon, (), (override));
+ 
+  private:
+   FML_DISALLOW_COPY_AND_ASSIGN(MockWindowSurface);
+diff --git a/engine/src/flutter/shell/platform/windows/testing/engine_modifier.h b/engine/src/flutter/shell/platform/windows/testing/engine_modifier.h
+index c39c7ac5808..7b71a100e5a 100644
+--- a/engine/src/flutter/shell/platform/windows/testing/engine_modifier.h
++++ b/engine/src/flutter/shell/platform/windows/testing/engine_modifier.h
+@@ -29,6 +29,12 @@ class EngineModifier {
+   // engine unless overwritten again.
+   FlutterEngineProcTable& embedder_api() { return engine_->embedder_api_; }
+ 
++  // [anicel 0005] Gives the engine a compositor: one that was never run has
++  // none.
++  void SetCompositor(std::unique_ptr<Compositor> compositor) {
++    engine_->compositor_ = std::move(compositor);
++  }
++
+   // Override the EGL manager used by the engine.
+   //
+   // Modifications are to the engine, and will last for the lifetime of the
