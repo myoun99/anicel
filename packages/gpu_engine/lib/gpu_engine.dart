@@ -1023,7 +1023,7 @@ class GpuPool implements _OfAnEngine {
       ..keepToInsteadOfTheOs(debugBudgetTillOneIsSet);
   }
 
-  GpuPool._(this._engine, this._pool);
+  GpuPool._(this._engine, Pointer<rust.Pool> pool) : _livePool = pool;
 
   /// Test seam: the budget each pool made keeps to in place of the OS's
   /// till one is set ([keepToInsteadOfTheOs]) — the OS's where null, as in
@@ -1048,7 +1048,35 @@ class GpuPool implements _OfAnEngine {
 
   @override
   final GpuEngine _engine;
-  final Pointer<rust.Pool> _pool;
+
+  /// The engine's pool, for each ask of it — here, and of a job that names
+  /// it ([GpuEngine._its]) —; refused by name once it is [free]d.
+  ///
+  /// 🚨A FREED POOL ASKS THE ENGINE NOTHING (관제 2026-11-24, card
+  /// a-pool-release-aborts-on-an-empty-book): its books go with [free], and
+  /// what asked after read freed memory — a tile a ledger stored, collected
+  /// once a test had freed that ledger's pool, let its slot go
+  /// (EngineTileLedger `_letGoWithKey`), the engine read a slot of no book
+  /// and panicked past the ABI, and the process ended with it. Every ask
+  /// comes through here, so none reaches the engine with a pointer that
+  /// names nothing: the pointer goes with [free] ([_livePool]). [release]
+  /// answers a freed pool as it answers a slot none holds.
+  Pointer<rust.Pool> get _pool {
+    final pool = _livePool;
+    if (pool == null) {
+      throw GpuRefused('a pool was asked after it was freed');
+    }
+    debugAsked?.call();
+    return pool;
+  }
+
+  /// The pool while it is not freed; null once it is ([free]).
+  Pointer<rust.Pool>? _livePool;
+
+  /// Test seam: called as each ask reaches the engine ([_pool]) — how a
+  /// test tells an ask of a freed pool refused from one that went through.
+  @visibleForTesting
+  static void Function()? debugAsked;
 
   /// A cel: the tiles stored under it go to pages of theirs first, then to
   /// any page with room (rust/src/kernels/pool/mod.rs).
@@ -1113,7 +1141,7 @@ class GpuPool implements _OfAnEngine {
     written,
   ) {
     final pool = stored.pool;
-    if (written || pool._freed) {
+    if (written || pool._livePool == null) {
       return;
     }
     final unwritten = pool._unwritten();
@@ -1137,8 +1165,10 @@ class GpuPool implements _OfAnEngine {
     ];
   });
 
-  /// Lets [tile] go; false where no tile is held there.
-  bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
+  /// Lets [tile] go; false where no tile is held there — none is, in a
+  /// pool freed: a tile collected after its pool went lets go of nothing.
+  bool release(GpuTile tile) =>
+      _livePool != null && rust.poolRelease(_pool, tile.page, tile.slot);
 
   /// Hands the engine's thread a fold of the tiles next to fold — [most]
   /// at most, by [kernels] — and gives them their places once it is told,
@@ -1171,7 +1201,7 @@ class GpuPool implements _OfAnEngine {
     final folded = await told.future;
     // Freed meanwhile, its books went with it — what was folded too. A
     // fold that failed is settled as well: its tiles are the next's.
-    if (!_freed) {
+    if (_livePool != null) {
       rust.poolSettle(_pool, _engine._engine);
     }
     return folded ? handed : 0;
@@ -1247,14 +1277,13 @@ class GpuPool implements _OfAnEngine {
   /// (rust/src/kernels/pool/mod.rs).
   int get aheadBytes => rust.poolAheadBytes(_pool);
 
-  /// Frees the pool's pages; before its engine is closed.
+  /// Frees the pool's pages; before its engine is closed. Asked again, it
+  /// is refused as any ask of a freed pool is ([_pool]).
   void free() {
-    _freed = true;
-    rust.poolFree(_pool);
+    final pool = _pool;
+    _livePool = null;
+    rust.poolFree(pool);
   }
-
-  /// Freed: a store's copy told of after asks the pool nothing.
-  bool _freed = false;
 }
 
 /// A bitmap dabs read — a tip's or the paper's — kept for the piles that read
