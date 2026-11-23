@@ -12,6 +12,9 @@
 //!   Flutter's own macOS surfaces use (macos/framework/Source/
 //!   FlutterSurface.mm:94-136), minus the render-target use no kernel
 //!   needs.
+//! - The law of a screen's buffer (platform/mod.rs): how Metal keeps an
+//!   IOSurface's texture — whether it compresses one, and what hands it
+//!   between the two devices — has not been read (공통 2026-11-24).
 //! - Which device Flutter draws with is not handed to plugins, so the
 //!   engine opens only where there is one (device.rs, `open_sole`): a
 //!   dual-GPU Intel Mac, where Flutter takes the integrated GPU and wgpu

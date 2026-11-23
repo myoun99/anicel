@@ -12,7 +12,8 @@
 //!   of its own (SwapChain11.cpp:343-360, mNeedsOffscreenTextureCopy).
 //! - ALLOW_SIMULTANEOUS_ACCESS: such a texture decays to COMMON once its
 //!   ExecuteCommandLists finishes (MS docs, "State decay to common"), so
-//!   it is handed over without a barrier wgpu cannot express.
+//!   it is handed over without a barrier wgpu cannot express — how this
+//!   platform keeps the law of a screen's buffer (platform/mod.rs).
 //! - ALLOW_UNORDERED_ACCESS: the compute pass stores into it.
 
 use std::ffi::{OsString, c_void};

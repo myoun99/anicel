@@ -3,6 +3,32 @@
 //! (windows.rs), and so do iOS and macOS, through an IOSurface (apple.rs),
 //! Linux, through a dma-buf (linux.rs), and Android, through an
 //! AHardwareBuffer (android.rs); the rest have no bridge yet.
+//!
+//! 🚨THE LAW OF A SCREEN'S BUFFER: what is handed to Flutter is laid out so
+//! that the engine's device and Flutter's read it alike with nothing
+//! handed between them — no compression for one to resolve, no layout for
+//! one to change. Each platform keeps it by how it makes the buffer:
+//! - Windows: ALLOW_SIMULTANEOUS_ACCESS — the texture decays to COMMON
+//!   once the engine's work on it finishes (windows.rs).
+//! - Linux: the LINEAR modifier (linux.rs).
+//! - Android: CPU_READ_RARELY, which drivers lay out uncompressed
+//!   (android.rs, `allocated`). A request to the driver, not a guarantee
+//!   as LINEAR is — so the debug screen's check measures a buffer laid
+//!   each way (the app's `ScreenCheck`, [`Laid`]).
+//! - iOS and macOS: an IOSurface (apple.rs) — how Metal keeps it there has
+//!   not been read (공통 2026-11-24).
+//!
+//! 🗣️유저 2026-11-24 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
+//! through 관제): 「2번은 안드만 해당이야? 통일해도 이거는 통일안된단거야?
+//! 통일기준으로 정하면안되나」 — one law, which Android alone broke till
+//! then (an OPTIMAL image laid as its driver chose).
+//!
+//! ⛔A LAW NOT YET KEPT, ON ANY PLATFORM: a buffer is drawn on again only
+//! once Flutter has finished reading it. The app draws the next frame on
+//! the buffer Flutter was shown before, as soon as it is shown the other
+//! (the app's `ScreenTexture`), and nothing on any platform says Flutter's
+//! GPU is done with it (risk 1 of that card; its fix goes to every
+//! platform at once).
 
 #[cfg(target_os = "android")]
 mod android;

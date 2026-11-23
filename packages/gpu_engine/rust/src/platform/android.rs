@@ -23,14 +23,15 @@
 //!   the kernels may store into one is the device's own answer
 //!   ([`takes`]), asked before an image is made; where it says no, what
 //!   they write is copied onto the buffer's image ([`Way::Copied`]).
-//! - ⚠️No release of the image to VK_QUEUE_FAMILY_FOREIGN_EXT, as on Linux
-//!   (linux.rs) — but Linux's reason does not hold here: its image is
-//!   LINEAR, and this one is OPTIMAL, which a driver may keep compressed.
-//!   wgpu records no such barrier and leaves it to its caller
-//!   (wgpu-hal-30.0.1/src/vulkan/device.rs:813-820). Whether Flutter's
-//!   device sees what the engine's wrote is each device's to say: the
-//!   debug screen compares the two (card
-//!   the-galaxy-tab-canvas-went-slow-on-build-1095, ⓑ).
+//! - No release of the image to VK_QUEUE_FAMILY_FOREIGN_EXT, as on Linux
+//!   (linux.rs): wgpu records no such barrier and leaves it to its caller
+//!   (wgpu-hal-30.0.1/src/vulkan/device.rs:813-820). The image is OPTIMAL —
+//!   the only tiling an AHardwareBuffer is imported by — so the law of a
+//!   screen's buffer (platform/mod.rs) is kept by asking for
+//!   CPU_READ_RARELY ([`allocated`]), which drivers lay out uncompressed.
+//!   ⚠️A request, not a guarantee as Linux's LINEAR is: the debug screen's
+//!   check measures a buffer laid each way (card
+//!   the-galaxy-tab-canvas-went-slow-on-build-1095, ⓑ and ⓒ).
 //!
 //! ↩️TILL 2026-11-23 ANDROID ALONE SHOWED A WINDOW Flutter made — a
 //! SurfaceProducer's queue, which only takes images an app cannot make —,
@@ -240,8 +241,8 @@ pub fn screen_said(device: &wgpu::Device) -> String {
 /// An AHardwareBuffer for a surface. [`Laid::ForTheCpuToo`] asks for one
 /// the CPU may read now and then as well, which drivers lay out
 /// uncompressed: no compression for the two devices to see differently,
-/// where nothing hands the image from one to the other
-/// ([`SharedHandle`]'s module note, ⚠️no release to FOREIGN).
+/// where nothing hands the image from one to the other — the law of a
+/// screen's buffer (platform/mod.rs).
 ///
 /// 🗣️관제 2026-11-24 01:58 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
 /// ⓒ of risks 2 and 3, user asked as Q11): the screen asks for it — a
