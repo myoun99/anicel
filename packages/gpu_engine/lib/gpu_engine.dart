@@ -307,11 +307,11 @@ class GpuEngine {
 
   /// [target]'s texture, for a draw on this engine to write [rect] of —
   /// [left, top, right, bottom), the whole of it where null: what the
-  /// target was said to hold is forgotten ([GpuTarget.kept]), and what the
-  /// draw writes is counted as changed ([GpuTarget.settle]). Every draw
+  /// target was said to hold is forgotten ([GpuSurface.kept]), and what the
+  /// draw writes is counted as changed ([GpuSurface.settle]). Every draw
   /// reaches a target's texture through here.
   Pointer<rust.Texture> _toDrawOn(
-    GpuTarget target,
+    GpuSurface target,
     (int, int, int, int)? rect,
   ) {
     final texture = _its(target)._texture;
@@ -737,17 +737,26 @@ class GpuEngine {
   }
 }
 
-/// What a kernel writes for the screen to show: a [GpuSurface] Flutter
-/// shows through a [SharedTexture], on every platform. ⚠️One kind of
-/// target since Android's window went (2026-11-23).
-sealed class GpuTarget implements _OfAnEngine {
-  GpuTarget(this._engine);
+/// What a kernel writes for the screen to show: a texture the compute pass
+/// fills and Flutter shows through a [SharedTexture], on every platform.
+///
+/// ↩️ONE CLASS SINCE ANDROID'S WINDOW WENT (2026-11-23): a sealed target
+/// stood over it and the window (`GpuWindow`), the window's images the
+/// kernels stored straight into. With the window gone it had one child —
+/// two names for one question (관제 2026-11-24, card
+/// gpu-target-has-one-child-left) —, folded into it.
+class GpuSurface implements _OfAnEngine {
+  GpuSurface._(
+    this._engine,
+    this._surface,
+    this.width,
+    this.height,
+    this.bgra, {
+    required this.asTheDriverChooses,
+  });
 
   @override
   final GpuEngine _engine;
-
-  /// The texture the kernel writes.
-  Pointer<rust.Texture> get _texture;
 
   /// WHAT THE TARGET STILL HOLDS OF THE FRAME DRAWN ON IT LAST, as who drew
   /// it says once it has — read back by who draws on it next, to draw
@@ -768,9 +777,6 @@ sealed class GpuTarget implements _OfAnEngine {
   /// than the last by how many it keeps. Every target is one texture of
   /// the engine's own now: a surface (rust/src/platform/android.rs).
   Object? kept;
-
-  int get width;
-  int get height;
 
   /// What the draws since the last [settle] wrote of the target — the box
   /// round all of them, [left, top, right, bottom) —, null where none has.
@@ -804,7 +810,20 @@ sealed class GpuTarget implements _OfAnEngine {
   ///
   /// 🗣️유저 2026-11-23 (card the-galaxy-tab-canvas-went-slow-on-build-1095-Q9):
   /// 「그 기기만 바뀐 곳을 한 번 옮겨 보여 준다」 — what changed, once.
-  void settle();
+  void settle() {
+    final changed = _changed;
+    _changed = null;
+    if (changed == null) {
+      return;
+    }
+    using(
+      (arena) => rust.surfaceSettle(
+        _engine._engine,
+        _surface,
+        _edges(arena, changed),
+      ),
+    );
+  }
 
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
@@ -816,23 +835,9 @@ sealed class GpuTarget implements _OfAnEngine {
       seed,
     ),
   );
-}
-
-/// A texture the compute pass fills and Flutter shows.
-class GpuSurface extends GpuTarget {
-  GpuSurface._(
-    super._engine,
-    this._surface,
-    this.width,
-    this.height,
-    this.bgra, {
-    required this.asTheDriverChooses,
-  });
 
   final Pointer<rust.Surface> _surface;
-  @override
   final int width;
-  @override
   final int height;
   final bool bgra;
 
@@ -849,24 +854,8 @@ class GpuSurface extends GpuTarget {
 
   Pointer<Void> get _handle => rust.surfaceHandle(_surface);
 
-  @override
+  /// The texture the kernel writes.
   Pointer<rust.Texture> get _texture => rust.surfaceTexture(_surface);
-
-  @override
-  void settle() {
-    final changed = _changed;
-    _changed = null;
-    if (changed == null) {
-      return;
-    }
-    using(
-      (arena) => rust.surfaceSettle(
-        _engine._engine,
-        _surface,
-        _edges(arena, changed),
-      ),
-    );
-  }
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
   /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
@@ -3532,7 +3521,7 @@ class GpuComposite implements _OfAnEngine {
   int show(
     GpuPool pool,
     GpuPlan plan,
-    GpuTarget target,
+    GpuSurface target,
     (int, int, int, int) rect,
   ) {
     final passes = using(
@@ -3556,7 +3545,7 @@ class GpuComposite implements _OfAnEngine {
   /// pan takes it before [GpuScreen.show] draws the rest (the app's
   /// `EngineStackScreen.show`). It copies through a buffer the engine
   /// keeps while a hand is at work, as a compose's ([GpuEngine.restsAfter]).
-  void move(GpuTarget target, (int, int) by) {
+  void move(GpuSurface target, (int, int) by) {
     final (dx, dy) = by;
     rust.compositeMove(
       _composite,
@@ -3726,7 +3715,7 @@ class GpuScreen implements _OfAnEngine {
   /// the turn the frame is drawn: a done asked after another body handed
   /// over in between would answer for that one's too.
   void show(
-    GpuTarget target, {
+    GpuSurface target, {
     required List<double> inverse,
     required GpuSampling sampling,
     required (int, int, int, int) rect,
@@ -5935,7 +5924,7 @@ class GpuGridLay {
   /// ([GpuEngine.done]). Throws for a rect past the target and a tile laid
   /// from past its picture or onto no box.
   void lay(
-    GpuTarget target,
+    GpuSurface target,
     (int, int, int, int) rect,
     List<GpuGridLaid> laid,
   ) => using((arena) {

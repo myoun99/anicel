@@ -276,13 +276,13 @@ sealed class ScreenTexture {
   int _itsDrawMicros = 0;
 
   /// The target the frame begun last was drawn on: the one a frame the
-  /// GPU did not finish leaves holding nothing known ([GpuTarget.kept]).
+  /// GPU did not finish leaves holding nothing known ([GpuSurface.kept]).
   /// Frames are drawn one at a time ([_frames]), so it is that frame's
   /// till the next is begun.
-  GpuTarget? _drawnOnLast;
+  GpuSurface? _drawnOnLast;
 
   /// The frame being begun: its draw, and what it is drawn for.
-  ({void Function(GpuTarget next) draw, Object? drawnFor})? _beginning;
+  ({void Function(GpuSurface next) draw, Object? drawnFor})? _beginning;
 
   /// Told once a frame the GPU finished is up — and whether another was
   /// asked for meanwhile: that one is drawn where it is asked for again
@@ -308,7 +308,7 @@ sealed class ScreenTexture {
   /// done — as soon as it is, where none is named: what puts up the
   /// pictures of one canvas together (`PicturesUpTogether`).
   void present(
-    void Function(GpuTarget next) draw, {
+    void Function(GpuSurface next) draw, {
     Object? drawnFor,
     Future<void> Function(Future<void> done)? upTogether,
   }) {
@@ -373,7 +373,7 @@ sealed class ScreenTexture {
       _drawnOnLast = next;
       draw(next);
       // What the frame wrote, handed over where Flutter shows another
-      // texture than the one drawn on ([GpuTarget.settle]) — before the
+      // texture than the one drawn on ([GpuSurface.settle]) — before the
       // done the frame goes up by.
       next.settle();
     });
@@ -413,7 +413,7 @@ sealed class ScreenTexture {
       );
 
   /// [draw] onto what Flutter is not showing.
-  void _draw(void Function(GpuTarget next) draw);
+  void _draw(void Function(GpuSurface next) draw);
 
   /// What was drawn last is what Flutter shows.
   void _show();
@@ -503,7 +503,7 @@ final class _AlternatedTextures extends ScreenTexture {
   ValueListenable<int> get textureId => _shown;
 
   @override
-  void _draw(void Function(GpuTarget next) draw) => draw(_surfaces[_next]);
+  void _draw(void Function(GpuSurface next) draw) => draw(_surfaces[_next]);
 
   @override
   void _show() {
@@ -549,7 +549,7 @@ final class _SurfaceTexture extends ScreenTexture {
   int _framesDrawn = 0;
 
   @override
-  void _draw(void Function(GpuTarget next) draw) {
+  void _draw(void Function(GpuSurface next) draw) {
     _framesDrawn += 1;
     draw(_surface);
   }

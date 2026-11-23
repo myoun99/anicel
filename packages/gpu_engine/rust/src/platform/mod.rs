@@ -310,7 +310,7 @@ pub unsafe extern "C" fn gpu_engine_surface_texture(surface: *const Surface) -> 
 /// it. Nothing where the two are one texture, every other surface.
 ///
 /// The app asks it once a frame is drawn, of what the frame's draws wrote
-/// (`GpuTarget.settle`), before it asks for the GPU's done: the frame is
+/// (`GpuSurface.settle`), before it asks for the GPU's done: the frame is
 /// shown once the copy is done too.
 ///
 /// # Safety

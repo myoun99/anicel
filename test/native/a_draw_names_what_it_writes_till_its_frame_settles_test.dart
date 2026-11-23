@@ -7,8 +7,8 @@ import 'package:anicel/src/native/screen_texture.dart';
 import '../helpers/a_shown_surface.dart';
 
 /// What a frame's draws wrote of a target is the box round all of them,
-/// kept on the target ([GpuTarget.debugChanged]) till it is settled
-/// ([GpuTarget.settle]) — and a screen settles each frame it draws, before
+/// kept on the target ([GpuSurface.debugChanged]) till it is settled
+/// ([GpuSurface.settle]) — and a screen settles each frame it draws, before
 /// its done. Where Flutter shows another texture than the one drawn on
 /// (an Android device whose AHardwareBuffer images take no stores) that
 /// box is what is copied across: a box too small leaves a stale strip on
@@ -57,7 +57,7 @@ void main() {
 
   test('a screen settles the frame it draws', () {
     final screen = ScreenTexture.debugOnSurface(surface);
-    GpuTarget? drawnOn;
+    GpuSurface? drawnOn;
     screen.present((next) {
       drawnOn = next;
       lay.lay(next, (2, 1, 5, 3), const []);

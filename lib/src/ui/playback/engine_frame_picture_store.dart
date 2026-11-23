@@ -47,7 +47,7 @@ class EngineFramePicture extends ChangeNotifier {
   /// [size] texels, the view's corner on its texel [corner]
   /// ([EngineStackScreen.show]).
   void show(
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,

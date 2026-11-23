@@ -261,7 +261,7 @@ abstract interface class _FrameFeed {
   /// onto [target] of [size] texels, laid [on] it.
   void _show(
     StackedFrame? frame,
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size,
     _OnTheTexture on,
   );
@@ -1224,7 +1224,7 @@ class _FramePictureViewState extends State<FramePictureView>
   @override
   void _show(
     StackedFrame? frame,
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size,
     _OnTheTexture on,
   ) {

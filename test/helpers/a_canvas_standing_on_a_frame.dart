@@ -10,7 +10,7 @@ import 'package:flutter/rendering.dart'
         OffsetLayer,
         RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuTarget;
+import 'package:gpu_engine/gpu_engine.dart' show GpuSurface;
 import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -476,7 +476,7 @@ Uint8List pixelsOfFrame(StackedFrame frame, ui.Rect world, {double zoom = 1}) {
 
 Uint8List _shownOver(
   ui.Rect world,
-  void Function(GpuTarget target, (int, int) size, CanvasViewport viewport)
+  void Function(GpuSurface target, (int, int) size, CanvasViewport viewport)
   show, {
   double zoom = 1,
 }) {

@@ -187,7 +187,7 @@ Future<GpuShown> frameOnTheEngine(
       output.height,
     );
     final size = (output.width, output.height);
-    Future<void> showOn(GpuTarget onto) async {
+    Future<void> showOn(GpuSurface onto) async {
       if (picture != null) {
         picture.show(onto, size, viewport: onTheRaster, devicePixelRatio: 1);
       } else {

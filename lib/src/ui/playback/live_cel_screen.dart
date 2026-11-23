@@ -195,7 +195,7 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
   @override
   void _show(
     StackedFrame? frame,
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size,
     _OnTheTexture on,
   ) {

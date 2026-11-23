@@ -175,7 +175,7 @@ final class EngineStackScreen {
   /// engine, waited for by none ([GpuScreen.show]).
   ///
   /// 🚨DRAWN WHERE IT DIFFERS ALONE, where [target] still holds this
-  /// screen's frame through this very camera ([GpuTarget.kept]): the texels
+  /// screen's frame through this very camera ([GpuSurface.kept]): the texels
   /// that read a tile made again since ([_Lays.since]) — the kept frame
   /// differs nowhere else, a lay making again the tiles its rect meets,
   /// whole (`Screen::compose`) —, and nothing where none was. A stroke's
@@ -200,7 +200,7 @@ final class EngineStackScreen {
   /// spares drew all of its 3584×2560 texels again at × 0.63, 43 ms of its
   /// GPU (rust/src/kernels/composite/moved.rs has the rest).
   void show(
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
@@ -366,7 +366,7 @@ typedef _Through = ({
   (int, int) at,
 });
 
-/// What a target keeps of a screen's frame ([GpuTarget.kept]): whose, as of
+/// What a target keeps of a screen's frame ([GpuSurface.kept]): whose, as of
 /// which lay of its ([_Lays.last]), and through which camera.
 typedef _ShownOn = ({EngineStackScreen of, int lay, _Through through});
 

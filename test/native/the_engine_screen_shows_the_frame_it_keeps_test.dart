@@ -520,7 +520,7 @@ void main() {
     /// Shows [screen] through [camera] on [target]: what it asked of the
     /// engine — null where it drew nothing ([ScreenAsked]).
     ScreenAsk? askedOn(
-      GpuTarget target,
+      GpuSurface target,
       EngineStackScreen screen,
       Camera camera,
     ) {
@@ -537,7 +537,7 @@ void main() {
     /// Shows [screen] through [camera] on [target]: the box round the
     /// texels it drew, columns by rows — null where none.
     (int, int)? drawnOn(
-      GpuTarget target,
+      GpuSurface target,
       EngineStackScreen screen,
       Camera camera,
     ) => switch (askedOn(target, screen, camera)) {
@@ -1063,7 +1063,7 @@ void main() {
     });
 
     // Every draw on a target forgets what it was said to hold
-    // ([GpuTarget.kept]): a fill, a composite shown, a screen of the
+    // ([GpuSurface.kept]): a fill, a composite shown, a screen of the
     // engine's shown by another hand, the grid's lay.
     test('a target another draw was on since is drawn whole', () async {
       final screen = EngineStackScreen(engine.composite, engine.letters);
