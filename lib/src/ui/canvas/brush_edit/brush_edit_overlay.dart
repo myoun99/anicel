@@ -83,12 +83,12 @@ class _BrushEditOverlay {
           SchedulerPhase.transientCallbacks,
       "a stroke's step is asked from a frame's first callbacks",
     );
-    if (_state._pendingOverlayDabs.isEmpty || _stepThisFrameAsked) {
+    if (_state._pendingOverlayDabs.isEmpty) {
       return;
     }
-    _stepThisFrameAsked = true;
+    // Asked again in the frame, the first told lays every dab queued, and
+    // the rest find none.
     scheduleMicrotask(() {
-      _stepThisFrameAsked = false;
       if (_state.mounted) {
         _stepNow();
       } else {
@@ -96,9 +96,6 @@ class _BrushEditOverlay {
       }
     });
   }
-
-  /// Whether this frame's step is asked for ([stepPendingOverlayDabs]).
-  bool _stepThisFrameAsked = false;
 
   /// The dabs queued laid as the stroke's next step — or held while a frame
   /// of the canvas's pictures is being drawn, for the frame after the last
