@@ -343,9 +343,14 @@ mod tests {
     #[test]
     fn flutter_is_handed_the_bytes_the_kernel_wrote() {
         let engine = first_engine();
-        let (texture, shared) =
-            super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8Unorm)
-                .expect("shared surface");
+        let (texture, shared) = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Rgba8Unorm,
+            super::Laid::ForTheCpuToo,
+        )
+        .expect("shared surface");
         Fill::new(engine).run(engine, &texture, 7).expect("fill");
         let plane = &shared.plane;
         let (offset, stride) = (plane.offset as usize, plane.stride as usize);
@@ -380,7 +385,13 @@ mod tests {
     #[test]
     fn a_bgra_surface_is_refused() {
         let engine = first_engine();
-        let made = super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Bgra8Unorm);
+        let made = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Bgra8Unorm,
+            super::Laid::ForTheCpuToo,
+        );
         assert!(made.is_err());
     }
 }

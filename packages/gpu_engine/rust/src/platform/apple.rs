@@ -267,9 +267,14 @@ mod tests {
     #[test]
     fn flutter_is_handed_the_bytes_the_kernel_wrote() {
         let engine = first_engine();
-        let (texture, shared) =
-            super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Bgra8Unorm)
-                .expect("shared surface");
+        let (texture, shared) = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Bgra8Unorm,
+            super::Laid::ForTheCpuToo,
+        )
+        .expect("shared surface");
         Fill::new(engine).run(engine, &texture, 7).expect("fill");
         let pixels = &*shared.pixels;
         assert_eq!(CVPixelBufferGetPixelFormatType(pixels), kCVPixelFormatType_32BGRA);
@@ -294,7 +299,13 @@ mod tests {
     #[test]
     fn an_rgba_surface_is_refused() {
         let engine = first_engine();
-        let made = super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8Unorm);
+        let made = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Rgba8Unorm,
+            super::Laid::ForTheCpuToo,
+        );
         assert!(made.is_err());
     }
 }
