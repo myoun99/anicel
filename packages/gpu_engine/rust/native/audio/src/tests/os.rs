@@ -14,7 +14,7 @@
 
 use super::{
     Span, TempFile, between_junk, decode, expect_left_to_the_os, expect_stream_of, expect_window_of, fixture, framed,
-    stream_in_pieces,
+    read_through_in_pieces, stream_in_pieces,
 };
 use crate::{FORMAT_OS, FORMAT_UNKNOWN};
 
@@ -183,4 +183,30 @@ fn a_caf_audio_toolbox_trims_itself_is_read() {
     let sound = decode(&Span::whole(caf.path()), 0, -1);
     assert_eq!(sound.format, FORMAT_OS, "no bundled decoder reads a CAF");
     assert!(sound.samples.iter().any(|&s| s.abs() > 0.05), "the tone, not silence");
+}
+
+/// 🚨WHAT THE OS STAGE READS IS COUNTED AS EVERY DECODER'S IS: Media
+/// Foundation reads the container through a span opened again on threads of
+/// its own (`Container::span_again`), and that span counts into the
+/// container's — so the import window's percent moves while the OS makes a
+/// sound too (🗣️유저 11-23, decoder-reads-skip-the-percent-Q2). Plain, and
+/// framed inside the project file.
+#[test]
+fn how_far_the_os_stage_has_read_is_counted_as_every_decoder_s_is() {
+    let path = fixture("tone_he_aac.m4a");
+    let bytes = std::fs::read(&path).expect("the fixture");
+    let blob = framed(&bytes, 1000);
+    let (kept, kept_at) = between_junk("read-through.m4a", &blob);
+    for (what, span) in [
+        ("plain", Span::whole(&path)),
+        ("framed", Span { path: kept.path(), offset: kept_at, length: blob.len() as i64, framed: true }),
+    ] {
+        if !MEASURED {
+            expect_left_to_the_os(what, &span);
+            continue;
+        }
+        let said = read_through_in_pieces(&span, 1024);
+        assert!(said.windows(2).all(|two| two[0] <= two[1]), "{what}: {said:?}");
+        assert!(*said.last().expect("read") > 0.5, "{what}: {said:?} — the OS's reads, counted");
+    }
 }

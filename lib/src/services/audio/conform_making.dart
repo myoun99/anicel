@@ -88,8 +88,13 @@ final class ConformMaking {
   /// its peaks folded, each window written to [scratch] as it comes, and its
   /// PCM kept in memory unless it stays on disk — null when no decoder
   /// recognized it. Throws [AudioDecodeFailure] where the decoder stops
-  /// partway.
-  ConformPass? passOver(MediaByteSource src, ConformScratch? scratch) {
+  /// partway. [onRead] hears how much of [src] the decoder has read through
+  /// after each window ([AudioDecodeStream.readThrough]).
+  ConformPass? passOver(
+    MediaByteSource src,
+    ConformScratch? scratch, {
+    void Function(double fraction)? onRead,
+  }) {
     final sound = decode(src);
     if (sound == null) {
       return null;
@@ -100,7 +105,11 @@ final class ConformMaking {
       }
       final resampler = _resamplerFor(sound);
       try {
-        return _passThrough(_atProjectRate(sound, resampler), sound, scratch);
+        return _passThrough(
+          _atProjectRate(sound, resampler, onRead),
+          sound,
+          scratch,
+        );
       } finally {
         resampler?.close();
       }
@@ -165,16 +174,19 @@ final class ConformMaking {
           );
   }
 
-  /// [sound] a window at a time, through [resampler] when it needs one.
+  /// [sound] a window at a time, through [resampler] when it needs one —
+  /// [onRead] told how far the decoder has read after each.
   static Iterable<Float32List> _atProjectRate(
     AudioDecodeStream sound,
     AudioResampleStream? resampler,
+    void Function(double fraction)? onRead,
   ) sync* {
     for (
       var window = sound.read(conformWindowFrames);
       window.isNotEmpty;
       window = sound.read(conformWindowFrames)
     ) {
+      onRead?.call(sound.readThrough);
       final out = resampler == null ? window : resampler.push(window);
       if (out.isNotEmpty) {
         yield out;

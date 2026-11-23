@@ -68,6 +68,11 @@ external Pointer<Void> _streamOpen(
 )
 external int _streamRead(Pointer<Void> stream, Pointer<Float> out, int frames);
 
+@Native<Double Function(Pointer<Void>)>(
+  symbol: 'qa_audio_stream_read_through',
+)
+external double _streamReadThrough(Pointer<Void> stream);
+
 @Native<Void Function(Pointer<Void>)>(symbol: 'qa_audio_stream_close')
 external void _streamClose(Pointer<Void> stream);
 
@@ -349,6 +354,10 @@ final class QaAudioStream implements AudioDecodeStream {
     // Copied out: the room is the next read's.
     return Float32List.fromList(room.asTypedList(got * channels));
   }
+
+  @override
+  double get readThrough =>
+      _handle == nullptr ? 0 : _streamReadThrough(_handle);
 
   @override
   void close() {

@@ -152,6 +152,20 @@ class AudioConformStore extends ChangeNotifier {
   final Map<String, ConformResult> _entries = {};
   final Set<String> _pending = {};
   final Map<String, _ConformFailure> _failures = {};
+
+  /// How much of each conform under way has read of what it reads, and
+  /// who waits to hear it ([ensurePeaksFor]'s `onReading`) — the conform
+  /// started before they asked (the import window's list starts it, its
+  /// placement waits on it), so each hears the last word at once.
+  final Map<String, double> _read = {};
+  final Map<String, Set<void Function(double)>> _hearingRead = {};
+
+  void _heardRead(String sourcePath, double fraction) {
+    _read[sourcePath] = fraction;
+    for (final hear in [...?_hearingRead[sourcePath]]) {
+      hear(fraction);
+    }
+  }
   bool _disposed = false;
 
   /// The carry each path's entry — or failure — was made OF ([resolveCarry]).
@@ -513,10 +527,33 @@ class AudioConformStore extends ChangeNotifier {
   /// [ensureFor], then the waveform when the conform is usable; null when
   /// it never will be. The one wait for everything that shows or measures
   /// a sound before it plays: the media viewer's page, the import window's
-  /// preview, and a sound's placement.
-  Future<AudioPeaks?> ensurePeaksFor(String sourcePath) async {
-    final result = await ensureFor(sourcePath);
-    return result != null && result.isUsable ? result.peaks : null;
+  /// preview, and a sound's placement. [onReading] hears, while it waits,
+  /// how much of the source the conform has read of what it reads.
+  ///
+  /// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+  /// 바이트를 센다」): the import window's percent while a sound is made.
+  Future<AudioPeaks?> ensurePeaksFor(
+    String sourcePath, {
+    void Function(double fraction)? onReading,
+  }) async {
+    if (onReading == null) {
+      return _peaksOf(await ensureFor(sourcePath));
+    }
+    final hearing = _hearingRead.putIfAbsent(sourcePath, () => {});
+    hearing.add(onReading);
+    try {
+      final result = ensureFor(sourcePath);
+      final heard = _read[sourcePath];
+      if (heard != null) {
+        onReading(heard);
+      }
+      return _peaksOf(await result);
+    } finally {
+      hearing.remove(onReading);
+      if (hearing.isEmpty) {
+        _hearingRead.remove(sourcePath);
+      }
+    }
   }
 
   Future<void> _ensure(String sourcePath) async {
@@ -535,6 +572,7 @@ class AudioConformStore extends ChangeNotifier {
           bucketsPerSecond: bucketsPerSecond,
           speedNumerator: speed.numerator,
           speedDenominator: speed.denominator,
+          onReading: (fraction) => _heardRead(sourcePath, fraction),
         ),
       );
     } on Object catch (error) {
@@ -547,6 +585,7 @@ class AudioConformStore extends ChangeNotifier {
       return;
     }
     _pending.remove(sourcePath);
+    _read.remove(sourcePath);
     // Whatever lands below — an entry or a failure — is of THIS carry. One
     // the pool has moved off since is dropped at the next lookup.
     _conformedAs[sourcePath] = carry;

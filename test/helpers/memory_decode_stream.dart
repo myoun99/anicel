@@ -37,6 +37,11 @@ final class MemoryDecodeStream implements AudioDecodeStream {
     return piece;
   }
 
+  /// As a decoder reads through a file, a sound in hand is read through as
+  /// far as it has been handed back.
+  @override
+  double get readThrough => _samples.isEmpty ? 1 : _at / _samples.length;
+
   @override
   void close() => closed = true;
 }

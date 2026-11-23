@@ -868,9 +868,21 @@ class ProjectImportDoors {
 
     /// See [importImageFile]'s.
     void Function(double fraction)? onCarrying,
+
+    /// How much of the movie its sound's conform has read of what it reads
+    /// ([AudioConformStore.ensurePeaksFor]) — the movie's bytes come down
+    /// from the cloud inside it (decoder-reads-skip-the-percent-Q2).
+    void Function(double fraction)? onReading,
   }) async {
     if (settings.movieParts == MovieParts.sound) {
-      return _movieSoundAlone(path, settings, spot, sourcePath, onCarrying);
+      return _movieSoundAlone(
+        path,
+        settings,
+        spot,
+        sourcePath,
+        onCarrying: onCarrying,
+        onReading: onReading,
+      );
     }
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
@@ -896,8 +908,11 @@ class ProjectImportDoors {
       // sound's playback will read.
       final withMovieSound =
           settings.movieParts == MovieParts.pictureAndSound &&
-          await _conforms.ensurePeaksFor(_pool.importSoundOf(source)) !=
-              null;
+          await _conforms.ensurePeaksFor(
+            _pool.importSoundOf(source),
+            onReading: onReading,
+          ) !=
+          null;
       // A baked picture leaves the file nothing to be for — unless its
       // sound lands beside it, which reads the file ([placementRegisters]).
       final assets = [
@@ -936,9 +951,10 @@ class ProjectImportDoors {
     String path,
     ImportFileSettings settings,
     ImportLayerSpot? spot,
-    String? sourcePath,
+    String? sourcePath, {
     void Function(double fraction)? onCarrying,
-  ) => importSoundFile(
+    void Function(double fraction)? onReading,
+  }) => importSoundFile(
     path: path,
     copyIntoProject: settings.mode == ImportFileMode.keepInside,
     inFrame: settings.inFrame,
@@ -946,6 +962,7 @@ class ProjectImportDoors {
     spot: spot,
     sourcePath: sourcePath,
     onCarrying: onCarrying,
+    onReading: onReading,
   );
 
   /// What a placed movie LANDS AS: the span it covers on the sound's clock,
@@ -1969,13 +1986,19 @@ class ProjectImportDoors {
 
     /// See [importImageFile]'s.
     void Function(double fraction)? onCarrying,
+
+    /// See [importVideoFile]'s: the sound's conform reads the file.
+    void Function(double fraction)? onReading,
   }) async {
     final gate = _landing.arriveOnSeRows(path: path, spot: spot);
     if (gate == null) {
       return false;
     }
     final source = _pool.importSoundOf(path);
-    final peaks = await _conforms.ensurePeaksFor(source);
+    final peaks = await _conforms.ensurePeaksFor(
+      source,
+      onReading: onReading,
+    );
     if (peaks == null) {
       return false;
     }

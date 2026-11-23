@@ -911,6 +911,42 @@ void main() {
       );
     });
 
+    testWidgets('🗣️decoder-reads-skip-the-percent-Q2: a sound is read in under '
+        "the window's line — its conform's decoder reads the file, and a sound "
+        'in the cloud comes down inside that read (「디코더가 읽은 바이트를 '
+        '센다」)', (tester) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+        audioConformStore: soundConformStore(reads: [0.5, 1]),
+      );
+      addTearDown(session.dispose);
+      final wav = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}read.wav');
+        await file.writeAsBytes(const [0x52, 0x49, 0x46, 0x46]);
+        return file.path;
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: [wav!]),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      final lines = watchTheLine(tester);
+      await pumpPastTheWaitWindow(tester);
+      Object? onSe1() => session.activeTrack.seLayers.first
+          .timeline[session.activeCutGlobalStartFrame];
+      await settleAsync(tester, () => onSe1() != null);
+      await tester.pumpAndSettle();
+
+      expect(
+        lines,
+        ['', AppText.strings.imStepReading, AppText.strings.imStepCarrying, ''],
+      );
+    });
+
     testWidgets('an answer the KIND refuses still does not stick — a sound '
         'has no pixels to bake, so its bake cell stays a dash', (
       tester,

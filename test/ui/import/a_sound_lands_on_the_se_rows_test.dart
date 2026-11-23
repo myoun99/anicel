@@ -85,10 +85,10 @@ void main() {
 
   // A second of sound, answered without the isolate a widget test cannot
   // run.
-  EditorSessionManager session() {
+  EditorSessionManager session({List<double> reads = const []}) {
     final s = EditorSessionManager(
       initialProject: createDefaultProject(),
-      audioConformStore: soundConformStore(),
+      audioConformStore: soundConformStore(reads: reads),
     );
     addTearDown(s.dispose);
     return s;
@@ -118,6 +118,29 @@ void main() {
       inFrame: inFrame,
       outFrame: outFrame,
     );
+  });
+
+  testWidgets('🗣️decoder-reads-skip-the-percent-Q2: a sound tells how far '
+      'its conform has read the file (「디코더가 읽은 바이트를 센다」)', (
+    tester,
+  ) async {
+    final s = session(reads: [0.25, 0.5, 1]);
+    final heard = <double>[];
+
+    await tester.runAsync(() async {
+      final path = await writeSound('read.wav', 1);
+      return s.importDoors.importSoundFile(
+        path: path,
+        copyIntoProject: false,
+        onReading: heard.add,
+      );
+    });
+
+    // The conform began before the door waited on it: the door hears the
+    // last word at once (AudioConformStore.ensurePeaksFor).
+    expect(heard, isNotEmpty);
+    expect(heard.last, 1);
+    await tester.pumpAndSettle();
   });
 
   testWidgets('a sound lands on S1 from the cut start, tagged 「SE」 with its '

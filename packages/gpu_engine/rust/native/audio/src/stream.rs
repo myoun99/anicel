@@ -105,6 +105,9 @@ pub struct Stream {
     lead: i64,
     /// Frames of the sound still to come, or -1: all the decoder hands back.
     left: i64,
+    /// What the decoder reads the sound out of, for how far it has read
+    /// ([Stream::read_through]).
+    container: Container,
 }
 
 impl Stream {
@@ -143,6 +146,12 @@ impl Stream {
         if [FORMAT_MOVIE_PCM, FORMAT_AAC, FORMAT_ALAC, FORMAT_OS].contains(&format) {
             container_start(container, sample_rate, &mut start);
         }
+        // ⚠️What was read to get here — each decoder tried, a movie's index
+        // read wherever it lies (at the file's END in a movie not made for
+        // the web), the boxes `container_start` reads — is the decoder
+        // finding its way, not walking the sound: counted from here, the
+        // reads walk the container front to back as the sound comes.
+        container.reach().from_nothing();
         Some(Stream {
             decoder,
             format,
@@ -153,6 +162,7 @@ impl Stream {
             block_at: 0,
             lead: start.left_to_take(),
             left: start.keep,
+            container: container.clone(),
         })
     }
 
@@ -167,6 +177,18 @@ impl Stream {
 
     pub fn sample_rate(&self) -> i32 {
         self.sample_rate
+    }
+
+    /// How much of the container its decoder has read through since the
+    /// sound began, 0–1: the furthest byte read of the container's bytes
+    /// ([media::span::Reach]).
+    ///
+    /// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+    /// 바이트를 센다」) — what the import window's percent counts while a
+    /// sound is made (F-608-Q2: bytes read of the bytes to read).
+    pub fn read_through(&self) -> f64 {
+        let size = self.container.size();
+        if size <= 0 { 1.0 } else { (self.container.reach().get() as f64 / size as f64).clamp(0.0, 1.0) }
     }
 
     /// Moves on through up to `frames` frames of the sound — into `out`, or

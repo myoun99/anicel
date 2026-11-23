@@ -1245,5 +1245,8 @@ final class _StopsPartway implements AudioDecodeStream {
   }
 
   @override
+  double get readThrough => 0;
+
+  @override
   void close() => closed = true;
 }

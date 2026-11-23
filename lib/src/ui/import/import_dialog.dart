@@ -254,7 +254,9 @@ class _FileReport {
       _in(_Stretch.cut, _cuttingStep(kind), fraction);
 
   /// [fraction] of the file read in ([readHeldMediaBytes]) — a picture from
-  /// the cloud comes down inside this read (F-608-Q2).
+  /// the cloud comes down inside this read (F-608-Q2) — or, for a sound or a
+  /// movie's, read by its conform's decoder
+  /// ([AudioConformStore.ensurePeaksFor], decoder-reads-skip-the-percent-Q2).
   void reading(double fraction) =>
       _in(_Stretch.read, AppText.strings.imStepReading, fraction);
 
@@ -2289,6 +2291,7 @@ class _ImportDialogState extends State<ImportDialog> {
         spot: into.spot,
         sourcePath: sourcePath,
         onCarrying: fileReport.carrying,
+        onReading: fileReport.reading,
       );
     }
     if (kind == MediaAssetKind.video) {
@@ -2407,6 +2410,7 @@ class _ImportDialogState extends State<ImportDialog> {
     spot: into.spot,
     sourcePath: sourcePath,
     onCarrying: fileReport.carrying,
+    onReading: fileReport.reading,
   );
 
   /// Why a placement of the file [name] that ran and answered `false` did

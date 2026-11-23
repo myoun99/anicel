@@ -130,6 +130,18 @@ pub unsafe extern "C" fn qa_audio_stream_read(stream: *mut Stream, out: *mut f32
     stream.pass(Some(out), frames)
 }
 
+/// `qa_audio_stream_read_through`: how much of its container the stream's
+/// decoder has read through, 0–1 ([Stream::read_through]); 0 for a stream
+/// that is not there.
+///
+/// # Safety
+/// `stream` as for [qa_audio_stream_read].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_audio_stream_read_through(stream: *const Stream) -> f64 {
+    // SAFETY: the caller's contract.
+    unsafe { stream.as_ref() }.map_or(0.0, Stream::read_through)
+}
+
 /// `qa_audio_stream_close`.
 ///
 /// # Safety
