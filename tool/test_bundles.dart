@@ -87,16 +87,14 @@ const Map<String, String> kRunsAlone = {
   'test/ui/a_pen_that_hovers_has_lifted_test.dart':
       'census 11-21 reversed: red 8/8 in a bundle, after '
       'the_composite_and_the_landing_compile_off_this_isolate — a test never '
-      'ended; green alone.',
+      'ended; green alone. Again 11-23, in a bundle of the two (its first '
+      'test never ended, cut at 3 min; green with it first) — card '
+      'bundled-files-find-the-engine-already-open.',
   'test/ui/brush/the_eyedropper_swatch_keeps_its_place_test.dart':
       'census 11-20 forward and 11-21 reversed: red 5/10 in a bundle, after '
       'toolbar_buttons_do_not_fade (2 red) — Expected: Object or closure '
       'painting: / \'a circle with a mask filter\' / \'a circle with …; green '
       'alone.',
-  'test/ui/canvas/a_frame_that_waits_for_its_plugins_holds_its_picture_test.dart':
-      'census 11-21 reversed: red 10/10 in a bundle, after rail_groups_gap — '
-      'TimeoutException after 0:10:00.000000: Test timed out after 10 '
-      'minutes; green alone.',
   'test/ui/canvas/an_overlay_holds_what_it_shows_test.dart':
       'census 11-20 forward and 11-22 reversed: red 4/10 in a bundle, after '
       'an_se_rows_box_is_a_layers (1 red) — Expected: true / Actual: <false>; '
@@ -110,14 +108,6 @@ const Map<String, String> kRunsAlone = {
   'test/ui/export/an_output_looks_at_no_head_of_the_cut_test.dart':
       'census 11-21 reversed: red 8/10 in a bundle, after '
       'xsheet_reveals_the_selection (8 of 8 tests red); green alone.',
-  'test/ui/media/a_sound_stands_on_the_stage_as_its_face_test.dart':
-      'census 11-21 reversed: red 9/9 in a bundle, after '
-      'the_book_lies_one_page_under_another (1 of 17 tests red) — '
-      'TimeoutException after 0:12:00.000000: Test timed out after 12 '
-      'minutes; green alone.',
-  'test/ui/menu/a_dropped_project_opens_through_the_open_door_test.dart':
-      'census 11-21 reversed: red 10/10 in a bundle, after '
-      'storyboard_end_line_is_live — a test never ended; green alone.',
   'test/ui/playback/a_warmer_handed_the_real_clock_ends_with_the_test_test.dart':
       'census 11-20 forward: red 2/9 in a bundle, after '
       'the_colour_edit_head_lights_with_its_block (1 red) — premise: the '
@@ -144,10 +134,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'workspace_flip_axis_follows_the_timeline (1 of 17 tests red); green '
       'alone.',
-  'test/ui/timeline/a_block_is_whole_across_a_tile_seam_test.dart':
-      'census 11-20 forward: red 4/9 in a bundle, after '
-      'a_graph_pen_lands_on_the_line (1 red) — TimeoutException after '
-      '0:12:00.000000: Test timed out after 12 minutes; green alone.',
   'test/ui/timeline/a_block_warning_says_why_and_follows_the_hand_test.dart':
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'a_row_that_takes_no_strokes_draws_no_line (1 of 12 tests red); green '
