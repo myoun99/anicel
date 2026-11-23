@@ -3069,23 +3069,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// A lasso traces every point the OS saw ([PenPath]), each its own step;
   /// a box and a line end where the newest is.
   void _traceMarquee(MarqueeDrag drag, PointerMoveEvent event) {
-    setState(() {
-      for (final point in PenPath.eventsOf(event)) {
-        drag
-          ..screenTravel += point.delta.distance
-          ..update(
-            _toCanvas(point.localPosition),
-            keepsRatio: _shapeKeepsRatioNow,
-            shift: _shiftHeld,
-          );
-      }
-    });
+    setState(() => PenPath.eventsOf(event).forEach(_marqueeStep(drag)));
     if (widget.tool == CanvasSelectionTool.drawShape) {
       widget.onDrawShapeDragged?.call(
         drawnCopiesOf(drag.path(), _guideCarries),
       );
     }
   }
+
+  /// One point the OS saw, one step of [drag] — a move's and the lift's
+  /// alike.
+  void Function(PointerEvent point) _marqueeStep(MarqueeDrag drag) =>
+      (point) => drag
+        ..screenTravel += point.delta.distance
+        ..update(
+          _toCanvas(point.localPosition),
+          keepsRatio: _shapeKeepsRatioNow,
+          shift: _shiftHeld,
+        );
 
   /// Every branch below mutates the open warp, and every one of them must
   /// then ask the preview to catch up. Wrapping rather than sprinkling the
@@ -3306,6 +3307,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // in rather than having its BEFORE region put back.
     switch (drag) {
       case MarqueeDrag():
+        // The points the OS merged into the lift are the trace's last
+        // stretch; the lift's own point is where the hand left, as it was
+        // — a stroke's lift reads them the same (`BrushEditPress`).
+        final lift = PenPath.eventsOf(event);
+        lift.take(lift.length - 1).forEach(_marqueeStep(drag));
         _finishMarquee(drag);
       case MoveDrag():
       case TransformDrag():

@@ -7816,6 +7816,55 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the points the OS merged into the LIFT are the lasso\'s last stretch, '
+    'as a stroke\'s (card every-path-takes-every-point-the-os-saw ⓐ⑦)',
+    (tester) async {
+      Future<CanvasSelectionRegion?> lasso(
+        List<List<Offset>> moves, {
+        List<Offset> lift = const [],
+      }) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          shapeKind: CanvasShapeKind.lasso,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        await dragThroughMergedMoves(
+          tester,
+          origin + const Offset(10, 10),
+          [
+            for (final points in moves) [
+              for (final point in points) origin + point,
+            ],
+          ],
+          lift: [for (final point in lift) origin + point],
+        );
+        return env.commands.region;
+      }
+
+      // The lift's own point is where the hand left, as a stroke's is: the
+      // stretch is the points before it.
+      final merged = await lasso(
+        [
+          [const Offset(90, 10)],
+        ],
+        lift: [
+          const Offset(90, 90),
+          const Offset(10, 90),
+          const Offset(10, 90),
+        ],
+      );
+      final apart = await lasso([
+        [const Offset(90, 10)],
+        [const Offset(90, 90)],
+        [const Offset(10, 90)],
+      ]);
+
+      expect(apart, isNotNull);
+      expect(merged, apart);
+    },
+  );
+
   testWidgets('the ellipse shape drags out a round region, not a box', (
     tester,
   ) async {
