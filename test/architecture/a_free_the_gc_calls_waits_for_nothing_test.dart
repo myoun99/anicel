@@ -176,6 +176,14 @@ static final NativeFinalizer _freed = NativeFinalizer(
 );
 // Another library's free is none of the engine's.
 final other = Native.addressOf<NativeFinalizerFunction>(_free);
+
+@Native<Void Function(Int64, Int32, Uint64)>(symbol: 'gpu_engine_told')
+external void told(int texture, int kind, int count);
+
+// A function handed out to be told by, not a free.
+final address = Native.addressOf<
+  NativeFunction<Void Function(Int64, Int32, Uint64)>
+>(rust.told).address;
 ''';
     expect(_collectedFrees(bound), {'gpu_engine_kept_free'});
     expect(_finalizersNamedElsewhere(bound), isEmpty);
@@ -219,9 +227,21 @@ Set<String> _collectedFrees(String dart) {
   };
   return {
     for (final asked in _addressOf.allMatches(dart))
-      ?exported[asked.group(1)!.split('.').last],
+      if (_aFreesShape.hasMatch(asked.group(0)!))
+        ?exported[asked.group(1)!.split('.').last],
   };
 }
+
+/// A finalizer's callback takes the one pointer it was attached with
+/// (`NativeFinalizerFunction`, `Void Function(Pointer<…>)`). ↩️Every
+/// `Native.addressOf` of the engine's was a finalizer's till a screen's
+/// texture was handed Flutter a function to tell its reads to
+/// (`gpu_engine_screen_read`, patch 0007, 2026-11-24) — called by Flutter's
+/// raster and fence threads, never by the GC.
+final _aFreesShape = RegExp(
+  r'<\s*(NativeFinalizerFunction|NativeFunction<\s*Void\s+Function\(\s*'
+  r'Pointer<[^,()]*>\s*\)\s*>)\s*>',
+);
 
 /// A binding of the engine's: the name it is exported under, then the name
 /// Dart calls it by.
