@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/fake_video_backend.dart';
 import '../../helpers/import_preview_probe.dart';
 import '../../helpers/import_warnings.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -945,6 +947,37 @@ void main() {
         lines,
         ['', AppText.strings.imStepReading, AppText.strings.imStepCarrying, ''],
       );
+    });
+
+    testWidgets("🗣️decoder-reads-skip-the-percent-Q2: a movie's sound is "
+        "read in under the window's line — a movie in the cloud comes down "
+        "inside its conform's read", (tester) async {
+      debugVideoDecodeBackend = FakeVideoBackend(frameCount: 24);
+      addTearDown(() => debugVideoDecodeBackend = null);
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+        audioConformStore: soundConformStore(reads: [0.5, 1]),
+      );
+      addTearDown(session.dispose);
+      final movie = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}take.mp4');
+        await file.writeAsBytes(standInMovieBytes);
+        return file.path;
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: [movie!]),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      final lines = watchTheLine(tester);
+      await pumpPastTheWaitWindow(tester);
+      await tester.pumpAndSettle();
+
+      expect(lines, contains(AppText.strings.imStepReading));
     });
 
     testWidgets('an answer the KIND refuses still does not stick — a sound '

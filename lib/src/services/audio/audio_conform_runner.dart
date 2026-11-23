@@ -489,6 +489,6 @@ ConformResult runConformHere(
     conformPath: request.conformPath,
     source: request.source,
     carriedConform: request.carriedConform,
-    onRead: onRead ?? request.onReading,
+    onRead: onRead,
   );
 }
