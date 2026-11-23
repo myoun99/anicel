@@ -32,9 +32,10 @@ String ownerLine(PlaceOwner owner) => switch (owner.away) {
 
 /// A ROW as one line: what holds it — its cut, or its track — and its name.
 ///
-/// Four lists name a row — a frame's place (its first two parts), a media
-/// pool file's row uses, a link badge's partners and a lane key's link
-/// notice — so a row reads the same wherever it is listed.
+/// Five lists name a row — a frame's place (its first two parts), a media
+/// pool file's row uses, a link badge's partners, a lane key's link notice
+/// and the rows a delete takes from other cuts ([rowPlaceLinesElsewhere])
+/// — so a row reads the same wherever it is listed.
 String rowPlaceLine({required PlaceOwner owner, required String layerName}) =>
     '${ownerLine(owner)} · $layerName';
 
@@ -124,10 +125,9 @@ List<String> rowPlaceLines(Project project, LayerId layerId) => [
   if (_rowOf(project, layerId) case final owned?) _placeLineOf(project, owned),
 ];
 
-/// The rows of [rows] that stand in cuts other than [cutId] — or its
-/// 동기컷's, the one cut standing in other timelines (I-150-Q3) — each as
-/// [rowPlaceLine] names it: cut by cut as the timelines hold them, each
-/// cut's rows top first.
+/// The rows of [rows] that stand in cuts other than [cutId], each as
+/// [rowPlaceLine] names it — its timeline first where that is not the open
+/// one: cut by cut as the timelines hold them, each cut's rows top first.
 ///
 /// What a delete window lists under the rows of the cut it is asked in:
 /// the rows the delete takes from the other cuts a row stands in too.
@@ -138,13 +138,10 @@ List<String> rowPlaceLinesElsewhere(
   Set<LayerId> rows, {
   required CutId cutId,
 }) {
-  final here = {cutId, ...?project.linkRegistry.syncOf(cutId)?.cuts};
   final byCut = <CutId, List<String>>{};
   for (final owned in projectLayersWithOwners(project)) {
     final cut = owned.cut;
-    if (cut != null &&
-        !here.contains(cut.id) &&
-        rows.contains(owned.layer.id)) {
+    if (cut != null && cut.id != cutId && rows.contains(owned.layer.id)) {
       (byCut[cut.id] ??= []).add(_placeLineOf(project, owned));
     }
   }
