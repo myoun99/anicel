@@ -399,6 +399,19 @@ void main() {
               lessThanOrEqualTo(wall.bottom),
               reason: why,
             );
+            if (index == 0) {
+              continue;
+            }
+            // Past the horizon it lands without end away from the pinch,
+            // cut there by the wall — and by the float's own edges on the
+            // other three sides, however wide the wall is.
+            final (near, far) = under
+                ? (top + made.height, top)
+                : (top, top + made.height);
+            expect(far, under ? wall.top : wall.bottom);
+            expect(near, closeTo(under ? 812 : 698, 4));
+            expect(left, greaterThan(wall.left + 50));
+            expect(left + made.width, lessThan(wall.right - 50));
           }
           // What the float holds in front of the horizon lands the same,
           // however far past it the float reaches: within the quad, and
