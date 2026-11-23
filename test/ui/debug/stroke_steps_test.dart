@@ -1,8 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
 import 'package:anicel/src/ui/canvas/picture_up_view.dart';
+import 'package:anicel/src/ui/debug/engine_behind.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/picture_writes.dart';
+import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/debug/stroke_steps.dart';
 
 /// 🔬A stroke's steps as the frame statistics count them (`StrokeSteps`):
@@ -21,7 +25,19 @@ void main() {
     MeasurementMode.reset();
     StrokeSteps.forget();
     StrokeSteps.debugMicros = null;
+    EngineBehind.debugNow = null;
+    ScreenAsked.debugForget();
   });
+
+  /// An ask of a screen's, [columns] wide.
+  ScreenAsk anAsk(int columns) => (
+    columns: columns,
+    rows: 10,
+    texels: columns * 10,
+    moved: null,
+    scale: 1,
+    mode: GpuSampling.nearest,
+  );
 
   /// A frame of the app's: a test pumps none it was not asked for.
   Future<void> aFrame(WidgetTester tester) {
@@ -92,6 +108,211 @@ void main() {
       [StrokeSteps.heldMicros, StrokeSteps.upMicros],
       [isEmpty, isEmpty],
       reason: 'its first dab queued while off: no time to tell from',
+    );
+  });
+
+  group('a stroke\'s first step', () {
+    testWidgets('is told from its press: armed, its first dab, held, up, '
+        'the GPU\'s backlog as it went, and what its frame did', (
+      tester,
+    ) async {
+      var behind = 3;
+      EngineBehind.debugNow = () => behind;
+      PictureWrites.wrote(PictureWrite.copied);
+      ScreenAsked.shown(anAsk(1));
+      StrokeSteps.pressed();
+      now = 400;
+      StrokeSteps.queued();
+      now = 900;
+      StrokeSteps.armed();
+      now = 2000;
+      StrokeSteps.queued();
+      StrokeSteps.stepped(2, together: null);
+      behind = 9;
+      expect(StrokeSteps.firstStep, (
+        armed: 900,
+        dab: 400,
+        held: 1600,
+        up: null,
+        behind: 3,
+        did: null,
+      ), reason: 'out, not up yet');
+
+      // The frame's paint, which shows it.
+      PictureWrites.wrote(PictureWrite.inPlace);
+      PictureWrites.wrote(PictureWrite.whole);
+      ScreenAsked.shown(anAsk(64));
+      now = 5000;
+      await aFrame(tester);
+      expect(StrokeSteps.firstStep, (
+        armed: 900,
+        dab: 400,
+        held: 1600,
+        up: 5000,
+        behind: 3,
+        did: (wrote: (inPlace: 1, copied: 0, whole: 1), asked: anAsk(64)),
+      ), reason: 'what the frame did, not what was done before it');
+      expect(StrokeSteps.firstUpMicros, [5000]);
+      expect(StrokeSteps.upMicros, [4600], reason: 'a step too');
+    });
+
+    testWidgets('is the first alone: the steps after it are steps', (
+      tester,
+    ) async {
+      StrokeSteps.pressed();
+      now = 100;
+      StrokeSteps.queued();
+      StrokeSteps.stepped(1, together: null);
+      now = 1000;
+      await aFrame(tester);
+      final first = StrokeSteps.firstStep;
+      now = 2000;
+      StrokeSteps.queued();
+      now = 2500;
+      StrokeSteps.stepped(1, together: null);
+      PictureWrites.wrote(PictureWrite.copied);
+      now = 4000;
+      await aFrame(tester);
+      expect(StrokeSteps.firstStep, first);
+      expect(StrokeSteps.firstUpMicros, [1000]);
+      expect(StrokeSteps.upMicros, [900, 2000]);
+    });
+
+    testWidgets('of a frame that drew no screen says none — not the ask '
+        'before it', (tester) async {
+      ScreenAsked.shown(anAsk(8));
+      StrokeSteps.pressed();
+      StrokeSteps.queued();
+      StrokeSteps.stepped(1, together: null);
+      await aFrame(tester);
+      expect(StrokeSteps.firstStep?.did, (
+        wrote: (inPlace: 0, copied: 0, whole: 0),
+        asked: null,
+      ));
+    });
+
+    testWidgets('is up once the frame of the pictures being drawn is', (
+      tester,
+    ) async {
+      final together = PicturesUpTogether();
+      StrokeSteps.pressed();
+      now = 500;
+      StrokeSteps.queued();
+      StrokeSteps.stepped(1, together: together);
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      await aFrame(tester);
+      expect(StrokeSteps.firstStep?.up, isNull);
+      now = 9000;
+      drawn.complete();
+      await tester.idle();
+      expect(StrokeSteps.firstStep?.up, 9000);
+      expect(StrokeSteps.firstUpMicros, [9000]);
+    });
+
+    testWidgets('of a stroke pressed again before its frame is the newest '
+        'stroke\'s', (tester) async {
+      StrokeSteps.pressed();
+      StrokeSteps.queued();
+      StrokeSteps.stepped(1, together: null);
+      now = 1000;
+      StrokeSteps.pressed();
+      now = 1200;
+      StrokeSteps.queued();
+      StrokeSteps.stepped(1, together: null);
+      now = 3000;
+      await aFrame(tester);
+      expect(StrokeSteps.firstStep?.up, 2000);
+      expect(StrokeSteps.firstUpMicros, [3000, 2000]);
+    });
+
+    testWidgets('is none of a press while the statistics were off', (
+      tester,
+    ) async {
+      MeasurementMode.frameStats.value = false;
+      StrokeSteps.pressed();
+      MeasurementMode.frameStats.value = true;
+      StrokeSteps.queued();
+      StrokeSteps.stepped(1, together: null);
+      await aFrame(tester);
+      expect(StrokeSteps.firstStep, isNull);
+      expect(StrokeSteps.upMicros, hasLength(1), reason: 'a step');
+    });
+
+    testWidgets('the newest strokes\' are kept, the oldest let go', (
+      tester,
+    ) async {
+      for (var stroke = 0; stroke <= StrokeSteps.strokesKept; stroke += 1) {
+        now = stroke * 1000;
+        StrokeSteps.pressed();
+        StrokeSteps.queued();
+        StrokeSteps.stepped(1, together: null);
+        now += stroke;
+        await aFrame(tester);
+      }
+      expect(StrokeSteps.firstUpMicros, hasLength(StrokeSteps.strokesKept));
+      expect(StrokeSteps.firstUpMicros.first, 1);
+    });
+  });
+
+  testWidgets('a landing is told from the lift to the frame after it, with '
+      'the GPU\'s backlog at the lift and what that frame did', (
+    tester,
+  ) async {
+    var behind = 4;
+    EngineBehind.debugNow = () => behind;
+    now = 1000;
+    StrokeSteps.landed(together: null);
+    behind = 0;
+    expect(StrokeSteps.landing, (up: null, behind: 4, did: null));
+    PictureWrites.wrote(PictureWrite.inPlace);
+    ScreenAsked.shown(anAsk(32));
+    now = 7000;
+    await aFrame(tester);
+    expect(StrokeSteps.landing, (
+      up: 6000,
+      behind: 4,
+      did: (wrote: (inPlace: 1, copied: 0, whole: 0), asked: anAsk(32)),
+    ));
+
+    now = 8000;
+    StrokeSteps.landed(together: null);
+    now = 8500;
+    StrokeSteps.landed(together: null);
+    now = 9000;
+    await aFrame(tester);
+    expect(StrokeSteps.landing?.up, 500, reason: 'the newest landing');
+
+    StrokeSteps.forget();
+    expect(
+      [StrokeSteps.landing, StrokeSteps.firstStep, StrokeSteps.firstUpMicros],
+      [null, null, isEmpty],
+    );
+  });
+
+  test('a landing is none while the statistics are off', () {
+    MeasurementMode.frameStats.value = false;
+    StrokeSteps.landed(together: null);
+    expect(StrokeSteps.landing, isNull);
+  });
+
+  test('a picture\'s writes are counted by how each went, and none while '
+      'the statistics are off', () {
+    final before = PictureWrites.counted;
+    PictureWrites.wrote(PictureWrite.inPlace);
+    PictureWrites.wrote(PictureWrite.copied);
+    PictureWrites.wrote(PictureWrite.copied);
+    PictureWrites.wrote(PictureWrite.whole);
+    MeasurementMode.frameStats.value = false;
+    PictureWrites.wrote(PictureWrite.whole);
+    final after = PictureWrites.counted;
+    expect(
+      [
+        after.inPlace - before.inPlace,
+        after.copied - before.copied,
+        after.whole - before.whole,
+      ],
+      [1, 2, 1],
     );
   });
 

@@ -9,6 +9,7 @@ import '../../native/qa_memory.dart';
 import '../../native/screen_texture.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
+import 'engine_behind.dart';
 import 'measurement_mode.dart';
 import 'pointer_clock.dart';
 import 'screen_asked.dart';
@@ -72,6 +73,10 @@ class FrameStatsSnapshot {
     required this.strokeHeldP95,
     required this.strokeUpP50,
     required this.strokeUpP95,
+    required this.firstStep,
+    required this.firstUpP50,
+    required this.firstUpWorst,
+    required this.landing,
     required this.gpuBehind,
     required this.gpuBehindWorst,
     required this.gpuClocked,
@@ -223,6 +228,19 @@ class FrameStatsSnapshot {
   final double strokeHeldP95;
   final double strokeUpP50;
   final double strokeUpP95;
+
+  /// A stroke's first step and its landing, apart (`StrokeSteps`): the
+  /// newest stroke's first step told whole, how long from the press to the
+  /// frame that showed it up over the strokes kept, and the newest landing
+  /// — null till one is.
+  ///
+  /// 🗣️H67 (card the-start-of-every-stroke-stalls-on-the-galaxy-tab): the
+  /// start of every stroke stalls, then draws, zoomed past 100% too — and
+  /// the lines above ask one step of a stroke's hundreds.
+  final FirstStep? firstStep;
+  final double firstUpP50;
+  final double firstUpWorst;
+  final Landing? landing;
 
   /// The submits of the app's engine the GPU had not said it finished, as
   /// of the device's last poll (`GpuEngine.submitsBehind`): as this window
@@ -544,17 +562,10 @@ abstract final class FrameStats {
   static double _displayHertz() =>
       PlatformDispatcher.instance.implicitView?.display.refreshRate ?? 0;
 
-  /// Test seam: the submits behind a test says the engine has, in place of
-  /// the app's engine's own word — an engine at rest has none.
-  @visibleForTesting
-  static int? Function()? debugSubmitsBehind;
-
-  static int? _enginesBehind() => appGpuEngineOpen.value?.submitsBehind;
-
-  /// The submits behind now, kept where the most since the last
-  /// publication ([_behindWorst]) — null where no engine is open.
+  /// The submits behind now ([EngineBehind]), kept where the most since the
+  /// last publication ([_behindWorst]) — null where no engine is open.
   static int? _readBehind() {
-    final behind = (debugSubmitsBehind ?? _enginesBehind)();
+    final behind = EngineBehind.now;
     if (behind != null && behind > (_behindWorst ?? -1)) {
       _behindWorst = behind;
     }
@@ -628,6 +639,7 @@ abstract final class FrameStats {
     final dabs = [...StrokeSteps.dabsKept]..sort();
     final held = [...StrokeSteps.heldMicros]..sort();
     final strokeUps = [...StrokeSteps.upMicros]..sort();
+    final firstUps = [...StrokeSteps.firstUpMicros]..sort();
     final behind = _readBehind();
     final behindWorst = _behindWorst;
     _behindWorst = null;
@@ -689,6 +701,10 @@ abstract final class FrameStats {
       strokeHeldP95: _percentileMillis(held, 0.95),
       strokeUpP50: _percentileMillis(strokeUps, 0.50),
       strokeUpP95: _percentileMillis(strokeUps, 0.95),
+      firstStep: StrokeSteps.firstStep,
+      firstUpP50: _percentileMillis(firstUps, 0.50),
+      firstUpWorst: _percentileMillis(firstUps, 1.0),
+      landing: StrokeSteps.landing,
       gpuBehind: behind,
       gpuBehindWorst: behindWorst,
       gpuClocked: appGpuEngineOpen.value?.clocked,

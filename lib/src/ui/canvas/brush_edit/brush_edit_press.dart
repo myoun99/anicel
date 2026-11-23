@@ -463,6 +463,7 @@ class _BrushEditPress {
         _state._overlay.flushPendingOverlayDabs();
         _state._stroke.commitStroke();
         landed = true;
+        StrokeSteps.landed(together: _state._picturesUp);
       }
     } finally {
       // 🚨F-196: the stroke ENDS whether or not its commit landed. A commit

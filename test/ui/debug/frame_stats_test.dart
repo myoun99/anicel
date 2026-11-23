@@ -6,9 +6,11 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
 
 import 'package:anicel/main.dart';
 import 'package:anicel/src/native/screen_texture.dart';
+import 'package:anicel/src/ui/debug/engine_behind.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/debug/pointer_clock.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/debug/stroke_steps.dart';
@@ -443,8 +445,8 @@ void main() {
     ) async {
       MeasurementMode.frameStats.value = true;
       var behind = 7;
-      FrameStats.debugSubmitsBehind = () => behind;
-      addTearDown(() => FrameStats.debugSubmitsBehind = null);
+      EngineBehind.debugNow = () => behind;
+      addTearDown(() => EngineBehind.debugNow = null);
       tester.binding.scheduleFrame();
       await tester.pump();
       behind = 2;
@@ -830,6 +832,84 @@ void main() {
           findsOneWidget,
           reason: '$line … $figure',
         );
+      }
+    });
+
+    testWidgets('prints a stroke\'s first step and its landing apart — none '
+        'till there is one — and the press to up over the strokes kept', (
+      tester,
+    ) async {
+      MeasurementMode.frameStats.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      addTearDown(() => EngineBehind.debugNow = null);
+      addTearDown(ScreenAsked.debugForget);
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(find.text(' first  —'), findsOneWidget);
+      expect(find.text(' landed —'), findsOneWidget);
+      expect(find.text('  wrote —'), findsNWidgets(2));
+
+      Future<void> aStroke(int pressedAt, {required int upAfter}) async {
+        now = pressedAt;
+        StrokeSteps.pressed();
+        now += 400;
+        StrokeSteps.queued();
+        now += 500;
+        StrokeSteps.armed();
+        now += 1100;
+        StrokeSteps.stepped(1, together: null);
+        PictureWrites.wrote(PictureWrite.inPlace);
+        PictureWrites.wrote(PictureWrite.whole);
+        ScreenAsked.shown((
+          columns: 64,
+          rows: 10,
+          texels: 640,
+          moved: null,
+          scale: 1,
+          mode: GpuSampling.nearest,
+        ));
+        now = pressedAt + upAfter;
+        tester.binding.scheduleFrame();
+        await tester.pump();
+      }
+
+      EngineBehind.debugNow = () => 3;
+      await aStroke(10000, upAfter: 20000);
+      await aStroke(40000, upAfter: 10000);
+      await aStroke(60000, upAfter: 5000);
+      EngineBehind.debugNow = () => 4;
+      now = 70000;
+      StrokeSteps.landed(together: null);
+      PictureWrites.wrote(PictureWrite.copied);
+      now = 76000;
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      final stats = FrameStats.latest.value!;
+      expect(stats.firstStep, StrokeSteps.firstStep);
+      expect(stats.landing, StrokeSteps.landing);
+      expect(
+        [stats.firstUpP50, stats.firstUpWorst],
+        [10.0, 20.0],
+        reason: 'press to up 20 10 5 ms',
+      );
+      await tester.pump();
+
+      for (final line in const [
+        ' first  arm 0.9  dab 0.4  held 1.6  up 5.0  behind 3',
+        '  wrote in place 1  copied 0  whole 1  64x10  x1.00  nearest',
+        ' press→up p50  10.0  max  20.0',
+        ' landed up 6.0  behind 4',
+        '  wrote in place 0  copied 1  whole 0  drew none',
+      ]) {
+        expect(find.text(line), findsOneWidget, reason: line);
       }
     });
 

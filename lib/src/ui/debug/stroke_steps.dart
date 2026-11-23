@@ -4,7 +4,37 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
 import '../canvas/picture_up_view.dart' show PicturesUpTogether;
+import 'engine_behind.dart';
 import 'measurement_mode.dart';
+import 'picture_writes.dart';
+import 'screen_asked.dart';
+
+/// What the frame that showed a step or a landing did ([StrokeSteps]): how
+/// the pictures shown in it took their changes ([PictureWrites]), and the
+/// ask of the newest screen shown in it — null where no screen drew
+/// ([ScreenAsked]).
+typedef FrameDid = ({PictureWritesCounted wrote, ScreenAsk? asked});
+
+/// The newest stroke's first step ([StrokeSteps.firstStep]), in
+/// microseconds from its press: when the press's own handling was done
+/// (the stroke armed), when the step's first dab was queued, and when the
+/// frame that showed the step was up — with how long that dab was held,
+/// the submits behind as the step went out ([EngineBehind]), and what that
+/// frame did. [up] and [did] are null till that frame is up.
+typedef FirstStep = ({
+  int armed,
+  int dab,
+  int held,
+  int? up,
+  int? behind,
+  FrameDid? did,
+});
+
+/// The newest stroke's landing ([StrokeSteps.landing]): from the lift that
+/// landed it to the frame after it being up, in microseconds — null till
+/// then —, the submits behind at the lift ([EngineBehind]), and what that
+/// frame did.
+typedef Landing = ({int? up, int? behind, FrameDid? did});
 
 /// 🔬A STROKE'S STEPS, AS THE SCREEN SHOWS THEM: how many a second, how many
 /// dabs each carried, how long the first of its dabs waited for it to go
@@ -18,9 +48,20 @@ import 'measurement_mode.dart';
 /// 「몇번을 임시빌드로 테스트하게 만드는거냐고 … 모든가능성 철저하게 검사해서
 /// 디버그화면 만들면되지」 — and 관제 23:24: 쌓인 걸음 · 걸음마다 합친 답 수 ·
 /// 펜 표본에서 화면까지의 지연, with nothing waited for to read them.
+///
+/// 🔬AND A STROKE'S FIRST STEP AND ITS LANDING, APART ([firstStep],
+/// [landing]): 🗣️H67 on that tablet (card
+/// the-start-of-every-stroke-stalls-on-the-galaxy-tab) — the start of every
+/// stroke stalls, then draws, zoomed past 100% too. A percentile over the
+/// steps kept asks one of a stroke's hundreds; a first step and a landing
+/// are told whole — the press's handling, the opening's wait, the hold,
+/// the GPU's backlog, and how the frame that showed it wrote its picture.
 abstract final class StrokeSteps {
   /// How many steps the lists keep: a second or two of a stroke's.
   static const int stepsKept = 240;
+
+  /// How many strokes' first steps [firstUpMicros] keeps.
+  static const int strokesKept = 24;
 
   /// The steps counted in all, and the dabs they carried.
   static int get stepsCounted => _stepsCounted;
@@ -45,6 +86,19 @@ abstract final class StrokeSteps {
   static List<int> get upMicros => List.unmodifiable(_up);
   static final List<int> _up = [];
 
+  /// How long from each of the newest strokes' press to the frame that
+  /// showed its first step being up, in microseconds, oldest first.
+  static List<int> get firstUpMicros => List.unmodifiable(_firstUps);
+  static final List<int> _firstUps = [];
+
+  /// The newest stroke's first step; null till one went out.
+  static FirstStep? get firstStep => _firstStep;
+  static FirstStep? _firstStep;
+
+  /// The newest stroke's landing; null till one landed.
+  static Landing? get landing => _landing;
+  static Landing? _landing;
+
   static final Stopwatch _clock = Stopwatch()..start();
 
   /// The clock the steps are timed by, in microseconds — a test's own
@@ -57,6 +111,35 @@ abstract final class StrokeSteps {
   /// When the first dab of the step to come was queued ([_micros]) — none
   /// where none waits.
   static int? _firstQueuedAt;
+
+  /// When the stroke whose first step is to come was pressed ([_micros]),
+  /// and when, after that, its press was handled — none where no first
+  /// step is to come.
+  static int? _pressedAt;
+  static int? _armedAt;
+
+  /// The strokes pressed and the landings so far: a frame that comes after
+  /// the next one's tells nothing of it.
+  static int _strokes = 0;
+  static int _landings = 0;
+
+  /// A stroke was pressed: its first step is told from here ([firstStep]).
+  static void pressed() {
+    if (!MeasurementMode.frameStats.value) {
+      return;
+    }
+    _pressedAt = _micros();
+    _armedAt = null;
+  }
+
+  /// The press of the stroke [pressed] told was handled: the stroke is
+  /// armed, its first dabs out or waited for.
+  static void armed() {
+    if (_pressedAt == null) {
+      return;
+    }
+    _armedAt = _micros();
+  }
 
   /// A dab was queued for the stroke's next step.
   static void queued() {
@@ -76,26 +159,100 @@ abstract final class StrokeSteps {
     }
     _stepsCounted += 1;
     _dabsCounted += dabs;
-    _keep(_dabs, dabs);
+    _keep(_dabs, dabs, stepsKept);
     if (first == null) {
       return;
     }
-    _keep(_held, _micros() - first);
-    void up() => _keep(_up, _micros() - first);
-    // After the paint that draws the step: the frame begun there shows it.
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      final drawn = together?.beingDrawn;
-      if (drawn == null) {
-        up();
-      } else {
-        unawaited(drawn.then((_) => up()));
+    final out = _micros();
+    _keep(_held, out - first, stepsKept);
+    final pressedAt = _pressedAt;
+    _pressedAt = null;
+    if (pressedAt == null) {
+      _afterItsFrame(together, (_) => _keep(_up, _micros() - first, stepsKept));
+      return;
+    }
+    final stroke = _strokes += 1;
+    final step = (
+      armed: (_armedAt ?? out) - pressedAt,
+      dab: first - pressedAt,
+      held: out - first,
+      behind: EngineBehind.now,
+    );
+    _firstStep = (
+      armed: step.armed,
+      dab: step.dab,
+      held: step.held,
+      up: null,
+      behind: step.behind,
+      did: null,
+    );
+    _afterItsFrame(together, (did) {
+      final up = _micros();
+      _keep(_up, up - first, stepsKept);
+      _keep(_firstUps, up - pressedAt, strokesKept);
+      if (stroke != _strokes) {
+        return;
+      }
+      _firstStep = (
+        armed: step.armed,
+        dab: step.dab,
+        held: step.held,
+        up: up - pressedAt,
+        behind: step.behind,
+        did: did,
+      );
+    });
+  }
+
+  /// The pen lifted and its stroke landed: told from here to the frame
+  /// after it being up, of the pictures going up [together] ([landing]).
+  static void landed({required PicturesUpTogether? together}) {
+    if (!MeasurementMode.frameStats.value) {
+      return;
+    }
+    final at = _micros();
+    final behind = EngineBehind.now;
+    final landing = _landings += 1;
+    _landing = (up: null, behind: behind, did: null);
+    _afterItsFrame(together, (did) {
+      if (landing == _landings) {
+        _landing = (up: _micros() - at, behind: behind, did: did);
       }
     });
   }
 
-  static void _keep(List<int> kept, int value) {
+  /// [up] once the frame begun here — the one whose paint draws what went
+  /// out now — is up: of the pictures going up [together], or of none where
+  /// null, the frame itself. Told what that frame did ([FrameDid]).
+  static void _afterItsFrame(
+    PicturesUpTogether? together,
+    void Function(FrameDid did) up,
+  ) {
+    final wrote = PictureWrites.counted;
+    final shows = ScreenAsked.shows;
+    // After the paint that draws it: the frame begun there shows it.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      final now = PictureWrites.counted;
+      final did = (
+        wrote: (
+          inPlace: now.inPlace - wrote.inPlace,
+          copied: now.copied - wrote.copied,
+          whole: now.whole - wrote.whole,
+        ),
+        asked: ScreenAsked.shows == shows ? null : ScreenAsked.last,
+      );
+      final drawn = together?.beingDrawn;
+      if (drawn == null) {
+        up(did);
+      } else {
+        unawaited(drawn.then((_) => up(did)));
+      }
+    });
+  }
+
+  static void _keep(List<int> kept, int value, int room) {
     kept.add(value);
-    if (kept.length > stepsKept) {
+    if (kept.length > room) {
       kept.removeAt(0);
     }
   }
@@ -108,6 +265,11 @@ abstract final class StrokeSteps {
     _dabs.clear();
     _held.clear();
     _up.clear();
+    _firstUps.clear();
+    _firstStep = null;
+    _landing = null;
     _firstQueuedAt = null;
+    _pressedAt = null;
+    _armedAt = null;
   }
 }

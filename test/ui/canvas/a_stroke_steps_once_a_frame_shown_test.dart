@@ -318,6 +318,36 @@ void main() {
       await tester.pump();
     });
 
+    testWidgets('tell a stroke\'s first step from its press — its dab queued '
+        'as the press is handled, out after — and its landing from its '
+        'lift', (tester) async {
+      // Each reading of the clock a microsecond on from the one before.
+      var reads = 0;
+      StrokeSteps.debugMicros = () => reads += 1;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final pen = await aPenOn(tester, overlay: overlay, together: null);
+      final first = StrokeSteps.firstStep!;
+      expect(first.dab, lessThan(first.armed), reason: 'queued in its press');
+      expect(
+        first.armed,
+        lessThan(first.dab + first.held),
+        reason: 'armed before the step went out',
+      );
+      expect(first.up, isNotNull, reason: 'up at the frame painted');
+      expect(StrokeSteps.landing, isNull);
+
+      pen.move(const Offset(60, 20));
+      await tester.pump();
+      expect(StrokeSteps.firstStep, first, reason: 'a step, not the first');
+      pen.lift(const Offset(60, 20));
+      expect(StrokeSteps.landing?.up, isNull, reason: 'landed, not up');
+      await tester.pump();
+      expect(StrokeSteps.landing?.up, isNotNull);
+      await tester.pump();
+    });
+
     testWidgets('count nothing while they are off', (tester) async {
       MeasurementMode.frameStats.value = false;
       final overlay = ActiveStrokeOverlayModel(tileSize: 128);

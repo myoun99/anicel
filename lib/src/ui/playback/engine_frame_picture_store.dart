@@ -14,6 +14,7 @@ import '../../native/app_gpu_engine.dart' show EnginePictures;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
 import '../canvas/fx_plugin_stages.dart';
+import '../debug/picture_writes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 
@@ -410,9 +411,11 @@ class EngineFramePictureStore<K extends Object> {
     EngineChainHolds? holds,
   ) {
     if (from == to || !picture._shownByAnother) {
+      PictureWrites.wrote(PictureWrite.inPlace);
       _watched(picture, picture._composed(frame, changed: rect, holds: holds));
       return picture;
     }
+    PictureWrites.wrote(PictureWrite.copied);
     final copy = _aPicture().._told = picture._told;
     try {
       _watched(

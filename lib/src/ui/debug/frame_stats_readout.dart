@@ -6,6 +6,7 @@ import 'frame_stats.dart';
 import 'measurement_mode.dart';
 import 'screen_asked.dart' show screenAskWords;
 import 'screen_check.dart';
+import 'stroke_steps.dart' show FirstStep, FrameDid, Landing;
 
 /// Hosts the measurement readouts above the whole app.
 ///
@@ -79,6 +80,37 @@ class FrameStatsReadout extends StatelessWidget {
   /// What is not said — no engine open, no answer of the OS's — as no
   /// figure, not a zero.
   static String _orNone(Object? value) => value?.toString() ?? '—';
+
+  /// [micros] in milliseconds to a tenth, unpadded — none where null.
+  static String _msOf(int? micros) =>
+      micros == null ? '—' : (micros / 1000).toStringAsFixed(1);
+
+  /// The newest stroke's first step as its line says it, from the press
+  /// ([FrameStatsSnapshot.firstStep]).
+  static String _firstWords(FirstStep? step) => switch (step) {
+    null => '—',
+    (:final armed, :final dab, :final held, :final up, :final behind, did: _) =>
+      'arm ${_msOf(armed)}  dab ${_msOf(dab)}  held ${_msOf(held)}  '
+          'up ${_msOf(up)}  behind ${_orNone(behind)}',
+  };
+
+  /// The newest landing as its line says it, from the lift
+  /// ([FrameStatsSnapshot.landing]).
+  static String _landingWords(Landing? landing) => switch (landing) {
+    null => '—',
+    (:final up, :final behind, did: _) =>
+      'up ${_msOf(up)}  behind ${_orNone(behind)}',
+  };
+
+  /// What the frame that showed it did ([FrameDid]): how its pictures took
+  /// the change, and what its screen drew.
+  static String _didWords(FrameDid? did) => switch (did) {
+    null => '—',
+    (:final wrote, :final asked) =>
+      'in place ${wrote.inPlace}  copied ${wrote.copied}  '
+          'whole ${wrote.whole}  '
+          '${asked == null ? 'drew none' : screenAskWords(asked)}',
+  };
 
   /// Guards the logical-size division only. A zero dpr means there is no
   /// implicit view (headless), and the sizes are zero too — dividing by 1
@@ -174,6 +206,15 @@ class FrameStatsReadout extends StatelessWidget {
                     'p95${_ms(stats.strokeHeldP95)}',
                 ' pen→up p50${_ms(stats.strokeUpP50)}  '
                     'p95${_ms(stats.strokeUpP95)}',
+                // A stroke's first step and its landing, apart, and what
+                // the frame that showed each did
+                // ([FrameStatsSnapshot.firstStep]).
+                ' first  ${_firstWords(stats.firstStep)}',
+                '  wrote ${_didWords(stats.firstStep?.did)}',
+                ' press→up p50${_ms(stats.firstUpP50)}  '
+                    'max${_ms(stats.firstUpWorst)}',
+                ' landed ${_landingWords(stats.landing)}',
+                '  wrote ${_didWords(stats.landing?.did)}',
                 'GPU     behind ${_orNone(stats.gpuBehind)}  '
                     'max ${_orNone(stats.gpuBehindWorst)}  '
                     'timestamps ${switch (stats.gpuClocked) {

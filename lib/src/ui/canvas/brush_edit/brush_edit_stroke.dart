@@ -22,6 +22,7 @@ class _BrushEditStroke {
     CanvasPoint pressed, {
     required bool mappedErase,
   }) {
+    StrokeSteps.pressed();
     _state._activeDrawingPointer = event.pointer;
     // The press at the time the OS saw it ([PenPath]): every point of
     // the line is on the clock its moves are, and its first too.
@@ -72,6 +73,7 @@ class _BrushEditStroke {
       at: press.timeStamp,
       position: canvasPosition,
     );
+    StrokeSteps.armed();
   }
 
   /// The stroke's settings snapshot — every downstream dab reads it, so

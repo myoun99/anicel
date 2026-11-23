@@ -24,6 +24,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -380,6 +382,18 @@ void main() {
   });
 
   group('a step on its way to another key', () {
+    // How each went, as the frame statistics count it (PictureWrites, H67).
+    setUp(() => MeasurementMode.frameStats.value = true);
+    tearDown(MeasurementMode.reset);
+    PictureWritesCounted since(PictureWritesCounted before) {
+      final now = PictureWrites.counted;
+      return (
+        inPlace: now.inPlace - before.inPlace,
+        copied: now.copied - before.copied,
+        whole: now.whole - before.whole,
+      );
+    }
+
     const marked = (-20, 10, 40, 50);
     const rect = Rect.fromLTRB(-20, 10, 40, 50);
     final routes = <String, Future<bool> Function(
@@ -408,9 +422,11 @@ void main() {
         var told = 0;
         laid.addListener(() => told += 1);
         final changed = cel(5, marked: marked);
+        final before = PictureWrites.counted;
 
         expect(await write(store, frameOf(changed)), isTrue);
 
+        expect(since(before), (inPlace: 0, copied: 1, whole: 0));
         expect(store.peek('a'), same(laid), reason: 'the other screen\'s');
         expect(shownBy(laid), want);
         expect(told, 0, reason: 'what it shows did not change');
@@ -429,9 +445,11 @@ void main() {
         var told = 0;
         laid.addListener(() => told += 1);
         final changed = cel(5, marked: marked);
+        final before = PictureWrites.counted;
 
         expect(await write(store, frameOf(changed)), isTrue);
 
+        expect(since(before), (inPlace: 1, copied: 0, whole: 0));
         expect(store.holds('a'), isFalse);
         expect(store.peek('b'), same(laid));
         expect(shownBy(laid), laidBy(changed));

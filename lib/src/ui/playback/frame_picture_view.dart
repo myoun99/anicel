@@ -35,6 +35,7 @@ import '../canvas/canvas_layer_stack_view.dart'
 import '../canvas/picture_up_view.dart';
 import '../canvas/shown_cels.dart' show ShownCels;
 import '../canvas/viewport_canvas_transform.dart' show renderSnappedViewport;
+import '../debug/picture_writes.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../engine_screen_texture.dart';
 import 'camera_shot.dart' show canvasCutOnScreen;
@@ -1358,6 +1359,7 @@ class _FramePictureViewState extends State<FramePictureView>
     final (:composite, :letters) = _store.toolsOpen!;
     final screen = _standingOn ??= EngineStackScreen(composite, letters);
     if (!identical(_composedOn, frame) || _standingMoved) {
+      PictureWrites.wrote(PictureWrite.whole);
       // Laid whole for the canvas this view is: what it stood on before is
       // let go of (🔬a blur value dragged on S5_BA cut 352 held 3.6 GB of
       // values passed over, 2026-11-20).

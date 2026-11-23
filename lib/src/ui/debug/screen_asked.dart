@@ -57,8 +57,16 @@ abstract final class ScreenAsked {
   static ScreenAsk? get last => _last;
   static ScreenAsk? _last;
 
+  /// How many shows told their ask so far: whether one did between two
+  /// readings, where [last] alone could be the one before (`StrokeSteps`).
+  static int get shows => _shows;
+  static int _shows = 0;
+
   /// A screen was shown as [ask] says.
-  static void shown(ScreenAsk ask) => _last = ask;
+  static void shown(ScreenAsk ask) {
+    _last = ask;
+    _shows += 1;
+  }
 
   /// None shown, as before the first.
   @visibleForTesting
