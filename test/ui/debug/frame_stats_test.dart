@@ -751,6 +751,46 @@ void main() {
       expect(find.textContaining('picture cache 0'), findsOneWidget);
     });
 
+    testWidgets('prints the screens\' waits for a buffer Flutter can no '
+        'longer read: none, with no word, where nothing tells the reads; '
+        'the cut word and its counts where it was cut off', (tester) async {
+      MeasurementMode.frameStats.value = true;
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(
+        find.text(' wait   0  0.0 ms  past bound 0  cut 0  —'),
+        findsOneWidget,
+        reason: 'Windows: nothing tells its reads, and nothing waits',
+      );
+
+      ScreenTexture.surfaceWaits
+        ..waits = 4
+        ..waitMicros = 312500
+        ..readsPastTheBound = 3
+        ..cuts = 1
+        ..screensCut = 1
+        ..heard = true;
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.text(' wait   4  312.5 ms  past bound 3  cut 1  끊김'),
+        findsOneWidget,
+      );
+
+      ScreenTexture.surfaceWaits.screensCut = 0;
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pump();
+      expect(find.textContaining('cut 1  신호'), findsOneWidget);
+    });
+
     testWidgets('prints what a frame waited for, a screen\'s frame part by '
         'part, and the pointer packets', (tester) async {
       MeasurementMode.frameStats.value = true;

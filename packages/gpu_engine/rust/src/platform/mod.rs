@@ -23,12 +23,16 @@
 //! 통일기준으로 정하면안되나」 — one law, which Android alone broke till
 //! then (an OPTIMAL image laid as its driver chose).
 //!
-//! ⛔A LAW NOT YET KEPT, ON ANY PLATFORM: a buffer is drawn on again only
-//! once Flutter has finished reading it. The app draws the next frame on
-//! the buffer Flutter was shown before, as soon as it is shown the other
-//! (the app's `ScreenTexture`), and nothing on any platform says Flutter's
-//! GPU is done with it (risk 1 of that card; its fix goes to every
-//! platform at once).
+//! 🚨AND A BUFFER IS DRAWN ON AGAIN ONLY ONCE FLUTTER HAS FINISHED READING
+//! IT (risk 1 of that card, 2026-11-24): one law for every platform, kept
+//! by the app's `ScreenTurns` — three buffers, the next drawn on one let go
+//! of two of the app's frames ago, and read, where Flutter says what it
+//! has read ([`crate::screen_reads`]). Where it says so is each platform's:
+//! - Android: Anicel's Flutter, patch 0007 — the texture tells its paints
+//!   submitted and read.
+//! - Windows, Linux, iOS and macOS: nothing says it yet, and the frames
+//!   alone answer (the card's table of what each could tell it by, and
+//!   why not where it cannot).
 
 #[cfg(target_os = "android")]
 mod android;

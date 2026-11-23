@@ -7,6 +7,7 @@ import '../../native/app_gpu_engine.dart'
     show appGpuEngineOpen, appGpuVideoMemory;
 import '../../native/qa_memory.dart';
 import '../../native/screen_texture.dart';
+import '../../native/screen_turns.dart' show ScreenWaitsRead;
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
 import 'engine_behind.dart';
@@ -60,6 +61,7 @@ class FrameStatsSnapshot {
     required this.screenShowP50,
     required this.screenShowP95,
     required this.screenPath,
+    required this.surfaceWaits,
     required this.screenAsked,
     required this.pointsPerSecond,
     required this.packetsPerSecond,
@@ -196,6 +198,13 @@ class FrameStatsSnapshot {
   /// screen, and why it was refused where it was — empty where none has
   /// been opened.
   final String screenPath;
+
+  /// What the screens waited for a buffer Flutter can no longer read, since
+  /// the app opened (`ScreenTurns`): how many waits and how long in all,
+  /// how many ended by the bound instead of the GPU's word, how many times
+  /// a screen's word was cut off — and the word now: told, cut, or none
+  /// heard (an engine without 0007, every platform but Android's).
+  final ScreenWaitsRead surfaceWaits;
 
   /// What the newest show of a canvas's screen asked of the engine
   /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and
@@ -687,6 +696,7 @@ abstract final class FrameStats {
       screenShowP50: _percentileMillis(upShows, 0.50),
       screenShowP95: _percentileMillis(upShows, 0.95),
       screenPath: ScreenTexture.path,
+      surfaceWaits: ScreenTexture.surfaceWaits.read,
       screenAsked: ScreenAsked.last,
       pointsPerSecond: aSecond(counted.points, before?.points),
       packetsPerSecond: aSecond(counted.packets, before?.packets),

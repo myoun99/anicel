@@ -183,6 +183,14 @@ class FrameStatsReadout extends StatelessWidget {
                     'p95${_ms(stats.screenFinishP95)}',
                 ' show   p50${_ms(stats.screenShowP50)}  '
                     'p95${_ms(stats.screenShowP95)}',
+                // The waits for a buffer Flutter can no longer read
+                // ([FrameStatsSnapshot.surfaceWaits]): none where nothing
+                // tells the reads, as on Windows.
+                ' wait   ${stats.surfaceWaits.waits}  '
+                    '${(stats.surfaceWaits.waitMicros / 1000).toStringAsFixed(1)} ms  '
+                    'past bound ${stats.surfaceWaits.pastTheBound}  '
+                    'cut ${stats.surfaceWaits.cuts}  '
+                    '${stats.surfaceWaits.word}',
                 // The way the screen reaches Flutter's, and why not where
                 // it was refused ([FrameStatsSnapshot.screenPath]) — its
                 // row always there, its words read off the device.

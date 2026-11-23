@@ -233,4 +233,27 @@ final class ScreenWaits {
   int cuts = 0;
   int screensCut = 0;
   bool heard = false;
+
+  /// What is counted, read at once — the word 「끊김」 while any screen's is
+  /// cut off, 「신호」 once a read was heard, none till one is.
+  ScreenWaitsRead get read => (
+    waits: waits,
+    waitMicros: waitMicros,
+    pastTheBound: readsPastTheBound,
+    cuts: cuts,
+    word: screensCut > 0
+        ? '끊김'
+        : heard
+        ? '신호'
+        : '—',
+  );
 }
+
+/// [ScreenWaits], read at once ([ScreenWaits.read]).
+typedef ScreenWaitsRead = ({
+  int waits,
+  int waitMicros,
+  int pastTheBound,
+  int cuts,
+  String word,
+});
