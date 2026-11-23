@@ -396,7 +396,7 @@ class _BrushEditStroke {
     if (moved.isNotEmpty) {
       _paintSteadied(moved);
       // On screen THIS frame: the queue's own flush may have run already.
-      _state._overlay.flushPendingOverlayDabs();
+      _state._overlay.stepPendingOverlayDabs();
     }
     _keepSteadying();
   }

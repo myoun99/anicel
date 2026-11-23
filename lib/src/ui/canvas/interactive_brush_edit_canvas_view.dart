@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
@@ -58,6 +59,7 @@ import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'fill_range_mark.dart';
+import 'picture_up_view.dart' show PictureUpViewScope, PicturesUpTogether;
 import 'shown_cels.dart';
 import 'stroke_in_flight.dart';
 import 'view_hand.dart';
@@ -624,6 +626,11 @@ class _InteractiveBrushEditCanvasViewState
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 
+  /// The canvas's pictures, going up together: what a stroke's step waits
+  /// for while one is being drawn ([_BrushEditOverlay.stepPendingOverlayDabs])
+  /// — none where this view stands under no canvas's.
+  PicturesUpTogether? _picturesUp;
+
   /// The keepers this view holds its hands up to — taken as it comes up,
   /// so it puts its own hands down there as it goes.
   late final ViewHand<StrokeLander>? _landerKeeper = widget.strokeLander;
@@ -772,6 +779,7 @@ class _InteractiveBrushEditCanvasViewState
 
   @override
   Widget build(BuildContext context) {
+    _picturesUp = PictureUpViewScope.togetherOf(context);
     // The canvas says which cel it draws — only while it draws one; the
     // merged stack draws it otherwise, and says so itself.
     if (widget.paintsContent && widget.editable) {
