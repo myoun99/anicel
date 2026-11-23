@@ -330,6 +330,21 @@ external bool engineWaitLate(Pointer<Engine> engine);
 )
 external void engineStandStill(Pointer<Engine> engine, int millis);
 
+/// What Flutter tells of a texture's paints — submitted (0) or read (1)
+/// through a count —, by Anicel's Flutter, patch 0007
+/// (rust/src/screen_reads.rs): the function the texture is handed.
+@Native<Void Function(Int64, Int32, Uint64)>(symbol: 'gpu_engine_screen_read')
+external void screenRead(int texture, int kind, int count);
+
+@Native<Void Function(Int64)>(symbol: 'gpu_engine_screen_reads_keep')
+external void screenReadsKeep(int texture);
+
+@Native<Void Function(Int64)>(symbol: 'gpu_engine_screen_reads_forget')
+external void screenReadsForget(int texture);
+
+@Native<Uint64 Function(Int64)>(symbol: 'gpu_engine_screen_unread')
+external int screenUnread(int texture);
+
 @Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool, Bool)>(
   symbol: 'gpu_engine_surface_new',
 )

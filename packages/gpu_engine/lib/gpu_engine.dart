@@ -6220,8 +6220,6 @@ const int _crcSlice = 1 << 20;
 /// under one id was taken up by the raster a frame apart from where the
 /// layer tree placed it).
 class SharedTexture {
-  SharedTexture._(this.id);
-
   static Future<SharedTexture> register(
     GpuSurface front, {
     GpuSurface? back,
@@ -6240,6 +6238,9 @@ class SharedTexture {
       try {
         id = await _plugin.invokeMethod<int>('register', {
           'buffer': front._handle.address,
+          'readSignal': Native.addressOf<
+            NativeFunction<Void Function(Int64, Int32, Uint64)>
+          >(rust.screenRead).address,
         });
       } on PlatformException catch (refused) {
         throw GpuRefused(refused.message ?? refused.code);
@@ -6259,7 +6260,19 @@ class SharedTexture {
     return SharedTexture._(id);
   }
 
+  // Kept before Flutter can paint it: nothing is painted of an id till a
+  // layer names it, and none can before [register] answers it.
+  SharedTexture._(this.id) {
+    rust.screenReadsKeep(id);
+  }
+
   final int id;
+
+  /// How many of this texture's paints Flutter's raster has submitted and
+  /// its GPU has not yet read (rust/src/screen_reads.rs) — none where
+  /// Flutter tells nothing: an engine without patch 0007, and every
+  /// platform's texture but Android's.
+  int get unread => rust.screenUnread(id);
 
   /// Shows slot 0 (front) or 1 (back) on the next frame. On Android the
   /// texture's one buffer is what it shows each paint: nothing to tell.
@@ -6268,6 +6281,7 @@ class SharedTexture {
   /// Flutter must no longer show the texture: on Linux nothing tells the
   /// plugin when Flutter stops drawing it (linux/gpu_engine_plugin.cc).
   void unregister() {
+    rust.screenReadsForget(id);
     if (Platform.isAndroid) {
       unawaited(_plugin.invokeMethod<void>('release', {'textureId': id}));
       return;

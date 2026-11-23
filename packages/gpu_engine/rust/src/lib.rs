@@ -7,6 +7,7 @@
 //! - `platform` — the texture Flutter shows, one file per platform.
 //! - `kernels/<area>` — an area's shaders, its C ABI and its GPU tests.
 //! - `fingerprint` — the CRC-32 pinned bytes are compared by.
+//! - `screen_reads` — what Flutter's GPU has still to read of a screen.
 //! - `submits` — what the GPU was handed and has not said it finished.
 //! - `took` — how long each place of the engine took, while it is timed.
 //! - `testing` — what the GPU tests share.
@@ -21,6 +22,7 @@ mod device;
 mod fingerprint;
 mod kernels;
 mod platform;
+mod screen_reads;
 mod submits;
 mod took;
 #[cfg(test)]

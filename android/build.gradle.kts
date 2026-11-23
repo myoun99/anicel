@@ -3,7 +3,9 @@
 // slow-on-build-1095: the control tower's Play bundle, the user's Studio
 // build and CI find it by the same code). The Android engine carries patch
 // tool/flutter_engine/android_patch (0006: a texture shown from the hardware
-// buffers its producer keeps); the Flutter plugin asks for the stock engine
+// buffers its producer keeps; 0007 on it: the texture tells its producer
+// when the GPU has read it — the number names the last patch of the stack);
+// the Flutter plugin asks for the stock engine
 // (`io.flutter:<module>_<mode>:1.0.0-<engine.stamp>`, FlutterPluginUtils.kt)
 // and the embedding and each ABI's library are put on the patched engine's
 // own version here, 1.0.0-<engine.stamp>-anicel.<patch>.

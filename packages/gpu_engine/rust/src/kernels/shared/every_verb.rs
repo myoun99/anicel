@@ -107,7 +107,19 @@ const ON_THEIR_CALLERS: [(&str, &str); 18] = [
 /// hand on the device — each named, under why: its body was read for it
 /// (2026-11-14), and a verb that comes after is read for it before it is
 /// written here.
-const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
+const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 13] = [
+    (
+        "the table of what Flutter's GPU has still to read of a screen's texture, under a \
+         lock of its own that nothing holds past the table: Flutter's raster thread and \
+         Impeller's fence waiter tell it, a screen asks it on the UI's thread \
+         (`screen_reads`)",
+        &[
+            "gpu_engine_screen_read",
+            "gpu_engine_screen_reads_keep",
+            "gpu_engine_screen_reads_forget",
+            "gpu_engine_screen_unread",
+        ],
+    ),
     (
         "opens an engine, on a thread made for it (`opened`)",
         &["gpu_engine_open", "gpu_engine_open_sole", "gpu_engine_open_first"],

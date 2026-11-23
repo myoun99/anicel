@@ -6,5 +6,5 @@
 # 01:42: the QA APK's canvas stood empty, `check failed: … no_texture`).
 # Kept here, beside the one who asks, on whatever registry has it.
 -keepclassmembers class * implements io.flutter.view.TextureRegistry {
-    public *** createHardwareBufferTexture(android.hardware.HardwareBuffer);
+    public *** createHardwareBufferTexture(android.hardware.HardwareBuffer, long);
 }

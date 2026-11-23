@@ -11,8 +11,8 @@ import io.flutter.view.TextureRegistry
  * The Android half of the GPU engine's way to the screen
  * (gpu-engine-skeleton): a Flutter texture of the AHardwareBuffer an
  * engine surface lives in, one buffer for the texture's life — Flutter's
- * `createHardwareBufferTexture`, which Anicel's Flutter patch 0006 adds
- * (tool/flutter_engine/3.47.4). Two surfaces are shown turn about as on
+ * `createHardwareBufferTexture`, which Anicel's Flutter patches 0006 · 0007
+ * add (tool/flutter_engine/3.47.4). The surfaces are shown turn about as on
  * every other platform (rust/src/platform/android.rs).
  */
 class GpuEnginePlugin :
@@ -45,7 +45,7 @@ class GpuEnginePlugin :
                 }
                 val entry =
                     try {
-                        hardwareBufferTexture(buffer)
+                        hardwareBufferTexture(buffer, call.argument<Number>("readSignal")!!.toLong())
                     } catch (refused: UnsupportedOperationException) {
                         buffer.close()
                         result.error("no_texture", "Flutter takes no HardwareBuffer texture: ${refused.message}", null)
@@ -69,23 +69,31 @@ class GpuEnginePlugin :
     }
 
     /**
-     * Flutter's `createHardwareBufferTexture(buffer)`, which only Anicel's
-     * engine has (patch 0006). Asked for by name, not linked, so the app
+     * Flutter's `createHardwareBufferTexture(buffer, readSignal)`, which only
+     * Anicel's engine has (patches 0006 · 0007 — [readSignal] is the engine's
+     * `gpu_engine_screen_read` the GPU's reads are told to). Asked for by name, not linked, so the app
      * still builds against Flutter's own engine — CI's debug APK, or a
      * build made without the patched artifacts — where the screen is then
      * refused by name (`path … refused: Flutter takes no HardwareBuffer
      * texture`) instead of the build failing (board
      * the-galaxy-tab-canvas-went-slow-on-build-1095, 관제 2026-11-24).
      */
-    private fun hardwareBufferTexture(buffer: HardwareBuffer): TextureRegistry.TextureEntry {
+    private fun hardwareBufferTexture(
+        buffer: HardwareBuffer,
+        readSignal: Long,
+    ): TextureRegistry.TextureEntry {
         val create =
             try {
-                textures.javaClass.getMethod("createHardwareBufferTexture", HardwareBuffer::class.java)
+                textures.javaClass.getMethod(
+                    "createHardwareBufferTexture",
+                    HardwareBuffer::class.java,
+                    java.lang.Long.TYPE,
+                )
             } catch (missing: NoSuchMethodException) {
-                throw UnsupportedOperationException("this engine is not Anicel's (patch 0006)")
+                throw UnsupportedOperationException("this engine is not Anicel's (patch 0007)")
             }
         return try {
-            create.invoke(textures, buffer) as TextureRegistry.TextureEntry
+            create.invoke(textures, buffer, readSignal) as TextureRegistry.TextureEntry
         } catch (thrown: java.lang.reflect.InvocationTargetException) {
             throw thrown.targetException
         }

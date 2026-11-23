@@ -21,12 +21,17 @@ void main() {
 
   test('each method the plugin looks up by name is kept, with its '
       'parameters, and the rules ship with the plugin', () {
+    // A class, `X::class.java`; a primitive, `java.lang.Long.TYPE` (`long`).
+    const parameter = r'([\w.]+)::class\.java|java\.lang\.(\w+)\.TYPE';
     final lookups = RegExp(
-      r'getMethod\(\s*"(\w+)"((?:\s*,\s*[\w.]+::class\.java)*)\s*\)',
+      r'getMethod\(\s*"(\w+)"((?:\s*,\s*(?:' + parameter + r'))*)\s*,?\s*\)',
     ).allMatches(File(plugin).readAsStringSync()).map((found) {
-      final parameters = RegExp(r'([\w.]+)::class\.java')
+      final parameters = RegExp(parameter)
           .allMatches(found.group(2)!)
-          .map((type) => type.group(1)!.split('.').last)
+          .map(
+            (type) =>
+                type.group(1)?.split('.').last ?? type.group(2)!.toLowerCase(),
+          )
           .join(',');
       return '${found.group(1)}($parameters)';
     }).toSet();

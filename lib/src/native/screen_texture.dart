@@ -13,6 +13,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/laid_whole.dart';
+import 'screen_turns.dart';
 
 /// A frame of a screen, by the number it was asked for by, and what it was
 /// drawn for ([ScreenTexture.present]).
@@ -29,8 +30,9 @@ typedef ScreenUp = ({int draw, int finish, int show});
 
 /// What the canvas view shows the engine's screen on: a texture of the
 /// view's size in device pixels, and the way a frame drawn on it reaches
-/// Flutter (screen-on-the-engine c6) — two surfaces, each a texture of its
-/// own, alternated, on every platform. The frame grids show their tiles
+/// Flutter (screen-on-the-engine c6) — three surfaces, each a texture of
+/// its own, drawn on in turn as Flutter is done reading them
+/// ([ScreenTurns]), on every platform. The frame grids show their tiles
 /// through one already (`TimelineGridScreenHost`, grid-on-the-engine ④).
 ///
 /// ↩️TILL 2026-11-23 ANDROID ALONE SHOWED A SURFACEPRODUCER'S WINDOW —
@@ -89,6 +91,10 @@ sealed class ScreenTexture {
 
   static int get upsBehindCounted => _upsBehindCounted;
   static int _upsBehindCounted = 0;
+
+  /// 🔬Every screen's waits for a surface Flutter can no longer read
+  /// ([ScreenTurns]).
+  static final ScreenWaits surfaceWaits = ScreenWaits();
 
   /// 🔬The way the newest screen opened reaches Flutter's screen
   /// ([GpuEngine.screenSaid]: on Android `ahb`, or `ahb no — ` and what
@@ -164,6 +170,10 @@ sealed class ScreenTexture {
     _upMicros.clear();
     _upsCounted = 0;
     _upsBehindCounted = 0;
+    surfaceWaits
+      ..waits = 0
+      ..waitMicros = 0
+      ..readsPastTheBound = 0;
   }
 
   /// A texture of [width] × [height] device pixels on [engine] — and the
@@ -312,6 +322,11 @@ sealed class ScreenTexture {
     Object? drawnFor,
     Future<void> Function(Future<void> done)? upTogether,
   }) {
+    if (_frames.laying == null && !_surfaceTaken()) {
+      // None Flutter is done reading: it is drawn where it is asked for
+      // again, once one is — told as a frame up behind ([putUp]).
+      return;
+    }
     _beginning = (draw: draw, drawnFor: drawnFor);
     final bool began;
     try {
@@ -412,7 +427,11 @@ sealed class ScreenTexture {
         ),
       );
 
-  /// [draw] onto what Flutter is not showing.
+  /// Whether a surface the next frame can be drawn on is taken — else it
+  /// waits for one ([ScreenTurns]).
+  bool _surfaceTaken();
+
+  /// [draw] onto the surface taken.
   void _draw(void Function(GpuSurface next) draw);
 
   /// What was drawn last is what Flutter shows.
@@ -440,14 +459,14 @@ sealed class ScreenTexture {
   Future<void> _free();
 }
 
-/// 🚨TWO TEXTURES, EACH REGISTERED ONCE, the widget switching between them
-/// (gpu-engine-feasibility ⑤ — 보드/인프라, 11-06 03:00, an RTX 4080,
+/// 🚨A TEXTURE A SURFACE, EACH REGISTERED ONCE, the widget switching between
+/// them (gpu-engine-feasibility ⑤ — 보드/인프라, 11-06 03:00, an RTX 4080,
 /// release, three runs): Flutter opens a texture again only when its
 /// handle changes (external_texture_d3d.cc:84), so one texture's two slots
 /// opened a handle at every frame — raster p50 0.99 · 1.18 · 0.86 ms
 /// against 0.78 · 0.65 · 0.56 ms for two textures —, and one surface alone
-/// is written while Flutter may still read it: nothing on Windows tells
-/// either side the other is done.
+/// is written while Flutter may still read it. Which is drawn on next is
+/// [ScreenTurns]'s: three, as Flutter's own producer keeps.
 final class _AlternatedTextures extends ScreenTexture {
   /// What is made before a refusal is let go of: a screen half made is
   /// none.
@@ -459,7 +478,7 @@ final class _AlternatedTextures extends ScreenTexture {
     final surfaces = <GpuSurface>[];
     final textures = <SharedTexture>[];
     try {
-      for (var i = 0; i < 2; i++) {
+      for (var i = 0; i < _surfacesKept; i++) {
         surfaces.add(engine.surface(width, height, bgra: ScreenTexture.bgra));
       }
       for (final surface in surfaces) {
@@ -484,23 +503,53 @@ final class _AlternatedTextures extends ScreenTexture {
     int height,
     GpuEngine engine,
   ) : _shown = ValueNotifier(_textures.first.id),
+      _turns = ScreenTurns(
+        _surfaces.length,
+        unread: (surface) => _textures[surface].unread,
+        micros: () => _clock.elapsedMicroseconds,
+        counted: ScreenTexture.surfaceWaits,
+      ),
       super(
         width,
         height,
         surfaces: _surfaces.length,
         done: engine.done,
         engine: engine,
-      );
+      ) {
+    // The first texture is the one the widget names till a frame is up: in
+    // Flutter's trees from the start, no frame is drawn on it first.
+    _turns.shown(0, _framesBegun);
+    _open += 1;
+  }
+
+  /// The one shown, the one let go of last and the one drawn on
+  /// ([ScreenTurns]).
+  static const int _surfacesKept = 3;
 
   final List<GpuSurface> _surfaces;
   final List<SharedTexture> _textures;
   final ValueNotifier<int> _shown;
 
-  /// The surface the next frame is drawn on: the one not shown.
+  final ScreenTurns _turns;
+
+  /// The surface the next frame is drawn on ([_surfaceTaken]).
   int _next = 0;
 
   @override
   ValueListenable<int> get textureId => _shown;
+
+  @override
+  bool _surfaceTaken() {
+    _ticking();
+    if (_turns.take(_framesBegun) case final surface?) {
+      _next = surface;
+      return true;
+    }
+    if (_waiting.add(this)) {
+      SchedulerBinding.instance.scheduleFrame();
+    }
+    return false;
+  }
 
   @override
   void _draw(void Function(GpuSurface next) draw) => draw(_surfaces[_next]);
@@ -510,11 +559,59 @@ final class _AlternatedTextures extends ScreenTexture {
     final texture = _textures[_next];
     texture.show(0);
     _shown.value = texture.id;
-    _next = 1 - _next;
+    _turns.shown(_next, _framesBegun);
+  }
+
+  /// 🚨THE FRAMES OF THE APP'S BEGUN, counted as each begins — what
+  /// [ScreenTurns] reads a frame's pipeline by: a frame of Dart's begins as
+  /// Flutter's animator begins one (animator.cc:95-110), its transient
+  /// callbacks first, before any paint of it, so a surface taken at a paint
+  /// reads the count of the frame it is in. ⚠️A warm-up frame
+  /// (`scheduleWarmUpFrame`) begins with no animator's: none comes after a
+  /// screen has opened but a hot reload's, in a debug build.
+  static int _framesBegun = 0;
+  static int? _tick;
+  static final Stopwatch _clock = Stopwatch()..start();
+
+  /// The screens waiting for a surface: told, as a frame begins, where one
+  /// is to be had — as a frame up behind, so they draw where asked again
+  /// ([putUp]).
+  static final Set<_AlternatedTextures> _waiting = {};
+  static int _open = 0;
+
+  static void _ticking() {
+    _tick ??= SchedulerBinding.instance.scheduleFrameCallback(
+      _ticked,
+      scheduleNewFrame: false,
+    );
+  }
+
+  static void _ticked(Duration _) {
+    _tick = null;
+    _framesBegun += 1;
+    for (final screen in [..._waiting]) {
+      if (screen._turns.wouldTake(_framesBegun)) {
+        _waiting.remove(screen);
+        screen.putUp?.call(behind: true);
+      }
+    }
+    if (_open > 0) {
+      _tick = SchedulerBinding.instance.scheduleFrameCallback(
+        _ticked,
+        // Frames go on while one waits: the frames and the clock free it.
+        scheduleNewFrame: _waiting.isNotEmpty,
+      );
+    }
   }
 
   @override
   Future<void> _free() async {
+    _waiting.remove(this);
+    _open -= 1;
+    if (_open == 0 && _tick != null) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(_tick!);
+      _tick = null;
+    }
     for (final texture in _textures) {
       texture.unregister();
     }
@@ -547,6 +644,10 @@ final class _SurfaceTexture extends ScreenTexture {
   @override
   int? get debugFramesDrawn => _framesDrawn;
   int _framesDrawn = 0;
+
+  // One surface, read back by a test: nothing of Flutter's reads it.
+  @override
+  bool _surfaceTaken() => true;
 
   @override
   void _draw(void Function(GpuSurface next) draw) {
