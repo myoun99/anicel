@@ -73,17 +73,17 @@ class _BrushEditOverlay {
   /// ([_BrushEditStroke._steadyOneFrame]), the samples' own step and the
   /// line's went one after the other, the paint that begins the frame
   /// still to come.
-  /// Asked from a frame's first callbacks, the step is laid once they are
-  /// all through — in the frame's own microtasks, before its build and
-  /// paint — with every dab they queued; asked anywhere else, at the next
-  /// frame's.
+  /// Asked from a frame's first callbacks — the queue's, a steadied
+  /// line's —, the step is laid once they are all through: in the frame's
+  /// own microtasks, before its build and paint, with every dab they
+  /// queued.
   void stepPendingOverlayDabs() {
+    assert(
+      SchedulerBinding.instance.schedulerPhase ==
+          SchedulerPhase.transientCallbacks,
+      "a stroke's step is asked from a frame's first callbacks",
+    );
     if (_state._pendingOverlayDabs.isEmpty || _stepThisFrameAsked) {
-      return;
-    }
-    if (SchedulerBinding.instance.schedulerPhase !=
-        SchedulerPhase.transientCallbacks) {
-      _stepAtTheNextFrame();
       return;
     }
     _stepThisFrameAsked = true;
