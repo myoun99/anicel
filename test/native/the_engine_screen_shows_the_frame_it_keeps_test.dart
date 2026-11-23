@@ -754,9 +754,22 @@ void main() {
       expect(first.fingerprint(), whole(screen, withRoom));
     });
 
-    // The lays are kept apart eight deep (`_Lays`): a target eight behind
-    // is still drawn where they lay, one nine behind whole — the oldest of
-    // them, the second tile's, is told of no more.
+    /// A lay of the second tile of [screen], then [then] of the first.
+    Future<void> laysOf(
+      EngineStackScreen screen,
+      List<int> seeds, {
+      required int then,
+    }) async {
+      final frame = frameOf(celOf(seeds));
+      await screen.compose(frame, changed: inTheSecond);
+      for (var lay = 0; lay < then; lay++) {
+        await screen.compose(frame, changed: inTheFirst);
+      }
+    }
+
+    // The lays are kept apart [screenLaysKeptApart] deep (`_Lays`): a
+    // target as many behind is still drawn where they lay, one more behind
+    // whole — the oldest of them, the second tile's, is told of no more.
     test('a target behind by more lays than are kept apart is drawn '
         'whole', () async {
       final screen = EngineStackScreen(engine.composite, engine.letters);
@@ -766,21 +779,35 @@ void main() {
       await screen.compose(frameOf(celOf(const [5, 5, 5])));
       expect(drawnOn(target, screen, withRoom), roomy);
 
-      /// A lay of the second tile, then [then] of the first.
-      Future<void> laysOf(List<int> seeds, {required int then}) async {
-        final frame = frameOf(celOf(seeds));
-        await screen.compose(frame, changed: inTheSecond);
-        for (var lay = 0; lay < then; lay++) {
-          await screen.compose(frame, changed: inTheFirst);
-        }
-      }
-
-      await laysOf(const [5, 7, 9], then: 7);
-      expect(drawnOn(target, screen, withRoom), (256, 128), reason: 'eight');
+      await laysOf(screen, const [5, 7, 9], then: screenLaysKeptApart - 1);
+      expect(
+        drawnOn(target, screen, withRoom),
+        (256, 128),
+        reason: 'as many as are kept apart',
+      );
       expect(target.fingerprint(), whole(screen, withRoom));
 
-      await laysOf(const [5, 3, 1], then: 8);
-      expect(drawnOn(target, screen, withRoom), roomy, reason: 'nine');
+      await laysOf(screen, const [5, 3, 1], then: screenLaysKeptApart);
+      expect(drawnOn(target, screen, withRoom), roomy, reason: 'one more');
+      expect(target.fingerprint(), whole(screen, withRoom));
+    });
+
+    // 🔬Two frames of the Galaxy Tab's slowest behind — 54 strokes' steps
+    // laid in one frame, two targets in turn (build 1099, 2026-11-23,
+    // `screenLaysKeptApart`) —, a target is drawn where they lay: whole,
+    // it was 43 ms of that tablet's GPU at every frame of a stroke.
+    test('a target two frames of the Galaxy Tab\'s slowest behind is drawn '
+        'where they lay', () async {
+      const behind = 2 * 54;
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(300, 140);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 5, 5])));
+      expect(drawnOn(target, screen, withRoom), roomy);
+
+      await laysOf(screen, const [5, 7, 9], then: behind - 1);
+      expect(drawnOn(target, screen, withRoom), (256, 128));
       expect(target.fingerprint(), whole(screen, withRoom));
     });
 

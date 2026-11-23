@@ -343,11 +343,22 @@ bool _sameCamera(_Through a, _Through b) {
 /// WHERE A KEPT FRAME WAS MADE AGAIN, LAY BY LAY: each lay numbered from
 /// one, the newest [_kept] of them held with the world pixels each made
 /// again — null, all of them.
+/// How many lays a canvas's screen holds apart ([_Lays]): what two targets
+/// shown in turn fall behind by. One behind by more is drawn whole
+/// ([_Lays.since]) — the bound costs a whole frame, never a wrong one.
+///
+/// 🔬Two frames of the Galaxy Tab's slowest are some 110 lays (build 1099,
+/// 유저's photographs 2026-11-23, card
+/// the-galaxy-tab-canvas-went-slow-on-build-1095: 41–54 strokes' steps
+/// laid in one frame of a pen at work, 5–14 in the frames between). ↩️Held
+/// eight deep (2026-11-22, a few lays a frame on this PC), a target fell
+/// behind by more at every frame of a stroke there: it was drawn whole —
+/// 3584×2560 texels, 43 ms of that tablet's GPU —, the steps piled up
+/// meanwhile, and the next was drawn whole again.
+const int screenLaysKeptApart = 256;
+
 final class _Lays {
-  /// How many lays are held apart: what two targets shown in turn fall
-  /// behind by, a few lays a frame. One behind by more is drawn whole
-  /// ([since]) — the bound costs a whole frame, never a wrong one.
-  static const int _kept = 8;
+  static const int _kept = screenLaysKeptApart;
 
   final List<({int lay, Rect? where})> _newest = [];
 
