@@ -45,6 +45,9 @@ android {
         // HardwareBuffer and the texture of one (GpuEnginePlugin.kt) are
         // API 26's; the app's own floor is 29 (android/app).
         minSdk = 26
+        // What the app's release shrinker must leave of Flutter for this
+        // plugin: the texture method it asks for by name (consumer-rules.pro).
+        consumerProguardFiles("consumer-rules.pro")
     }
 }
 

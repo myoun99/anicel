@@ -6148,9 +6148,20 @@ class SharedTexture {
       if (back != null) {
         throw GpuRefused('an Android texture shows one buffer, not two');
       }
-      final id = await _plugin.invokeMethod<int>('register', {
-        'buffer': front._handle.address,
-      });
+      // A refusal is the plugin's words (GpuEnginePlugin.kt), refused as
+      // every platform's is: by name, for the screen to say (the app's
+      // ScreenTexture.path). ↩️It came up as the channel's own exception,
+      // which no one caught: unhandled, and the debug path row read the way
+      // as if it had stood (검증 2026-11-24 01:42, card
+      // the-galaxy-tab-canvas-went-slow-on-build-1095).
+      final int? id;
+      try {
+        id = await _plugin.invokeMethod<int>('register', {
+          'buffer': front._handle.address,
+        });
+      } on PlatformException catch (refused) {
+        throw GpuRefused(refused.message ?? refused.code);
+      }
       return SharedTexture._(id!);
     }
     final id = shim.textureRegister(
