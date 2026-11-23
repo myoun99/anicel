@@ -330,7 +330,7 @@ external bool engineWaitLate(Pointer<Engine> engine);
 )
 external void engineStandStill(Pointer<Engine> engine, int millis);
 
-@Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool)>(
+@Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool, Bool)>(
   symbol: 'gpu_engine_surface_new',
 )
 external Pointer<Surface> surfaceNew(
@@ -338,6 +338,7 @@ external Pointer<Surface> surfaceNew(
   int width,
   int height,
   bool bgra,
+  bool forTheCpuToo,
 );
 
 @Native<Void Function(Pointer<Surface>)>(symbol: 'gpu_engine_surface_free')

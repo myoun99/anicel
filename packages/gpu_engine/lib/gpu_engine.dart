@@ -623,9 +623,25 @@ class GpuEngine {
     });
   }
 
-  /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra].
-  GpuSurface surface(int width, int height, {required bool bgra}) {
-    final surface = rust.surfaceNew(_engine, width, height, bgra);
+  /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra] — laid
+  /// out for the CPU to read too unless [asTheDriverChooses], where the
+  /// platform lets that be said: Android alone, where drivers keep such a
+  /// buffer uncompressed and so nothing compressed is seen differently by
+  /// Flutter's device and the engine's (rust/src/platform/android.rs,
+  /// `allocated`). Elsewhere the two are one.
+  GpuSurface surface(
+    int width,
+    int height, {
+    required bool bgra,
+    bool asTheDriverChooses = false,
+  }) {
+    final surface = rust.surfaceNew(
+      _engine,
+      width,
+      height,
+      bgra,
+      !asTheDriverChooses,
+    );
     if (surface == nullptr) {
       throw GpuRefused(_lastError());
     }

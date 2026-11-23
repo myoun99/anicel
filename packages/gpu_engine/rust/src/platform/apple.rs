@@ -141,6 +141,7 @@ pub fn create(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     if format != wgpu::TextureFormat::Bgra8Unorm {
         return Err(format!("{format:?} is not a format Flutter's CVPixelBuffer shows"));

@@ -202,8 +202,17 @@ sealed class ScreenTexture {
 
   /// A surface of [width] × [height] on [engine], laid as this platform's
   /// screens are: what a picture for a file is shown on and read back from.
-  static GpuSurface surfaceOf(GpuEngine engine, int width, int height) =>
-      engine.surface(width, height, bgra: bgra);
+  static GpuSurface surfaceOf(
+    GpuEngine engine,
+    int width,
+    int height, {
+    bool asTheDriverChooses = false,
+  }) => engine.surface(
+    width,
+    height,
+    bgra: bgra,
+    asTheDriverChooses: asTheDriverChooses,
+  );
 
   /// [surface] alone, presented onto and shown by no texture Flutter
   /// knows: what a test reads a screen back from ([GpuSurface.fingerprint])

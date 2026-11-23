@@ -201,7 +201,7 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
     let (surface, bgra) = [false, true]
         .into_iter()
         // SAFETY: `engine` is live.
-        .map(|bgra| (unsafe { gpu_engine_surface_new(engine, 3 * TILE, TILE, bgra) }, bgra))
+        .map(|bgra| (unsafe { gpu_engine_surface_new(engine, 3 * TILE, TILE, bgra, true) }, bgra))
         .find(|(surface, _)| !surface.is_null())
         .unwrap_or_else(|| panic!("{}", last_error()));
     // SAFETY: every pointer is live and made on `engine`.

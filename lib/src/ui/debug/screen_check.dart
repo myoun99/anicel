@@ -42,8 +42,8 @@ class ScreenCheck extends StatefulWidget {
   static const int side = 256;
 
   /// What the newest check said: `—` till one has run, `checking`, then
-  /// `same`, `nothing`, `differs` with both fingerprints, or `failed:` and
-  /// why ([verdict]).
+  /// for each of its two probes ([both]) `same`, `nothing`, `differs` with
+  /// both fingerprints, or `failed:` and why ([verdict]).
   static final ValueNotifier<String> said = ValueNotifier('—');
 
   /// The way the check last ran for ([ScreenTexture.path]): run again
@@ -70,6 +70,19 @@ class ScreenCheck extends StatefulWidget {
           'never drawn  written ${_hex(written)}',
     (false, false) => 'differs  shown ${_hex(shown)}  written ${_hex(written)}',
   };
+
+  /// The row's words of the two probes: the layout a screen asks for, laid
+  /// out for the CPU to read too, and the one the driver chooses
+  /// ([GpuEngine.surface]) — on Android, compressed where the driver
+  /// compresses.
+  ///
+  /// 🗣️관제 2026-11-24 01:58 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
+  /// ⓒ): one look at a device's debug screen says whether a screen needed
+  /// the CPU's layout — the first `same` and the second not.
+  static String both({
+    required String forTheCpuToo,
+    required String driversOwn,
+  }) => 'cpu $forTheCpuToo  ·  driver $driversOwn';
 
   static String _hex(int value) => value.toRadixString(16).padLeft(8, '0');
 
@@ -115,11 +128,31 @@ class _ScreenCheckState extends State<ScreenCheck> {
 
   Future<void> _check(GpuEngine engine) async {
     ScreenCheck.said.value = 'checking';
+    final forTheCpuToo = await _probe(engine, asTheDriverChooses: false);
+    final driversOwn = await _probe(engine, asTheDriverChooses: true);
+    ScreenCheck.said.value = ScreenCheck.both(
+      forTheCpuToo: forTheCpuToo,
+      driversOwn: driversOwn,
+    );
+  }
+
+  /// One probe, of a surface laid out as a screen's is or as the driver
+  /// chooses ([GpuEngine.surface]): its [ScreenCheck.verdict], or `failed:`
+  /// and why.
+  Future<String> _probe(
+    GpuEngine engine, {
+    required bool asTheDriverChooses,
+  }) async {
     const side = ScreenCheck.side;
     GpuSurface? surface;
     SharedTexture? texture;
     try {
-      final made = surface = ScreenTexture.surfaceOf(engine, side, side);
+      final made = surface = ScreenTexture.surfaceOf(
+        engine,
+        side,
+        side,
+        asTheDriverChooses: asTheDriverChooses,
+      );
       made
         ..fill(_seed)
         ..settle();
@@ -128,13 +161,13 @@ class _ScreenCheckState extends State<ScreenCheck> {
       texture = await SharedTexture.register(made);
       texture.show(0);
       final (:fingerprint, :blank) = await _seen(texture.id);
-      ScreenCheck.said.value = ScreenCheck.verdict(
+      return ScreenCheck.verdict(
         shown: fingerprint,
         written: written,
         blank: blank,
       );
     } on Object catch (error) {
-      ScreenCheck.said.value = 'failed: $error';
+      return 'failed: $error';
     } finally {
       texture?.unregister();
       if (mounted) {

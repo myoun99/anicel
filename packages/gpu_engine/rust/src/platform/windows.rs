@@ -85,6 +85,7 @@ pub fn create(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     // SAFETY: the raw device is only used to make a resource, never to
     // change wgpu's own state.

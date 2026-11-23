@@ -17,7 +17,8 @@
 //! - Made here, not by wgpu: wgpu-hal 30 imports no AHardwareBuffer. The
 //!   extension is turned on by Anicel's edit of the vendored wgpu-hal
 //!   (vulkan/adapter.rs, `ANICEL`), where the device has it.
-//! - The buffer's usage is GPU_SAMPLED_IMAGE alone: Flutter samples it, and
+//! - The buffer's usage is GPU_SAMPLED_IMAGE, and CPU_READ_RARELY for a
+//!   screen's ([`allocated`]): Flutter samples it, and
 //!   no AHardwareBuffer usage stands for a Vulkan storage image — whether
 //!   the kernels may store into one is the device's own answer
 //!   ([`takes`]), asked before an image is made; where it says no, what
@@ -49,6 +50,7 @@ use std::ptr::NonNull;
 use ash::vk;
 use wgpu::hal::api::Vulkan;
 
+use super::Laid;
 use crate::device::storage_texture;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
@@ -61,6 +63,8 @@ const AHB: vk::ExternalMemoryHandleTypeFlags =
 const AHB_FORMAT_R8G8B8A8_UNORM: u32 = 1;
 /// AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE (hardware_buffer.h).
 const AHB_USAGE_GPU_SAMPLED_IMAGE: u64 = 1 << 8;
+/// AHARDWAREBUFFER_USAGE_CPU_READ_RARELY (hardware_buffer.h).
+const AHB_USAGE_CPU_READ_RARELY: u64 = 2;
 
 /// AHardwareBuffer_Desc (hardware_buffer.h).
 #[repr(C)]
@@ -233,13 +237,28 @@ pub fn screen_said(device: &wgpu::Device) -> String {
     }
 }
 
-fn allocated(width: u32, height: u32) -> Result<NonNull<vk::AHardwareBuffer>, String> {
+/// An AHardwareBuffer for a surface. [`Laid::ForTheCpuToo`] asks for one
+/// the CPU may read now and then as well, which drivers lay out
+/// uncompressed: no compression for the two devices to see differently,
+/// where nothing hands the image from one to the other
+/// ([`SharedHandle`]'s module note, ⚠️no release to FOREIGN).
+///
+/// 🗣️관제 2026-11-24 01:58 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
+/// ⓒ of risks 2 and 3, user asked as Q11): the screen asks for it — a
+/// canvas always broken is worse than the bandwidth —, and the debug
+/// screen's check measures both layouts, so one look at a device says
+/// whether it was needed.
+fn allocated(width: u32, height: u32, laid: Laid) -> Result<NonNull<vk::AHardwareBuffer>, String> {
+    let cpu = match laid {
+        Laid::ForTheCpuToo => AHB_USAGE_CPU_READ_RARELY,
+        Laid::AsTheDriverChooses => 0,
+    };
     let desc = BufferDesc {
         width,
         height,
         layers: 1,
         format: AHB_FORMAT_R8G8B8A8_UNORM,
-        usage: AHB_USAGE_GPU_SAMPLED_IMAGE,
+        usage: AHB_USAGE_GPU_SAMPLED_IMAGE | cpu,
         stride: 0,
         rfu0: 0,
         rfu1: 0,
@@ -332,6 +351,7 @@ pub fn create(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    laid: Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     if format != wgpu::TextureFormat::Rgba8Unorm {
         return Err(format!("{format:?} is not a format Flutter's AHardwareBuffer texture shows"));
@@ -348,7 +368,7 @@ pub fn create(
         Way::Copied(_) => ((COPIED_ONTO, wgpu::TextureUses::COPY_DST), wgpu::TextureUsages::COPY_DST),
     };
     let buffer = SharedHandle {
-        buffer: allocated(width, height)?,
+        buffer: allocated(width, height, laid)?,
         shown: None,
     };
     let instance = hal_device.shared_instance().raw_instance();

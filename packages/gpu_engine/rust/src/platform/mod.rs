@@ -167,8 +167,19 @@ pub(crate) fn stores(engine: &Engine, format: wgpu::TextureFormat) -> bool {
             .contains(wgpu::Features::BGRA8UNORM_STORAGE)
 }
 
+/// How a surface's memory is to be laid out, where the platform lets the
+/// engine say: Android alone does (platform/android.rs, `allocated`) —
+/// there a screen asks for the layout the CPU may read too, which drivers
+/// keep uncompressed, and the debug screen's check makes one of each to
+/// tell whether that was needed. The others take what they make.
+#[derive(Clone, Copy)]
+pub enum Laid {
+    ForTheCpuToo,
+    AsTheDriverChooses,
+}
+
 impl Surface {
-    fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat) -> Option<Self> {
+    fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat, laid: Laid) -> Option<Self> {
         // Android's window refused one before it was a surface (2026-11-23):
         // an image of no texel is no image to Vulkan or D3D12.
         if width == 0 || height == 0 {
@@ -177,7 +188,7 @@ impl Surface {
         if !stores(engine, format) {
             return fail("this adapter cannot store to bgra8unorm from a compute pass");
         }
-        match native::create(engine.device(), width, height, format) {
+        match native::create(engine.device(), width, height, format, laid) {
             Ok((texture, shared)) => Some(Self { texture, shared }),
             Err(error) => fail(error),
         }
@@ -185,8 +196,9 @@ impl Surface {
 }
 
 /// Makes a `width` × `height` texture of BGRA or RGBA 8-bit unorm texels,
-/// shared with Flutter where the platform shares textures. Null on
-/// failure; see the last error.
+/// shared with Flutter where the platform shares textures — laid out for
+/// the CPU to read too where `for_the_cpu_too` and the platform lets it be
+/// said ([`Laid`]). Null on failure; see the last error.
 ///
 /// # Safety
 /// `engine` is live.
@@ -196,11 +208,13 @@ pub unsafe extern "C" fn gpu_engine_surface_new(
     width: u32,
     height: u32,
     bgra: bool,
+    for_the_cpu_too: bool,
 ) -> *mut Surface {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
+    let laid = if for_the_cpu_too { Laid::ForTheCpuToo } else { Laid::AsTheDriverChooses };
     engine.on_thread(|| {
-        Surface::new(engine, width, height, surface_format(bgra))
+        Surface::new(engine, width, height, surface_format(bgra), laid)
             .map_or(std::ptr::null_mut(), |surface| engine.hands(surface))
     })
 }

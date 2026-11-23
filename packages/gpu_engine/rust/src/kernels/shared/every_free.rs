@@ -197,7 +197,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 41] {
             let surface = [false, true]
                 .into_iter()
                 // SAFETY: the engine is live.
-                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra) })
+                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra, true) })
                 .find(|surface| !surface.is_null())
                 .unwrap_or_else(|| panic!("{name}: {}", last_error()));
             // SAFETY: both are live, made on the engine.
@@ -343,7 +343,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 41] {
             let made = [false, true]
                 .into_iter()
                 // SAFETY: the engine is live.
-                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra) })
+                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra, true) })
                 .find(|surface| !surface.is_null())
                 .unwrap_or(std::ptr::null_mut());
             gives_back(name, made, gpu_engine_surface_free)

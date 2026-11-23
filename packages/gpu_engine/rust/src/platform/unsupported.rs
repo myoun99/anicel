@@ -24,6 +24,7 @@ pub fn create(
     _width: u32,
     _height: u32,
     _format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     Err("no bridge to Flutter's screen on this platform yet".into())
 }

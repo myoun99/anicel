@@ -21,6 +21,17 @@ void main() {
     );
   });
 
+  test('says both probes — the layout a screen asks for first, the '
+      'driver\'s own beside it', () {
+    expect(
+      ScreenCheck.both(
+        forTheCpuToo: 'same 0badf00d',
+        driversOwn: 'differs  shown 00000012  written 0badf00d',
+      ),
+      'cpu same 0badf00d  ·  driver differs  shown 00000012  written 0badf00d',
+    );
+  });
+
   test('names a read of no texel for what it is — the import that failed '
       'says so nowhere else', () {
     expect(
