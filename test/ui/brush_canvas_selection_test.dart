@@ -3178,6 +3178,37 @@ void main() {
     );
   });
 
+  testWidgets('a turn the OS merged into one move counts every point of it '
+      '— three quarters round is not a quarter back (card '
+      'every-path-takes-every-point-the-os-saw ⓐ⑥)', (tester) async {
+    Future<double> turned(List<List<Offset>> moves) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      // ⚠️The box a second pump finds stands where the first left it.
+      final before = env.commands.transformValues!.rotationDegrees;
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      // Due right of the box's middle (45,45) — the fixture's picture
+      // frames 28..62 — so outside it: a turn.
+      await dragThroughMergedMoves(tester, origin + const Offset(85, 45), [
+        for (final points in moves) [
+          for (final point in points) origin + point,
+        ],
+      ]);
+      return env.commands.transformValues!.rotationDegrees - before;
+    }
+
+    // Round by below and left to above it.
+    const round = [Offset(45, 85), Offset(5, 45), Offset(45, 5)];
+
+    expect(await turned([round]), closeTo(270, 1e-6));
+    expect(
+      await turned([for (final point in round) [point]]),
+      closeTo(270, 1e-6),
+      reason: 'the same points moved one by one',
+    );
+  });
+
   /// 🚨★★★**앵커를 옮기고 상자 밖을 돌리면, 손이 앵커를 돈 만큼 돈다.**
   ///
   /// 🗣️유저 2026-09-25: 「십자 앵커 위치 바꾸고 사각형 바깥 조작해서

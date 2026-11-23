@@ -9,7 +9,11 @@ import 'package:flutter/gestures.dart'
         PanGestureRecognizer,
         PointerDeviceKind,
         PointerDownEvent,
+        PointerEvent,
+        PointerMoveEvent,
         VerticalDragGestureRecognizer;
+
+import '../../services/input/pen_path.dart';
 
 /// 🚨★★★ **THE LAW: A PRESS THAT LANDS ON A BAR BELONGS TO THAT BAR.**
 ///
@@ -93,6 +97,23 @@ class OwningVerticalDragGestureRecognizer
 /// as early is what keeps the handle's drag the handle's.
 class OwningPanGestureRecognizer extends PanGestureRecognizer {
   OwningPanGestureRecognizer({super.debugOwner, super.supportedDevices});
+
+  /// Whether a move is every point the OS saw of its message ([PenPath]),
+  /// one update each, rather than its newest alone — for a handle whose
+  /// value is the way the hand WENT, not where it is: a turn counts its
+  /// windings, and a stall that merged three quarters round into one move
+  /// read a quarter back (card every-path-takes-every-point-the-os-saw
+  /// ⓐ⑥). A handle whose value is where the hand is needs none of them.
+  bool takesEveryPoint = false;
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (takesEveryPoint && event is PointerMoveEvent) {
+      PenPath.eventsOf(event).forEach(super.handleEvent);
+      return;
+    }
+    super.handleEvent(event);
+  }
 
   @override
   bool hasSufficientGlobalDistanceToAccept(

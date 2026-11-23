@@ -10,6 +10,7 @@ import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/history_run.dart';
+import '../../../services/input/pen_path.dart';
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
 import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
@@ -372,15 +373,21 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     _dragActive(true);
   }
 
+  /// Every point the OS saw of the move ([PenPath]), one step each: a turn
+  /// counts its windings (`TransformBoxLaw.turn`), and a stall that merged
+  /// three quarters round into one move read a quarter back (card
+  /// every-path-takes-every-point-the-os-saw ⓐ⑥).
   void _pointerMove(PointerMoveEvent event) {
     final following = _following;
-    final artwork = widget.stage.artworkAt(event.localPosition);
-    if (following == null ||
-        following.press.pointer != event.pointer ||
-        artwork == null) {
+    if (following == null || following.press.pointer != event.pointer) {
       return;
     }
-    following.press.moveTo(following.scene, event.localPosition, artwork);
+    for (final point in PenPath.eventsOf(event)) {
+      final artwork = widget.stage.artworkAt(point.localPosition);
+      if (artwork != null) {
+        following.press.moveTo(following.scene, point.localPosition, artwork);
+      }
+    }
   }
 
   void _pointerUp(PointerUpEvent event) {

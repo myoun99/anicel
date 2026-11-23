@@ -708,6 +708,8 @@ class _RowTransformBoxState extends State<RowTransformBox> {
                     // ([_downHit]) — not where or when the drag was
                     // accepted.
                     recognizer.dragStartBehavior = DragStartBehavior.down;
+                    // The turn counts its windings ([TransformBoxLaw.turn]).
+                    recognizer.takesEveryPoint = true;
                     recognizer.onDown = (details) =>
                         _downHit = _pressAt(details.localPosition);
                     recognizer.onStart = _begin;

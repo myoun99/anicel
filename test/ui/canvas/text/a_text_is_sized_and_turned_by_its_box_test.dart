@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/key_chords.dart';
+import '../../../helpers/the_points_the_os_saw.dart';
 
 /// 🚨★★★A TEXT HELD BY ITS BOX (R9-rest) — the real app, a real mouse.
 ///
@@ -217,6 +218,32 @@ void main() {
     await pumpFrames(tester);
 
     expect(celOf(tester).texts.single.content.rotationDegrees, 0);
+  });
+
+  testWidgets('a turn the OS merged into one move counts every point of it '
+      '— three quarters round is not a quarter back (card '
+      'every-path-takes-every-point-the-os-saw ⓐ⑥)', (tester) async {
+    final c = await hiInHandByItsBox(tester);
+
+    // From due right of the centre round by below and left to above it, in
+    // one move: the turn the test above takes a quarter of, move by move.
+    await dragThroughMergedMoves(
+      tester,
+      onScreen(tester, c.dx + 248, c.dy + 30),
+      [
+        [
+          onScreen(tester, c.dx + 48, c.dy + 230),
+          onScreen(tester, c.dx - 152, c.dy + 30),
+          onScreen(tester, c.dx + 48, c.dy - 170),
+        ],
+      ],
+    );
+    await pumpFrames(tester);
+
+    expect(
+      celOf(tester).texts.single.content.rotationDegrees,
+      closeTo(270, 1e-6),
+    );
   });
 
   group('a press that goes away', () {

@@ -3062,7 +3062,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // (`FloatResamplePreview`, a-drag-in-an-open-box-resamples-a-move).
         _scheduleResamples();
       case TransformDrag():
-        _updateTransformDrag(drag, _toCanvas(event.localPosition));
+        _updateTransformDrag(drag, [
+          for (final point in PenPath.eventsOf(event))
+            _toCanvas(point.localPosition),
+        ]);
     }
   }
 
@@ -3092,8 +3095,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// then ask the preview to catch up. Wrapping rather than sprinkling the
   /// call through five early returns is the difference between "the mesh
   /// preview stopped updating" being impossible and being a future bug.
-  void _updateTransformDrag(TransformDrag drag, CanvasPoint pointer) {
-    _updateTransformDragGeometry(drag, pointer);
+  ///
+  /// [pointers] are every point the OS saw of the move ([PenPath]), one
+  /// step each: a turn counts its windings ([TransformBoxLaw.turn]), and a
+  /// stall that merged three quarters round into one move read a quarter
+  /// back (card every-path-takes-every-point-the-os-saw ⓐ⑥).
+  void _updateTransformDrag(
+    TransformDrag drag,
+    Iterable<CanvasPoint> pointers,
+  ) {
+    for (final pointer in pointers) {
+      _updateTransformDragGeometry(drag, pointer);
+    }
     _scheduleResamples();
   }
 

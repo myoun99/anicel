@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/angle_dial.dart';
 
+import '../../helpers/the_points_the_os_saw.dart';
+
 /// 🗣️I-132-Q18 b (유저 2026-10-28): the dial's needle points where the
 /// angle does — 0° up and clockwise, as After Effects' angle dial reads,
 /// and as an angle lane turns the picture (Directional Blur's 0° blurs up
@@ -73,5 +75,46 @@ void main() {
     final bytes = await drawn(tester, 540);
     expect(inkAt(bytes, down.$1, down.$2), greaterThan(0));
     expect(inkAt(bytes, up.$1, up.$2), 0);
+  });
+
+  testWidgets('a turn the OS merged into one move counts every point of it '
+      '— three quarters round is not a quarter back (card '
+      'every-path-takes-every-point-the-os-saw ⓐ⑥)', (tester) async {
+    Future<double> turned(List<List<Offset>> Function(Offset) moves) async {
+      var last = double.nan;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: AngleDial(
+                degrees: 0,
+                enabled: true,
+                onTurned: (turned) => last = turned,
+              ),
+            ),
+          ),
+        ),
+      );
+      final middle = tester.getCenter(find.byType(AngleDial));
+      await dragThroughMergedMoves(
+        tester,
+        middle + const Offset(0, -9),
+        moves(middle),
+      );
+      return last;
+    }
+
+    List<Offset> round(Offset middle) => [
+      middle + const Offset(9, 0),
+      middle + const Offset(0, 9),
+      middle + const Offset(-9, 0),
+    ];
+
+    expect(await turned((middle) => [round(middle)]), closeTo(270, 0.5));
+    expect(
+      await turned((middle) => [for (final point in round(middle)) [point]]),
+      closeTo(270, 0.5),
+      reason: 'the same points moved one by one',
+    );
   });
 }

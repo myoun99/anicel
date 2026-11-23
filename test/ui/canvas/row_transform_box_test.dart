@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/input/control_press_claim.dart'
     show SurfaceDragClaim;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
+import '../../helpers/the_points_the_os_saw.dart';
+
 /// F-222 — a ROW's box (a layer's fx, the camera's frame, an SE tag) keeps
 /// the one law every box keeps: the cross, a corner, the inside, and
 /// outside on stage the turn — each grab driving ONE value (R5 #10b, 유저
@@ -563,6 +565,29 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(turns.single, closeTo(-90, 0.5));
+    });
+
+    testWidgets('a turn the OS merged into one move counts every point of '
+        'it — three quarters round is not a quarter back (card '
+        'every-path-takes-every-point-the-os-saw ⓐ⑥)', (tester) async {
+      Future<double> turned(List<List<Offset>> moves) async {
+        final turns = <double>[];
+        await pumpBox(tester, box(turns: turns));
+        await dragThroughMergedMoves(tester, above, moves);
+        await tester.pumpAndSettle();
+        return turns.single;
+      }
+
+      final radius = (above - pivot).distance;
+      final round = [
+        pivot + Offset(radius, 0),
+        pivot + Offset(0, radius),
+        pivot + Offset(-radius, 0),
+      ];
+
+      expect(await turned([round]), closeTo(270, 0.5));
+      expect(await turned([for (final point in round) [point]]),
+          closeTo(270, 0.5), reason: 'the same points moved one by one');
     });
   });
 
