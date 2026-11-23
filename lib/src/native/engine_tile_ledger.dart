@@ -836,14 +836,12 @@ final GpuEngine _engine;
           GpuChange.same => under == null ? false : under.inkWithNoWait,
           null => null,
         });
-        // ⚠️Of the tile it was asked beside, and only while its bytes are
-        // still the engine's alone: one whose bytes came here meanwhile has
-        // let that tile go ([_Slot.keepsNothing]), and told the same then it
-        // would read as told the same as none.
+        // ⚠️Only while its bytes are still the engine's alone: one whose
+        // bytes came here meanwhile has let the tile it landed on go
+        // ([_Slot.keepsNothing]), and told the same then it would read as
+        // told the same as none.
         final slot = _slotNow(tile);
-        if (slot != null &&
-            tile.isOnlyOnEngine &&
-            identical(slot.under, under)) {
+        if (slot != null && tile.isOnlyOnEngine) {
           slot.told = change;
         }
       }

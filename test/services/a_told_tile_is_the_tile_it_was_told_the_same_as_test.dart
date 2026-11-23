@@ -8,6 +8,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -16,6 +17,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_tile_cache_key.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -27,9 +29,11 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/cache_invalidation_executor.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/undo_surface_snapshot.dart';
 
 import '../helpers/poll_until.dart';
 import '../helpers/tiles_on_the_engine.dart';
@@ -43,7 +47,8 @@ import '../helpers/tiles_on_the_engine.dart';
 /// Cleared → 버림」), and the step whose after it was takes it with the cel:
 /// the bill drops by what the two share again, and the handed tile is held
 /// by nobody. ㉠ No step is made of it, and only the top step, with nothing
-/// undone, takes it — the one place its after is nobody else's before.
+/// undone above it, takes it — the one place its after is nobody else's
+/// before.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 384, height: 256);
@@ -106,14 +111,18 @@ void main() {
     dab(200.5, 200.5, sequence: 4, color: 0xFF000000),
   ];
 
-  /// The eraser drawn over [base] as the canvas draws it, and the tiles
+  /// An eraser over part of [cut]'s ink alone: every tile it hands over is
+  /// told ink of its own.
+  List<BrushDab> nibble() => [dab(150.5, 40.5, sequence: 1, color: 0xFF000000)];
+
+  /// [dabs] erased over [base] as the canvas draws them, and the tiles
   /// pen-up hands over — each the one its step put.
-  List<PromotedStrokeTile> erased(BitmapSurface base) {
+  List<PromotedStrokeTile> erased(BitmapSurface base, List<BrushDab> dabs) {
     final stroke = BrushLiveStrokeRasterizer(
       pasteboard: wall,
       tileSize: tileSize,
     );
-    final region = stroke.blendFrom(eraser(), from: 0);
+    final region = stroke.blendFrom(dabs, from: 0);
     final shown = <TileCoord, ({BitmapTile tile, int revision})>{};
     for (final coord
         in region?.toTileCoords(tileSize: tileSize) ?? const <TileCoord>{}) {
@@ -132,15 +141,15 @@ void main() {
       base: base,
       mode: BrushBlendMode.erase,
       erase: true,
-      dabs: eraser(),
+      dabs: dabs,
       shown: shown,
     );
     stroke.clear();
     return promoted;
   }
 
-  /// A cel standing at [painted], with its history; the eraser's tiles
-  /// handed over, and its step made — not yet taken.
+  /// A cel standing at [painted], with its history; [dabs]' tiles handed
+  /// over, and its step made — not yet taken.
   ({
     BrushFrameEditingCoordinator coordinator,
     BrushFrameStore store,
@@ -148,8 +157,9 @@ void main() {
     BitmapSurface base,
     Map<TileCoord, BitmapTile> handed,
     BrushStrokeHistoryCommand stroke,
+    _Invalidations invalidated,
   })
-  scene() {
+  scene({List<BrushDab> Function()? dabs}) {
     final store = BrushFrameStore();
     final coordinator = BrushFrameEditingCoordinator(
       initialFrameKey: key,
@@ -161,17 +171,14 @@ void main() {
     // Its bytes here: what the bill weighs (`BitmapTile.ownBytes`).
     theCopiesComeOf([base]);
     coordinator.restoreSurfaceSnapshot(key, base);
-    final promoted = erased(base);
-    final handed = {for (final one in promoted) one.coord: one.tile};
-    expect(
-      handed.keys.toSet(),
-      {bare, cut, wiped, paper},
-      reason: '⛔premise: each answer is asked of a tile handed over',
-    );
+    final laid = (dabs ?? eraser)();
+    final promoted = erased(base, laid);
+    final invalidated = _Invalidations();
     final stroke = BrushStrokeHistoryCommand(
       coordinator: coordinator,
+      cacheInvalidationSink: invalidated,
       strokeData: BrushStrokeCommitData(
-        sourceDabs: eraser(),
+        sourceDabs: laid,
         blendMode: BrushBlendMode.erase,
         promotedBase: base,
         promotedTiles: [
@@ -184,8 +191,9 @@ void main() {
       store: store,
       history: HistoryManager(),
       base: base,
-      handed: handed,
+      handed: {for (final one in promoted) one.coord: one.tile},
       stroke: stroke,
+      invalidated: invalidated,
     );
   }
 
@@ -221,131 +229,177 @@ void main() {
       key: value.pixels,
   };
 
-  test('told, the cel and its step take the picture a compared landing would '
-      'have left: the same bytes, the bill down by the tile shared again, '
-      'and each handed tile it let go of held by nobody', () async {
-    final (:coordinator, :store, :history, :base, :handed, :stroke) =
-        scene();
-    history.execute(stroke);
-    final taken = coordinator.currentSurfaceOf(key);
-    for (final MapEntry(key: at, value: tile) in handed.entries) {
+  for (final inOneStep in [false, true]) {
+    test('told, the cel and its step take the picture a compared landing '
+        'would have left: the same bytes, the bill down by the tile shared '
+        'again, and each handed tile it let go of held by nobody'
+        '${inOneStep ? ' — the stroke the second write of its step' : ''}',
+        () async {
+      final (
+        :coordinator,
+        :store,
+        :history,
+        :base,
+        :handed,
+        :stroke,
+        :invalidated,
+      ) = scene();
       expect(
-        identical(taken.tileAt(at), tile),
-        isTrue,
-        reason: '⛔premise: $at is the tile handed over',
+        handed.keys.toSet(),
+        {bare, cut, wiped, paper},
+        reason: '⛔premise: each answer is asked of a tile handed over',
       );
-    }
-    final billed = history.retainedBytes;
-    for (final at in [bare, wiped, paper]) {
-      expect(
-        holdersOf(
-          handed[at]!,
-          at,
-          coordinator: coordinator,
-          store: store,
-          stroke: stroke,
-        ),
-        greaterThan(0),
-        reason: '⛔premise: $at is held before it is told',
-      );
-    }
-
-    await told(handed);
-
-    final now = coordinator.currentSurfaceOf(key);
-    expect(identical(now, taken), isFalse, reason: 'the cel took another');
-    expect(
-      identical(now.tileAt(bare), base.tileAt(bare)),
-      isTrue,
-      reason: 'told the same as the tile it landed on: that tile',
-    );
-    expect(now.tileAt(wiped), isNull, reason: 'told no ink is left: none');
-    expect(now.tileAt(paper), isNull, reason: 'told the same as none: none');
-    expect(
-      identical(now.tileAt(cut), handed[cut]),
-      isTrue,
-      reason: 'told ink of its own: it stays',
-    );
-    expect(
-      identical(stroke.surfaces!.after.heldHere, now),
-      isTrue,
-      reason: 'the step took what the cel took',
-    );
-    expect(
-      identical(store.displayCacheOrNull(key)?.previewSurface, now),
-      isTrue,
-      reason: 'the display cache with it',
-    );
-    expect(history.undoCount, 1, reason: '㉠ no step is made of it');
-
-    // ② The same pixels: what the cel took, byte for byte what it held.
-    final was = bytesOf(taken);
-    final is_ = bytesOf(now);
-    for (final at in {...was.keys, ...is_.keys}) {
-      final one = was[at];
-      final other = is_[at];
-      if (one == null || other == null) {
-        expect(
-          (one ?? other!).every((byte) => byte == 0),
-          isTrue,
-          reason: '$at holds ink on one side alone',
-        );
-        continue;
+      if (inOneStep) {
+        history.executeAsOneStep('Draw on a new frame', [_Mark(), stroke]);
+      } else {
+        history.execute(stroke);
       }
-      expect(one, other, reason: '$at: the same bytes');
-    }
+      final taken = coordinator.currentSurfaceOf(key);
+      for (final MapEntry(key: at, value: tile) in handed.entries) {
+        expect(
+          identical(taken.tileAt(at), tile),
+          isTrue,
+          reason: '⛔premise: $at is the tile handed over',
+        );
+      }
+      final billed = history.retainedBytes;
+      for (final at in [bare, wiped, paper]) {
+        expect(
+          holdersOf(
+            handed[at]!,
+            at,
+            coordinator: coordinator,
+            store: store,
+            stroke: stroke,
+          ),
+          greaterThan(0),
+          reason: '⛔premise: $at is held before it is told',
+        );
+      }
+      invalidated.clear();
 
-    // ④ What it let go of is held by nobody, and the bill says so.
-    for (final at in [bare, wiped, paper]) {
+      await told(handed);
+
+      final now = coordinator.currentSurfaceOf(key);
+      expect(identical(now, taken), isFalse, reason: 'the cel took another');
       expect(
-        holdersOf(
-          handed[at]!,
-          at,
-          coordinator: coordinator,
-          store: store,
-          stroke: stroke,
-        ),
-        0,
-        reason: '$at: the handed tile is held by nobody',
+        identical(now.tileAt(bare), base.tileAt(bare)),
+        isTrue,
+        reason: 'told the same as the tile it landed on: that tile',
       );
-    }
-    expect(
-      billed - history.retainedBytes,
-      base.tileAt(bare)!.ownBytes,
-      reason: 'the before shares the tile under [bare] with the after again',
-    );
+      expect(now.tileAt(wiped), isNull, reason: 'told no ink is left: none');
+      expect(now.tileAt(paper), isNull, reason: 'told the same as none: none');
+      expect(
+        identical(now.tileAt(cut), handed[cut]),
+        isTrue,
+        reason: 'told ink of its own: it stays',
+      );
+      expect(
+        identical(stroke.surfaces!.after.heldHere, now),
+        isTrue,
+        reason: 'the step took what the cel took',
+      );
+      expect(
+        identical(store.displayCacheOrNull(key)?.previewSurface, now),
+        isTrue,
+        reason: 'the display cache with it',
+      );
+      final fresh = BrushFrameStore()..storeBakedSurface(key, now);
+      expect(
+        store.hotBakedBytes,
+        fresh.hotBakedBytes,
+        reason: 'the hot cels weighed as what they hold now',
+      );
+      final door = invalidated.frames.single;
+      expect(
+        (door.frameKey, door.wholeFrame),
+        (key, false),
+        reason: 'through the one door, once',
+      );
+      expect(
+        door.dirtyTiles?.coords,
+        {bare, wiped, paper},
+        reason: 'the tiles it put and no others',
+      );
+      expect(history.undoCount, 1, reason: '㉠ no step is made of it');
 
-    history.undo();
-    expect(
-      identical(coordinator.currentSurfaceOf(key), base),
-      isTrue,
-      reason: 'undo puts back what the cel stood at',
-    );
-    history.redo();
-    expect(
-      identical(coordinator.currentSurfaceOf(key), now),
-      isTrue,
-      reason: 'and redo what it took',
-    );
-  });
+      // ② The same pixels: what the cel took, byte for byte what it held.
+      final held = bytesOf(taken);
+      final holds = bytesOf(now);
+      for (final at in {...held.keys, ...holds.keys}) {
+        final one = held[at];
+        final other = holds[at];
+        if (one == null || other == null) {
+          expect(
+            (one ?? other!).every((byte) => byte == 0),
+            isTrue,
+            reason: '$at holds ink on one side alone',
+          );
+          continue;
+        }
+        expect(one, other, reason: '$at: the same bytes');
+      }
+
+      // ④ What it let go of is held by nobody, and the bill says so.
+      for (final at in [bare, wiped, paper]) {
+        expect(
+          holdersOf(
+            handed[at]!,
+            at,
+            coordinator: coordinator,
+            store: store,
+            stroke: stroke,
+          ),
+          0,
+          reason: '$at: the handed tile is held by nobody',
+        );
+      }
+      expect(
+        billed - history.retainedBytes,
+        base.tileAt(bare)!.ownBytes,
+        reason: 'the before shares the tile under [bare] with the after again',
+      );
+
+      history.undo();
+      expect(
+        identical(coordinator.currentSurfaceOf(key), base),
+        isTrue,
+        reason: 'undo puts back what the cel stood at',
+      );
+      history.redo();
+      expect(
+        identical(coordinator.currentSurfaceOf(key), now),
+        isTrue,
+        reason: 'and redo what it took',
+      );
+    });
+  }
 
   group('⛔not taken — the cel and every step as they were', () {
-    /// [before] the tiles are told, [after] they are, of a scene whose step
-    /// was taken — the cel's picture, the step's halves, and the bill all
-    /// as they were.
+    /// [before] the tiles are told, a scene whose step was taken — then,
+    /// told, the cel's picture, the step's halves, and the bill all as they
+    /// were.
     Future<void> keeps(
       String why, {
       required FutureOr<void> Function(
         HistoryManager history,
         BrushStrokeHistoryCommand stroke,
         BrushFrameEditingCoordinator coordinator,
+        BrushFrameStore store,
       )
       before,
     }) async {
-      final (:coordinator, store: _, :history, :base, :handed, :stroke) =
-          scene();
+      final (
+        :coordinator,
+        :store,
+        :history,
+        :base,
+        :handed,
+        :stroke,
+        invalidated: _,
+      ) = scene();
       history.execute(stroke);
-      await before(history, stroke, coordinator);
+      await before(history, stroke, coordinator, store);
       final cel = coordinator.currentSurfaceOf(key);
       final halves = (stroke.surfaces!.before, stroke.surfaces!.after);
       final billed = history.retainedBytes;
@@ -374,40 +428,137 @@ void main() {
       expect(history.retainedBytes, billed, reason: '$why: and its bill');
     }
 
+    /// [surface] with [cut]'s tile put on a coordinate of nothing as well —
+    /// a picture the cel moved on to.
+    BitmapSurface movedOn(BitmapSurface surface) => surface.putTiles([
+      (coord: TileCoord(x: 0, y: 1), tile: surface.tileAt(cut)!),
+    ]);
+
     test('a step above it', () => keeps(
       'a step above it',
-      before: (history, stroke, coordinator) => history.execute(_Mark()),
+      before: (history, stroke, coordinator, store) =>
+          history.execute(_Mark()),
     ));
 
     test('a step undone above it', () => keeps(
       'a step undone above it',
-      before: (history, stroke, coordinator) {
+      before: (history, stroke, coordinator, store) {
         history.execute(_Mark());
         history.undo();
       },
     ));
 
+    test("a gesture's line written above it", () => keeps(
+      "a gesture's line above it",
+      before: (history, stroke, coordinator, store) {
+        history.gestures.open('a gesture');
+        history.execute(_Mark());
+        expect(history.gestures.heldSteps, 1, reason: '⛔premise: held');
+      },
+    ));
+
     test('its before let go to the room', () => keeps(
       'its before parked',
-      before: (history, stroke, coordinator) async => expect(
+      before: (history, stroke, coordinator, store) async => expect(
         await stroke.surfaces!.before.park(),
         isTrue,
         reason: '⛔premise: the room took it',
       ),
     ));
 
-    test('the cel moved on', () => keeps(
-      'the cel moved on',
-      before: (history, stroke, coordinator) {
-        final at = coordinator.currentSurfaceOf(key);
-        coordinator.restoreSurfaceSnapshot(
-          key,
-          at.putTiles([
-            (coord: TileCoord(x: 0, y: 1), tile: at.tileAt(cut)!),
-          ]),
-        );
-      },
+    test('its baked truth moved on alone', () => keeps(
+      'its baked truth moved on',
+      before: (history, stroke, coordinator, store) => store
+          .storeBakedSurface(key, movedOn(coordinator.currentSurfaceOf(key))),
     ));
+  });
+
+  test('a stroke whose tiles are each told ink of their own leaves the cel '
+      'as it took it, and invalidates nothing more', () async {
+    final (
+      :coordinator,
+      store: _,
+      :history,
+      base: _,
+      :handed,
+      :stroke,
+      :invalidated,
+    ) = scene(dabs: nibble);
+    expect(handed.keys, [cut], reason: '⛔premise: the one tile it reaches');
+    history.execute(stroke);
+    final cel = coordinator.currentSurfaceOf(key);
+    invalidated.clear();
+
+    await told(handed);
+
+    expect(
+      EngineTileLedger.instance.toldInPlaceOf(handed[cut]!),
+      isNull,
+      reason: '⛔premise: told ink of its own',
+    );
+    expect(identical(coordinator.currentSurfaceOf(key), cel), isTrue);
+    expect(invalidated.frames, isEmpty);
+  });
+
+  test('a tile whose bytes came here stands for itself — whether they came '
+      'while it was asked or after it was told', () async {
+    final (
+      :coordinator,
+      store: _,
+      :history,
+      base: _,
+      :handed,
+      :stroke,
+      invalidated: _,
+    ) = scene();
+    history.execute(stroke);
+    // While it is asked.
+    handed[bare]!.readPixels((_, _) {});
+
+    await told(handed);
+
+    final ledger = EngineTileLedger.instance;
+    expect(ledger.toldInPlaceOf(handed[bare]!), isNull);
+    final now = coordinator.currentSurfaceOf(key);
+    expect(
+      identical(now.tileAt(bare), handed[bare]),
+      isTrue,
+      reason: 'it stays, its ink with it',
+    );
+    expect(now.tileAt(wiped), isNull, reason: '⛔premise: the rest is taken');
+
+    // After it is told.
+    final after = scene();
+    after.history.execute(after.stroke);
+    await told(after.handed);
+    final tile = after.handed[bare]!;
+    expect(
+      identical(ledger.toldInPlaceOf(tile), after.base.tileAt(bare)),
+      isTrue,
+      reason: '⛔premise: told the same as the tile under it',
+    );
+    tile.readPixels((_, _) {});
+    expect(ledger.toldInPlaceOf(tile), isNull);
+  });
+
+  test('a pair takes no picture while a half is on its way to the room, or '
+      'let go of', () async {
+    final under = painted();
+    theCopiesComeOf([under]);
+    BitmapSurface over() => under.putTiles([
+      (coord: paper, tile: under.tileAt(bare)!),
+    ]);
+
+    final parking = UndoSurfacePair(key: key, before: under, after: over());
+    expect(parking.afterHeldHere, isNotNull, reason: '⛔premise: here');
+    final parked = parking.before.park();
+    expect(parking.afterHeldHere, isNull, reason: 'on its way');
+    expect(await parked, isTrue);
+    expect(parking.afterHeldHere, isNull, reason: 'gone');
+
+    final dropped = UndoSurfacePair(key: key, before: under, after: over());
+    dropped.after.drop();
+    expect(dropped.afterHeldHere, isNull, reason: 'its after let go of');
   });
 }
 
@@ -421,4 +572,18 @@ class _Mark implements Command {
 
   @override
   void undo() {}
+}
+
+/// What a cel's caches were told.
+class _Invalidations implements CacheInvalidationSink {
+  final List<BrushFrameCacheInvalidation> frames = [];
+
+  void clear() => frames.clear();
+
+  @override
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) =>
+      frames.add(invalidation);
+
+  @override
+  void invalidateLayerTile(LayerTileCacheKey key) {}
 }

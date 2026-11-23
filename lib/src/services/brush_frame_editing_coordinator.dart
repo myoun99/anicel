@@ -446,16 +446,14 @@ class BrushFrameEditingCoordinator {
   /// picture taken where somebody else still held [picture] would leave the
   /// handed tiles in that holder alone, where no bill sees them.
   ///
-  /// Null, and the cel left as it is, where it stands at [picture] no
-  /// longer, or no tile of it was told either.
+  /// Null, and the cel left as it is, where [picture] is its baked truth no
+  /// longer ([BrushFrameStore.takeSamePicture] — a session follows the
+  /// store, [_storeMovedPast]), or no tile of it was told either.
   BitmapSurface? takeToldTidied(
     BrushFrameKey key,
     BitmapSurface picture, {
     CacheInvalidationSink? cacheInvalidationSink,
   }) {
-    if (!identical(currentSurfaceOf(key), picture)) {
-      return null;
-    }
     final tidied = toldTidied(picture);
     if (tidied == null ||
         !frameStore.takeSamePicture(key, picture, tidied.surface)) {
