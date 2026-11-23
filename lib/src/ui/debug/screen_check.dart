@@ -42,7 +42,8 @@ class ScreenCheck extends StatefulWidget {
   static const int side = 256;
 
   /// What the newest check said: `—` till one has run, `checking`, then
-  /// `same`, `differs` with both fingerprints, or `failed:` and why.
+  /// `same`, `nothing`, `differs` with both fingerprints, or `failed:` and
+  /// why ([verdict]).
   static final ValueNotifier<String> said = ValueNotifier('—');
 
   /// The way the check last ran for ([ScreenTexture.path]): run again
@@ -50,11 +51,25 @@ class ScreenCheck extends StatefulWidget {
   static String? _ranFor;
 
   /// What a check says of the fingerprint of what Flutter [shown] against
-  /// the one the engine [written]: `same` and it, else `differs` and both.
-  static String verdict({required int shown, required int written}) =>
-      shown == written
-      ? 'same ${_hex(written)}'
-      : 'differs  shown ${_hex(shown)}  written ${_hex(written)}';
+  /// the one the engine [written]: `same` and it; `nothing` where Flutter
+  /// drew not one texel of it ([blank]); else `differs` and both.
+  ///
+  /// 🗣️관제 2026-11-24 01:53 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
+  /// risk 4): Flutter takes an Android screen's buffer once, and where it
+  /// cannot take it in it says so to no one but the log — the canvas stays
+  /// empty for good. The probe goes through the same door, so a blank read
+  /// is named for what it is.
+  static String verdict({
+    required int shown,
+    required int written,
+    bool blank = false,
+  }) => switch ((shown == written, blank)) {
+    (true, _) => 'same ${_hex(written)}',
+    (false, true) =>
+      'nothing  Flutter drew none of it — its import failed, or it was '
+          'never drawn  written ${_hex(written)}',
+    (false, false) => 'differs  shown ${_hex(shown)}  written ${_hex(written)}',
+  };
 
   static String _hex(int value) => value.toRadixString(16).padLeft(8, '0');
 
@@ -112,9 +127,11 @@ class _ScreenCheckState extends State<ScreenCheck> {
       final written = made.fingerprint();
       texture = await SharedTexture.register(made);
       texture.show(0);
+      final (:fingerprint, :blank) = await _seen(texture.id);
       ScreenCheck.said.value = ScreenCheck.verdict(
-        shown: await _seen(texture.id),
+        shown: fingerprint,
         written: written,
+        blank: blank,
       );
     } on Object catch (error) {
       ScreenCheck.said.value = 'failed: $error';
@@ -129,8 +146,9 @@ class _ScreenCheckState extends State<ScreenCheck> {
   }
 
   /// The fingerprint of what Flutter drew of texture [id], one texel a
-  /// pixel, in the surface's own order.
-  Future<int> _seen(int id) async {
+  /// pixel, in the surface's own order — and whether it drew no texel at
+  /// all (every byte 0).
+  Future<({int fingerprint, bool blank})> _seen(int id) async {
     if (!mounted) {
       throw StateError('the frame statistics were closed');
     }
@@ -149,10 +167,12 @@ class _ScreenCheckState extends State<ScreenCheck> {
         throw StateError('read ${pixelSizeLabel(image.width, image.height)}');
       }
       final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      return fingerprintBytes(
-        ScreenTexture.bgra
-            ? redAndBlueSwapped(bytes!)
-            : bytes!.buffer.asUint8List(),
+      final laid = ScreenTexture.bgra
+          ? redAndBlueSwapped(bytes!)
+          : bytes!.buffer.asUint8List();
+      return (
+        fingerprint: fingerprintBytes(laid),
+        blank: laid.every((byte) => byte == 0),
       );
     } finally {
       image.dispose();

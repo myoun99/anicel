@@ -21,6 +21,15 @@ void main() {
     );
   });
 
+  test('names a read of no texel for what it is — the import that failed '
+      'says so nowhere else', () {
+    expect(
+      ScreenCheck.verdict(shown: 0x12, written: 0x0badf00d, blank: true),
+      'nothing  Flutter drew none of it — its import failed, or it was '
+      'never drawn  written 0badf00d',
+    );
+  });
+
   testWidgets('the check has its row and its probe\'s room before any check '
       'has run', (tester) async {
     MeasurementMode.frameStats.value = true;
