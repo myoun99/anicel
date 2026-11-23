@@ -397,7 +397,7 @@ class _BrushEditStroke {
     final moved = stabilizer.lookAtFrame(frameAt);
     if (moved.isNotEmpty) {
       _paintSteadied(moved);
-      // On screen THIS frame: the queue's own flush may have run already.
+      // On screen THIS frame, in the one step the frame lays.
       _state._overlay.stepPendingOverlayDabs();
     }
     _keepSteadying();

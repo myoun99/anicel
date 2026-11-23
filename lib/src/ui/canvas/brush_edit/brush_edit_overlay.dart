@@ -21,6 +21,12 @@ class _BrushEditOverlay {
     }
     _state._pendingOverlayDabs.addAll(newDabs);
     StrokeSteps.queued();
+    _stepAtTheNextFrame();
+  }
+
+  /// The stroke's next step asked for at the next frame's start
+  /// ([stepPendingOverlayDabs]).
+  void _stepAtTheNextFrame() {
     if (_state._overlayFlushScheduled) {
       return;
     }
@@ -55,7 +61,49 @@ class _BrushEditOverlay {
   /// step goes anywhere: the overlay is not moved, so no tile is landed or
   /// written. The dabs are the same, in the same order — only how many
   /// a step carries changes, as it always did with the frames' pace.
+  ///
+  /// 🚨★★★ONCE A FRAME, AFTER ALL OF ITS FIRST CALLBACKS — and a step held
+  /// for a frame being drawn goes out at the frame after it is up, not as
+  /// it goes up (🔬검증, build d19c66834 on the emulator, 2026-11-24 01:58:
+  /// slow long strokes ran 59.0 steps/s to 54.1 screens/s, 45.2 to 38.4).
+  /// ↩️Two ways put two steps in one frame shown: a step held was laid as
+  /// the frame went up — outside any frame —, and the samples come before
+  /// the next vsync found no frame being drawn and went as a second step;
+  /// and in a frame a steadied line moved on
+  /// ([_BrushEditStroke._steadyOneFrame]), the samples' own step and the
+  /// line's went one after the other, the paint that begins the frame
+  /// still to come.
+  /// Asked from a frame's first callbacks, the step is laid once they are
+  /// all through — in the frame's own microtasks, before its build and
+  /// paint — with every dab they queued; asked anywhere else, at the next
+  /// frame's.
   void stepPendingOverlayDabs() {
+    if (_state._pendingOverlayDabs.isEmpty || _stepThisFrameAsked) {
+      return;
+    }
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.transientCallbacks) {
+      _stepAtTheNextFrame();
+      return;
+    }
+    _stepThisFrameAsked = true;
+    scheduleMicrotask(() {
+      _stepThisFrameAsked = false;
+      if (_state.mounted) {
+        _stepNow();
+      } else {
+        _state._pendingOverlayDabs.clear();
+      }
+    });
+  }
+
+  /// Whether this frame's step is asked for ([stepPendingOverlayDabs]).
+  bool _stepThisFrameAsked = false;
+
+  /// The dabs queued laid as the stroke's next step — or held while a frame
+  /// of the canvas's pictures is being drawn, for the frame after the last
+  /// of them is up ([stepPendingOverlayDabs]).
+  void _stepNow() {
     if (_state._pendingOverlayDabs.isEmpty) {
       return;
     }
@@ -65,11 +113,11 @@ class _BrushEditOverlay {
       return;
     }
     // Each frame built meanwhile asks again, of the same frames: the first
-    // told lays what all held, and the rest find nothing.
+    // told asks for the next frame's step, and the rest find it asked.
     unawaited(
       drawn.then((_) {
         if (_state.mounted) {
-          stepPendingOverlayDabs();
+          _stepAtTheNextFrame();
         } else {
           _state._pendingOverlayDabs.clear();
         }
