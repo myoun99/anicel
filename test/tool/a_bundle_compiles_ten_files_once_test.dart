@@ -540,6 +540,42 @@ void main() {
     });
   });
 
+  // 🔬2026-11-23 (⑮): the wide run's log named the 12 files that lost their
+  // isolation and neither their place nor the file before them — what a
+  // ledger line says (placeInBundle has why).
+  test('a file that lost its isolation is said with its place in its bundle '
+      'and the file before it', () {
+    const bundle = [
+      'test/a_test.dart',
+      'test/b_test.dart',
+      'test/c_test.dart',
+    ];
+    expect(placeInBundle('test/a_test.dart', bundle), '1/3 in its bundle, '
+        'first');
+    expect(placeInBundle('test/c_test.dart', bundle), '3/3 in its bundle, '
+        'after test/b_test.dart');
+    expect(placeInBundle('test/d_test.dart', bundle), 'not in its bundle');
+    final source = File('tool/affected_tests.dart').readAsStringSync()
+        .replaceAll('\r\n', '\n');
+    // Every file of a bundled batch is kept with its bundle as it ran…
+    expect(
+      source,
+      contains('for (final files in entries.values) {\n'
+          '          for (final file in files) {\n'
+          '            bundleOf[file] = files;'),
+    );
+    // …and said where the census reads.
+    expect(
+      source,
+      contains('_sayLostIsolation(lostIsolation, bundledReds, bundleOf);'),
+    );
+    expect(
+      source,
+      contains("final place = bundle == null ? '' : "
+          "' (\${placeInBundle(file, bundle)})';"),
+    );
+  });
+
   test('a bundled run says what its bundles did where they are read — and '
       'keeps none of it till the census', () {
     final source = File('tool/affected_tests.dart').readAsStringSync()

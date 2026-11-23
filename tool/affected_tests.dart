@@ -651,12 +651,14 @@ List<({String path, String name})> _redTestsIn(
   }
 }
 
-/// Says each file of [lost] — red in a bundle, green alone — with the
-/// tests that were red there ([reds]), and each bundle that went red as a
-/// whole: what the census reads.
+/// Says each file of [lost] — red in a bundle, green alone — with its place
+/// in the bundle it ran in ([bundleOf], [placeInBundle]) and the tests that
+/// were red there ([reds]), and each bundle that went red as a whole: what
+/// the census reads.
 void _sayLostIsolation(
   Set<String> lost,
   List<({String path, String name})> reds,
+  Map<String, List<String>> bundleOf,
 ) {
   if (lost.isNotEmpty) {
     _report('⚠️${lost.length} file(s) LOST THEIR ISOLATION in a bundle — '
@@ -668,8 +670,10 @@ void _sayLostIsolation(
       for (final red in reds)
         if (red.path == file) red.name,
     ];
-    _report('  $file — ${tests.isEmpty ? 'nothing of its own: its bundle '
-        'went red as a whole' : tests.join(' · ')}');
+    final bundle = bundleOf[file];
+    final place = bundle == null ? '' : ' (${placeInBundle(file, bundle)})';
+    _report('  $file$place — ${tests.isEmpty ? 'nothing of its own: its '
+        'bundle went red as a whole' : tests.join(' · ')}');
   }
   for (final red in reds) {
     if (isBundleEntry(red.path)) {
@@ -1230,6 +1234,9 @@ Future<int> _runTests(
   // red there, and those of the files that were green alone after.
   final redInBundle = <String>{};
   final bundledReds = <({String path, String name})>[];
+  // Each file's bundle, in the order it ran: a batch's entries are gone as
+  // it ends ([placeInBundle] says why the census needs them).
+  final bundleOf = <String, List<String>>{};
   final lostIsolation = <String>{};
   final unrun = <String>[];
   final slow = <SlowTest>[];
@@ -1357,6 +1364,11 @@ Future<int> _runTests(
             if (run.green == false) run.path,
         ]);
         bundledReds.addAll(_redTestsIn(report, root: root));
+        for (final files in entries.values) {
+          for (final file in files) {
+            bundleOf[file] = files;
+          }
+        }
       }
       slow.addAll(_slowIn(report, root: root));
       skipped += result.skipped;
@@ -1494,7 +1506,7 @@ Future<int> _runTests(
   }
 
   _warnSlow(slow, onGitHub: Platform.environment['GITHUB_ACTIONS'] == 'true');
-  _sayLostIsolation(lostIsolation, bundledReds);
+  _sayLostIsolation(lostIsolation, bundledReds, bundleOf);
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
   // and reading it as one costs an hour. It happened on this tool's first
