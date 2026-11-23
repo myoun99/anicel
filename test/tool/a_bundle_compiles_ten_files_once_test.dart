@@ -504,7 +504,7 @@ void main() {
       expect(
         stoodFiles(reportOf(const [], loaded: false), root: 'C:/r'),
         isEmpty,
-        reason: 'a suite still loading is no test that stood',
+        reason: 'a file whose load failed stood in no test of its own',
       );
     });
 
