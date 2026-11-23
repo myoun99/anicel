@@ -332,6 +332,24 @@ mod tests {
         }
     }
 
+    // Stamps read are taken again: more submits than their room, each read
+    // before the next goes, are each told (clock.rs).
+    #[test]
+    fn stamps_read_are_taken_again_past_their_room() {
+        let turn = crate::testing::a_device_of_its_own();
+        let engine = timed_engine(&turn);
+        let line = line!() + 3;
+        let submits = crate::clock::ROOM + 8;
+        for _ in 0..submits {
+            engine.queue.submit([]);
+            crate::testing::done_here(&engine).expect("the GPU done");
+        }
+        let told = told_by(&engine);
+        let place = format!("gpu {}:{line} ", file!());
+        let times = by_the_clock(&engine, &told, &place, "times");
+        assert!(times.is_none_or(|times| times == submits as u64), "{submits} submits, each told: {told}");
+    }
+
     #[test]
     fn a_body_is_timed_by_where_it_was_handed_over_waited_for_or_not() {
         let turn = crate::testing::a_device_of_its_own();

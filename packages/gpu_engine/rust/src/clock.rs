@@ -34,7 +34,7 @@ use crate::took::Took;
 /// How many stamped submits may wait to be read at once: past them a
 /// submit goes unstamped — a GPU this far behind is told by the submits
 /// it has not finished (`gpu_engine_submits_behind`), not by these.
-const ROOM: usize = 256;
+pub(crate) const ROOM: usize = 256;
 
 /// Where a submit's two stamps are written, resolved and read.
 pub(crate) struct Stamps {
@@ -190,8 +190,8 @@ mod tests {
     fn no_more_stamps_are_out_than_their_room() {
         let turn = crate::testing::a_device_of_its_own();
         let engine = turn.engine();
-        let has = engine.device().features().contains(stamped());
-        assert_eq!(engine.queue.clock.is_some(), has, "a clock where the device stamps, none where not");
+        let has = engine.adapter.features().contains(stamped());
+        assert_eq!(engine.queue.clock.is_some(), has, "a clock wherever the adapter can stamp, none where not");
         let Some(clock) = engine.queue.clock.as_ref() else {
             return;
         };
