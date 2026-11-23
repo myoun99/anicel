@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/picture_up_view.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/stroke_steps.dart';
 
 import '../brush_canvas_test_helpers.dart';
 
@@ -241,6 +243,95 @@ void main() {
       await tester.pump();
     });
   }
+
+  // 🔬What the frame statistics count of it (`StrokeSteps`): each step as
+  // it goes, with the dabs it carried.
+  group('the frame statistics', () {
+    setUp(() {
+      MeasurementMode.frameStats.value = true;
+      StrokeSteps.forget();
+    });
+    tearDown(() {
+      MeasurementMode.reset();
+      StrokeSteps.forget();
+    });
+
+    testWidgets('count each step as it goes, with every dab it carried — the '
+        'samples held while a frame is drawn as one', (tester) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(tester, overlay: overlay, together: together);
+      pen.move(const Offset(40, 20));
+      await tester.pump();
+      final steps = StrokeSteps.stepsCounted;
+      expect(steps, greaterThan(0));
+      expect(
+        StrokeSteps.dabsCounted,
+        overlay.dabs.length,
+        reason: 'every dab on the stroke, of a step counted',
+      );
+
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      final before = overlay.dabs.length;
+      final ups = StrokeSteps.upMicros.length;
+      for (final x in const [80.0, 120.0, 160.0]) {
+        pen.move(Offset(x, 20));
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      expect(StrokeSteps.stepsCounted, steps, reason: 'none goes meanwhile');
+
+      drawn.complete();
+      await tester.idle();
+      expect(
+        StrokeSteps.stepsCounted,
+        steps + 1,
+        reason: 'the frames\' samples, one step',
+      );
+      expect(StrokeSteps.dabsKept.last, overlay.dabs.length - before);
+      expect(
+        StrokeSteps.upMicros,
+        hasLength(ups),
+        reason: 'not up till a frame shows it',
+      );
+      // The paint after it puts up the frame of the canvas's that shows it.
+      final shown = Completer<void>();
+      unawaited(together.joined(shown.future));
+      await tester.pump();
+      expect(
+        StrokeSteps.upMicros,
+        hasLength(ups),
+        reason: 'not up till that frame is',
+      );
+      shown.complete();
+      await tester.idle();
+      expect(StrokeSteps.upMicros, hasLength(ups + 1));
+      expect(
+        StrokeSteps.upMicros.last,
+        greaterThanOrEqualTo(StrokeSteps.heldMicros.last),
+        reason: 'up once out, timed from the same dab',
+      );
+
+      pen.lift(const Offset(160, 20));
+      await tester.pump();
+      await tester.pump();
+    });
+
+    testWidgets('count nothing while they are off', (tester) async {
+      MeasurementMode.frameStats.value = false;
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final pen = await aPenOn(tester, overlay: overlay, together: null);
+      pen.move(const Offset(60, 20));
+      await tester.pump();
+      expect(overlay.moveMark.count, greaterThan(0), reason: 'a stroke drawn');
+      pen.lift(const Offset(60, 20));
+      await tester.pump();
+      await tester.pump();
+      expect([StrokeSteps.stepsCounted, StrokeSteps.dabsKept], [0, isEmpty]);
+    });
+  });
 
   testWidgets('a stroke under no canvas\'s pictures steps at every frame', (
     tester,

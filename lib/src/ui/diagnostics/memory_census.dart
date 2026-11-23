@@ -1,5 +1,3 @@
-import 'dart:io' show ProcessInfo;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:gpu_engine/gpu_engine.dart'
@@ -473,7 +471,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // [MemoryCensus.footprintBytes] for why they differ and which one the
     // user is looking at. `ProcessInfo.currentRss` stands in only where the
     // platform will not say.
-    footprintBytes: QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
+    footprintBytes: QaMemory.processFootprintOrRssBytes,
     availableBytes: QaMemory.availableMemoryBytes,
     deviceBytes: QaMemory.physicalMemoryBytes,
     items: [...ram, if (textures) ...pictures]..sort(largestFirst),

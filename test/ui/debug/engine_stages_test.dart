@@ -207,7 +207,7 @@ void main() {
     );
 
     final words = [for (final line in lines) line.replaceAll(RegExp(' +'), ' ')];
-    expect(words[0], 'STAGES 1f a frame 20.50 gpu — cpu 3.00');
+    expect(words[0], 'STAGES 1f a frame 22.00 gpu — cpu 3.00');
     expect(words[1], ' gpu: no timestamp queries on this device');
     expect(words, contains(' gpu — cpu 3.00'), reason: 'the slowest, too');
   });

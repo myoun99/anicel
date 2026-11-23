@@ -19,6 +19,7 @@ import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';
+import '../debug/stroke_steps.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';

@@ -20,6 +20,7 @@ class _BrushEditOverlay {
       return;
     }
     _state._pendingOverlayDabs.addAll(newDabs);
+    StrokeSteps.queued();
     if (_state._overlayFlushScheduled) {
       return;
     }
@@ -85,6 +86,7 @@ class _BrushEditOverlay {
     }
     final batch = List<BrushDab>.of(_state._pendingOverlayDabs);
     _state._pendingOverlayDabs.clear();
+    StrokeSteps.stepped(batch.length, together: _state._picturesUp);
     _appendOverlayDabs(batch);
   }
 

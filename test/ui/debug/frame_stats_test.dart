@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/pointer_clock.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
+import 'package:anicel/src/ui/debug/stroke_steps.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// Repaints whenever its notifier ticks, so a test can make a bake happen
@@ -436,6 +437,74 @@ void main() {
       );
     });
 
+    testWidgets('the stroke lines are the newest steps and their slope — the '
+        'dabs each carried, how long its first dab was held for it, and how '
+        'long till the frame that showed it was up', (tester) async {
+      MeasurementMode.frameStats.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      Future<void> step(
+        int dabs, {
+        required int queued,
+        required int laid,
+        required int up,
+      }) async {
+        now = queued;
+        StrokeSteps.queued();
+        now = laid;
+        StrokeSteps.stepped(dabs, together: null);
+        now = up;
+        tester.binding.scheduleFrame();
+        await tester.pump();
+      }
+
+      await step(1, queued: 0, laid: 2000, up: 5000);
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var ms = 0; ms <= 4000; ms += 40)
+          _frame(uiMs: 1, rasterMs: 1, atMs: ms),
+      ]);
+      FrameStats.publish();
+      expect(
+        FrameStats.latest.value!.stepsPerSecond,
+        0,
+        reason: 'the first publication has no reading before it',
+      );
+
+      await step(9, queued: 10000, laid: 18000, up: 30000);
+      await step(2, queued: 40000, laid: 41000, up: 44000);
+      await step(3, queued: 50000, laid: 54000, up: 60000);
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
+      ]);
+      FrameStats.publish();
+
+      final stats = FrameStats.latest.value!;
+      expect(stats.stepsPerSecond, closeTo(3 / 0.25, 0.01));
+      expect(
+        [stats.dabsPerStepP50, stats.dabsPerStepWorst],
+        [3, 9],
+        reason: 'over the four steps kept: 1 2 3 9 dabs',
+      );
+      expect(
+        [stats.strokeHeldP50, stats.strokeHeldP95],
+        [4.0, 8.0],
+        reason: 'held 2 8 1 4 ms',
+      );
+      expect(
+        [stats.strokeUpP50, stats.strokeUpP95],
+        [10.0, 20.0],
+        reason: 'up 5 20 4 10 ms after their first dab',
+      );
+
+      FrameStats.reset();
+      expect(
+        [StrokeSteps.stepsCounted, StrokeSteps.dabsKept],
+        [0, isEmpty],
+        reason: 'what was counted while last up says nothing of now',
+      );
+    });
+
     testWidgets('the slope is over the interval it measured, not the window', (
       tester,
     ) async {
@@ -700,6 +769,43 @@ void main() {
         findsOneWidget,
         reason: 'no screen was opened: its row stands, saying none',
       );
+    });
+
+    testWidgets('prints a stroke\'s steps, the submits behind on the GPU, the '
+        'memory held and the display\'s rate', (tester) async {
+      MeasurementMode.frameStats.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      StrokeSteps.queued();
+      now = 6600;
+      StrokeSteps.stepped(7, together: null);
+      now = 9900;
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      await tester.pump();
+
+      for (final (line, figure) in const [
+        ('FRAME STATS', r'fps  display \d+Hz$'),
+        ('STROKE', r'steps/s  dabs/step p50 7  max 7$'),
+        (' held', r'p50   6\.6'),
+        (' pen→up', r'p50   9\.9'),
+        // No engine is open in a test: none of its figures, not a zero.
+        ('GPU', r'behind —  max —  timestamps —$'),
+        ('MEMORY', r'app \d+\.\d MB  screens 0\.0 MB  vram —$'),
+      ]) {
+        expect(
+          find.textContaining(RegExp('^${RegExp.escape(line)}.*$figure')),
+          findsOneWidget,
+          reason: '$line … $figure',
+        );
+      }
     });
 
     testWidgets('says the way the screen reaches Flutter\'s, and why it was '

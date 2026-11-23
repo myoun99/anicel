@@ -3,12 +3,16 @@ import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher, Size;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../native/app_gpu_engine.dart'
+    show appGpuEngineOpen, appGpuVideoMemory;
+import '../../native/qa_memory.dart';
 import '../../native/screen_texture.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
 import 'measurement_mode.dart';
 import 'pointer_clock.dart';
 import 'screen_asked.dart';
+import 'stroke_steps.dart';
 
 /// One publication of the frame clock: percentiles over a rolling window,
 /// plus the two numbers nobody in this app had ever read.
@@ -31,6 +35,7 @@ class FrameStatsSnapshot {
   const FrameStatsSnapshot({
     required this.frames,
     required this.windowSeconds,
+    required this.displayHertz,
     required this.rasterP50,
     required this.rasterP95,
     required this.rasterWorst,
@@ -60,6 +65,19 @@ class FrameStatsSnapshot {
     required this.pointerP50,
     required this.pointerP95,
     required this.pointerMillisPerSecond,
+    required this.stepsPerSecond,
+    required this.dabsPerStepP50,
+    required this.dabsPerStepWorst,
+    required this.strokeHeldP50,
+    required this.strokeHeldP95,
+    required this.strokeUpP50,
+    required this.strokeUpP95,
+    required this.gpuBehind,
+    required this.gpuBehindWorst,
+    required this.gpuClocked,
+    required this.footprintMegabytes,
+    required this.screensMegabytes,
+    required this.videoMegabytes,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
@@ -83,6 +101,16 @@ class FrameStatsSnapshot {
   /// Wall span the window covers, from the first frame's vsync to the
   /// last's. [framesPerSecond] divides by it.
   final double windowSeconds;
+
+  /// The refresh rate the platform says the display runs at
+  /// (`FlutterView.display`) — zero where there is no view. Beside
+  /// [framesPerSecond]: a panel at 120 that is shown 94 frames a second is
+  /// missing frames; one the platform runs at 90 is shown no more.
+  ///
+  /// 🗣️관제 2026-11-23 23:24 (card the-galaxy-tab-canvas-went-slow-on-build-1095):
+  /// 「화면 갱신률(120/94)」 — the photographs of 1101 read 94, and no line
+  /// said what the display was asked to run at.
+  final double displayHertz;
 
   final double rasterP50;
   final double rasterP95;
@@ -178,6 +206,45 @@ class FrameStatsSnapshot {
   final double pointerP50;
   final double pointerP95;
   final double pointerMillisPerSecond;
+
+  /// A stroke's steps (`StrokeSteps`): how many went out a second, the
+  /// dabs each carried, how long the first of a step's dabs was held for
+  /// it, and how long from that dab to the frame that showed the step up.
+  ///
+  /// 🗣️유저 2026-11-23 (build 1101, a Galaxy Tab): 「그을수록 같은선안에서
+  /// 점점 느려지고 … 선떼고 5초뒤에 그은게 한번에 나오는정도」 — and no line here
+  /// said how far behind the pen the stroke stood. ⚠️The dabs, the held
+  /// and the up are over the newest steps, not this window's frames: with
+  /// no stroke drawn they are the last one's.
+  final double stepsPerSecond;
+  final int dabsPerStepP50;
+  final int dabsPerStepWorst;
+  final double strokeHeldP50;
+  final double strokeHeldP95;
+  final double strokeUpP50;
+  final double strokeUpP95;
+
+  /// The submits of the app's engine the GPU had not said it finished, as
+  /// of the device's last poll (`GpuEngine.submitsBehind`): as this window
+  /// was published, and the most read at a frame built since the last
+  /// publication — null where no engine is open. Steps piling up on the
+  /// GPU climb here while every duration above reads inside budget.
+  final int? gpuBehind;
+  final int? gpuBehindWorst;
+
+  /// Whether the engine's device stamps a submit's GPU time
+  /// (`GpuEngine.clocked`) — what the stage lines' GPU column is read by;
+  /// null where no engine is open.
+  final bool? gpuClocked;
+
+  /// What the process holds as the OS says it
+  /// (`QaMemory.processFootprintOrRssBytes`), what the engine's screens
+  /// hold (`ScreenTexture.liveBytes`), and the adapter memory the engine's
+  /// device uses and may use (`appGpuVideoMemory`) — null where the OS
+  /// says none.
+  final double footprintMegabytes;
+  final double screensMegabytes;
+  final ({double used, double? budget})? videoMegabytes;
 
   /// The engine's retained-raster accounting, and the reason this class
   /// exists.
@@ -336,8 +403,19 @@ abstract final class FrameStats {
   /// What the screens and the pointer clock had counted at the previous
   /// publication — read at [_lastCaptureVsync], as the bakes' total is —,
   /// and null where there is none before.
-  static ({int ups, int upsBehind, int packets, int points, int pointerMicros})?
+  static ({
+    int ups,
+    int upsBehind,
+    int packets,
+    int points,
+    int pointerMicros,
+    int steps,
+  })?
   _lastCounted;
+
+  /// The most submits behind read at a frame built since the last
+  /// publication ([FrameStatsSnapshot.gpuBehindWorst]) — null till one is.
+  static int? _behindWorst;
 
   static final List<FrameTiming> _window = <FrameTiming>[];
   static bool _installed = false;
@@ -365,6 +443,13 @@ abstract final class FrameStats {
     _installed = true;
     debugRegistrations += 1;
     SchedulerBinding.instance.addTimingsCallback(_record);
+    // At each frame built, not at each batch of timings: a release build
+    // hands those over a few times a second.
+    SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      if (MeasurementMode.frameStats.value) {
+        _readBehind();
+      }
+    });
     MeasurementMode.frameStats.addListener(_onEnabledChanged);
     _onEnabledChanged();
   }
@@ -425,7 +510,9 @@ abstract final class FrameStats {
     _lastCaptureTotal = -1;
     _lastCaptureVsync = null;
     _lastCounted = null;
+    _behindWorst = null;
     PointerClock.forget();
+    StrokeSteps.forget();
     latest.value = null;
   }
 
@@ -453,6 +540,21 @@ abstract final class FrameStats {
   /// recorder has no context to reach that from anyway.
   static double _devicePixelRatio() =>
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
+
+  static double _displayHertz() =>
+      PlatformDispatcher.instance.implicitView?.display.refreshRate ?? 0;
+
+  /// The submits behind now, kept where the most since the last
+  /// publication ([_behindWorst]) — null where no engine is open.
+  static int? _readBehind() {
+    final behind = appGpuEngineOpen.value?.submitsBehind;
+    if (behind != null && behind > (_behindWorst ?? -1)) {
+      _behindWorst = behind;
+    }
+    return behind;
+  }
+
+  static double _megabytes(int bytes) => bytes / 1024 / 1024;
 
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
     // A figure of each of the window's frames, in microseconds, sorted for
@@ -516,6 +618,13 @@ abstract final class FrameStats {
     final upFinishes = [for (final up in ups) up.finish]..sort();
     final upShows = [for (final up in ups) up.show]..sort();
     final packets = [...PointerClock.packetMicros]..sort();
+    final dabs = [...StrokeSteps.dabsKept]..sort();
+    final held = [...StrokeSteps.heldMicros]..sort();
+    final strokeUps = [...StrokeSteps.upMicros]..sort();
+    final behind = _readBehind();
+    final behindWorst = _behindWorst;
+    _behindWorst = null;
+    final video = appGpuVideoMemory;
 
     // Counters all, read as the bakes' total is: each one's slope over the
     // interval since the last publication.
@@ -525,6 +634,7 @@ abstract final class FrameStats {
       packets: PointerClock.packetsCounted,
       points: PointerClock.pointsCounted,
       pointerMicros: PointerClock.microsCounted,
+      steps: StrokeSteps.stepsCounted,
     );
     final before = _lastCounted;
     _lastCounted = counted;
@@ -534,6 +644,7 @@ abstract final class FrameStats {
     return FrameStatsSnapshot(
       frames: window.length,
       windowSeconds: spanSeconds,
+      displayHertz: _displayHertz(),
       rasterP50: _percentileMillis(raster, 0.50),
       rasterP95: _percentileMillis(raster, 0.95),
       rasterWorst: _percentileMillis(raster, 1.0),
@@ -564,6 +675,28 @@ abstract final class FrameStats {
       pointerP95: _percentileMillis(packets, 0.95),
       pointerMillisPerSecond:
           aSecond(counted.pointerMicros, before?.pointerMicros) / 1000,
+      stepsPerSecond: aSecond(counted.steps, before?.steps),
+      dabsPerStepP50: _ranked(dabs, 0.50),
+      dabsPerStepWorst: _ranked(dabs, 1.0),
+      strokeHeldP50: _percentileMillis(held, 0.50),
+      strokeHeldP95: _percentileMillis(held, 0.95),
+      strokeUpP50: _percentileMillis(strokeUps, 0.50),
+      strokeUpP95: _percentileMillis(strokeUps, 0.95),
+      gpuBehind: behind,
+      gpuBehindWorst: behindWorst,
+      gpuClocked: appGpuEngineOpen.value?.clocked,
+      footprintMegabytes: _megabytes(QaMemory.processFootprintOrRssBytes),
+      screensMegabytes: _megabytes(ScreenTexture.liveBytes),
+      videoMegabytes: switch (video?.used) {
+        final used? => (
+          used: _megabytes(used),
+          budget: switch (video?.budget) {
+            final budget? => _megabytes(budget),
+            null => null,
+          },
+        ),
+        null => null,
+      },
       layerCacheCount: last.layerCacheCount,
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,
@@ -583,11 +716,10 @@ abstract final class FrameStats {
   /// Nearest-rank percentile over a SORTED list of microseconds, in
   /// milliseconds. Same index arithmetic the brush lab already uses, so
   /// numbers from the two instruments can be compared directly.
-  static double _percentileMillis(List<int> sortedMicros, double p) {
-    if (sortedMicros.isEmpty) {
-      return 0;
-    }
-    final index = ((sortedMicros.length - 1) * p).round();
-    return sortedMicros[index] / 1000.0;
-  }
+  static double _percentileMillis(List<int> sortedMicros, double p) =>
+      _ranked(sortedMicros, p) / 1000.0;
+
+  /// The nearest-rank percentile [p] of [sorted] — zero where it is empty.
+  static int _ranked(List<int> sorted, double p) =>
+      sorted.isEmpty ? 0 : sorted[((sorted.length - 1) * p).round()];
 }

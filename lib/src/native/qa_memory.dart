@@ -5,6 +5,7 @@
 library;
 
 import 'dart:ffi';
+import 'dart:io' show ProcessInfo;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
@@ -55,6 +56,12 @@ abstract final class QaMemory {
   /// decides whether the app is about to be killed. [physicalMemoryBytes]
   /// answers a different question and has been standing in for it.
   static int? get processFootprintBytes => _said(_footprint());
+
+  /// [processFootprintBytes] — or, where the platform will not say, the
+  /// Dart VM's RSS, which stands in only there: what the memory census and
+  /// the frame statistics read of the process alike.
+  static int get processFootprintOrRssBytes =>
+      processFootprintBytes ?? ProcessInfo.currentRss;
 
   /// How much more this process may take before the OS stops it.
   ///

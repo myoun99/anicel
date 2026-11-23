@@ -74,6 +74,12 @@ class FrameStatsReadout extends StatelessWidget {
 
   static String _px(double value) => value.round().toString();
 
+  static String _mb(double value) => '${value.toStringAsFixed(1)} MB';
+
+  /// What is not said — no engine open, no answer of the OS's — as no
+  /// figure, not a zero.
+  static String _orNone(Object? value) => value?.toString() ?? '—';
+
   /// Guards the logical-size division only. A zero dpr means there is no
   /// implicit view (headless), and the sizes are zero too — dividing by 1
   /// keeps the line reading `0x0` instead of `NaNxNaN`.
@@ -95,7 +101,8 @@ class FrameStatsReadout extends StatelessWidget {
             : <String>[
                 'FRAME STATS  ${stats.frames}f  '
                     '${stats.windowSeconds.toStringAsFixed(1)}s  '
-                    '${stats.framesPerSecond.toStringAsFixed(1)}fps',
+                    '${stats.framesPerSecond.toStringAsFixed(1)}fps  '
+                    'display ${stats.displayHertz.toStringAsFixed(0)}Hz',
                 // 🚨 The denominator every MiB estimate in this program was
                 // parameterised by and nobody had ever read. A cache entry
                 // is `bounds × dpr²`, so without the dpr a byte total can
@@ -157,6 +164,31 @@ class FrameStatsReadout extends StatelessWidget {
                     'p50${_ms(stats.pointerP50)}  '
                     'p95${_ms(stats.pointerP95)}  '
                     '${stats.pointerMillisPerSecond.toStringAsFixed(1)} ms/s',
+                // A stroke's steps, how far behind the pen it stands
+                // ([FrameStatsSnapshot.stepsPerSecond]), and the submits
+                // piled on the GPU ([FrameStatsSnapshot.gpuBehind]).
+                'STROKE  ${stats.stepsPerSecond.toStringAsFixed(1)} steps/s  '
+                    'dabs/step p50 ${stats.dabsPerStepP50}  '
+                    'max ${stats.dabsPerStepWorst}',
+                ' held   p50${_ms(stats.strokeHeldP50)}  '
+                    'p95${_ms(stats.strokeHeldP95)}',
+                ' pen→up p50${_ms(stats.strokeUpP50)}  '
+                    'p95${_ms(stats.strokeUpP95)}',
+                'GPU     behind ${_orNone(stats.gpuBehind)}  '
+                    'max ${_orNone(stats.gpuBehindWorst)}  '
+                    'timestamps ${switch (stats.gpuClocked) {
+                      true => 'yes',
+                      false => 'none',
+                      null => '—',
+                    }}',
+                'MEMORY  app ${_mb(stats.footprintMegabytes)}  '
+                    'screens ${_mb(stats.screensMegabytes)}  '
+                    'vram ${switch (stats.videoMegabytes) {
+                      null => '—',
+                      (:final used, budget: null) => _mb(used),
+                      (:final used, budget: final budget?) =>
+                        '${used.toStringAsFixed(1)} / ${_mb(budget)}',
+                    }}',
                 'layer   cache ${stats.layerCacheCount}  '
                     '${stats.layerCacheMegabytes.toStringAsFixed(1)} MB',
                 // 🚨 Per-entry, against a window's worth of pixels — the
