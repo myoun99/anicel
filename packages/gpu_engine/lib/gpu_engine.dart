@@ -754,6 +754,9 @@ sealed class GpuTarget implements _OfAnEngine {
   /// round all of them, [left, top, right, bottom) —, null where none has.
   (int, int, int, int)? _changed;
 
+  /// [_changed], read by a test.
+  (int, int, int, int)? get debugChanged => _changed;
+
   void _wrote((int, int, int, int)? rect) {
     final (left, top, right, bottom) = rect ?? (0, 0, width, height);
     _changed = switch (_changed) {
