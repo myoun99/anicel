@@ -58,7 +58,7 @@ void main() {
       viewport: CanvasViewport(),
       inputSettings: () => BrushEditCanvasInputSettings(
         size: 4,
-        correction: correction ?? BrushCorrection(steadies: false),
+        correction: correction ?? BrushCorrection.none,
       ),
       overlayModel: overlay,
       onSourceStrokeCommitted: (_) {},
@@ -133,12 +133,12 @@ void main() {
   }
 
   for (final (line, correction) in [
-    ('a line as the pen went', BrushCorrection(steadies: false)),
-    ('a steadied line', BrushCorrection()),
+    ('a line as the pen went', BrushCorrection.none),
+    ('a steadied line', const BrushCorrection()),
     // Behind the pen, the frames move it on (`_steadyOneFrame`).
     (
       'a line steadied far behind the pen',
-      BrushCorrection(stabilization: 100),
+      const BrushCorrection(stabilization: 100),
     ),
   ]) {
     testWidgets('🚨the samples of the frames built while one is drawn go on '
