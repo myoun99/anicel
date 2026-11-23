@@ -3,12 +3,24 @@ import 'dart:ui' show FrameTiming;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/native/lost_screen.dart';
+import 'package:anicel/src/ui/look_only_frames.dart';
+import 'package:anicel/src/ui/lost_screen_frames.dart';
 import 'package:anicel/src/ui/raster_watch.dart';
 
+/// The test binding with the PRODUCTION mixins that decide whether a frame
+/// is drawn, in the order the app's binding wears them (`AnicelBinding`):
+/// `flutter_test`'s own draws every frame it begins, and a watch that counted
+/// frames begun would go green under it.
+class _WatchedBinding extends AutomatedTestWidgetsFlutterBinding
+    with RasterWatchFrames, LookOnlyFrames, LostScreenFrames {}
+
 /// [RasterWatch] is fed by the app's own frames once `main` installs it:
-/// each frame built is one handed over, and what the engine says drawn is
+/// each frame DRAWN is one handed over, and what the engine says drawn is
 /// heard (board a-real-gpu-reset-went-unheard-on-the-main-pc).
 void main() {
+  final binding = _WatchedBinding();
+
   /// A frame of the app's, built. ⚠️The test binding draws a frame only
   /// where one was asked for, and a test's body starts with none: a bare
   /// pump builds nothing.
@@ -42,6 +54,23 @@ void main() {
     expect(installed, lessThan(run), reason: 'from the first frame');
   });
 
+  // The order is the law: a mixin's `drawFrame` stands over the ones listed
+  // before it, and the watch's is to stand under every one that may not
+  // draw. No compiler holds the app's binding to it.
+  test('the app\'s binding wears the watch first among its mixins', () {
+    final source = File(
+      'lib/src/ui/ui_scale_binding.dart',
+    ).readAsStringSync().replaceAll('\r\n', '\n');
+    expect(
+      source,
+      contains(
+        'class AnicelBinding extends WidgetsFlutterBinding\n'
+        '    with\n'
+        '        RasterWatchFrames,\n',
+      ),
+    );
+  });
+
   testWidgets('a frame built is one handed over, and what the engine says '
       'drawn — the newest of a batch, in whatever order — is what the '
       'raster thread is back from', (tester) async {
@@ -71,6 +100,36 @@ void main() {
       frame,
       reason: 'handed over, and never said drawn',
     );
+  });
+
+  // 검증 (2026-11-23, board a-frame-handed-over-after-the-loss-word-is-not-
+  // said-drawn): the screen said gone, and ten seconds on the watch wrote
+  // that the raster thread stood — of frames the app itself did not draw.
+  testWidgets('a frame begun and not drawn — the screen gone, or asked for '
+      'only to look — is no frame handed over', (tester) async {
+    RasterWatch.install();
+    addTearDown(RasterWatch.debugForget);
+    addTearDown(LostScreen.debugForget);
+    await built(tester);
+    final frame = tester.binding.platformDispatcher.frameData.frameNumber;
+    saidDrawn(tester, [frame]);
+    final handedOverAt = RasterWatch.handedOverAt;
+    expect(handedOverAt, isNot(DateTime(0)), reason: '⛔premise: heard');
+
+    askOnlyToLook(binding.scheduleFrame);
+    await tester.pump();
+    expect(
+      RasterWatch.handedOverAt,
+      handedOverAt,
+      reason: 'asked only to look, and not drawn',
+    );
+
+    LostScreen.debugGo();
+    await built(tester);
+    await built(tester);
+    expect(RasterWatch.handedOverAt, handedOverAt, reason: 'the screen went');
+    await tester.binding.delayed(RasterWatch.patience * 2);
+    expect(RasterWatch.stood.value, isNull, reason: 'no raster thread waited');
   });
 
   testWidgets('forgotten, it hears no frame and no word of one — a test '

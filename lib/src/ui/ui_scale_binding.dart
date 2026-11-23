@@ -17,6 +17,7 @@ import 'look_only_frames.dart';
 import 'lost_screen_frames.dart';
 import 'platform_semantics_gate.dart';
 import 'present_pacing.dart';
+import 'raster_watch.dart';
 import 'ui_scale.dart';
 import 'session/cache_budgets.dart';
 
@@ -237,6 +238,7 @@ mixin UiScaleViewConfiguration on RendererBinding {
 
 class AnicelBinding extends WidgetsFlutterBinding
     with
+        RasterWatchFrames,
         UiScaleViewConfiguration,
         LookOnlyFrames,
         PresentPacing,

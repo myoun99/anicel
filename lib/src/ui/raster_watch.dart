@@ -3,6 +3,7 @@ import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 
 /// The raster thread not back from the frames handed it: the newest frame
 /// it said it drew, the newest handed over and when, and since when
@@ -42,6 +43,14 @@ typedef RasterStood = ({
 /// ⛔NOT THE MACHINE STANDING STILL: a timer that comes far later than it
 /// was set for — a sleep, a debugger — waited on no raster thread, and
 /// waits again.
+///
+/// 🚨A FRAME HANDED OVER IS A FRAME DRAWN, NOT ONE BEGUN ([RasterWatchFrames]).
+/// Board a-frame-handed-over-after-the-loss-word-is-not-said-drawn (검증,
+/// 2026-11-23): once the screen's device went, the app begins frames and
+/// draws none (`LostScreenFrames`), and a frame asked for only to look is
+/// not drawn either (`LookOnlyFrames`). Counted where every frame begun is
+/// called back, those were frames handed over that no raster thread was
+/// ever handed — and ten seconds on this wrote that the thread stood.
 abstract final class RasterWatch {
   /// How long after a frame was handed over none is said drawn before the
   /// raster thread is said to stand.
@@ -54,12 +63,11 @@ abstract final class RasterWatch {
   static ValueListenable<RasterStood?> get stood => _stood;
   static final ValueNotifier<RasterStood?> _stood = ValueNotifier(null);
 
-  /// The binding asked to say its frames — once an isolate, by what a
-  /// static is: a persistent frame callback cannot be removed.
+  /// The binding asked to say what its engine drew — once an isolate, by
+  /// what a static is. The frames handed over are told by the binding's
+  /// own drawing ([RasterWatchFrames]).
   static final bool _asked = () {
-    SchedulerBinding.instance
-      ..addPersistentFrameCallback(_built)
-      ..addTimingsCallback(_drawn);
+    SchedulerBinding.instance.addTimingsCallback(_drawn);
     return true;
   }();
 
@@ -90,9 +98,9 @@ abstract final class RasterWatch {
 
   static DateTime _now() => (debugClockOverride ?? DateTime.now)();
 
-  /// After the binding's own callback, which hands the frame's scene
-  /// over.
-  static void _built(Duration _) {
+  /// The frame under way was drawn, its scene handed over
+  /// ([RasterWatchFrames]).
+  static void _frameDrawn() {
     if (_hears) {
       handedOver(
         SchedulerBinding.instance.platformDispatcher.frameData.frameNumber,
@@ -165,5 +173,19 @@ abstract final class RasterWatch {
     _handedOverAt = DateTime(0);
     _saidDrawn = -1;
     _stood.value = null;
+  }
+}
+
+/// Tells [RasterWatch] each frame the binding DRAWS. ⚠️FIRST AMONG THE
+/// BINDING'S MIXINS, so that its `drawFrame` stands under every other: it
+/// runs only where each one over it let the frame be drawn — a frame one of
+/// them does not draw (`LostScreenFrames`, `LookOnlyFrames`) never gets
+/// here, and is no frame handed over. ⛔Not those mixins' facts asked again
+/// here: two places asking whether a frame is drawn would part.
+mixin RasterWatchFrames on WidgetsBinding {
+  @override
+  void drawFrame() {
+    super.drawFrame();
+    RasterWatch._frameDrawn();
   }
 }
