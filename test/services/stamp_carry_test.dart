@@ -436,6 +436,43 @@ void main() {
         });
       }
 
+      for (final under in [false, true]) {
+        test('a picture reaching the horizon from inside the box lands from '
+            'where its edge in front goes'
+            '${under ? ' (pinched under)' : ''}', () {
+          // Another cel's, its near edge across the box's middle and its far
+          // one past the horizon.
+          final picture = stampOver(
+            left: 1300,
+            top: under ? 690 : 760,
+            width: 100,
+            height: 60,
+            ink: [CanvasPoint(x: 1350, y: under ? 720 : 790)],
+          );
+          final corners = pinchedTo(2, under: under);
+          final there = solveHomography(box, corners)!;
+          final nearEdge = applyHomography(
+            there,
+            CanvasPoint(x: 1350, y: under ? 750 : 760),
+          );
+
+          final carried = QuadCarry(
+            base: box,
+            corners: corners,
+            mode: mode,
+            within: wall,
+          ).through(picture);
+
+          final made = carried.stamp!;
+          final top = (carried.center.y - made.height / 2).round();
+          final (near, far) = under
+              ? (top + made.height, top)
+              : (top, top + made.height);
+          expect(far, under ? wall.top : wall.bottom);
+          expect(near, closeTo(nearEdge.y, 2));
+        });
+      }
+
       test('what a float holds between the box and the horizon goes on to '
           'the wall', () {
         // Ink on the box's bottom edge, reaching a row past it — in front
