@@ -7,6 +7,8 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
 
+import '../helpers/source_body.dart';
+
 /// A FREED POOL ASKS THE ENGINE NOTHING (card
 /// a-pool-release-aborts-on-an-empty-book): a tile a ledger stored and
 /// collected once a test had freed that ledger's pool let its slot go
@@ -86,16 +88,14 @@ void main() {
   test('nothing but the pool itself reads the pointer it lets go of', () {
     final source = File(
       'packages/gpu_engine/lib/gpu_engine.dart',
-    ).readAsLinesSync();
-    final start = source.indexWhere(
-      (line) => line.startsWith('class GpuPool '),
+    ).readAsStringSync();
+    final pool = sourceBodyOf(source, RegExp(r'class GpuPool\b'));
+    expect(pool, contains('_livePool'), reason: '⛔premise: the pool has it');
+    expect(
+      source.replaceFirst(pool, '').contains('_livePool'),
+      isFalse,
+      reason: 'every ask takes it through `_pool`, which refuses a freed '
+          'pool — read past that, it names freed memory',
     );
-    final end = source.indexWhere((line) => line == '}', start);
-    final outside = [
-      for (final (at, line) in source.indexed)
-        if ((at < start || at > end) && line.contains('_livePool')) at + 1,
-    ];
-    expect(start, isNonNegative);
-    expect(outside, isEmpty);
   });
 }
