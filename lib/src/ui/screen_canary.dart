@@ -49,10 +49,14 @@ typedef PixelNotSaid = ({String asked, String instead, DateTime askedAt});
 ///   screen was read for Windows.
 /// - ONCE: after a pixel not said back, no other is asked this run.
 ///
-/// ⛔Nothing is asked of the person, and the screen is drawn on as before
-/// — 「처음엔 기록만」: what a context whose device went gives back was
-/// read, not seen. The window to save and start again is tied to this
-/// once a real loss was written by it.
+/// 🚨A PIXEL NOT SAID BACK IS A WORD OF A LOSS
+/// ([LostScreen.sayThePixelNotSaid]): written, and said to the runner,
+/// which takes it through the door the watch's word goes through — the
+/// window to save and start again, or the engine told where it restores. ↩️「처음엔 기록만」 (the option chosen)
+/// wrote it and asked nothing, till 「실제 사고 한 번이 그 기록으로 맞다고
+/// 확인되면 저장 · 다시 시작 창에 잇는다」: 2026-11-23 20:40 (검증, main PC),
+/// two nvlddmkm 153s, the watch and the app's engine silent, and this
+/// pixel failing to bind the screen's context — the screen stood still.
 abstract final class ScreenCanary {
   /// How long no frame was handed over before the screen is said to rest —
   /// the answer's 「새 프레임이 1초 넘게 없을 때」.
@@ -143,6 +147,7 @@ abstract final class ScreenCanary {
         instead: instead,
         askedAt: askedAt,
       );
+      await LostScreen.sayThePixelNotSaid(askedAt);
     }
   }
 

@@ -87,6 +87,21 @@ void main() {
     expect(LostScreen.went.value?.reason, 0x887A0006.toSigned(32));
   });
 
+  // 🗣️Q1, 11-23 20:40: the pixel the screen did not say back, passed on by
+  // the runner as a loss.
+  test('the app\'s own pixel not said back, said again by the runner, is '
+      'heard as the pixel\'s — no system gave a reason', () async {
+    const askedAt = 1795000000789;
+
+    await runnerSays(0, askedAt, LostScreen.pixelNotSaidMethod);
+
+    expect(LostScreen.went.value, (
+      reason: 0,
+      seenAt: DateTime.fromMillisecondsSinceEpoch(askedAt),
+      by: ScreenGoneBy.pixel,
+    ));
+  });
+
   test('what the runner says by another name is no loss', () async {
     await runnerSays(0x300E, 1795000000456, LostScreen.standsMethod);
 

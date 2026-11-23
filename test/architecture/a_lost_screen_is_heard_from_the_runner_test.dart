@@ -149,6 +149,27 @@ void main() {
     );
   });
 
+  // 🗣️a-real-gpu-reset-went-unheard-on-the-main-pc-Q1, the option chosen:
+  // 「실제 사고 한 번이 그 기록으로 맞다고 확인되면 저장 · 다시 시작 창에
+  // 잇는다」 — the one came 2026-11-23 20:40. Dart says the pixel by a name
+  // only it and the runner spell.
+  test('the runner takes the pixel Dart could not read back through the '
+      'door every word of a loss goes through', () {
+    expect(
+      source,
+      contains(
+        'kScreenPixelNotSaid[] = "${LostScreen.pixelNotSaidMethod}";',
+      ),
+    );
+    expect(
+      sourceBodyOf(source, 'void FlutterWindow::ListenForTheScreen()'),
+      stringContainsInOrder([
+        'if (call.method_name() == kScreenPixelNotSaid) {',
+        'HearTheScreenGo(kScreenPixelNotSaid, 0,',
+      ]),
+    );
+  });
+
   // 🗣️유저 2026-11-22 (relayed): 「Flutter 윈도 엔진을 고쳐 화면이 돌아오게
   // 한다」 — step two. The engine Anicel builds makes its context anew and
   // answers by a message registered by a name, and is told of a loss heard

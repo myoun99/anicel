@@ -64,9 +64,14 @@ void main() {
     };
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(LostScreen.channel, (call) async {
-          asked.add(
-            call.method == LostScreen.standsMethod ? 'runner' : call.method,
-          );
+          asked.add(switch (call.method) {
+            LostScreen.standsMethod => 'runner',
+            LostScreen.pixelNotSaidMethod => 'told ${call.arguments}',
+            final method => method,
+          });
+          if (call.method == LostScreen.pixelNotSaidMethod) {
+            return null;
+          }
           return runnerWatches
               ? runnerSays()
               : throw MissingPluginException();
@@ -121,11 +126,18 @@ void main() {
       askedAt: now,
     ));
 
+    expect(
+      asked,
+      ['runner', drawOf(1), 'told [${now.millisecondsSinceEpoch}]'],
+      reason: '🗣️Q1 — 「실제 사고 한 번이 그 기록으로 맞다고 확인되면 저장 · '
+          '다시 시작 창에 잇는다」 (11-23 20:40): the runner is told, with '
+          'when it was asked',
+    );
+
     asked.clear();
     await ScreenCanary.ask();
     expect(asked, isEmpty, reason: 'once a run');
   });
-
   test('a draw that fails is said with why', () async {
     context = (argb) => Future.error(StateError('the context is lost'));
     await ScreenCanary.ask();

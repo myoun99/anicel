@@ -148,6 +148,7 @@ abstract final class LostScreenEvidence {
           '${switch (gone.by) {
             ScreenGoneBy.watch => 'screen watch',
             ScreenGoneBy.engine => "engine's context lost",
+            ScreenGoneBy.pixel => 'a pixel not said back',
           }} '
               '0x${gone.reason.toUnsigned(32).toRadixString(16).toUpperCase()}',
           'runner saw it ${_moment(gone.seenAt)}',

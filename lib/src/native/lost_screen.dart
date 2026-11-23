@@ -11,6 +11,11 @@ enum ScreenGoneBy {
   /// said only by the engine Anicel builds
   /// (`tool/flutter_engine/3.47.4`, patch 0002).
   engine,
+
+  /// The app itself: a pixel drawn on the screen's own context was not said
+  /// back (`ScreenCanary`), and the runner passed the word on as a loss —
+  /// its [ScreenGone.reason] is 0, no system said one.
+  pixel,
 }
 
 /// The screen's device gone: who said it ([by]), the reason — the HRESULT
@@ -71,6 +76,7 @@ abstract final class LostScreen {
   static const startAgainMethod = 'startAgain';
   static const endMethod = 'end';
   static const standsMethod = 'stands';
+  static const pixelNotSaidMethod = 'pixelNotSaid';
 
   /// The screen's device gone, once it went this run — null till then.
   static ValueListenable<ScreenGone?> get went => _went;
@@ -126,6 +132,7 @@ abstract final class LostScreen {
     final by = switch (method) {
       wentMethod => ScreenGoneBy.watch,
       contextLostMethod => ScreenGoneBy.engine,
+      pixelNotSaidMethod => ScreenGoneBy.pixel,
       _ => null,
     };
     if (by == null) {
@@ -172,6 +179,29 @@ abstract final class LostScreen {
       return await channel.invokeMethod<bool>(standsMethod) ?? false;
     } on MissingPluginException {
       return null;
+    }
+  }
+
+  /// Tells the runner a pixel asked of the screen's own context at
+  /// [askedAt] was not said back — a word of a loss it takes through the
+  /// door the watch's and the engine's go through, and says back as the
+  /// screen gone ([went], by [ScreenGoneBy.pixel]) or stood again
+  /// ([stoodAgain]). Nothing where no runner listens.
+  ///
+  /// 🗣️a-real-gpu-reset-went-unheard-on-the-main-pc-Q1 (유저 2026-11-22),
+  /// the option chosen: 「처음엔 기록만 … 실제 사고 한 번이 그 기록으로
+  /// 맞다고 확인되면 저장 · 다시 시작 창에 잇는다」 — the one came on
+  /// 2026-11-23 20:40 (검증, main PC): the driver logged two errors, the
+  /// watch and the app's engine said nothing, and the pixel failed to bind
+  /// the screen's context. ⛔Not said to the shell here as a loss: the
+  /// runner holds it where its engine restores.
+  static Future<void> sayThePixelNotSaid(DateTime askedAt) async {
+    try {
+      await channel.invokeMethod<void>(pixelNotSaidMethod, [
+        askedAt.millisecondsSinceEpoch,
+      ]);
+    } on MissingPluginException {
+      // No runner listens: none watches either, and the pixel is not asked.
     }
   }
 

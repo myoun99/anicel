@@ -174,6 +174,17 @@ constexpr char kAskWithWindows[] = "askWithWindows";
 constexpr char kStartAgain[] = "startAgain";
 constexpr char kEnd[] = "end";
 constexpr char kScreenStands[] = "stands";
+// 🚨★★★THE PIXEL THE SCREEN DID NOT SAY BACK IS A WORD OF A LOSS TOO.
+// 🗣️a-real-gpu-reset-went-unheard-on-the-main-pc-Q1 (유저 2026-11-22), the
+// option chosen: 「처음엔 기록만 … 실제 사고 한 번이 그 기록으로 맞다고
+// 확인되면 저장 · 다시 시작 창에 잇는다」 — and 2026-11-23 20:40 (검증, main
+// PC) was that one: two nvlddmkm 153s, the watch and the app's engine said
+// nothing, and the pixel Dart drew on the screen's own context failed to
+// bind it. Dart says so here [int64 ms since 1970 UTC, when it asked], and
+// it goes through the one door the watch's word and the engine's go
+// through (HearTheScreenGo): one loss, whoever says it first, and where the
+// engine restores, the engine is told.
+constexpr char kScreenPixelNotSaid[] = "pixelNotSaid";
 // Posted by the watch's thread: the channel speaks on this one.
 constexpr UINT kScreenWentMessage = WM_APP + 0x153;
 // 🚨THE ENGINE'S OWN WORD THAT ITS SCREEN'S CONTEXT IS LOST, heard where the
@@ -665,6 +676,21 @@ void FlutterWindow::ListenForTheScreen() {
         }
         const auto* said =
             std::get_if<flutter::EncodableList>(call.arguments());
+        // [when it asked]: the codec sends an int that fits 32 bits as one.
+        if (call.method_name() == kScreenPixelNotSaid) {
+          const flutter::EncodableValue* asked =
+              said && said->size() == 1 ? &(*said)[0] : nullptr;
+          const auto* wide = asked ? std::get_if<int64_t>(asked) : nullptr;
+          const auto* narrow = asked ? std::get_if<int32_t>(asked) : nullptr;
+          if (!wide && !narrow) {
+            result->Error("not-a-moment");
+            return;
+          }
+          result->Success();
+          HearTheScreenGo(kScreenPixelNotSaid, 0,
+                          static_cast<LPARAM>(wide ? *wide : *narrow));
+          return;
+        }
         std::vector<std::wstring> words;
         for (const flutter::EncodableValue& word :
              said ? *said : flutter::EncodableList()) {
