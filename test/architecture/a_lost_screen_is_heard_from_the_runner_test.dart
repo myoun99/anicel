@@ -74,9 +74,13 @@ void main() {
     );
     // H63 ③: [the reason as an int32, the moment it was seen as an int64]
     // — the shape `LostScreen.listen` reads, whoever said the screen went.
+    // And nothing is said on a channel that is not there: the engine posts
+    // its word to every window of the process, whenever its call fails.
     expect(
       sourceBodyOf(source, 'void SayTheScreenWent('),
       stringContainsInOrder([
+        'if (channel == nullptr) {',
+        'return;',
         'channel->InvokeMethod(',
         'method,',
         'std::make_unique<flutter::EncodableValue>(flutter::EncodableList{',
