@@ -87,14 +87,13 @@ const Map<String, String> kRunsAlone = {
       'a_lay_the_gpu_did_not_lay_is_answered_with_why (4 red) — Bad state: '
       'the graphics device is gone: Destroyed; green alone.',
   'test/services/media/a_closed_movie_leaves_nothing_behind_test.dart':
-      'census 11-21 reversed: red 10/10 in a bundle, after '
-      'the_canvas_draws_the_cameras_path (1 of 1 tests red) — two hundred '
-      'opens kept 44KB: Expected: a value less than <16384> / Actual: '
-      '<46024>; green alone.',
-  'test/services/memory_pressure_budget_test.dart':
-      'census 11-20 forward: red 10/10 in a bundle, after selection_span_rows '
-      '(2 red) — Expected: <268435456> / Actual: <1138111174> / desktop '
-      'default: four pages at the render …; green alone.',
+      'it weighs the whole process\'s heap across two hundred opens, and a '
+      'GPU engine a file ahead of it opened moves that heap as it works — '
+      'the engine is never closed, by law (census 11-21 reversed: red 10/10 '
+      'in a bundle; read by 저장 11-22, card '
+      'bundled-files-find-stores-left-behind: 36,189 B behind a bundle that '
+      'only opened the engine, 16,392 B behind a tile test, the bar 16,384); '
+      'green alone.',
   'test/services/persistence/a_picked_file_is_read_in_under_its_wait_test.dart':
       'census 11-21 reversed: red 5/9 in a bundle, after '
       'the_keyboard_tilde_is_nanums (1 of 5 tests red) — Expected: a value '
@@ -165,22 +164,9 @@ const Map<String, String> kRunsAlone = {
       'census 11-20 forward and 11-21 reversed: red 9/10 in a bundle, after '
       'track_fx (3 red) — Expected: CutId:<cut-1> / Actual: CutId:<cut-2> / '
       'premise: playback crossed; green alone.',
-  'test/ui/session/a_save_after_the_device_is_gone_keeps_the_work_test.dart':
-      'census 11-20 forward: red 9/10 in a bundle, after '
-      'the_notices_say_what_the_app_does (1 red) — Expected: false / Actual: '
-      '<true>; green alone.',
-  'test/ui/sheet/a_sheet_image_is_read_as_large_as_it_is_shown_test.dart':
-      'census 11-20 forward: red 5/9 in a bundle, after '
-      'hidden_folder_is_hidden (2 red) — Expected: true / Actual: <false> / '
-      'p1 was the oldest ask; green alone.',
   'test/ui/sheet/every_sheet_takes_its_photo_with_the_tool_test.dart':
       'census 11-21 reversed: red 9/10 in a bundle, after '
       'an_output_looks_at_no_head_of_the_cut (6 of 6 tests red); green alone.',
-  'test/ui/storyboard_cut_thumbnail_store_test.dart':
-      'census 11-20 forward: red 3/9 in a bundle, after '
-      'a_cut_played_alone_plays_on_the_canvas (4 red) — holds at most its '
-      'budget: the least recently asked-for picture goes first, and comes …; '
-      'green alone.',
   'test/ui/storyboard_se_track_test.dart':
       'census 11-21 reversed: red 9/9 in a bundle, after '
       'a_run_edge_press_acts_on_the_band (1 of 5 tests red); green alone.',
