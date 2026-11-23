@@ -108,16 +108,35 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // this thread as each test ends — every test's frames are built on it:
   // a verb whose body is left on its caller's is red in the first test
   // that calls it, and in no test after for that call.
+  //
+  // 🚨**AND A TEST ENDS WITH EVERY SCREEN IT MADE FREED** (card
+  // the-prerender-scheduler-rests-a-tile-late-on-ci, 2026-11-24): the app's
+  // engine is the process's, so a screen a test left kept its tiles for
+  // every file after it in a bundle — counted by their picture stores'
+  // budgets (`EnginePictures.unownedPictureBytes`), red 5 of 5 in the
+  // bundle CI ran and green alone. Asked after the file's own tearDowns,
+  // and after the widget tree a test pumped is taken down — a screen its
+  // widgets free as they go is freed by then. Red is the test that left it.
   var enteredBefore = 0;
+  var unfreedBefore = 0;
   tearDown(() {
     final entered = debugDeviceEnteredHere - enteredBefore;
     enteredBefore += entered;
+    final unfreed = GpuScreen.debugUnfreed - unfreedBefore;
+    unfreedBefore += unfreed;
     expect(
       entered,
       0,
       reason:
           'this thread took the GPU device in hand: a verb of the '
           'engine\'s ran its body here, not on the engine\'s thread',
+    );
+    expect(
+      unfreed,
+      0,
+      reason:
+          'this test left screens of the engine unfreed: their tiles stay '
+          'for every test after it in the process',
     );
   });
   // 🚨**THE TIMELINE TILE STORE IS ONE PER PROCESS**, and a raster a test

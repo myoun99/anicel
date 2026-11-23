@@ -3755,7 +3755,9 @@ class GpuScreen implements _OfAnEngine {
   }
 
   GpuScreen._(this._composite, Pointer<rust.Screen> screen)
-    : _given = _Held(screen, 'a screen');
+    : _given = _Held(screen, 'a screen') {
+    _unfreed += 1;
+  }
 
   final GpuComposite _composite;
 
@@ -3891,7 +3893,26 @@ class GpuScreen implements _OfAnEngine {
   /// engine lets go of it behind them, and its pictures' slots go back to
   /// the pool there — [GpuEngine.idlePictureBytes] counts them by a
   /// [GpuEngine.done] asked after this.
-  void free() => rust.screenFree(_given.letGo());
+  void free() {
+    rust.screenFree(_given.letGo());
+    _unfreed -= 1;
+  }
+
+  static int _unfreed = 0;
+
+  /// How many screens are made and not freed: what each test asks as it
+  /// ends (test/flutter_test_config.dart). Counted here, not read off the
+  /// engine's [liveBytes] — those are counted once a compose lands, so a
+  /// screen whose compose a test left in flight read as none or one by
+  /// when the engine got to it.
+  ///
+  /// 🔬Card the-prerender-scheduler-rests-a-tile-late-on-ci (2026-11-24):
+  /// a storyboard cell's picture (frame_shots.dart, `frameOnTheEngine`)
+  /// made its screen and frees it after the compose's answer; a widget
+  /// test ended first, its fake clock's zone ran no more, and the screen
+  /// stayed for the process — its tiles counted by every picture store a
+  /// later file of the bundle made.
+  static int get debugUnfreed => _unfreed;
 }
 
 /// What a run put: its output tiles' pixels, on the GPU.
