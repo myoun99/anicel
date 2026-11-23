@@ -37,10 +37,6 @@ class _BrushEditOverlay {
     SchedulerBinding.instance.ensureVisualUpdate();
   }
 
-  /// Whether the dabs queued wait for the canvas's frames being drawn
-  /// ([stepPendingOverlayDabs]).
-  bool _heldForTheFrame = false;
-
   /// The dabs queued since the stroke's last step, laid as its next — or,
   /// while a frame of the canvas's pictures is being drawn, held, and laid
   /// as one step once every such frame is up.
@@ -59,7 +55,7 @@ class _BrushEditOverlay {
   /// written. The dabs are the same, in the same order — only how many
   /// a step carries changes, as it always did with the frames' pace.
   void stepPendingOverlayDabs() {
-    if (_state._pendingOverlayDabs.isEmpty || _heldForTheFrame) {
+    if (_state._pendingOverlayDabs.isEmpty) {
       return;
     }
     final drawn = _state._picturesUp?.beingDrawn;
@@ -67,10 +63,10 @@ class _BrushEditOverlay {
       flushPendingOverlayDabs();
       return;
     }
-    _heldForTheFrame = true;
+    // Each frame built meanwhile asks again, of the same frames: the first
+    // told lays what all held, and the rest find nothing.
     unawaited(
       drawn.then((_) {
-        _heldForTheFrame = false;
         if (_state.mounted) {
           stepPendingOverlayDabs();
         } else {
