@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../../core/made_once.dart';
+import '../../core/progress_share.dart';
 import '../flutter_test_run.dart';
 import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
@@ -37,19 +39,60 @@ import '../media/viewer_document.dart';
 /// whatever the buffer held. PDFium asks only within the file's length, so
 /// anything short of the whole window is a failure, and 0 is the one answer
 /// it reads as one (audit 2026-09-24).
-int readPdfWindow(
+Future<int> readPdfWindow(
   MediaWindowReader reader,
   Uint8List buffer,
   int position,
   int size,
-) {
+) async {
   try {
-    final got = reader.readIntoSync(buffer, position, size);
+    final got = await reader.readInto(buffer, position, size);
     return got == size ? got : 0;
   } on Object {
     return 0;
   }
 }
+
+/// How far PDFium has read a file while it OPENS it, told as a share of the
+/// file — F-608-Q2's 「the bytes read of the bytes to read」, the decoder's
+/// own reads counted (🗣️유저 11-23 「pdf읽기는 퍼센트 안들어간단게 뭐야 …
+/// 당연히 넣어야하는거아니야?」).
+///
+/// 🔬Why the open, and why the whole file (저장 11-24, PDFium through
+/// pdfrx 2.4.7, four PDFs of 5–141 MB — a conte, a manga volume, notes):
+/// opening read 100.0–101.4% of each file, and a page rendered after it
+/// read a few KB — so the open IS the read, and what a page reads later is
+/// its rasterizing's. Re-reads are counted as read; the share stops at the
+/// whole.
+final class PdfOpeningReads {
+  PdfOpeningReads(this._length, this._onRead);
+
+  final int _length;
+  final void Function(double fraction)? _onRead;
+  int _read = 0;
+  bool _opened = false;
+
+  /// [got] more bytes read — told only while the document is opening.
+  void took(int got) {
+    if (_opened || got <= 0) {
+      return;
+    }
+    _read += got;
+    _onRead?.call(math.min<double>(1, doneShare(_read, _length)));
+  }
+
+  /// The document is open: what it reads from here on is a page's.
+  void opened() => _opened = true;
+}
+
+/// A test opener that also hears how far the file is read ([PdfRenderService
+/// .open]'s onRead) — set as [PdfRenderService.debugOpenerOverride], it
+/// stands for PDFium telling its reads.
+typedef PdfReadingOpener =
+    Future<ViewerDocument> Function(
+      MediaByteSource source, {
+      void Function(double fraction)? onRead,
+    });
 
 abstract final class PdfRenderService {
   /// Test seam: when set, [open] routes here and [availability] reads
@@ -90,29 +133,38 @@ abstract final class PdfRenderService {
     }
   }
 
-  /// Opens the PDF [source] holds. Null means the RENDERER is absent; a
-  /// file that fails to open (corrupt, password-locked) throws instead —
+  /// Opens the PDF [source] holds, [onRead] told how far the file is read
+  /// while it opens ([PdfOpeningReads]). Null means the RENDERER is absent;
+  /// a file that fails to open (corrupt, password-locked) throws instead —
   /// the two states deserve different messages.
   ///
-  /// A whole file is PDFium's to read by its path. Anything else — a PDF
-  /// carried inside the `.anicel`, or its framed copy — is served a window
-  /// at a time, through a reader that keeps its file open for as long as
-  /// the document is ([MediaByteSource.openWindowReader]): a hundred-page
-  /// conte is never pulled whole, and never unpacked to a temp file (유저
-  /// 2026-08-27 「사본 남으면 진짜 용서안할게」).
-  static Future<ViewerDocument?> open(MediaByteSource source) async {
+  /// Every PDF is served a window at a time, through a reader that keeps
+  /// its file open for as long as the document is
+  /// ([MediaByteSource.openWindowReader]): a hundred-page conte is never
+  /// pulled whole, and never unpacked to a temp file (유저 2026-08-27
+  /// 「사본 남으면 진짜 용서안할게」).
+  ///
+  /// ↩️A user's own file was PDFium's to read by its path — where the
+  /// window could not see it read, so a PDF on the cloud stood at one
+  /// number while it came down (decoder-reads-skip-the-percent). One
+  /// reader for every PDF now; 🔬its open took 0.33 s where the path's
+  /// took 0.10–0.18 s for 141 MB read warm (저장 11-24), the price of
+  /// reading off the UI isolate ([MediaWindowReader.readInto]).
+  static Future<ViewerDocument?> open(
+    MediaByteSource source, {
+    void Function(double fraction)? onRead,
+  }) async {
     final override = debugOpenerOverride;
+    if (override is PdfReadingOpener) {
+      return override(source, onRead: onRead);
+    }
     if (override != null) {
       return override(source);
     }
     if (!await ensureAvailable()) {
       return null;
     }
-    final file = source.wholeFilePath;
-    final document = file != null
-        ? await pdfrx.PdfDocument.openFile(file)
-        : await _openWindowed(source);
-    return _PdfrxDocumentHandle(document);
+    return _PdfrxDocumentHandle(await _openWindowed(source, onRead));
   }
 
   /// [source] opened on a reader that keeps its file open for the
@@ -120,16 +172,24 @@ abstract final class PdfRenderService {
   /// when the document is, or at once when it never opens.
   static Future<pdfrx.PdfDocument> _openWindowed(
     MediaByteSource source,
+    void Function(double fraction)? onRead,
   ) async {
+    final length = source.lengthSync();
+    final reads = PdfOpeningReads(length, onRead);
     final reader = source.openWindowReader();
     try {
-      return await pdfrx.PdfDocument.openCustom(
-        read: (buffer, position, size) =>
-            readPdfWindow(reader, buffer, position, size),
-        fileSize: source.lengthSync(),
+      final document = await pdfrx.PdfDocument.openCustom(
+        read: (buffer, position, size) async {
+          final got = await readPdfWindow(reader, buffer, position, size);
+          reads.took(got);
+          return got;
+        },
+        fileSize: length,
         sourceName: '$source',
         onDispose: reader.close,
       );
+      reads.opened();
+      return document;
     } on Object {
       reader.close();
       rethrow;
@@ -161,7 +221,7 @@ abstract final class PdfRenderService {
     if (!await ensureAvailable()) {
       return null;
     }
-    final source = await pdfrx.PdfDocument.openFile(path);
+    final source = await _openWindowed(MediaFileBytes(path), null);
     try {
       final piece = await pdfrx.PdfDocument.createNew(sourceName: path);
       try {

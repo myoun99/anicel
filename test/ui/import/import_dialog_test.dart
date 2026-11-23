@@ -648,6 +648,55 @@ void main() {
     expectOneBar(counted, [0.5, 0.625, 0.75, 0.875, 1]);
   });
 
+  testWidgets('🗣️decoder-reads-skip-the-percent: a PDF is read in under the '
+      "window's line — PDFium reads the file as it opens it, and a PDF in "
+      'the cloud comes down inside that read (유저 11-23 「당연히 '
+      '넣어야하는거아니야?」)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    PdfRenderService.debugOpenerOverride =
+        (_, {void Function(double fraction)? onRead}) async {
+      onRead?.call(0.5);
+      onRead?.call(1);
+      return FakePdfDocument(
+        pageSizes: List.filled(2, const ui.Size(595, 842)),
+      );
+    };
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}read.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return file.path;
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final counted = watchTheBar(tester);
+    final lines = watchTheLine(tester);
+    await pumpPastTheWaitWindow(tester);
+
+    expect(lines, [
+      '',
+      AppText.strings.imStepReading,
+      AppText.strings.imStepCarrying,
+      AppText.strings.imStepRasterizing,
+      '',
+    ]);
+    expect(
+      counted,
+      contains(closeTo(1 / 6, 1e-9)),
+      reason: 'half the read, of the read\'s third of the file: $counted',
+    );
+  });
+
   testWidgets('a PDF with NO renderer warns honestly instead of failing '
       'as a decode', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());

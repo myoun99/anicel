@@ -687,6 +687,10 @@ class ProjectImportDoors {
 
     /// See [importImageFile]'s.
     void Function(double fraction)? onCarrying,
+
+    /// How far PDFium has read the file while it opens it
+    /// ([PdfOpeningReads]) — see [importImageFile]'s.
+    void Function(double fraction)? onReading,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
@@ -697,7 +701,7 @@ class ProjectImportDoors {
     final document = await openHeldViewerDocument(
       _holdBytes,
       path,
-      PdfRenderService.open,
+      (source) => PdfRenderService.open(source, onRead: onReading),
     );
     if (document == null) {
       return false; // Renderer absent — the honest-absence state.
