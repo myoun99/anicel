@@ -53,7 +53,7 @@ void main() {
   }
 
   test('each tile is told what the GPU says of it beside the tile it landed '
-      'on, and shows as that tile did till then — nothing read here', () async {
+      'on, and shows ink till then — nothing read here', () async {
     final ledger = EngineTileLedger(appGpuEngine);
     final stroke = GpuStroke(appGpuEngine);
     addTearDown(stroke.free);
