@@ -60,6 +60,7 @@ import 'bash_executable.dart';
 import 'import_graph.dart';
 import 'master_check.dart';
 import 'process_tree.dart';
+import 'stuck_stacks.dart';
 import 'test_queue.dart';
 import 'test_results.dart';
 import 'test_bundles.dart';
@@ -2108,9 +2109,12 @@ Future<_BatchResult> _flutterTestIn(
   final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
   var silent = false;
-  final look = Timer.periodic(kLookForSilence, (_) {
+  final look = Timer.periodic(kLookForSilence, (_) async {
     if (silent || !silence.isPast(kSilentBatch, DateTime.now())) return;
     silent = true;
+    // 🗣️관제 2026-11-24 07:3x: where it stood, said before it is cut
+    // (stuck_stacks.dart says why).
+    await sayWhereTestersStand(process.pid, say: _report);
     cutTree(process.pid);
   });
   final memory = MemoryWatch(process.pid);
