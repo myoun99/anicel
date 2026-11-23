@@ -700,12 +700,15 @@ class LayerVerbs {
     }
     final ordered = _topFirst(cut, ids);
     final nextActiveLayerId = _standAfterDeleting(ordered);
-    deleteRows(
-      _project.cutCommandCoordinator,
-      cutId: cut.id,
-      trackId: _selection.selectedTrackId,
-      ids: ordered,
-      step: step,
+    final commands = _project.cutCommandCoordinator;
+    commands.historyManager.runAsOneStep(
+      step,
+      () => deleteRows(
+        commands,
+        cutId: cut.id,
+        trackId: _selection.selectedTrackId,
+        ids: ordered,
+      ),
     );
     _selection.clearRowSelection();
     _changes.refreshAfterCutCommand(

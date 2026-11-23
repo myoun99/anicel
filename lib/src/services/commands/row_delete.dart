@@ -43,7 +43,7 @@ void deleteRow(
 }
 
 /// Deletes [ids] — rows of [cutId], or S rows of [trackId] — each by its
-/// own [deleteRow], in the order given, as ONE undo step called [step].
+/// own [deleteRow], in the order given. The undo step is the caller's.
 ///
 /// A row an earlier delete took along is not asked for again: gone with
 /// its link (a row and the copy pasted linked beside it, both selected),
@@ -55,16 +55,13 @@ void deleteRows(
   required CutId cutId,
   required TrackId trackId,
   required List<LayerId> ids,
-  required String step,
 }) {
-  commands.historyManager.runAsOneStep(step, () {
-    for (final layerId in ids) {
-      final project = commands.repository.requireProject();
-      if (layerAnywhereOrNull(project, layerId) != null) {
-        deleteRow(commands, cutId: cutId, trackId: trackId, layerId: layerId);
-      }
+  for (final layerId in ids) {
+    final project = commands.repository.requireProject();
+    if (layerAnywhereOrNull(project, layerId) != null) {
+      deleteRow(commands, cutId: cutId, trackId: trackId, layerId: layerId);
     }
-  });
+  }
 }
 
 /// Every row [deleteRows] of [ids] takes, in every cut: read off that
@@ -104,7 +101,6 @@ Set<LayerId> rowsDeleteRowsTakes(
       cutId: cutId,
       trackId: trackId,
       ids: ids,
-      step: 'What a delete takes',
     );
     final left = _rowsOf(repository.requireProject());
     return _rowsOf(copy).difference(left);
