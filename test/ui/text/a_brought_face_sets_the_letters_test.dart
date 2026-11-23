@@ -165,6 +165,27 @@ void main() {
     expect(celTextAwaitsAFace(elsewhere), isFalse);
   });
 
+  test('a run with no chosen face is set in the app\'s, a bold run in its '
+      'bold, and a run in a chosen face in THAT face', () {
+    final plain = widthSetOf(said());
+    const testFont = 11 * 40.0;
+
+    expect(
+      plain,
+      lessThan(testFont),
+      reason: 'the test font sets every letter a whole size wide',
+    );
+    expect(widthSetOf(said(bold: true)), isNot(plain));
+    final other = widthSetOf(said(face: 'Nanum Gothic'));
+    expect(other, isNot(plain), reason: 'a run in a chosen face is set in it');
+    expect(other, lessThan(testFont));
+    // ↩️This asked for 「FlutterTest」, the test engine's own font, and got
+    // it. A family this device does not hold is set in the app's own now
+    // (`CanvasLetterFaces`, the text tool's faces) — not in whatever the
+    // engine would make of its name.
+    expect(widthSetOf(said(face: 'FlutterTest')), plain);
+  });
+
   test('🚨a family\'s bold, brought after its regular, is what its bold '
       'letters are set in — the regular is not thickened in its place', () async {
     final bold = File('assets/fonts/NanumGothic-Bold.ttf').readAsBytesSync();

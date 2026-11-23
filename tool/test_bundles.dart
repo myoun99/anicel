@@ -137,18 +137,6 @@ const Map<String, String> kRunsAlone = {
   'test/ui/storyboard_se_track_test.dart':
       'census 11-21 reversed: red 9/9 in a bundle, after '
       'a_run_edge_press_acts_on_the_band (1 of 5 tests red); green alone.',
-  'test/ui/text/a_text_draws_its_letters_narrower_test.dart':
-      "its first tests measure in flutter_test's test font, before its own "
-      "loadTheAppFaces(); a file ahead of it that loaded the app's faces "
-      'leaves them in the isolate — red behind one in either order of the '
-      'font loaders bundled together (census 11-22, card '
-      'bundled-files-measure-text-differently); green alone.',
-  'test/ui/text/cel_text_layout_test.dart':
-      "its first tests measure in flutter_test's test font, before its own "
-      "loadTheAppFaces(); a file ahead of it that loaded the app's faces "
-      'leaves them in the isolate — red behind one in either order of the '
-      'font loaders bundled together (census 11-22, card '
-      'bundled-files-measure-text-differently); green alone.',
   'test/ui/the_held_piece_is_counted_test.dart':
       'census 11-21 reversed: red 8/9 in a bundle, after '
       'a_cut_obeys_the_symmetry_guide (1 of 1 tests red); green alone.',
