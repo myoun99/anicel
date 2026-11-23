@@ -372,8 +372,8 @@ typedef _ShownOn = ({EngineStackScreen of, int lay, _Through through});
 
 /// The steps of a pixel the engine reads a camera's entries in: Q.20, each
 /// rounded to the nearest, halves away from zero
-/// (rust/src/kernels/shared/resample.rs, `ResampleMap::new`).
-const double _cameraSteps = 1 << 20;
+/// (rust/src/kernels/shared/resample.rs, `ResampleMap::new`) — 2^20.
+const double _cameraSteps = 1048576;
 
 /// [value] on the engine's grid of a camera's entries ([_cameraSteps]):
 /// what the engine reads it as.
