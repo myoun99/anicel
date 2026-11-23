@@ -141,8 +141,7 @@ abstract final class EngineFaces {
       'path': final String path,
       'offset': final int offset,
       'length': final int length,
-    }
-        when length > 0 =>
+    } =>
       (path: path, offset: offset, length: length),
     _ => null,
   };
