@@ -30,7 +30,19 @@ abstract final class EngineFaces {
   /// first one's future never woke (11-08). The law of every such keeping
   /// since 2026-11-23 ([MadeOnce]).
   static Future<GpuFaces> bundled() => _bundled.of(read);
-  static final _bundled = MadeOnce<GpuFaces>();
+  static MadeOnce<GpuFaces> _bundled = MadeOnce();
+
+  /// Test seam: none read, as a launch finds them — for a test of the first
+  /// read, wherever its file runs in its process (card
+  /// bundled-files-find-the-engine-already-open, 2026-11-23: two files went
+  /// red behind a file that had read them). What was read stays with what
+  /// holds it — the letters set in it — and the next ask reads the files
+  /// again.
+  @visibleForTesting
+  static void debugForget() {
+    _bundled = MadeOnce();
+    _ordered.clear();
+  }
 
   /// The bundled families read anew — what [bundled] keeps; a test's own
   /// read is kept by no one. Each file mapped by the engine from where the

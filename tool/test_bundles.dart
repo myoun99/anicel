@@ -51,27 +51,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'the_format_window_gives_cuts_their_camera_room (9 of 9 tests red); '
       'green alone.',
-  'test/native/a_test_runs_engine_keeps_its_shaders_with_the_machine_test.dart':
-      'census 11-20 forward: red 5/10 in a bundle, after '
-      'a_direction_block_is_its_span (1 red) — Expected: non-empty / Actual: '
-      'WhereTypeIterable<File>:[]; green alone.',
-  'test/native/a_word_goes_to_the_engine_as_it_is_laid_test.dart':
-      'census 11-20 forward: red 5/9 in a bundle, after '
-      'one_transparency_checker (1 red) — Expected: false / Actual: <true> / '
-      'premise: none asked yet; green alone.',
-  'test/native/the_blur_kernels_compile_off_this_isolate_test.dart':
-      'census 11-20 forward: red 5/5 in a bundle, after '
-      'the_cel_pixel_pass_compiles_off_this_isolate (1 red) — Expected: <0> / '
-      'Actual: <9> / still compiling; green alone.',
-  'test/native/the_composite_and_the_landing_compile_off_this_isolate_test.dart':
-      'census 11-21 reversed: red 7/8 in a bundle, after '
-      'unlinking_a_row_keeps_every_cuts_picture (2 of 8 tests red) — '
-      'Expected: null / Actual: <Instance of \'GpuComposite\'> / still '
-      'compiling; green alone.',
-  'test/native/the_grid_screen_shows_what_its_rows_lay_test.dart':
-      'census 11-20 forward: red 3/10 in a bundle, after '
-      'collapsed_overlay_takes_its_own_space (1 red) — the first screen there '
-      'is to lay on reads the faces its tiles\' words are set …; green alone.',
   'test/services/a_selection_lifts_on_the_engine_test.dart':
       'census 11-21 reversed: red 5/5 in a bundle, after '
       'the_next_page_is_baked_while_the_page_before_plays (1 of 49 tests red) '
@@ -80,11 +59,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-20 forward: red 3/3 in a bundle, after '
       'a_frame_on_screen_stands_again_on_the_next_engine (4 red) — Expected: '
       '<255> / Actual: <128>; green alone.',
-  'test/services/a_tip_s_picture_is_made_once_the_engine_is_open_test.dart':
-      'census 11-20 forward: red 9/10 in a bundle, after '
-      'adjustment_layer_scope (1 red) — Expected: (Null, bool):<(null, '
-      'false)> / Actual: (Null, bool):<(null, true)> / nothing …; green '
-      'alone.',
   'test/services/brush_stroke_blend_test.dart':
       'census 11-20 forward: red 5/10 in a bundle, after '
       'a_lay_the_gpu_did_not_lay_is_answered_with_why (4 red) — Bad state: '
@@ -127,11 +101,6 @@ const Map<String, String> kRunsAlone = {
       'census 11-20 forward and 11-22 reversed: red 4/10 in a bundle, after '
       'an_se_rows_box_is_a_layers (1 red) — Expected: true / Actual: <false>; '
       'green alone.',
-  'test/ui/canvas/the_canvas_marks_its_place_while_a_frame_waits_for_the_engine_test.dart':
-      'census 11-20 forward: red 3/10 in a bundle, after '
-      'you_stand_only_on_a_shown_row (1 red) — the canvas standing on a '
-      'frame, then parked on a track stack, marks the middle of what …; green '
-      'alone.',
   'test/ui/canvas/the_pointer_that_moves_wears_the_cursor_test.dart':
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'an_se_tag_stands_in_the_shot (6 of 6 tests red); green alone.',
@@ -149,11 +118,6 @@ const Map<String, String> kRunsAlone = {
   'test/ui/menu/a_dropped_project_opens_through_the_open_door_test.dart':
       'census 11-21 reversed: red 10/10 in a bundle, after '
       'storyboard_end_line_is_live — a test never ended; green alone.',
-  'test/ui/playback/a_picture_is_weighed_by_what_it_is_made_as_test.dart':
-      'census 11-20 forward: red 4/9 in a bundle, after '
-      'finished_outputs_take_the_road_their_os_has (1 red) — a picture is '
-      'weighed ahead by the tiles its making comes to make — the tiles of …; '
-      'green alone.',
   'test/ui/playback/a_warmer_handed_the_real_clock_ends_with_the_test_test.dart':
       'census 11-20 forward: red 2/9 in a bundle, after '
       'the_colour_edit_head_lights_with_its_block (1 red) — premise: the '

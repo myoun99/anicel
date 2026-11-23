@@ -6,6 +6,8 @@ import 'package:gpu_engine/gpu_engine.dart' show debugKernelsCompiledHere;
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 
+import '../helpers/the_apps_engine_let_go.dart';
+
 /// THE FIRST PICTURE OF A LAUNCH WAITS FOR NOTHING: the composite pass and
 /// what lands a stamp are compiled off this isolate once the engine is
 /// open, as the blur brush's and the colour verbs' kernels are.
@@ -13,8 +15,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() => AppKernels.debugCompileHere = false);
 
-  // First in the file: nothing has compiled the pass yet.
   test('the first picture does not compile the pass on this isolate', () async {
+    // Nothing has compiled the pass yet: no engine is asked for yet.
+    theAppHasNoEngineYet();
     await openAppGpuEngine();
     final tools = appEngineFrameTools;
 

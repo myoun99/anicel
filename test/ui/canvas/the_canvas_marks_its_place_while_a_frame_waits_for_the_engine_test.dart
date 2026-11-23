@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/playback/frame_wait_mark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/the_apps_engine_let_go.dart';
+
 /// 🗣️gpu-canonical-store-Q12 (유저 2026-11-10): 「캔버스 자리에 준비 중 표시를
 /// 둔다」 — the canvas is ONE place ([FrameWaitPlace]): the frame it stands
 /// on and the track stack it parks on mark it while the engine is still to
@@ -32,10 +34,11 @@ void main() {
     await tester.pump();
   }
 
-  // ⚠️First in the file: the app's engine is opened by the first that asks.
   testWidgets('the canvas standing on a frame, then parked on a track '
       'stack, marks the middle of what its floor leaves to be seen till the '
       'engine is open', (tester) async {
+    // ⚠️The app's engine is opened by the first that asks: none has yet.
+    theAppHasNoEngineYet();
     expect(
       appEngineFrameToolsOpen,
       isNull,

@@ -7,6 +7,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 
 import '../helpers/a_word_that_waits.dart';
+import '../helpers/the_apps_engine_let_go.dart';
 
 /// 🔬WHAT A WIDGET TEST OPENED ON THE APP'S ENGINE IS HANDED TO THE TEST
 /// AFTER IT (card an-engine-setup-hangs-in-a-batch, 2026-11-23): the engine
@@ -22,14 +23,10 @@ void main() {
   // them, and a widget test's clock lends their files no time to be read.
   readTheEnginesFacesFirst();
 
-  // First in the file: nothing has opened the engine yet.
   testWidgets('the engine, the frames\' tools and a set of kernels, made '
       'in a widget test', (tester) async {
-    expect(
-      debugAppGpuEngineAskedFor,
-      isFalse,
-      reason: '⛔premise: made here, in this test\'s zone',
-    );
+    // Made here, in this test's zone: none asked for before.
+    theAppHasNoEngineYet();
     unawaited(openAppGpuEngine());
     // Open before the kernels ask for it, or they would open one of their
     // own at once (`appGpuEngine`).

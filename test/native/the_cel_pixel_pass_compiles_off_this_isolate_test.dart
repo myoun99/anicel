@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/engine_cel_pixels.dart';
 
+import '../helpers/the_apps_engine_let_go.dart';
+
 /// THE FIRST PRESS OF A COLOUR VERB WAITS FOR NOTHING (flip lane ⓒ): the
 /// pass is compiled off this isolate once the engine is open.
 void main() {
@@ -18,6 +20,8 @@ void main() {
   tearDown(EngineCelPixels.debugForget);
 
   test('this isolate goes on while it compiles', () async {
+    // Not compiled yet: no engine is asked for yet.
+    theAppHasNoEngineYet();
     var ticks = 0;
     final timer = Timer.periodic(
       const Duration(milliseconds: 1),

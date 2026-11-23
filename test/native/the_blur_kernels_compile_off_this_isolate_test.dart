@@ -11,6 +11,8 @@ import 'package:gpu_engine/gpu_engine.dart' show debugKernelsCompiledHere;
 import 'package:anicel/src/native/app_gpu_engine.dart' show AppKernels;
 import 'package:anicel/src/native/engine_strokes.dart';
 
+import '../helpers/the_apps_engine_let_go.dart';
+
 /// 🚨THE FIRST BLUR OF A LAUNCH WAITS FOR NOTHING (flip lane ⓒ): the blur
 /// brush's kernels are ten pipelines, 🔬10.2 s on the main PC with eighteen
 /// test files running, and every stroke shares the one set. They are
@@ -27,9 +29,10 @@ void main() {
   setUpAll(() => AppKernels.debugCompileHere = false);
   tearDown(EngineStrokes.debugForgetBlurs);
 
-  // First in the file: no stroke has been compiled yet.
   test('a stroke for the first pen-down is compiled off this isolate too',
       () async {
+    // No stroke compiled yet: none on an engine none has asked for.
+    theAppHasNoEngineYet();
     final warming = EngineStrokes.warm();
     expect(EngineStrokes.debugIdle, 0, reason: 'still compiling');
     await warming;
