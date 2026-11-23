@@ -264,22 +264,25 @@ void main() {
     });
   });
 
-  testWidgets('a landing is told from the lift to the frame after it, with '
-      'the GPU\'s backlog at the lift and what that frame did', (
+  testWidgets('a landing is told from the lift: its commit, the frame after '
+      'it up, the GPU\'s backlog once committed and what that frame did', (
     tester,
   ) async {
     var behind = 4;
     EngineBehind.debugNow = () => behind;
+    now = 500;
+    StrokeSteps.lifted();
     now = 1000;
     StrokeSteps.landed(together: null);
     behind = 0;
-    expect(StrokeSteps.landing, (up: null, behind: 4, did: null));
+    expect(StrokeSteps.landing, (commit: 500, up: null, behind: 4, did: null));
     PictureWrites.wrote(PictureWrite.inPlace);
     ScreenAsked.shown(anAsk(32));
     now = 7000;
     await aFrame(tester);
     expect(StrokeSteps.landing, (
-      up: 6000,
+      commit: 500,
+      up: 6500,
       behind: 4,
       did: (wrote: (inPlace: 1, copied: 0, whole: 0), asked: anAsk(32)),
     ));
@@ -290,7 +293,11 @@ void main() {
     StrokeSteps.landed(together: null);
     now = 9000;
     await aFrame(tester);
-    expect(StrokeSteps.landing?.up, 500, reason: 'the newest landing');
+    expect(
+      [StrokeSteps.landing?.commit, StrokeSteps.landing?.up],
+      [0, 500],
+      reason: 'the newest landing, no lift told: from its commit',
+    );
 
     StrokeSteps.forget();
     expect(
@@ -299,10 +306,16 @@ void main() {
     );
   });
 
-  test('a landing is none while the statistics are off', () {
+  test('a landing is none while the statistics are off, nor timed from a '
+      'lift told then', () {
     MeasurementMode.frameStats.value = false;
+    StrokeSteps.lifted();
     StrokeSteps.landed(together: null);
     expect(StrokeSteps.landing, isNull);
+    now = 3000;
+    MeasurementMode.frameStats.value = true;
+    StrokeSteps.landed(together: null);
+    expect(StrokeSteps.landing?.commit, 0);
   });
 
   test('a picture\'s writes are counted by how each went, and none while '

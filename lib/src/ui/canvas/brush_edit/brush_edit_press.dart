@@ -435,6 +435,7 @@ class _BrushEditPress {
     if (_state._activeDrawingPointer == null) {
       return false;
     }
+    StrokeSteps.lifted();
     // Whatever still waits for the contact's first readings lands first
     // (H43), and the line then goes to where the pen lifted — both before
     // the lock settles, which sees the whole travel.

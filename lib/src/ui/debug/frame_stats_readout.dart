@@ -98,8 +98,9 @@ class FrameStatsReadout extends StatelessWidget {
   /// ([FrameStatsSnapshot.landing]).
   static String _landingWords(Landing? landing) => switch (landing) {
     null => '—',
-    (:final up, :final behind, did: _) =>
-      'up ${_msOf(up)}  behind ${_orNone(behind)}',
+    (:final commit, :final up, :final behind, did: _) =>
+      'commit ${_msOf(commit)}  up ${_msOf(up)}  '
+          'behind ${_orNone(behind)}',
   };
 
   /// What the frame that showed it did ([FrameDid]): how its pictures took

@@ -327,7 +327,8 @@ void main() {
       addTearDown(() => StrokeSteps.debugMicros = null);
       final overlay = ActiveStrokeOverlayModel(tileSize: 128);
       addTearDown(overlay.dispose);
-      final pen = await aPenOn(tester, overlay: overlay, together: null);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(tester, overlay: overlay, together: together);
       final first = StrokeSteps.firstStep!;
       expect(first.dab, lessThan(first.armed), reason: 'queued in its press');
       expect(
@@ -342,9 +343,17 @@ void main() {
       await tester.pump();
       expect(StrokeSteps.firstStep, first, reason: 'a step, not the first');
       pen.lift(const Offset(60, 20));
-      expect(StrokeSteps.landing?.up, isNull, reason: 'landed, not up');
+      final landing = StrokeSteps.landing!;
+      expect(landing.up, isNull, reason: 'landed, not up');
+      expect(landing.commit, greaterThan(0), reason: 'from the lift');
+      // The paint after it puts up the frame of the canvas's that shows it.
+      final shown = Completer<void>();
+      unawaited(together.joined(shown.future));
       await tester.pump();
-      expect(StrokeSteps.landing?.up, isNotNull);
+      expect(StrokeSteps.landing?.up, isNull, reason: 'not up till it is');
+      shown.complete();
+      await tester.idle();
+      expect(StrokeSteps.landing?.up, greaterThan(landing.commit));
       await tester.pump();
     });
 

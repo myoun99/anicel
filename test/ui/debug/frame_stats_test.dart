@@ -884,6 +884,8 @@ void main() {
       await aStroke(40000, upAfter: 10000);
       await aStroke(60000, upAfter: 5000);
       EngineBehind.debugNow = () => 4;
+      now = 69000;
+      StrokeSteps.lifted();
       now = 70000;
       StrokeSteps.landed(together: null);
       PictureWrites.wrote(PictureWrite.copied);
@@ -906,7 +908,7 @@ void main() {
         ' first  arm 0.9  dab 0.4  held 1.6  up 5.0  behind 3',
         '  wrote in place 1  copied 0  whole 1  64x10  x1.00  nearest',
         ' press→up p50  10.0  max  20.0',
-        ' landed up 6.0  behind 4',
+        ' landed commit 1.0  up 7.0  behind 4',
         '  wrote in place 0  copied 1  whole 0  drew none',
       ]) {
         expect(find.text(line), findsOneWidget, reason: line);

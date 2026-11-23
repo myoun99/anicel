@@ -30,11 +30,12 @@ typedef FirstStep = ({
   FrameDid? did,
 });
 
-/// The newest stroke's landing ([StrokeSteps.landing]): from the lift that
-/// landed it to the frame after it being up, in microseconds — null till
-/// then —, the submits behind at the lift ([EngineBehind]), and what that
-/// frame did.
-typedef Landing = ({int? up, int? behind, FrameDid? did});
+/// The newest stroke's landing ([StrokeSteps.landing]), in microseconds
+/// from the lift that landed it: when its commit was done — the lift's own
+/// handling, the engine's word on what each tile became waited for in it —
+/// and when the frame after it was up, null till then; with the submits
+/// behind once it was committed ([EngineBehind]), and what that frame did.
+typedef Landing = ({int commit, int? up, int? behind, FrameDid? did});
 
 /// 🔬A STROKE'S STEPS, AS THE SCREEN SHOWS THEM: how many a second, how many
 /// dabs each carried, how long the first of its dabs waited for it to go
@@ -118,10 +119,9 @@ abstract final class StrokeSteps {
   static int? _pressedAt;
   static int? _armedAt;
 
-  /// The strokes pressed and the landings so far: a frame that comes after
-  /// the next one's tells nothing of it.
-  static int _strokes = 0;
-  static int _landings = 0;
+  /// When the pen lifted from the stroke whose landing is to come
+  /// ([_micros]) — none where none is.
+  static int? _liftedAt;
 
   /// A stroke was pressed: its first step is told from here ([firstStep]).
   static void pressed() {
@@ -171,7 +171,6 @@ abstract final class StrokeSteps {
       _afterItsFrame(together, (_) => _keep(_up, _micros() - first, stepsKept));
       return;
     }
-    final stroke = _strokes += 1;
     final step = (
       armed: (_armedAt ?? out) - pressedAt,
       dab: first - pressedAt,
@@ -190,9 +189,7 @@ abstract final class StrokeSteps {
       final up = _micros();
       _keep(_up, up - first, stepsKept);
       _keep(_firstUps, up - pressedAt, strokesKept);
-      if (stroke != _strokes) {
-        return;
-      }
+      // The newest stroke's: a frame is up after the frames before it.
       _firstStep = (
         armed: step.armed,
         dab: step.dab,
@@ -204,21 +201,37 @@ abstract final class StrokeSteps {
     });
   }
 
-  /// The pen lifted and its stroke landed: told from here to the frame
-  /// after it being up, of the pictures going up [together] ([landing]).
+  /// The pen lifted from a stroke: its landing is told from here
+  /// ([landing]).
+  static void lifted() {
+    if (!MeasurementMode.frameStats.value) {
+      return;
+    }
+    _liftedAt = _micros();
+  }
+
+  /// The stroke the pen lifted from landed: committed, told from its lift
+  /// to the frame after it being up, of the pictures going up [together]
+  /// ([landing]) — or from here, where no lift was told.
   static void landed({required PicturesUpTogether? together}) {
     if (!MeasurementMode.frameStats.value) {
       return;
     }
-    final at = _micros();
+    final now = _micros();
+    final at = _liftedAt ?? now;
+    _liftedAt = null;
     final behind = EngineBehind.now;
-    final landing = _landings += 1;
-    _landing = (up: null, behind: behind, did: null);
-    _afterItsFrame(together, (did) {
-      if (landing == _landings) {
-        _landing = (up: _micros() - at, behind: behind, did: did);
-      }
-    });
+    _landing = (commit: now - at, up: null, behind: behind, did: null);
+    // The newest landing's: a frame is up after the frames before it.
+    _afterItsFrame(
+      together,
+      (did) => _landing = (
+        commit: now - at,
+        up: _micros() - at,
+        behind: behind,
+        did: did,
+      ),
+    );
   }
 
   /// [up] once the frame begun here — the one whose paint draws what went
@@ -271,5 +284,6 @@ abstract final class StrokeSteps {
     _firstQueuedAt = null;
     _pressedAt = null;
     _armedAt = null;
+    _liftedAt = null;
   }
 }
