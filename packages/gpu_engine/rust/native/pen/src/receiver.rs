@@ -20,11 +20,15 @@
 //!   taken, waited on by nobody. What the UI must hear the answer of (Raw
 //!   Input listened to or not) is sent ([`ask`]) and waited on.
 //!
-//! 🚨IT NEVER WAITS ON THE UI. What it shares with the UI's thread it takes
-//! only where it is free (`try_lock`), and what it heard while the UI held
-//! it waits on its own side for the next turn. 🔬11-19: the UI's thread
-//! stood holding the mouse's kept moves, and the reader stood 218 ms with
-//! it — 1 of 20 stalls (pen-points-are-taken-off-the-ui-thread).
+//! 🚨IT NEVER WAITS ON THE UI. What it reads or takes it sends — the
+//! mouse's reads, the Wintab queue's packets (each module's `SENT`) — and
+//! the UI's thread hears what was sent before it reads; what it shares
+//! with the UI it takes only where it is free (`try_lock`). 🔬11-19: the
+//! UI's thread stood holding the mouse's kept moves, and the reader stood
+//! 218 ms with it — 1 of 20 stalls (pen-points-are-taken-off-the-ui-thread).
+//! ↩️Till 11-23 the Wintab drain held back what it took while the UI held
+//! what was heard, for its next turn — 4 ms in the app, ten seconds in a
+//! test that went red (wintab.rs `SENT` says why it sends).
 //!
 //! 🔬Why a timer of its own: in the app's process a 4 ms `park_timeout`
 //! took 4.47 ms at the median — flutter_windows.dll raises the system's
