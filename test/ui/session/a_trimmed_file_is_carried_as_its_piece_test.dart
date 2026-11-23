@@ -90,6 +90,25 @@ void main() {
     return frames;
   }
 
+  testWidgets("🗣️decoder-reads-skip-the-percent: a GIF's cut tells how far "
+      'it has read the file, up to the whole (F-608-Q2)', (tester) async {
+    final s = session();
+    final gif = await tester.runAsync(() => writeGif('read.gif'));
+    final heard = <double>[];
+
+    await tester.runAsync(
+      () => s.trimmedPieces.cut(
+        gif!,
+        MediaAssetKind.image,
+        inFrame: 1,
+        onProgress: heard.add,
+      ),
+    );
+
+    expect(heard, isNotEmpty);
+    expect(heard.last, 1);
+  });
+
   testWidgets('🎯a trimmed GIF is carried as an APNG of only the frames it '
       'keeps — the pool names the piece, the original only where it came '
       'from', (tester) async {

@@ -2562,8 +2562,8 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// [path] cut into its piece for the pool, [told] how far from the cut's
   /// start on — a sound's cut says nothing until it is done, and the window
-  /// names it all the same (F-494); a page range's tells how far PDFium has
-  /// read the file ([PdfRenderService.pagesKept]). The piece's path,
+  /// names it all the same (F-494); a page range's and a picture's tell how
+  /// far the file is read ([TrimmedPieces.cut]). The piece's path,
   /// or null when it would not cut.
   Future<String?> _cutForThePool(
     String path,

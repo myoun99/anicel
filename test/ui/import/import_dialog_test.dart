@@ -1534,8 +1534,8 @@ void main() {
     await settleAsync(tester, () => pool().isNotEmpty);
     await tester.pumpAndSettle();
 
-    // 🗣️F-494: the cut is named from its start — a page range's says
-    // nothing until it is done — and then the piece's holding.
+    // 🗣️F-494: the cut is named from its start, and then the piece's
+    // holding.
     expect(lines, [
       '',
       AppText.strings.imStepWritingSpan,

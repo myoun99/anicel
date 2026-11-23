@@ -123,7 +123,7 @@ class TrimmedPieces {
         ),
         MediaAssetKind.audio => await _sound(source, work, trim, pull),
         MediaAssetKind.pdf => await _pages(source, work, trim, onProgress),
-        MediaAssetKind.image => await _frames(source, work, trim),
+        MediaAssetKind.image => await _frames(source, work, trim, onProgress),
       };
       if (kept == null) {
         _deleteIfThere(work);
@@ -249,8 +249,17 @@ class TrimmedPieces {
     return piece.kept;
   }
 
-  Future<KeptSpan?> _frames(String source, String work, _Trim trim) async {
-    final decoded = await decodeImageFrames(await MediaFileBytes(source).read());
+  /// ⚠️[onProgress] hears the file read in, the whole of what this cut reads
+  /// of it (F-608-Q2) — the frames it then writes out are the piece's own.
+  Future<KeptSpan?> _frames(
+    String source,
+    String work,
+    _Trim trim,
+    void Function(double fraction)? onProgress,
+  ) async {
+    final decoded = await decodeImageFrames(
+      await MediaFileBytes(source).read(onRead: onProgress),
+    );
     try {
       if (decoded.isEmpty) {
         return null;
