@@ -193,6 +193,29 @@ void main() {
         ),
       );
       await settleLoadedPages(tester);
+      // 🚨ASKED ONCE ITS PICTURES ARE COUNTED: the window answers for ONE
+      // picture till its file's facts are read (`_picturesKept(path) ?? 1`),
+      // a read of its own beside the preview's — and the preview can land
+      // first, as it did under the wide check's load (board
+      // a-three-frame-gif-reads-as-one-picture-in-the-wide-check, 11-23).
+      // The row's resolution says the facts are in, as
+      // each_file_says_its_resolution_test waits for them; [step] lets the
+      // window's 200 ms showing of them run.
+      expect(
+        await settleAsync(
+          tester,
+          () =>
+              tester
+                  .widget<Text>(
+                    find.byKey(ValueKey<String>('import-resolution-$path')),
+                  )
+                  .data !=
+              '',
+          step: const Duration(milliseconds: 200),
+        ),
+        isTrue,
+        reason: "the file's facts were never read",
+      );
       return tester
           .widget<ImportFileTable>(find.byType(ImportFileTable))
           .columns
