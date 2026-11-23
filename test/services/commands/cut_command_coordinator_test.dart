@@ -639,6 +639,123 @@ void main() {
         );
       });
 
+      // 🗣️a-row-pasted-linked-takes-its-source-when-deleted-Q1 (유저
+      // 2026-11-23): 「그 줄만 지운다 — 겸용 컷 사이는 지금대로」.
+      group('a row duplicated linked into its own cut', () {
+        ({_Fixture fixture, LayerId copy}) duplicated({bool reused = false}) {
+          final fixture = _fixture(
+            _project(
+              tracks: [
+                _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+              ],
+            ),
+            activeCutId: const CutId('cut-1'),
+          );
+          final before = {
+            for (final layer
+                in requireCut(fixture.project, const CutId('cut-1')).layers)
+              layer.id,
+          };
+          fixture.coordinator.linkDuplicateLayer(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('unrelated'),
+            insertionIndex: seatAbove(fixture.project, 'unrelated'),
+          );
+          final copy = requireCut(fixture.project, const CutId('cut-1'))
+              .layers
+              .singleWhere((layer) => !before.contains(layer.id))
+              .id;
+          if (reused) {
+            fixture.coordinator.createLinkedCut(
+              sourceCutId: const CutId('cut-1'),
+              name: 'reuse',
+            );
+          }
+          return (fixture: fixture, copy: copy);
+        }
+
+        Set<LayerId> rowsOf(_Fixture fixture, CutId cutId) => {
+          for (final layer in requireCut(fixture.project, cutId).layers)
+            layer.id,
+        };
+
+        test('deleted, it goes alone — the row it was duplicated from stays',
+            () {
+          final (:fixture, :copy) = duplicated();
+          expect(
+            fixture.project.linkRegistry.useCountOf(
+              cutId: const CutId('cut-1'),
+              layerId: copy,
+            ),
+            2,
+            reason: '⛔전제: the copy is linked to its source',
+          );
+
+          fixture.coordinator.deleteLayer(
+            cutId: const CutId('cut-1'),
+            layerId: copy,
+          );
+
+          final left = rowsOf(fixture, const CutId('cut-1'));
+          expect(left, isNot(contains(copy)));
+          expect(left, contains(const LayerId('unrelated')));
+
+          fixture.historyManager.undo();
+          expect(
+            rowsOf(fixture, const CutId('cut-1')),
+            containsAll([copy, const LayerId('unrelated')]),
+          );
+          expect(
+            fixture.project.linkRegistry.useCountOf(
+              cutId: const CutId('cut-1'),
+              layerId: copy,
+            ),
+            2,
+            reason: 'one undo links them again',
+          );
+        });
+
+        test('in a 겸용 cut too, its own self there goes with it and the '
+            'source\'s stays — the n-th of a cut is the n-th of the other',
+            () {
+          final (:fixture, :copy) = duplicated(reused: true);
+          final reuse = fixture.project.tracks.single.cuts[1].id;
+          final registry = fixture.project.linkRegistry;
+          final copyThere = registry.counterpartIn(
+            cutId: const CutId('cut-1'),
+            layerId: copy,
+            targetCutId: reuse,
+          )!;
+          final sourceThere = registry.counterpartIn(
+            cutId: const CutId('cut-1'),
+            layerId: const LayerId('unrelated'),
+            targetCutId: reuse,
+          )!;
+          expect(copyThere, isNot(sourceThere), reason: '⛔전제: two there');
+
+          fixture.coordinator.deleteLayer(
+            cutId: const CutId('cut-1'),
+            layerId: copy,
+          );
+
+          expect(rowsOf(fixture, const CutId('cut-1')), {
+            for (final layer in linkFixtureCut().layers) layer.id,
+          }, reason: 'the copy went, the source stayed');
+          final there = rowsOf(fixture, reuse);
+          expect(there, isNot(contains(copyThere)));
+          expect(there, contains(sourceThere));
+          expect(
+            fixture.project.linkRegistry.counterpartIn(
+              cutId: const CutId('cut-1'),
+              layerId: const LayerId('unrelated'),
+              targetCutId: reuse,
+            ),
+            sourceThere,
+            reason: 'the source is still one row in both cuts',
+          );
+        });
+      });
+
       test('convertCutToLinked (겸용 변경): name-matches, links, 원본 승리 '
           'retargets conflicts, unions one-side-only layers; one undo', () {
         // Origin cel "cel" has frame "1" = f-o1; target's "cel" has

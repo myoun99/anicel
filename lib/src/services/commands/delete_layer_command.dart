@@ -5,16 +5,17 @@ import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
 import 'link_mirror.dart';
 
-/// Deletes a layer — and, when it is LINKED, every member of its group
-/// in the same command ("완전 링크": the layer is ONE thing seen from
-/// several cuts, so deleting it deletes it everywhere; the UI shows the
-/// friendly warning before calling). The emptied link groups dissolve.
-/// One undo reinserts every member at its exact index and restores the
-/// registry.
+/// Deletes a layer — and, when it is LINKED, its self in every other cut
+/// of its group in the same command ("완전 링크": the layer is ONE thing
+/// seen from several cuts, so deleting it deletes it everywhere; the UI
+/// shows the friendly warning before calling) — but not another use of it
+/// in its own cut ([selvesInEveryCut], 🗣️Q1 2026-11-23 「그 줄만 지운다」).
+/// The emptied link groups dissolve. One undo reinserts every row at its
+/// exact index and restores the registry.
 ///
 /// A row of a track's conte, deleted ITSELF ([withItsConteRow]), goes from
 /// every cut of the track the same way — it is one row of the track's
-/// conte structure (I-73, F-343, [existenceMirrorTargets]).
+/// conte structure (I-73, F-343, [deleteMirrorTargets]).
 class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
   DeleteLayerCommand({
     required super.repository,
@@ -27,7 +28,7 @@ class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
   final LayerId layerId;
 
   /// Whether the delete takes this row's row of its track's conte structure
-  /// from every cut with it ([existenceMirrorTargets]) — the row deleted
+  /// from every cut with it ([deleteMirrorTargets]) — the row deleted
   /// for itself. False for a row that goes because something it stands in
   /// goes: a cut's conte taking its attach rows along is that CUT's
   /// delete, and reaches no other cut's rows but through a link.
@@ -44,8 +45,8 @@ class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
     _targets ??= [
       for (final target
           in withItsConteRow
-              ? existenceMirrorTargets(project, cutId: cutId, layerId: layerId)
-              : linkMirrorTargets(project, cutId: cutId, layerId: layerId))
+              ? deleteMirrorTargets(project, cutId: cutId, layerId: layerId)
+              : selvesInEveryCut(project, cutId: cutId, layerId: layerId))
         () {
           final cut = requireCut(project, target.cutId);
           final index = cut.layers.indexWhere(
