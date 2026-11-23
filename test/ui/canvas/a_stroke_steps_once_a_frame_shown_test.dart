@@ -242,6 +242,43 @@ void main() {
       await tester.pump();
     });
 
+    testWidgets('🚨the frame after a held step\'s frame is up lays it as one '
+        'step with what that frame moves a resting pen\'s line on ($line)', (
+      tester,
+    ) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(
+        tester,
+        overlay: overlay,
+        together: together,
+        correction: correction,
+      );
+      pen.move(const Offset(200, 20));
+      await tester.pump(const Duration(milliseconds: 8));
+      // The pen rests while a frame is drawn: a line behind it is moved on
+      // by the frames, held — the step each lays asks for the next frame's
+      // own, before that frame's steadying does.
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      for (var frame = 0; frame < 4; frame++) {
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      final steps = overlay.moveMark.count;
+      drawn.complete();
+      await tester.idle();
+      await tester.pump(const Duration(milliseconds: 8));
+      expect(
+        overlay.moveMark.count,
+        lessThanOrEqualTo(steps + 1),
+        reason: 'what was held and what the frame moved on, one step',
+      );
+      pen.lift(const Offset(200, 20));
+      await tester.pump();
+      await tester.pump();
+    });
+
     testWidgets('🚨a pen lifted while a frame is drawn lays every sample it '
         'held before the stroke lands ($line)', (tester) async {
       final overlay = ActiveStrokeOverlayModel(tileSize: 128);

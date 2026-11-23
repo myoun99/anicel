@@ -69,10 +69,12 @@ class _BrushEditOverlay {
   /// ↩️Two ways put two steps in one frame shown: a step held was laid as
   /// the frame went up — outside any frame —, and the samples come before
   /// the next vsync found no frame being drawn and went as a second step;
-  /// and in a frame a steadied line moved on
-  /// ([_BrushEditStroke._steadyOneFrame]), the samples' own step and the
-  /// line's went one after the other, the paint that begins the frame
-  /// still to come.
+  /// and where a resting pen's line was moved on by the frames
+  /// ([_BrushEditStroke._steadyOneFrame]) while one was drawn, the frame
+  /// after it went up laid what was held from the queue's callback — the
+  /// one the line's own last move asked for —, and then the line's move
+  /// in that frame as another, the paint that begins the frame still to
+  /// come.
   /// Asked from a frame's first callbacks — the queue's, a steadied
   /// line's —, the step is laid once they are all through: in the frame's
   /// own microtasks, before its build and paint, with every dab they
