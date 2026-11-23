@@ -32,6 +32,7 @@ import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/kept_tail_row.dart';
 import '../widgets/live_sheet.dart';
+import '../widgets/rail_glyph_button.dart';
 import '../text/app_strings.dart';
 import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
@@ -1261,16 +1262,39 @@ class _ProjectTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final shape = AppShapes.control(AppShapes.controlSmall);
+    const around = EdgeInsets.symmetric(horizontal: 2, vertical: 8);
+    final content = Padding(
+      padding: const EdgeInsets.only(left: 10, right: 3),
+      child: _nameAndClose(colorScheme),
+    );
+    if (!selected) {
+      // 🚨A CLEAR PLATE: its hover is laid on the strip's sheet, under it,
+      // and the strip keeps its image (card an-ink-well-repaints-its-
+      // material-for-a-hover-it-lays-no-ink-for, 2026-11-23). ↩️A
+      // `Material` and an `InkWell`, whose highlight had the Material paint
+      // again — the strip's image taken again at every tab the pointer
+      // crossed.
+      return Padding(
+        padding: around,
+        child: RailPlateButton(
+          key: ValueKey<String>('project-tab-$index'),
+          name: 'project-tab-$index',
+          tooltip: label,
+          onPressed: onSelected,
+          shape: shape,
+          child: content,
+        ),
+      );
+    }
     // Pressing the shown tab does nothing, so it takes no press at all.
-    final press = selected ? null : onSelected;
+    const VoidCallback? press = null;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+      padding: around,
       child: AppTooltip(
         message: label,
         child: Material(
-          color: selected ? colorScheme.surfaceContainerHigh : null,
+          color: colorScheme.surfaceContainerHigh,
           shape: shape,
-          type: selected ? MaterialType.canvas : MaterialType.transparency,
           // The shown tab's fill is a ground of its own, painted over the
           // strip's sheet: its ✕ lights in place, on that ground
           // ([LiveSheet.inPlace]; `a_pointer_passing_over_a_strip_takes_no_
@@ -1283,10 +1307,7 @@ class _ProjectTab extends StatelessWidget {
                 key: ValueKey<String>('project-tab-$index'),
                 customBorder: shape,
                 onTap: silentPress(press),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 3),
-                  child: _nameAndClose(colorScheme),
-                ),
+                child: content,
               ),
             ),
           ),

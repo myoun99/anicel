@@ -81,10 +81,11 @@ void main() {
     final regions = strips();
     expect(regions.keys, containsAll(const [_left, _right, _top]));
 
-    // ⚠️A project's tab aside: a `Material` and an `InkWell`, whose ✕
-    // lights in place on the tab's own fill (`_ProjectTab`) — the strip is
-    // taken again for it, as it was (card
-    // an-ink-well-repaints-its-material-for-a-hover-it-lays-no-ink-for).
+    // ⚠️The SHOWN project's tab aside: a fill of its own, whose ✕ lights in
+    // place on it (`_ProjectTab`) — the strip is taken again for it, as it
+    // was. A tab behind is a clear plate, and keeps the strip's image
+    // (card an-ink-well-repaints-its-material-for-a-hover-it-lays-no-ink-
+    // for; the test below).
     final tabs = [
       for (final tab in find
           .byWidgetPredicate(
@@ -163,38 +164,84 @@ void main() {
     }
   });
 
-  testWidgets('every button on a strip lights where it stands', (tester) async {
-    final mouse = await pumpPage(tester);
+  Future<Uint8List> shot(WidgetTester tester) async {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(_capture),
+    );
+    late ByteData data;
+    await tester.runAsync(() async {
+      final image = await boundary.toImage();
+      data = (await image.toByteData())!;
+      image.dispose();
+    });
+    return data.buffer.asUint8List();
+  }
 
-    Future<Uint8List> shot() async {
-      final boundary = tester.renderObject<RenderRepaintBoundary>(
-        find.byKey(_capture),
-      );
-      late ByteData data;
-      await tester.runAsync(() async {
-        final image = await boundary.toImage();
-        data = (await image.toByteData())!;
-        image.dispose();
-      });
-      return data.buffer.asUint8List();
-    }
-
-    /// How many pixels of [box] differ between [a] and [b].
-    int changedIn(Rect box, Uint8List a, Uint8List b) {
-      const width = 1600;
-      var changed = 0;
-      for (var y = box.top.ceil(); y < box.bottom.floor(); y += 1) {
-        for (var x = box.left.ceil(); x < box.right.floor(); x += 1) {
-          final i = (y * width + x) * 4;
-          if ((a[i] - b[i]).abs() > 2 ||
-              (a[i + 1] - b[i + 1]).abs() > 2 ||
-              (a[i + 2] - b[i + 2]).abs() > 2) {
-            changed += 1;
-          }
+  /// How many pixels of [box] differ between [a] and [b].
+  int changedIn(Rect box, Uint8List a, Uint8List b) {
+    const width = 1600;
+    var changed = 0;
+    for (var y = box.top.ceil(); y < box.bottom.floor(); y += 1) {
+      for (var x = box.left.ceil(); x < box.right.floor(); x += 1) {
+        final i = (y * width + x) * 4;
+        if ((a[i] - b[i]).abs() > 2 ||
+            (a[i + 1] - b[i + 1]).abs() > 2 ||
+            (a[i + 2] - b[i + 2]).abs() > 2) {
+          changed += 1;
         }
       }
-      return changed;
     }
+    return changed;
+  }
+
+  testWidgets('🎯a pointer on the tab of a project behind leaves the top '
+      'strip drawn from its image, and its hover is seen there', (
+    tester,
+  ) async {
+    final mouse = await pumpPage(tester);
+    // A second project: the first one's tab goes behind.
+    for (final key in const ['top-strip-project-button', 'menu-file-new']) {
+      await tester.tap(find.byKey(ValueKey<String>(key)));
+      await tester.pumpAndSettle();
+    }
+    await mouse.moveTo(_away);
+    await frames(tester, 30);
+    final behind = find.byKey(const ValueKey<String>('project-tab-0'));
+    final plate = tester.renderObject<RenderRailPlateFace>(behind);
+    final region = strips()[_top]!;
+    expect(region.debugDrawnFromImage, isTrue, reason: 'at rest');
+
+    final before = region.debugCaptureCount;
+    final rest = await shot(tester);
+    final box = plate.localToGlobal(Offset.zero) & plate.size;
+    // Along the plate, short of the ✕ at its end.
+    for (var x = box.left + 4; x < box.right - 30; x += 6) {
+      await mouse.moveTo(Offset(x, box.center.dy));
+      await tester.pump();
+      expect(region.debugDrawnFromImage, isTrue, reason: '${x - box.left}');
+    }
+    expect(plate.debugState.hovered, isTrue);
+    expect(LiveSheet.underOf(tester.element(behind))!.debugLaid, 1);
+    final hovered = await shot(tester);
+    final inside = Rect.fromLTRB(
+      box.left + 2,
+      box.top + 2,
+      box.right - 30,
+      box.bottom - 2,
+    );
+    expect(
+      changedIn(inside, rest, hovered),
+      greaterThan(inside.width * inside.height / 3),
+      reason: 'the hover of the tab at $box is seen',
+    );
+
+    await mouse.moveTo(_away);
+    await frames(tester, 30);
+    expect(region.debugCaptureCount, before);
+  });
+
+  testWidgets('every button on a strip lights where it stands', (tester) async {
+    final mouse = await pumpPage(tester);
 
     bool onAStrip(RenderObject face) {
       for (var above = face.parent; above != null; above = above.parent) {
@@ -232,7 +279,7 @@ void main() {
       }
     }
 
-    final rest = await shot();
+    final rest = await shot(tester);
     var lit = 0;
     for (final face in faces) {
       final box = face.localToGlobal(Offset.zero) & face.size;
@@ -249,7 +296,7 @@ void main() {
         continue;
       }
       lit += 1;
-      final hovered = await shot();
+      final hovered = await shot(tester);
       expect(
         changedIn(box.deflate(2), rest, hovered),
         greaterThan(box.deflate(2).size.width * box.deflate(2).size.height / 3),
