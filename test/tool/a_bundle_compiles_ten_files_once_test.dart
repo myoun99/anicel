@@ -329,7 +329,8 @@ void main() {
     const entry = 'C:/r/.dart_tool/test_bundles/batch0/bundle000_test.dart';
 
     /// A json report of one entry that ran [files] — each `(path, results)`,
-    /// a result a test of it — loading in [load] ms, every test 100 ms.
+    /// a result a test of it, `open` one that never finished — loading in
+    /// [load] ms, every test 100 ms.
     String reportOf(
       List<(String, List<String>)> files, {
       int load = 1000,
@@ -391,6 +392,7 @@ void main() {
               'time': time,
             });
             time += 100;
+            if (result == 'open') continue;
             lines.add({
               'testID': test,
               'result': result,
@@ -484,6 +486,28 @@ void main() {
       ]);
     });
 
+    test('a cut names the files that stood — by their own paths, not the '
+        "entry's — and no file that ended", () {
+      // 🔬PR 1503's Linux shard 4 (2026-11-23): two bundles stood in their
+      // first files; each runs again alone (affected_tests, stoodInCut).
+      expect(
+        stoodFiles(
+          reportOf([
+            ('test/a_test.dart', ['success', 'open']),
+            ('test/b_test.dart', ['success']),
+            ('test/c_test.dart', ['open']),
+          ], ended: false),
+          root: 'C:/r',
+        ),
+        {'test/a_test.dart', 'test/c_test.dart'},
+      );
+      expect(
+        stoodFiles(reportOf(const [], loaded: false), root: 'C:/r'),
+        isEmpty,
+        reason: 'a suite still loading is no test that stood',
+      );
+    });
+
     test("an entry whose own test went red — the config's after its "
         'files — makes every file of it red, its green ones too', () {
       // Which file left what the config's last check found is not said:
@@ -567,7 +591,12 @@ void main() {
     // …and said where the census reads.
     expect(
       source,
-      contains('_sayLostIsolation(lostIsolation, bundledReds, bundleOf);'),
+      contains('_sayLostIsolation(\n'
+          '    lostIsolation,\n'
+          '    bundledReds,\n'
+          '    bundleOf,\n'
+          '    stood: stoodInCut,\n'
+          '  );'),
     );
     expect(
       source,
@@ -612,6 +641,26 @@ void main() {
       contains('if (flaky.contains(file) || lostIsolation.contains(file)) '
           'return true;'),
     );
+    // 🗣️관제 2026-11-23 (가): a bundle's file that stood when its batch was
+    // cut runs once more alone, as a red one does — named lost if green.
+    expect(
+      source,
+      contains('        if (result.cut) {\n'
+          '          final stood = _stoodIn(\n'
+          '            report,\n'
+          '            root: root,\n'
+          '          ).where(bundleOf.containsKey);\n'
+          '          stoodInCut.addAll(stood);\n'
+          '          redInBundle.addAll(stood);\n'
+          '        }'),
+    );
+    expect(
+      source,
+      contains('          if (run.green == false) run.path,\n'
+          '      ...stoodInCut,\n'
+          '    };'),
+    );
+    expect(source, contains('    cut: cut != null,\n'));
     // Its entries are handed over in the batch's place, and taken away.
     expect(source, contains('made?.args ?? batch,'));
     expect(source, contains('made?.end();'));

@@ -659,15 +659,27 @@ List<({String path, String name})> _redTestsIn(
   }
 }
 
+/// The files [report] says stood when their batch was cut ([stoodFiles]),
+/// by their paths from [root].
+Set<String> _stoodIn(File report, {required String root}) {
+  try {
+    return stoodFiles(report.readAsStringSync(), root: root);
+  } on FileSystemException {
+    return const {};
+  }
+}
+
 /// Says each file of [lost] — red in a bundle, green alone — with its place
 /// in the bundle it ran in ([bundleOf], [placeInBundle]) and the tests that
-/// were red there ([reds]), and each bundle that went red as a whole: what
-/// the census reads.
+/// were red there ([reds]) — or that it stood when its batch was cut
+/// ([stood]) — and each bundle that went red as a whole: what the census
+/// reads.
 void _sayLostIsolation(
   Set<String> lost,
   List<({String path, String name})> reds,
-  Map<String, List<String>> bundleOf,
-) {
+  Map<String, List<String>> bundleOf, {
+  required Set<String> stood,
+}) {
   if (lost.isNotEmpty) {
     _report('⚠️${lost.length} file(s) LOST THEIR ISOLATION in a bundle — '
         'red there, green alone, so the verdict is the run alone. What went '
@@ -680,8 +692,9 @@ void _sayLostIsolation(
     ];
     final bundle = bundleOf[file];
     final place = bundle == null ? '' : ' (${placeInBundle(file, bundle)})';
-    _report('  $file$place — ${tests.isEmpty ? 'nothing of its own: its '
-        'bundle went red as a whole' : tests.join(' · ')}');
+    _report('  $file$place — ${stood.contains(file) ? 'it stood there '
+              'till its batch was cut' : tests.isEmpty ? 'nothing of its '
+              'own: its bundle went red as a whole' : tests.join(' · ')}');
   }
   for (final red in reds) {
     if (isBundleEntry(red.path)) {
@@ -1252,6 +1265,16 @@ Future<int> _runTests(
   // it ends ([placeInBundle] says why the census needs them).
   final bundleOf = <String, List<String>>{};
   final lostIsolation = <String>{};
+  // 🆕The files of a bundle that stood when their batch was cut
+  // ([stoodFiles]) run once more alone, as a file red in its bundle does —
+  // that run says whose the stop was: red or cut again, the file's; green,
+  // the bundle's, and it is named with those that lost their isolation.
+  // The batch stays red all the same: the files it never reached ran
+  // nowhere. 🗣️관제 2026-11-23 22:3x (card the-wide-check-takes-five-
+  // hours, (가)): PR 1503's Linux shard 4 stood fifteen minutes in the first
+  // file of two bundles, and nothing said whether the bundle or the file
+  // stopped it — a cut file ran nowhere again.
+  final stoodInCut = <String>{};
   final unrun = <String>[];
   final slow = <SlowTest>[];
   final reports = takeReportsFolder();
@@ -1383,6 +1406,14 @@ Future<int> _runTests(
             bundleOf[file] = files;
           }
         }
+        if (result.cut) {
+          final stood = _stoodIn(
+            report,
+            root: root,
+          ).where(bundleOf.containsKey);
+          stoodInCut.addAll(stood);
+          redInBundle.addAll(stood);
+        }
       }
       slow.addAll(_slowIn(report, root: root));
       skipped += result.skipped;
@@ -1398,8 +1429,14 @@ Future<int> _runTests(
       for (final runs in runsOf.values)
         for (final run in runs)
           if (run.green == false) run.path,
+      ...stoodInCut,
     };
     if (reds.isEmpty) return;
+    if (stoodInCut.isNotEmpty) {
+      _report('${stoodInCut.length} file(s) stood in a bundle when their '
+          'batch was cut — running them once more alone, to tell whose the '
+          'stop was: ${(stoodInCut.toList()..sort()).join(', ')}');
+    }
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
     final again = <SuiteRun>[];
@@ -1520,7 +1557,12 @@ Future<int> _runTests(
   }
 
   _warnSlow(slow, onGitHub: Platform.environment['GITHUB_ACTIONS'] == 'true');
-  _sayLostIsolation(lostIsolation, bundledReds, bundleOf);
+  _sayLostIsolation(
+    lostIsolation,
+    bundledReds,
+    bundleOf,
+    stood: stoodInCut,
+  );
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
   // and reading it as one costs an hour. It happened on this tool's first
@@ -1779,9 +1821,14 @@ class _BatchResult {
     required this.noContext,
     required this.ownClock,
     required this.spent,
+    required this.cut,
   });
   final int exitCode;
   final bool ranTests;
+
+  /// Whether the batch was cut — silent too long, or grown past its
+  /// memory — and so ended with tests still running ([stoodFiles]).
+  final bool cut;
 
   /// The latest the runner's own clock showed ([ownClockIn]).
   final Duration? ownClock;
@@ -1943,14 +1990,12 @@ class BatchSilence {
 }
 
 /// The tests [report] — a `json` file report — says started and never
-/// finished, each as `<test file>: <test name>`; a suite still loading is
-/// not one.
+/// finished ([unfinished]), each as `<test file>: <test name>`.
 List<String> stillRunning(String report) {
   final read = readReport(report);
   return [
-    for (final test in read.tests)
-      if (test.end == null && !test.isLoading)
-        '${read.paths[test.suite] ?? '?'}: ${test.name}',
+    for (final test in unfinished(read))
+      '${read.paths[test.suite] ?? '?'}: ${test.name}',
   ];
 }
 
@@ -2092,5 +2137,6 @@ Future<_BatchResult> _flutterTestIn(
     noContext: context.said,
     ownClock: ownClock,
     spent: spent,
+    cut: cut != null,
   );
 }

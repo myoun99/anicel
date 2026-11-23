@@ -189,8 +189,9 @@ final class Report {
 
 /// 🚨THE ONE READING OF A `json` FILE REPORT (2026-11-17, card
 /// a-slow-test-cannot-creep). What a file took and whether it was green
-/// ([suiteRuns]), what a silent batch is still running (affected_tests'
-/// `stillRunning`) and which tests took a minute ([slowTests]) are three
+/// ([suiteRuns]), what a silent batch is still running ([unfinished] —
+/// affected_tests' `stillRunning`, and [stoodFiles]) and which tests took a
+/// minute ([slowTests]) are three
 /// views of the same events. ↩️Till then the first two read the report
 /// each for itself, and the minute would have been a third — so they are
 /// one reader now (the_test_report_is_read_in_one_place_test scans for a
@@ -283,6 +284,23 @@ List<({String path, String name})> redTests(
       if (test.red)
         (path: _fromRoot(read.paths[test.suite] ?? '?', prefix), name: test.name),
   ];
+}
+
+/// The tests [read] says started and never finished; a suite still loading
+/// is not one.
+Iterable<ReportedTest> unfinished(Report read) =>
+    read.tests.where((test) => test.end == null && !test.isLoading);
+
+/// The files [report] says were in a test that never finished
+/// ([unfinished]) — those that stood when their batch was cut — each by
+/// its path from [root], a bundle's file by its own path ([Report.filesOf]).
+Set<String> stoodFiles(String report, {required String root}) {
+  final read = readReport(report);
+  final prefix = _prefixOf(root);
+  return {
+    for (final test in unfinished(read))
+      _fromRoot(read.paths[test.suite] ?? '?', prefix),
+  };
 }
 
 /// How [root] begins a path the report spells, compared with no regard to
