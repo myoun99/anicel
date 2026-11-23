@@ -1356,6 +1356,11 @@ class _Strata {
       final canvas = Canvas(recorder);
       fit.blitPart(canvas, image, at & device.size, fit.logicalOf(device));
       if (tint != null) {
+        // 🗣️유저 11-22 (a-docks-repaint-tint-covers-its-rows-own-Q1):
+        // 「지금대로 — 독이 다시 뜨면 독 안 전부가 그 색」 — the rows a dock
+        // holds are tinted with it, not spared: they were rastered again
+        // with it. Which row took its own picture is the probe's to say
+        // (StillRaster.census), not the tint's.
         canvas.drawRect(fit.logicalOf(device), Paint()..color = tint);
       }
       pictures.add(recorder.endRecording());
