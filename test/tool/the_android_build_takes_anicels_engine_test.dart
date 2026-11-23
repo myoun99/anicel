@@ -35,12 +35,13 @@ void main() {
     expect(lay, contains(r'version="1.0.0-$stamp-anicel.$patch"'));
   });
 
-  test('the four modules the app ships go on that version in one place, '
-      'from its own repository only', () {
+  test('the embedding and every ABI go on that version in one place, from '
+      'its own repository only', () {
     expect(
       gradle,
-      contains('val anicelEngineModules = setOf("flutter_embedding", '
-          '"arm64_v8a")'),
+      contains('val anicelEngineModules =\n'
+          '    setOf("flutter_embedding", "armeabi_v7a", "arm64_v8a", '
+          '"x86_64")'),
     );
     expect(
       RegExp(r'useVersion\(').allMatches(gradle),
@@ -49,7 +50,8 @@ void main() {
     );
     expect(
       gradle,
-      contains('anicelEngineLaid(mode) -> useVersion(anicelEngineVersion)'),
+      contains('embeddingLaid && anicelEngineLaid(requested.name) ->\n'
+          '                    useVersion(anicelEngineVersion)'),
     );
     expect(
       gradle,
@@ -62,5 +64,14 @@ void main() {
     expect(gradle, contains('mode == "release" ->\n'
         '                    throw GradleException('));
     expect(gradle, contains('⚠️the STOCK Flutter engine'));
+  });
+
+  test('an ABI not laid under a laid embedding stops the build by name', () {
+    // 🔬공통 2026-11-24 01:2x: the plugin ships every ABI it targets, and
+    // two went out stock under the patched embedding.
+    expect(gradle, contains('        embeddingLaid ->\n'
+        '                    throw GradleException('));
+    expect(gradle, contains('its stock library would ship under '
+        "\" +\n                            \"Anicel's embedding"));
   });
 }

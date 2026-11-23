@@ -4,9 +4,10 @@
 #
 #   bash tool/flutter_engine/lay_android.sh <engine out> <flutter sdk> <maven root>
 #
-#   <engine out>   a baked out folder: android_release_arm64 or
-#                  android_debug_arm64 — its root holds
-#                  flutter_embedding_<mode>.jar/.pom and arm64_v8a_<mode>.jar/.pom
+#   <engine out>   a baked out folder of one ABI and mode (android_release_arm64,
+#                  android_debug, android_release_x64, …) — its root holds
+#                  flutter_embedding_<mode>.jar/.pom and that ABI's
+#                  <abi>_<mode>.jar/.pom (armeabi_v7a · arm64_v8a · x86_64)
 #   <flutter sdk>  the SDK the app is built with: its bin/cache/engine.stamp
 #                  names the engine the patches sit on
 #   <maven root>   the repository: <Dropbox>/anicel-flutter-engine/maven on
@@ -26,7 +27,7 @@
 # embedding's androidx dependencies are the stock ones: the patch is Java
 # and C++ only).
 #
-# A mode is laid whole or not at all: both its modules are found before
+# A bake is laid whole or not at all: both its modules are found before
 # either is laid, and each is written beside its place and renamed in, so
 # a synced folder never shows another machine half a module.
 set -euo pipefail
@@ -45,7 +46,8 @@ stamp=$(tr -d '[:space:]' < "$sdk/bin/cache/engine.stamp")
 version="1.0.0-$stamp-anicel.$patch"
 
 poms=()
-for pom in "$out"/flutter_embedding_*.pom "$out"/arm64_v8a_*.pom; do
+for pom in "$out"/flutter_embedding_*.pom "$out"/armeabi_v7a_*.pom \
+  "$out"/arm64_v8a_*.pom "$out"/x86_64_*.pom; do
   [ -f "$pom" ] || continue
   name=$(basename "$pom" .pom)
   if [ ! -f "$out/$name.jar" ]; then
@@ -59,8 +61,8 @@ for pom in "$out"/flutter_embedding_*.pom "$out"/arm64_v8a_*.pom; do
   poms+=("$pom")
 done
 if [ "${#poms[@]}" -ne 2 ]; then
-  echo "lay_android: $out held ${#poms[@]} of the two a mode is" \
-    "(flutter_embedding_<mode> and arm64_v8a_<mode>) — nothing laid" >&2
+  echo "lay_android: $out held ${#poms[@]} of the two a bake is" \
+    "(flutter_embedding_<mode> and one <abi>_<mode>) — nothing laid" >&2
   exit 1
 fi
 

@@ -5,9 +5,18 @@
 // tool/flutter_engine/android_patch (0006: a texture shown from the hardware
 // buffers its producer keeps); the Flutter plugin asks for the stock engine
 // (`io.flutter:<module>_<mode>:1.0.0-<engine.stamp>`, FlutterPluginUtils.kt)
-// and the four modules the app ships — the embedding and arm64-v8a's
-// library, release and debug (app/build.gradle.kts: abiFilters) — are put on
-// the patched engine's own version here, 1.0.0-<engine.stamp>-anicel.<patch>.
+// and the embedding and each ABI's library are put on the patched engine's
+// own version here, 1.0.0-<engine.stamp>-anicel.<patch>.
+//
+// 🚨EVERY ABI A BUILD SHIPS, OR NONE: the plugin clears the app's abiFilters
+// and ships every ABI it targets (FlutterPlugin.kt configureAbiWithoutSplits
+// — `flutter build` targets armeabi-v7a, arm64-v8a and x86_64 unless told
+// otherwise), and the patched embedding calls a native the stock library has
+// not got. 🔬공통 2026-11-24 01:2x: fb3a4010b's `flutter build apk --release`
+// shipped arm64-v8a patched and the other two stock under the patched
+// embedding. So a mode whose embedding is laid takes each ABI's library from
+// the laid ones only, and one not laid stops the build by name — bake that
+// ABI, or build only the ABIs laid (`--target-platform android-arm64`).
 //
 // ⛔NOT THE STOCK COORDINATES (관제 00:32): under them the stock jar a Gradle
 // cache already holds could win without a word; under its own name a build
@@ -24,7 +33,8 @@
 // `flutter build apk --debug`, which syncs no Dropbox, still compiles.
 // 🗣️보드/인프라 · 공통 2026-11-24 00:29 / 00:33: what ships is stopped, the
 // compile check lives.
-val anicelEngineModules = setOf("flutter_embedding", "arm64_v8a")
+val anicelEngineModules =
+    setOf("flutter_embedding", "armeabi_v7a", "arm64_v8a", "x86_64")
 
 fun anicelSharedFolder(): File? {
     val infos =
@@ -51,15 +61,12 @@ val anicelEngineVersion: String =
         "1.0.0-$stamp-anicel.$patch"
     }
 
-fun anicelEngineLaid(mode: String): Boolean =
+fun anicelEngineLaid(name: String): Boolean =
     anicelEngineRepo != null &&
-        anicelEngineModules.all {
-            File(
-                anicelEngineRepo,
-                "io/flutter/${it}_$mode/$anicelEngineVersion/" +
-                    "${it}_$mode-$anicelEngineVersion.pom",
-            ).isFile
-        }
+        File(
+            anicelEngineRepo,
+            "io/flutter/$name/$anicelEngineVersion/$name-$anicelEngineVersion.pom",
+        ).isFile
 
 var anicelStockSaid = false
 
@@ -81,8 +88,18 @@ allprojects {
             if (requested.group != "io.flutter" || module !in anicelEngineModules) {
                 return@eachDependency
             }
+            val embeddingLaid = anicelEngineLaid("flutter_embedding_$mode")
             when {
-                anicelEngineLaid(mode) -> useVersion(anicelEngineVersion)
+                embeddingLaid && anicelEngineLaid(requested.name) ->
+                    useVersion(anicelEngineVersion)
+                embeddingLaid ->
+                    throw GradleException(
+                        "no io.flutter:${requested.name}:$anicelEngineVersion in " +
+                            "$anicelEngineRepo — its stock library would ship under " +
+                            "Anicel's embedding; lay that ABI's bake " +
+                            "(tool/flutter_engine/lay_android.sh) or build only the " +
+                            "ABIs laid (--target-platform android-arm64)",
+                    )
                 mode == "release" ->
                     throw GradleException(
                         "no io.flutter:${requested.name}:$anicelEngineVersion in " +

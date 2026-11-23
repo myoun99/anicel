@@ -95,4 +95,16 @@ bash "$lay" "$nojar" "$sdk" "$scratch/maven_nojar" > /dev/null 2>&1 &&
 [ -e "$scratch/maven_nojar" ] && fail "a mode missing a jar laid the other"
 passed=$((passed + 1))
 
+# 5 — another ABI's bake lays its own library beside the embedding.
+x64="$scratch/out_x64"
+mkdir -p "$x64"
+for name in flutter_embedding_release x86_64_release; do
+  pom_of "$name" "1.0.0-9584c6713b" > "$x64/$name.pom"
+  echo "jar of $name" > "$x64/$name.jar"
+done
+bash "$lay" "$x64" "$sdk" "$root" > /dev/null || fail "an x86_64 bake was refused"
+[ -f "$root/io/flutter/x86_64_release/$want/x86_64_release-$want.jar" ] ||
+  fail "no x86_64 library under $want"
+passed=$((passed + 1))
+
 echo "lay_android_test: $passed passed"
