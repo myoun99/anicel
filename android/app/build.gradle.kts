@@ -74,6 +74,15 @@ android {
             signingConfig = signingConfigs.findByName("upload")
         }
     }
+
+    // 유저 2026-11-22 (engine-fonts-held-twice-Q1, 「글꼴을 압축 없이 두고 둘
+    // 다 비춰 쓴다」): the app's fonts lie stored in the APK, so Flutter maps
+    // them instead of inflating a private copy, and the GPU engine maps the
+    // same pages (EngineFaces.spansInTheApk) - about 70 MB of RAM on a
+    // tablet, for about 14 MB more installed.
+    androidResources {
+        noCompress += "ttf"
+    }
 }
 
 // ⛔A release without the key STOPS here; it does not fall back to the debug

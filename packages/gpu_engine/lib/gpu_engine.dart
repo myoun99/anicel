@@ -5179,6 +5179,11 @@ class GpuFaces {
   void free() => rust.facesFree(_faces);
 }
 
+/// Where a file's bytes lie on the device: the [length] bytes at [offset]
+/// of the file at [path] — a whole file from 0 to its end, or on Android a
+/// bundled one lying stored in the APK ([GpuFacesHanding.addAt]).
+typedef FileSpan = ({String path, int offset, int length});
+
 /// [GpuFaces] being handed to the engine a file at a time: each file
 /// mapped by the engine where it is a file on the device ([addAt]), else
 /// copied by it as it is [add]ed — once, from where its bytes lie
@@ -5206,22 +5211,24 @@ class GpuFacesHanding {
     debugFilesHanded += 1;
   }
 
-  /// The file at [path] as one of family [family]'s, as [add] hands one —
-  /// mapped by the engine, not copied: its bytes are the file's own pages,
-  /// which the OS shares with whoever else maps it, and Flutter maps the
-  /// app's bundled fonts too (`gpu_engine_faces_file_at`). False, and
+  /// The file lying at [span] as one of family [family]'s, as [add] hands
+  /// one — mapped by the engine, not copied: its bytes are the file's own
+  /// pages, which the OS shares with whoever else maps it, and Flutter maps
+  /// the app's bundled fonts too (`gpu_engine_faces_file_at`). False, and
   /// nothing handed, where the engine cannot map it: [add] its bytes then.
   ///
   /// 🗣️유저 (engine-fonts-held-twice): 「사본이나 ram에있는걸 최대한
   /// 없애고싶어서」 — 🔬공통 11-21, a Windows release run: [add]'s copy was
   /// the faces' one copy in the process, 35 MB.
-  bool addAt(int family, String path) => using((arena) {
-    final bytes = utf8.encode(path);
+  bool addAt(int family, FileSpan span) => using((arena) {
+    final bytes = utf8.encode(span.path);
     final mapped = rust.facesFileAt(
       _handed,
       family,
       _bytes(arena, bytes),
       bytes.length,
+      span.offset,
+      span.length,
     );
     if (mapped) {
       debugFilesHanded += 1;

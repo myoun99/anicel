@@ -647,10 +647,63 @@ fn mapped_faces() -> *mut Faces {
     unsafe { gpu_engine_faces_of(handed) }
 }
 
-/// Maps the file at `path` into `handed` as one of family `family`'s.
+/// Maps the file at `path`, whole, into `handed` as one of family
+/// `family`'s.
 fn map(handed: *mut FacesHanded, family: u32, path: &str) -> bool {
+    let whole = std::fs::metadata(path).map_or(0, |file| file.len());
+    map_span(handed, family, path, 0, whole)
+}
+
+/// Maps the `span` bytes at `offset` of the file at `path` into `handed`
+/// as one of family `family`'s.
+fn map_span(handed: *mut FacesHanded, family: u32, path: &str, offset: u64, span: u64) -> bool {
     // SAFETY: `handed` is not yet set up; `path` holds its length.
-    unsafe { gpu_engine_faces_file_at(handed, family, path.as_ptr(), path.len()) }
+    unsafe { gpu_engine_faces_file_at(handed, family, path.as_ptr(), path.len(), offset, span) }
+}
+
+/// 🚨A FACE LYING INSIDE ANOTHER FILE — as a stored entry of the APK does
+/// on Android (유저 11-22, engine-fonts-held-twice-Q1) — is mapped from
+/// where it lies and sets the letters its own file does.
+#[test]
+fn a_face_mapped_from_a_span_of_a_bigger_file_sets_a_word_as_its_own_file_does() {
+    let face = std::fs::read(path_of("NanumGothic-Regular.ttf")).expect("read");
+    // Past a view's step on every platform, and on no step.
+    let before = vec![0x5Au8; 65_536 * 2 + 3];
+    let holder = std::env::temp_dir().join(format!("anicel-face-in-a-span-{}.bin", std::process::id()));
+    std::fs::write(&holder, [before.as_slice(), &face, b"after"].concat()).expect("written");
+    let holder = holder.to_str().expect("UTF-8").to_owned();
+
+    let faces_of = |hand: &dyn Fn(*mut FacesHanded) -> bool| {
+        let handed = gpu_engine_faces_handed();
+        assert!(hand(handed));
+        // SAFETY: `handed` is set up once, here.
+        let faces = unsafe { gpu_engine_faces_of(handed) };
+        assert!(!faces.is_null(), "{}", last_error());
+        faces
+    };
+    let in_a_span = faces_of(&|handed| map_span(handed, 0, &holder, before.len() as u64, face.len() as u64));
+    let own_file = faces_of(&|handed| map(handed, 0, &path_of("NanumGothic-Regular.ttf")));
+    let word = gpu_engine_word_new();
+    assert!(word_run_of(word, "셀", 12 * 64, 12 * 64, 12 * 64), "{}", last_error());
+    let (width, height) = (40u32, 49u32);
+    let raster = |faces: *const Faces| {
+        let mut bytes = vec![7u8; (width * height) as usize];
+        // SAFETY: every pointer is live, and `bytes` holds the raster.
+        let rastered =
+            unsafe { gpu_engine_word_raster(word, faces, TWICE_OVER.as_ptr(), width, height, bytes.as_mut_ptr()) };
+        assert!(rastered, "{}", last_error());
+        bytes
+    };
+    let from_the_span = raster(in_a_span);
+    assert!(from_the_span == raster(own_file), "the coverage");
+    assert!(from_the_span.iter().any(|&alpha| alpha != 0), "LIVENESS: the word has ink");
+    // SAFETY: each came from its `_new` or `_of`.
+    unsafe {
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(in_a_span);
+        gpu_engine_faces_free(own_file);
+    }
+    std::fs::remove_file(&holder).expect("removed");
 }
 
 #[test]
@@ -687,7 +740,7 @@ fn a_file_that_cannot_be_mapped_is_not_handed() {
     assert!(!map(handed, 0, &path_of("no-such-face.ttf")));
     let not_utf8 = [0xFFu8, 0xFE];
     // SAFETY: `handed` is not yet set up; `not_utf8` holds its length.
-    assert!(!unsafe { gpu_engine_faces_file_at(handed, 0, not_utf8.as_ptr(), not_utf8.len()) });
+    assert!(!unsafe { gpu_engine_faces_file_at(handed, 0, not_utf8.as_ptr(), not_utf8.len(), 0, 1) });
     // Nothing was handed: the next file is family 0's first.
     assert!(map(handed, 0, &path_of("NanumGothic-Regular.ttf")));
     // SAFETY: `handed` is set up once, here.

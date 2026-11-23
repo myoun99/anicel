@@ -14,13 +14,17 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.system.ErrnoException
+import android.system.Os
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import com.myoun.gpu_engine.PenPoints
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
@@ -144,6 +148,10 @@ class MainActivity : FlutterActivity() {
                 // directory is, which every update empties (board
                 // android-settings-live-in-the-code-cache).
                 "appSupportPath" -> result.success(filesDir.absolutePath)
+                "bundledFiles" ->
+                    result.success(
+                        bundledFiles(call.arguments<List<String>>() ?: emptyList()),
+                    )
                 "requestMicrophone" -> requestMicrophone(result)
                 "pickProjectFolder" ->
                     pickProjectFolder(call.argument<String>("initialDirectory"), result)
@@ -994,5 +1002,31 @@ class MainActivity : FlutterActivity() {
             getExternalFilesDir(null) ?: filesDir
         }
         return "${base.absolutePath}/Anicel"
+    }
+
+    // engine-fonts-held-twice (유저 11-22, Q1 「글꼴을 압축 없이 두고 둘 다
+    // 비춰 쓴다」): where each of the bundle's [keys] lies stored in the APK
+    // - the file, the start and the length the AssetManager itself gives -
+    // so the GPU engine maps the same pages Flutter maps (EngineFaces). Null
+    // for one the APK holds compressed: openFd refuses it.
+    private fun bundledFiles(keys: List<String>): List<Map<String, Any>?> {
+        val loader = FlutterInjector.instance().flutterLoader()
+        return keys.map { key ->
+            try {
+                assets.openFd(loader.getLookupKeyForAsset(key)).use { lies ->
+                    mapOf(
+                        "path" to Os.readlink(
+                            "/proc/self/fd/${lies.parcelFileDescriptor.fd}",
+                        ),
+                        "offset" to lies.startOffset,
+                        "length" to lies.length,
+                    )
+                }
+            } catch (_: IOException) {
+                null
+            } catch (_: ErrnoException) {
+                null
+            }
+        }
     }
 }

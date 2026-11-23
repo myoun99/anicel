@@ -2028,16 +2028,26 @@ external void facesFile(
   int length,
 );
 
-/// [path] is the file's, UTF-8: the engine maps it, and false is a file it
-/// cannot map — opened, so not a leaf.
-@Native<Bool Function(Pointer<FacesHanded>, Uint32, Pointer<Uint8>, Size)>(
-  symbol: 'gpu_engine_faces_file_at',
-)
+/// [path] is the file's, UTF-8: the engine maps the [span] bytes at
+/// [offset] of it, and false is a span it cannot map — opened, so not a
+/// leaf.
+@Native<
+  Bool Function(
+    Pointer<FacesHanded>,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Uint64,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_faces_file_at')
 external bool facesFileAt(
   Pointer<FacesHanded> handed,
   int family,
   Pointer<Uint8> path,
   int length,
+  int offset,
+  int span,
 );
 
 @Native<Pointer<Faces> Function(Pointer<FacesHanded>)>(

@@ -133,12 +133,14 @@ pub unsafe extern "C" fn gpu_engine_faces_file(
     handed.hand(family, Blob::from(bytes.to_vec()));
 }
 
-/// Maps the file at `path` — UTF-8, `length` bytes, alive for the call —
-/// into `handed` as one of family `family`'s, as [`gpu_engine_faces_file`]
-/// copies one: its bytes the file's own pages, read-only, shared with
-/// whoever else maps it — the app's bundled faces are mapped by Flutter
-/// too — and so in none of the process' own memory (`mapped`). False,
-/// and nothing handed, where the file cannot be mapped: the app hands its
+/// Maps the `span` bytes at `offset` of the file at `path` — UTF-8,
+/// `length` bytes, alive for the call — into `handed` as one of family
+/// `family`'s, as [`gpu_engine_faces_file`] copies one: its bytes the
+/// file's own pages, read-only, shared with whoever else maps it — the
+/// app's bundled faces are mapped by Flutter too — and so in none of the
+/// process' own memory (`mapped`). A whole file is the span from 0 to its
+/// end; on Android a face is a span of the APK it lies stored in. False,
+/// and nothing handed, where the span cannot be mapped: the app hands its
 /// bytes instead.
 ///
 /// 🗣️유저 (engine-fonts-held-twice): 「사본이나 ram에있는걸 최대한
@@ -154,12 +156,14 @@ pub unsafe extern "C" fn gpu_engine_faces_file_at(
     family: u32,
     path: *const u8,
     length: usize,
+    offset: u64,
+    span: u64,
 ) -> bool {
     // SAFETY: see the function's contract.
     let handed = unsafe { &mut *handed };
     // SAFETY: see the function's contract.
     let path = unsafe { std::slice::from_raw_parts(path, length) };
-    let Some(file) = std::str::from_utf8(path).ok().and_then(|path| mapped(Path::new(path))) else {
+    let Some(file) = std::str::from_utf8(path).ok().and_then(|path| mapped(Path::new(path), offset, span)) else {
         return false;
     };
     handed.hand(family, file);
