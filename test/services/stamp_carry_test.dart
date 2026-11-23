@@ -301,22 +301,29 @@ void main() {
         height: 110,
       ));
       const wall = (left: 1000.0, top: 500.0, right: 1700.0, bottom: 1100.0);
-      List<CanvasPoint> pinchedTo(double edge) => [
-        CanvasPoint(x: 1350.4 - edge / 2, y: 700.4),
-        CanvasPoint(x: 1350.4 + edge / 2, y: 700.4),
-        box[2],
-        box[3],
+      /// The box with its top edge — its bottom edge, [under] — pulled in
+      /// to [edge] px about its middle.
+      List<CanvasPoint> pinchedTo(double edge, {bool under = false}) {
+        final y = under ? 810.4 : 700.4;
+        final left = CanvasPoint(x: 1350.4 - edge / 2, y: y);
+        final right = CanvasPoint(x: 1350.4 + edge / 2, y: y);
+        return under
+            ? [box[0], box[1], right, left]
+            : [left, right, box[2], box[3]];
+      }
+
+      // Ink in the half of the box away from the pinch, where it leaves
+      // room.
+      List<CanvasPoint> spotsUnder({bool under = false}) => [
+        for (final x in [1310.0, 1350.0, 1390.0])
+          CanvasPoint(x: x, y: under ? 716 : 795),
       ];
-      // Ink in the lower half of the box, where the pinch leaves room.
-      final spots = [
-        for (final x in [1310.0, 1350.0, 1390.0]) CanvasPoint(x: x, y: 795),
-      ];
-      BrushDab floatPast(int grow) => stampOver(
+      BrushDab floatPastBy(int grow, {bool under = false}) => stampOver(
         left: 1284 - grow,
         top: 700 - grow,
         width: 133 + 2 * grow,
         height: 111 + 2 * grow,
-        ink: spots,
+        ink: spotsUnder(under: under),
       );
 
       /// [dab]'s pixel at canvas ([x], [y]) — clear off its stamp.
@@ -333,17 +340,23 @@ void main() {
 
       // Each edge over a float that stops short of the horizon and one
       // grown past it.
-      for (final (edge, short, past) in [
-        (1.0, 0, 2),
-        (2.0, 0, 2),
-        (4.0, 0, 4),
+      for (final (edge, short, past, under) in [
+        (1.0, 0, 2, false),
+        (2.0, 0, 2, false),
+        (4.0, 0, 4, false),
+        (2.0, 0, 2, true),
       ]) {
-        test('a top edge of $edge px', () {
-          final corners = pinchedTo(edge);
+        test('a${under ? ' bottom' : ' top'} edge of $edge px', () {
+          final corners = pinchedTo(edge, under: under);
+          final spots = spotsUnder(under: under);
+          BrushDab floatPast(int grow) => floatPastBy(grow, under: under);
           final there = solveHomography(box, corners)!;
+          double wAt(CanvasPoint at) =>
+              there[6] * at.x + there[7] * at.y + there[8];
+          // The side of the horizon the box is on, as w's sign.
+          final front = wAt(box[0]).sign;
           List<double> wsOf(BrushDab float) => [
-            for (final corner in stampCornersOf(float)!)
-              there[6] * corner.x + there[7] * corner.y + there[8],
+            for (final corner in stampCornersOf(float)!) wAt(corner) * front,
           ];
           expect(
             wsOf(floatPast(short)).where((w) => w <= 0),
@@ -491,7 +504,7 @@ void main() {
             base: box,
             corners: pinchedTo(2),
             mode: mode,
-          ).through(floatPast(2)),
+          ).through(floatPastBy(2)),
           throwsArgumentError,
         );
       });
