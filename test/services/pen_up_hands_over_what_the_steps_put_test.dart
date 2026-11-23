@@ -331,7 +331,7 @@ void main() {
     final told = [for (final one in promoted) one.tile.inkTold];
     expect(told, everyElement(isNotNull), reason: 'each is asked');
 
-    await Future.wait([for (final each in told) each!]).timeout(waitPatience);
+    await patiently(Future.wait([for (final each in told) each!]));
     expect(
       [for (final one in promoted) one.tile.inkWithNoWait],
       everyElement(isTrue),
