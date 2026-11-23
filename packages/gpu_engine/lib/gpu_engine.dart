@@ -374,7 +374,8 @@ class GpuEngine {
   Timer? _atRest;
 
   /// A compose was handed over — [GpuComposite.run], [GpuComposite.show],
-  /// [GpuScreen.compose], [GpuScreen.composeOver] —: a hand is at work,
+  /// [GpuScreen.compose], [GpuScreen.composeOver] — or a move, which keeps
+  /// a buffer as they do ([GpuComposite.move]): a hand is at work,
   /// and rests once none is for [restsAfter]. The engine takes the rest
   /// in turn behind what it was handed before, this isolate waiting for
   /// none of it.
@@ -3387,6 +3388,25 @@ class GpuComposite implements _OfAnEngine {
     );
     _engine._composed();
     return _checked(passes);
+  }
+
+  /// Moves the texels of [target] by [by] — the one at (x, y) to
+  /// (x + dx, y + dy) — leaving those the move uncovers as they were, and
+  /// submits the work, waiting for none of it ([GpuEngine.done]): what a
+  /// screen panned by whole pixels still holds of its frame, put where the
+  /// pan takes it before [GpuScreen.show] draws the rest (the app's
+  /// `EngineStackScreen.show`). It copies through a buffer the engine
+  /// keeps while a hand is at work, as a compose's ([GpuEngine.restsAfter]).
+  void move(GpuTarget target, (int, int) by) {
+    final (dx, dy) = by;
+    rust.compositeMove(
+      _composite,
+      _engine._engine,
+      _engine._toDrawOn(target),
+      dx,
+      dy,
+    );
+    _engine._composed();
   }
 
   /// Lays [picture] — [pool]'s tiles over a box of canvas tiles as

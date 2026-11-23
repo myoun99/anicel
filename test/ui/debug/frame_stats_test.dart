@@ -742,12 +742,50 @@ void main() {
 
       for (final (asked, said) in const [
         (
-          (columns: 2560, rows: 1536, scale: 0.9712, mode: GpuSampling.blend),
+          (
+            columns: 2560,
+            rows: 1536,
+            texels: 2560 * 1536,
+            moved: null,
+            scale: 0.9712,
+            mode: GpuSampling.blend,
+          ),
           '2560x1536  x0.97  blend',
         ),
         (
-          (columns: 640, rows: 1408, scale: 1.88, mode: GpuSampling.nearest),
+          (
+            columns: 640,
+            rows: 1408,
+            texels: 640 * 1408,
+            moved: null,
+            scale: 1.88,
+            mode: GpuSampling.nearest,
+          ),
           '640x1408  x1.88  nearest',
+        ),
+        // A pan's: what it held moved, and the band it uncovered drawn —
+        // the box round it the target, its walks a part of that.
+        (
+          (
+            columns: 3584,
+            rows: 2560,
+            texels: 128 * 2560,
+            moved: (-128, 0),
+            scale: 0.63,
+            mode: GpuSampling.blend,
+          ),
+          '3584x2560 drew 328k moved -128,0  x0.63  blend',
+        ),
+        (
+          (
+            columns: 96,
+            rows: 64,
+            texels: 512,
+            moved: (0, 8),
+            scale: 1.0,
+            mode: GpuSampling.nearest,
+          ),
+          '96x64 drew 512 moved 0,8  x1.00  nearest',
         ),
       ]) {
         ScreenAsked.shown(asked);

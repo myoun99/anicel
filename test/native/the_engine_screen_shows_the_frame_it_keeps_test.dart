@@ -465,10 +465,14 @@ void main() {
         devicePixelRatio: ratio,
       );
 
-      expect(
-        ScreenAsked.last,
-        (columns: width, rows: height, scale: zoom * ratio, mode: mode),
-      );
+      expect(ScreenAsked.last, (
+        columns: width,
+        rows: height,
+        texels: width * height,
+        moved: null,
+        scale: zoom * ratio,
+        mode: mode,
+      ));
     }
   });
 
@@ -513,9 +517,9 @@ void main() {
       }
     }
 
-    /// Shows [screen] through [camera] on [target]: the texels it drew,
-    /// columns by rows — null where none ([ScreenAsked]).
-    (int, int)? drawnOn(
+    /// Shows [screen] through [camera] on [target]: what it asked of the
+    /// engine — null where it drew nothing ([ScreenAsked]).
+    ScreenAsk? askedOn(
       GpuTarget target,
       EngineStackScreen screen,
       Camera camera,
@@ -527,9 +531,19 @@ void main() {
         viewport: camera.viewport,
         devicePixelRatio: camera.devicePixelRatio,
       );
-      final asked = ScreenAsked.last;
-      return asked == null ? null : (asked.columns, asked.rows);
+      return ScreenAsked.last;
     }
+
+    /// Shows [screen] through [camera] on [target]: the box round the
+    /// texels it drew, columns by rows — null where none.
+    (int, int)? drawnOn(
+      GpuTarget target,
+      EngineStackScreen screen,
+      Camera camera,
+    ) => switch (askedOn(target, screen, camera)) {
+      null => null,
+      final asked => (asked.columns, asked.rows),
+    };
 
     // A target with room past what the camera shows of the world: drawn
     // whole, it is more texels than the world's tiles land on.
@@ -827,9 +841,11 @@ void main() {
         size: (200, 100),
         drawn: null,
       );
-      final Camera moved = (
-        name: 'a pixel on',
-        viewport: CanvasViewport(panX: 1),
+      // ↩️A pixel's pan till 2026-11-23: one of whole texels is moved now
+      // (the tests after this one).
+      final Camera zoomed = (
+        name: 'zoomed a little',
+        viewport: CanvasViewport(zoom: 1.25),
         devicePixelRatio: 1,
         size: roomy,
         drawn: null,
@@ -841,8 +857,134 @@ void main() {
         changed: inTheFirst,
       );
 
-      for (final camera in [withRoom, moved, withRoom]) {
+      for (final camera in [withRoom, zoomed, withRoom]) {
         expect(drawnOn(target, screen, camera), roomy, reason: camera.name);
+        expect(
+          target.fingerprint(),
+          whole(screen, camera),
+          reason: camera.name,
+        );
+      }
+    });
+
+    // 🚨A PAN BY WHOLE TEXELS MOVES WHAT THE TARGET HOLDS
+    // ([GpuComposite.move]) and draws what it uncovers, with what was made
+    // again since: the frame then is the one drawn whole through the
+    // camera panned, byte for byte — under 100% in Blend, a texel a tent
+    // over what it spans; over it in Nearest; at a device's ratio of one
+    // and a half; and turned a quarter, where whole pixels of pan are
+    // whole texels still. No lay is waited for before its show.
+    test('panned by whole texels, what it holds is moved and the frame is '
+        'the one drawn whole — drawn where the pan uncovered alone', () async {
+      final (columns, rows) = roomy;
+      // Each a pan of the view on from the last, in device pixels.
+      const pans = [(7, 0), (0, -5), (13, 9), (-20, -3), (-1, 11)];
+      for (final (name, zoom, ratio, turned, from) in const [
+        ('at rest', 1.0, 1.0, 0.0, (30, 12)),
+        ('shrunk to a half', 0.5, 1.0, 0.0, (30, 12)),
+        ('magnified twice', 2.0, 1.0, 0.0, (30, 12)),
+        ('at one and a half device pixels a pixel', 0.5, 1.5, 0.0, (30, 12)),
+        ('turned a quarter', 1.0, 1.0, 90.0, (158, 12)),
+      ]) {
+        final screen = EngineStackScreen(engine.composite, engine.letters);
+        final target = shownSurfaceOf(columns, rows);
+        try {
+          var (x, y) = from;
+          Camera panned() => (
+            name: '$name, panned to ($x, $y)',
+            viewport: CanvasViewport(
+              zoom: zoom,
+              panX: x / ratio,
+              panY: y / ratio,
+              rotationDegrees: turned,
+            ),
+            devicePixelRatio: ratio,
+            size: roomy,
+            drawn: null,
+          );
+          await screen.compose(frameOf(celOf(const [5, 7, 5])));
+          expect(
+            drawnOn(target, screen, panned()),
+            roomy,
+            reason: '$name: all of it, the first time',
+          );
+          for (final (dx, dy) in pans) {
+            (x, y) = (x + dx, y + dy);
+            final camera = panned();
+            final asked = askedOn(target, screen, camera);
+            expect(asked?.moved, (dx, dy), reason: camera.name);
+            expect(
+              asked?.texels,
+              dx.abs() * rows + (columns - dx.abs()) * dy.abs(),
+              reason: '${camera.name}: what it uncovered alone',
+            );
+            expect(
+              target.fingerprint(),
+              whole(screen, camera),
+              reason: camera.name,
+            );
+          }
+          // A lay between two pans: drawn where it made tiles again too.
+          final laid = screen.compose(
+            frameOf(celOf(const [5, 9, 5])),
+            changed: inTheFirst,
+          );
+          (x, y) = (x + 6, y - 2);
+          final camera = panned();
+          final asked = askedOn(target, screen, camera);
+          await laid;
+          expect(asked?.moved, (6, -2), reason: camera.name);
+          expect(
+            asked?.texels,
+            greaterThan(6 * rows + (columns - 6) * 2),
+            reason: '${camera.name}: and the tile made again',
+          );
+          expect(
+            target.fingerprint(),
+            whole(screen, camera),
+            reason: '${camera.name}: a lay between',
+          );
+        } finally {
+          target.free();
+          screen.free();
+        }
+      }
+    });
+
+    // What no whole texels move onto is drawn whole: a pan by a part of a
+    // texel — a view turned, whose pan nothing snaps
+    // (`renderSnappedViewport`) —, and one by as many texels as the target
+    // holds or more.
+    test('panned by a part of a texel, or past all the target holds, it is '
+        'drawn whole', () async {
+      final (columns, rows) = roomy;
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(columns, rows);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 7, 5])));
+      Camera at(double x, double y, {double turned = 0}) => (
+        name: 'panned to ($x, $y), turned $turned',
+        viewport: CanvasViewport(panX: x, panY: y, rotationDegrees: turned),
+        devicePixelRatio: 1,
+        size: roomy,
+        drawn: null,
+      );
+
+      for (final camera in [
+        at(158, 12, turned: 30),
+        at(160.5, 12, turned: 30),
+        at(30, 12),
+        at(30.0 + columns, 12),
+        at(30.0 + columns, 12.0 - rows),
+        at(-970, 12),
+      ]) {
+        final asked = askedOn(target, screen, camera);
+        expect(
+          (asked?.columns, asked?.rows, asked?.moved),
+          (columns, rows, null),
+          reason: camera.name,
+        );
         expect(
           target.fingerprint(),
           whole(screen, camera),

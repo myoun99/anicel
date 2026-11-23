@@ -1760,3 +1760,32 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
         shown.map(drop)
     });
 }
+
+/// Moves the texels of `target` by (`dx`, `dy`) — the one at (x, y) to
+/// (x + dx, y + dy) — leaving those the move uncovers as they were, and
+/// submits the work ([`Composite::moved`]): what a screen panned by whole
+/// pixels still holds of its frame, before [`gpu_engine_screen_show`]
+/// draws the rest. `target` is a surface's texture or the one a window is
+/// drawn on, as that verb's is.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`. What is handed is let go of on
+/// the engine's thread ([`let_go`]), behind this in turn.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_composite_move(
+    composite: *const Composite,
+    engine: *const Engine,
+    target: *const wgpu::Texture,
+    dx: i32,
+    dy: i32,
+) {
+    let handed = Sent((composite, engine, target));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (composite, engine, target) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (composite, engine, target) = unsafe { (&*composite, &*engine, &*target) };
+        composite.moved(engine, target, (dx, dy))
+    });
+}

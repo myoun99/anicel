@@ -1253,6 +1253,23 @@ external int compositeShow(
   Pointer<Uint32> rect,
 );
 
+@Native<
+  Void Function(
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Texture>,
+    Int32,
+    Int32,
+  )
+>(symbol: 'gpu_engine_composite_move')
+external void compositeMove(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Texture> target,
+  int dx,
+  int dy,
+);
+
 @Native<Pointer<Screen> Function(Pointer<Engine>, Pointer<Int32>, Double)>(
   symbol: 'gpu_engine_screen_new',
 )

@@ -4,6 +4,7 @@ import '../../native/screen_texture.dart';
 import 'engine_stages.dart';
 import 'frame_stats.dart';
 import 'measurement_mode.dart';
+import 'screen_asked.dart' show screenAskWords;
 
 /// Hosts the measurement readouts above the whole app.
 ///
@@ -135,10 +136,7 @@ class FrameStatsReadout extends StatelessWidget {
                     'p95${_ms(stats.screenDrawP95)}'
                     '${switch (stats.screenAsked) {
                       null => '',
-                      final asked =>
-                        '  ${asked.columns}x${asked.rows}  '
-                            'x${asked.scale.toStringAsFixed(2)}  '
-                            '${asked.mode.name}',
+                      final asked => '  ${screenAskWords(asked)}',
                     }}',
                 ' finish p50${_ms(stats.screenFinishP50)}  '
                     'p95${_ms(stats.screenFinishP95)}',

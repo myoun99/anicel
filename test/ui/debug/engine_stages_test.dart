@@ -130,6 +130,8 @@ void main() {
     const stall = (
       columns: 865,
       rows: 864,
+      texels: 865 * 864,
+      moved: null,
       scale: 1.35,
       mode: GpuSampling.nearest,
     );
@@ -161,6 +163,8 @@ void main() {
     const stall = (
       columns: 865,
       rows: 864,
+      texels: 865 * 864,
+      moved: null,
       scale: 1.35,
       mode: GpuSampling.nearest,
     );
@@ -241,6 +245,8 @@ void main() {
       const asked = (
         columns: 128,
         rows: 128,
+        texels: 128 * 128,
+        moved: null,
         scale: 1.0,
         mode: GpuSampling.nearest,
       );

@@ -190,6 +190,15 @@ final class EngineStackScreen {
   /// room to pan and what its sides' step spares: 1536×3072 for a window
   /// of 1080×2424, read off an emulator (2026-11-22) —, each by a thread
   /// of the composite's walk, a stroke's step as a zoom's.
+  ///
+  /// 🚨MOVED WHERE THE CAMERA IS ITS OWN PANNED BY WHOLE TEXELS ([_movedBy]):
+  /// the frame [target] holds is moved by them ([GpuComposite.move]) and
+  /// what the pan uncovers is drawn, with what differs as above — the
+  /// frame then the one drawn whole through this camera, byte for byte.
+  /// 🗣️유저 2026-11-23, build 1099's photographs of that tablet:
+  /// 「처음은 100미만 팬,줌」 — 🔬a frame past the margin a pan's screen
+  /// spares drew all of its 3584×2560 texels again at × 0.63, 43 ms of its
+  /// GPU (rust/src/kernels/composite/moved.rs has the rest).
   void show(
     GpuTarget target,
     (int, int) size, {
@@ -200,58 +209,86 @@ final class EngineStackScreen {
     final screen =
         _screen ??
         (throw StateError('a screen is shown before a frame is laid on it'));
-    final camera = viewportInverseTransformMatrix(
-      renderSnappedViewport(viewport, devicePixelRatio),
-    ).storage;
-    // A texel is a device pixel, the camera's unit a logical one.
-    final per = 1 / devicePixelRatio;
     final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
-    // The view's pixel a texel is: the texel less the corner.
-    final (cornerX, cornerY) = corner;
-    final (a, b) = (camera[0] * per, camera[4] * per);
-    final (c, d) = (camera[1] * per, camera[5] * per);
-    final mode = gpuSamplingOf(filterQualityForDisplayScale(scale));
-    final inverse = [
-      a,
-      b,
-      camera[12] - a * cornerX - b * cornerY,
-      c,
-      d,
-      camera[13] - c * cornerX - d * cornerY,
-    ];
-    final through = (inverse: inverse, mode: mode, size: size);
+    final through = _throughOf(viewport, devicePixelRatio, corner, size);
+    final (:inverse, :mode, size: _, at: _) = through;
     // Read before the draw, which forgets it.
-    final rect = _texelsToDraw(target.kept, through);
-    if (rect case (final left, final top, final right, final bottom)) {
+    final (:moved, :drawn) = _toShow(target.kept, through);
+    if (moved != null) {
+      _composite.move(target, moved);
+    }
+    for (final rect in drawn) {
       screen.show(target, inverse: inverse, sampling: mode, rect: rect);
-      // For the frame statistics ([ScreenAsked]): the texels drawn.
-      ScreenAsked.shown((
-        columns: right - left,
-        rows: bottom - top,
-        scale: scale,
-        mode: mode,
-      ));
+    }
+    // A move uncovers texels it draws: a show that drew none moved none.
+    if (drawn.isNotEmpty) {
+      // For the frame statistics ([ScreenAsked]).
+      ScreenAsked.shown(_asked(moved, drawn, scale, mode));
     }
     target.kept = (of: this, lay: _lays.last, through: through);
   }
 
-  /// The texels of a target a show [through] a camera is to draw — [left,
-  /// top, right, bottom) —, the target holding what [kept] says: all of
-  /// them, unless it holds this screen's frame through that camera; then
-  /// those that read a tile made again since, and null where none was.
-  (int, int, int, int)? _texelsToDraw(Object? kept, _Through through) {
+  /// What a show onto a target holding what [kept] says does through the
+  /// camera [through]: the move of what the target holds — none where it
+  /// holds nothing of this screen's that moves to this camera
+  /// ([_movedBy]) — and the texels it draws then, [left, top, right,
+  /// bottom) each. All of them, unless the target holds this screen's
+  /// frame through this camera or its own panned; then what the move
+  /// uncovers ([_uncovered]) and those that read a tile made again since,
+  /// and nothing where neither is.
+  ({(int, int)? moved, List<(int, int, int, int)> drawn}) _toShow(
+    Object? kept,
+    _Through through,
+  ) {
     final (columns, rows) = through.size;
-    final whole = (0, 0, columns, rows);
-    if (kept is! _ShownOn ||
-        !identical(kept.of, this) ||
-        !_sameCamera(kept.through, through)) {
+    final whole = (moved: null, drawn: [(0, 0, columns, rows)]);
+    if (kept is! _ShownOn || !identical(kept.of, this)) {
       return whole;
     }
-    final again = _lays.since(kept.lay);
-    if (again == null) {
+    final by = _movedBy(kept.through, through);
+    final again = by == null ? null : _lays.since(kept.lay);
+    if (by == null || again == null) {
       return whole;
     }
-    return again.isEmpty ? null : _texelsReading(_tilesMet(again), through);
+    final (dx, dy) = by;
+    if (dx.abs() >= columns || dy.abs() >= rows) {
+      return whole;
+    }
+    final changed = again.isEmpty
+        ? null
+        : _texelsReading(_tilesMet(again), through);
+    final still = dx == 0 && dy == 0;
+    return (
+      moved: still ? null : by,
+      drawn: [..._uncovered(by, through.size), ?changed],
+    );
+  }
+
+  /// The ask of a show that moved what its target held by [moved], if at
+  /// all, and drew [drawn], none empty, at the display's [scale] in [mode]
+  /// ([ScreenAsked]): the box round what it drew, and how many texels its
+  /// walks drew — the move's are copied, not drawn.
+  static ScreenAsk _asked(
+    (int, int)? moved,
+    List<(int, int, int, int)> drawn,
+    double scale,
+    GpuSampling mode,
+  ) {
+    var (left, top, right, bottom) = drawn.first;
+    var texels = 0;
+    for (final (fromX, fromY, toX, toY) in drawn) {
+      (left, top) = (fromX < left ? fromX : left, fromY < top ? fromY : top);
+      (right, bottom) = (toX > right ? toX : right, toY > bottom ? toY : bottom);
+      texels += (toX - fromX) * (toY - fromY);
+    }
+    return (
+      columns: right - left,
+      rows: bottom - top,
+      texels: texels,
+      moved: moved,
+      scale: scale,
+      mode: mode,
+    );
   }
 
   /// What a frame over the world [extent] will keep: a tile for each it
@@ -319,25 +356,127 @@ final class EngineStackScreen {
 
 /// The camera a frame is shown through, as the engine is handed it
 /// ([GpuScreen.show]): a texel to the canvas's pixel, the mode it is read
-/// in, and the target's texels, columns by rows.
-typedef _Through = ({List<double> inverse, GpuSampling mode, (int, int) size});
+/// in, and the target's texels, columns by rows — and [at], the texel the
+/// view's corner stands on less the pan's whole device pixels
+/// ([_throughOf]).
+typedef _Through = ({
+  List<double> inverse,
+  GpuSampling mode,
+  (int, int) size,
+  (int, int) at,
+});
 
 /// What a target keeps of a screen's frame ([GpuTarget.kept]): whose, as of
 /// which lay of its ([_Lays.last]), and through which camera.
 typedef _ShownOn = ({EngineStackScreen of, int lay, _Through through});
 
-/// Whether [a] and [b] are one camera: every texel reads the same. The
-/// mode is not asked — it is the scale's, which the inverse holds.
-bool _sameCamera(_Through a, _Through b) {
-  if (a.size != b.size) {
-    return false;
+/// The steps of a pixel the engine reads a camera's entries in: Q.20, each
+/// rounded to the nearest, halves away from zero
+/// (rust/src/kernels/shared/resample.rs, `ResampleMap::new`).
+const double _cameraSteps = 1 << 20;
+
+/// [value] on the engine's grid of a camera's entries ([_cameraSteps]):
+/// what the engine reads it as.
+double _onTheGrid(double value) =>
+    (value * _cameraSteps).roundToDouble() / _cameraSteps;
+
+/// The camera through [viewport] at [devicePixelRatio] onto a target of
+/// [size] texels, the view's corner on its texel [corner]
+/// ([EngineStackScreen.show]).
+///
+/// 🚨ON THE ENGINE'S GRID, ITS PAN WHOLE TEXELS OF IT: every entry is one
+/// the engine reads as it is ([_onTheGrid]), and what moves with the pan
+/// moves by whole texels of the turn and the scale on that grid — [at],
+/// the corner less the pan's whole device pixels (the snapped pan less its
+/// phase, [renderSnappedViewport]), times them. So a camera panned by
+/// whole device pixels reads at each texel exactly what its own did that
+/// many texels back — the engine works a camera in integers, a texel's
+/// middle linear in its column and row (resample.wgsl,
+/// `resample_locate`) — and a frame moved by them ([GpuComposite.move]) is
+/// the one drawn whole through it, byte for byte. ↩️Till 2026-11-23 the
+/// engine rounded the camera's move apart from its turn and scale: a
+/// camera panned read parts of a texel in millions off its own moved, and
+/// no frame could be moved. ⚠️Where the canvas is read moves off where the
+/// engine read the view's own camera till then by a part in two million of
+/// a canvas pixel for each texel [at] lies from the target's first, at
+/// most — 0.005 of one ten thousand texels off.
+_Through _throughOf(
+  CanvasViewport viewport,
+  double devicePixelRatio,
+  (int, int) corner,
+  (int, int) size,
+) {
+  final snapped = renderSnappedViewport(viewport, devicePixelRatio);
+  final camera = viewportInverseTransformMatrix(snapped).storage;
+  // A texel is a device pixel, the camera's unit a logical one.
+  final per = 1 / devicePixelRatio;
+  final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
+  final phase = samplingPhaseFor(scale);
+  final pannedX = (snapped.panX * devicePixelRatio - phase).round();
+  final pannedY = (snapped.panY * devicePixelRatio - phase).round();
+  // The view's pixel a texel is: the texel less the corner.
+  final (cornerX, cornerY) = corner;
+  final (atX, atY) = (cornerX + pannedX, cornerY + pannedY);
+  final (a, b) = (camera[0] * per, camera[4] * per);
+  final (c, d) = (camera[1] * per, camera[5] * per);
+  // The camera's own move: what is left of it with the pan's whole
+  // texels taken off.
+  final ownX = _onTheGrid(camera[12] + a * pannedX + b * pannedY);
+  final ownY = _onTheGrid(camera[13] + c * pannedX + d * pannedY);
+  final [gridA, gridB, gridC, gridD] = [a, b, c, d].map(_onTheGrid).toList();
+  return (
+    inverse: [
+      gridA,
+      gridB,
+      ownX - gridA * atX - gridB * atY,
+      gridC,
+      gridD,
+      ownY - gridC * atX - gridD * atY,
+    ],
+    mode: gpuSamplingOf(filterQualityForDisplayScale(scale)),
+    size: size,
+    at: (atX, atY),
+  );
+}
+
+/// By how many texels the camera [b] is [a] moved, where it is: every
+/// texel of [b] reads what the one of [a] that many back did
+/// ([_throughOf]) — (0, 0) where they are one camera, and null where some
+/// texel of [b] reads what none of [a] does, a part of a texel off it or
+/// turned or scaled. The mode is not asked — it is the scale's, which the
+/// inverse holds.
+(int, int)? _movedBy(_Through a, _Through b) {
+  final [aa, ab, ac, ad, ae, af] = a.inverse;
+  final [ba, bb, bc, bd, be, bf] = b.inverse;
+  if (a.size != b.size || aa != ba || ab != bb || ad != bd || ae != be) {
+    return null;
   }
-  for (var at = 0; at < a.inverse.length; at++) {
-    if (a.inverse[at] != b.inverse[at]) {
-      return false;
-    }
-  }
-  return true;
+  final (fromX, fromY) = a.at;
+  final (toX, toY) = b.at;
+  // Each camera's own move, exactly: every entry is on the grid.
+  final ownAlike =
+      ac + aa * fromX + ab * fromY == bc + ba * toX + bb * toY &&
+      af + ad * fromX + ae * fromY == bf + bd * toX + be * toY;
+  return ownAlike ? (toX - fromX, toY - fromY) : null;
+}
+
+/// The texels of a target of [size] that a move by [by] uncovers — those
+/// no texel moved lands on: a band of columns along the side it moves away
+/// from and one of rows along the other, less the columns' — [left, top,
+/// right, bottom) each, none along a way it moves none. [by] moves less
+/// than [size] along each.
+List<(int, int, int, int)> _uncovered((int, int) by, (int, int) size) {
+  final (dx, dy) = by;
+  final (columns, rows) = size;
+  // What the texels moved land on, across and down.
+  final (left, right) = dx > 0 ? (dx, columns) : (0, columns + dx);
+  final (top, bottom) = dy > 0 ? (dy, rows) : (0, rows + dy);
+  return [
+    if (left > 0) (0, 0, left, rows),
+    if (right < columns) (right, 0, columns, rows),
+    if (top > 0) (left, 0, right, top),
+    if (bottom < rows) (left, bottom, right, rows),
+  ];
 }
 
 /// How many lays a canvas's screen holds apart ([_Lays]): what a target

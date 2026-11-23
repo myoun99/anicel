@@ -258,10 +258,7 @@ abstract final class EngineStages {
           'show${_ms(slowest.up.show, width: 6)}'
           '${switch (slowest.asked) {
             null => '',
-            final asked =>
-              '  ${asked.columns}x${asked.rows}  '
-                  'x${asked.scale.toStringAsFixed(2)}  '
-                  '${asked.mode.name}',
+            final asked => '  ${screenAskWords(asked)}',
           }}',
       '        gpu${_ms(of(summary.slowestPlaces, gpu: true))}  '
           'cpu${_ms(of(summary.slowestPlaces, gpu: false))}',

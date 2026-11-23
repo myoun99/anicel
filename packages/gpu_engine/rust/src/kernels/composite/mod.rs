@@ -76,6 +76,9 @@ pub(crate) mod held;
 pub(crate) mod kept;
 #[cfg(test)]
 mod made_of_tests;
+mod moved;
+#[cfg(test)]
+mod moved_tests;
 mod passes;
 pub(crate) mod screen;
 pub(crate) mod spares;
@@ -107,7 +110,11 @@ use crate::platform::stores;
 
 use held::{HeldChains, Made};
 pub(crate) use spares::{Lent, Spares};
-use passes::{Fulls, Passes};
+use passes::{Cell, OnePerOutput, Passes};
+
+/// A pass compiled where the executor is made ([`Composite::showing`]),
+/// with the cell it is kept in.
+type Compiling<'a> = Box<dyn FnOnce() -> (Cell, wgpu::ComputePipeline) + Send + 'a>;
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -955,7 +962,10 @@ impl Batch {
 /// bind, once for each output and set of R1 modes ([`Compiled`]).
 pub(crate) struct Composite {
     /// The pass that takes any plan, one to an output.
-    fulls: Fulls,
+    fulls: OnePerOutput,
+    /// The pass that moves a surface's texels, one to a surface's format
+    /// ([`Composite::moved`]).
+    moves: OnePerOutput,
     /// A plan's own passes — shared with the thread that compiles them
     /// apart.
     passes: Arc<Passes>,
@@ -1005,11 +1015,16 @@ impl Composite {
     /// app's wait window's last 3.2 s on the Surface Pro 11 with no shader
     /// kept (1.76 s and 1.40 s, 11-13), all else in it through 2.5 s before.
     /// ↩️The surface's was a call of its own after this one till then.
+    ///
+    /// The surface's move ([`Composite::moved`]) is compiled with them, a
+    /// third beside the two: a pan's first frame past its screen's margin
+    /// compiles nothing.
     pub(crate) fn showing(engine: &Engine, format: Option<wgpu::TextureFormat>) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let composite = Self {
-            fulls: Fulls::default(),
+            fulls: OnePerOutput::default(),
+            moves: OnePerOutput::default(),
             passes: Arc::default(),
             pages,
             chain: OnceLock::new(),
@@ -1018,11 +1033,16 @@ impl Composite {
         // The tiles' output, and the surface's where there is one.
         let outputs = [Some(None), shown.map(Some)];
         let (source, binding) = (&composite.pages.stored(), composite.surface_binding());
-        let made = engine.side_by_side(outputs.into_iter().flatten().map(|output| {
-            move || (output, compile(engine, source, binding, Compiled::full(output)))
-        }));
-        for (output, pipeline) in made {
-            let _ = composite.fulls.cell(output).set(pipeline);
+        let fulls = outputs.into_iter().flatten().map(|output| {
+            let cell = composite.fulls.cell(output);
+            Box::new(move || (cell, compile(engine, source, binding, Compiled::full(output)))) as Compiling<'_>
+        });
+        let moves = shown.map(|token| {
+            let cell = composite.moves.cell(Some(token));
+            Box::new(move || (cell, moved::compile(engine, token))) as Compiling<'_>
+        });
+        for (cell, pipeline) in engine.side_by_side(fulls.chain(moves)) {
+            let _ = cell.set(pipeline);
         }
         Some(composite)
     }
