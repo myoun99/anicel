@@ -544,10 +544,17 @@ abstract final class FrameStats {
   static double _displayHertz() =>
       PlatformDispatcher.instance.implicitView?.display.refreshRate ?? 0;
 
+  /// Test seam: the submits behind a test says the engine has, in place of
+  /// the app's engine's own word — an engine at rest has none.
+  @visibleForTesting
+  static int? Function()? debugSubmitsBehind;
+
+  static int? _enginesBehind() => appGpuEngineOpen.value?.submitsBehind;
+
   /// The submits behind now, kept where the most since the last
   /// publication ([_behindWorst]) — null where no engine is open.
   static int? _readBehind() {
-    final behind = appGpuEngineOpen.value?.submitsBehind;
+    final behind = (debugSubmitsBehind ?? _enginesBehind)();
     if (behind != null && behind > (_behindWorst ?? -1)) {
       _behindWorst = behind;
     }

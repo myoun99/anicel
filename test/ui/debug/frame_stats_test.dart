@@ -437,6 +437,31 @@ void main() {
       );
     });
 
+    testWidgets('the GPU line is the submits behind as published, and the '
+        'most read at a frame built since the last publication', (
+      tester,
+    ) async {
+      MeasurementMode.frameStats.value = true;
+      var behind = 7;
+      FrameStats.debugSubmitsBehind = () => behind;
+      addTearDown(() => FrameStats.debugSubmitsBehind = null);
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      behind = 2;
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      final first = FrameStats.latest.value!;
+      expect([first.gpuBehind, first.gpuBehindWorst], [2, 7]);
+
+      FrameStats.publish();
+      final next = FrameStats.latest.value!;
+      expect(
+        [next.gpuBehind, next.gpuBehindWorst],
+        [2, 2],
+        reason: 'the most since the last publication, not since the first',
+      );
+    });
+
     testWidgets('the stroke lines are the newest steps and their slope — the '
         'dabs each carried, how long its first dab was held for it, and how '
         'long till the frame that showed it was up', (tester) async {
