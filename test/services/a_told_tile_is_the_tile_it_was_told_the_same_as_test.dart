@@ -207,22 +207,30 @@ void main() {
   }
 
   /// How many of the cel's and its step's holds have [tile] at [at]: the
-  /// session's picture, the baked truth, its display cache, and the two
-  /// halves of the step.
+  /// session as it is kept — its picture and the last edit's two —, the
+  /// baked truth, its display cache, and the two halves of the step.
+  ///
+  /// ⚠️The session read as kept, not asked for: asked, a session that
+  /// still held the handed tiles would be seeded again from the store
+  /// (`BrushFrameEditingCoordinator._storeMovedPast`) and hide them.
   int holdersOf(
     BitmapTile tile,
     TileCoord at, {
     required BrushFrameEditingCoordinator coordinator,
     required BrushFrameStore store,
     required BrushStrokeHistoryCommand stroke,
-  }) =>
-      [
-        coordinator.currentSurfaceOf(key).tileAt(at),
-        store.displayCacheOrNull(key)?.previewSurface.tileAt(at),
-        stroke.surfaces?.before.heldHere?.tileAt(at),
-        stroke.surfaces?.after.heldHere?.tileAt(at),
-      ].where((held) => identical(held, tile)).length +
-      (store.holdsTile(at, tile) ? 1 : 0);
+  }) {
+    final session = coordinator.sessionStore.sessionOrNull(key)?.canvasState;
+    return [
+          session?.currentSurface.tileAt(at),
+          session?.lastEdit?.beforeSurface.tileAt(at),
+          session?.lastEdit?.afterSurface.tileAt(at),
+          store.displayCacheOrNull(key)?.previewSurface.tileAt(at),
+          stroke.surfaces?.before.heldHere?.tileAt(at),
+          stroke.surfaces?.after.heldHere?.tileAt(at),
+        ].where((held) => identical(held, tile)).length +
+        (store.holdsTile(at, tile) ? 1 : 0);
+  }
 
   Map<TileCoord, Uint8List> bytesOf(BitmapSurface surface) => {
     for (final MapEntry(:key, :value) in surface.tiles.entries)

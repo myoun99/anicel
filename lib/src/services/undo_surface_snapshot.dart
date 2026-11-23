@@ -325,11 +325,11 @@ class UndoSurfaceSnapshot {
 
   bool get isParked => _letGo;
 
-  /// Its picture while it is here and nothing moves it out — not let go,
-  /// not dropped, no [park] under way: a park is writing what it holds.
-  /// Null otherwise.
+  /// Its picture while it is here and nothing moves it out — not dropped,
+  /// no [park] under way: a park is writing what it holds. Null otherwise,
+  /// and once parked: a park lets the picture go ([_releaseTiles]).
   BitmapSurface? get heldHere =>
-      _letGo || _dropped || _parking != null ? null : _surface;
+      _dropped || _parking != null ? null : _surface;
 
   /// RAM this snapshot is holding on its own: zero once parked, because
   /// the bytes are then a file — unless a read-ahead brought them back
