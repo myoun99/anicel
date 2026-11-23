@@ -22,6 +22,12 @@ once two UI frames have begun since the last layer tree that showed it — the
 pipeline has submitted that tree then — and the reads have caught up with
 what was submitted.
 
+The consumer's getter the native side asks by name is
+hardwareBufferReadSignal()J — a name the stock engine's strings hold
+nowhere (its libflutter.so of every ABI holds "readSignal" already), so a
+release is read per ABI for 0007's native by it, as for 0006's by
+acquireLatestHardwareBuffer (tool/flutter_engine/check_android_release.sh).
+
 diff --git a/engine/src/flutter/common/graphics/texture.cc b/engine/src/flutter/common/graphics/texture.cc
 index 74d76c9..2feb6e2 100644
 --- a/engine/src/flutter/common/graphics/texture.cc
@@ -141,7 +147,7 @@ index fce2682..951e51b 100644
        const fml::jni::JavaRef<jobject>& hardware_buffer);
  
 diff --git a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
-index 7b20d89..2a97b76 100644
+index 7b20d89..cd41eef 100644
 --- a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
 +++ b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
 @@ -36,6 +36,31 @@ void ImageExternalTextureVKImpeller::Attach(PaintContext& context) {
@@ -191,7 +197,7 @@ index 8e102d2..f770edd 100644
  };
  
 diff --git a/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java b/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
-index 9ae6ae7..17af480 100644
+index 9ae6ae7..00f956c 100644
 --- a/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
 +++ b/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
 @@ -306,9 +306,11 @@ public class FlutterRenderer implements TextureRegistry {
@@ -225,13 +231,13 @@ index 9ae6ae7..17af480 100644
 +    }
 +
 +    @Override
-+    public long readSignal() {
++    public long hardwareBufferReadSignal() {
 +      return readSignal;
      }
  
      @Override
 diff --git a/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java b/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
-index b38d706..d29fee6 100644
+index b38d706..beed66f 100644
 --- a/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
 +++ b/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
 @@ -104,13 +104,18 @@ public interface TextureRegistry {
@@ -263,10 +269,10 @@ index b38d706..d29fee6 100644
 +    /**
 +     * The native function the GPU's reads of the buffer are told to — {@link
 +     * #createHardwareBufferTexture}'s {@code readSignal} — or 0 for none. Asked by name from native
-+     * code.
++     * code, by a name the stock engine holds nowhere: a release is read for it per ABI.
 +     */
 +    @Keep
-+    long readSignal();
++    long hardwareBufferReadSignal();
    }
  
    @Keep
@@ -307,7 +313,7 @@ index b43ba70..ff7da06 100644
    /// @brief      Positions and sizes a platform view if using hybrid
    ///             composition.
 diff --git a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
-index 9b7d861..acb4591 100644
+index 9b7d861..7ba6d46 100644
 --- a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
 +++ b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
 @@ -146,6 +146,8 @@ static jmethodID g_hardware_buffer_close_method = nullptr;
@@ -326,7 +332,7 @@ index 9b7d861..acb4591 100644
 +  if (!g_hardware_buffer_consumer_texture_registry_interface->is_null()) {
 +    g_hardware_buffer_read_signal_method = env->GetMethodID(
 +        g_hardware_buffer_consumer_texture_registry_interface->obj(),
-+        "readSignal", "()J");
++        "hardwareBufferReadSignal", "()J");
 +  }
 +  if (g_hardware_buffer_read_signal_method == nullptr) {
 +    // Continue on: such an entry is told nothing of the GPU's reads then.

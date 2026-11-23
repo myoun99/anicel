@@ -10,15 +10,18 @@
 #      GpuEnginePlugin.kt); patch 0007 added the long, its read signal
 #   ② io/flutter/view/TextureRegistry$HardwareBufferConsumer declaring
 #      acquireLatestHardwareBuffer()Landroid/hardware/HardwareBuffer; and
-#      readSignal()J — the engine's C++ finds them with FindClass /
-#      GetMethodID (patches 0006 · 0007, platform_view_android_jni_impl.cc)
-#   ③ every ABI's libflutter.so carrying acquireLatestHardwareBuffer — the
-#      patched native, not the stock one, in each ABI the release ships.
-#      ⚠️No name tells 0007's native from 0006's: `readSignal` is in the
-#      stock engine's strings too (🔬arm64 release libflutter.so of
-#      06a2e2a1, two hits, 2026-11-24). What keeps 0007's natives under
-#      0007's embedding is the one version both are taken at
-#      (android/build.gradle.kts, the_android_build_takes_anicels_engine).
+#      hardwareBufferReadSignal()J — the engine's C++ finds them with
+#      FindClass / GetMethodID (patches 0006 · 0007,
+#      platform_view_android_jni_impl.cc)
+#   ③ every ABI's libflutter.so carrying both of those names — the native
+#      of each patch, not the stock one nor 0006's alone, in each ABI the
+#      release ships. 🗣️관제 2026-11-24 03:1x: the one version Gradle takes
+#      the embedding and every ABI at is no count of what is laid — a lay
+#      mixed would pass it unseen (the stock-ABI accident bfc86a255 stopped,
+#      in 0007's form). 0007's getter has a name of its own for it:
+#      `readSignal` is in the stock engine's strings already (🔬release
+#      libflutter.so of 06a2e2a1, every ABI, two hits; the getter's name,
+#      none).
 #
 # Ends `check_android_release: ok — …` (exit 0), or names every miss (exit 1).
 #
@@ -100,7 +103,7 @@ else
           type == "()Landroid/hardware/HardwareBuffer;")
         print "consumer"
       if (owner == "Lio/flutter/view/TextureRegistry$HardwareBufferConsumer;" &&
-          name == "readSignal" && type == "()J")
+          name == "hardwareBufferReadSignal" && type == "()J")
         print "signal"
     }')
   creator=$(echo "$found" | sed -n 's/^create //p' | head -n 1)
@@ -112,17 +115,23 @@ else
     miss "TextureRegistry\$HardwareBufferConsumer.acquireLatestHardwareBuffer" \
       "is not in the dex by that name — the engine's FindClass/GetMethodID finds none"
   echo "$found" | grep -qx signal ||
-    miss "TextureRegistry\$HardwareBufferConsumer.readSignal()J" \
+    miss "TextureRegistry\$HardwareBufferConsumer.hardwareBufferReadSignal()J" \
       "is not in the dex by that name — the engine's GetMethodID finds none"
 fi
 
+# Each patch of the stack by the name its native asks the embedding for.
+natives=('0006 acquireLatestHardwareBuffer' '0007 hardwareBufferReadSignal')
 abis=()
 while IFS= read -r lib; do
   abi=$(basename "$(dirname "$lib")")
-  if grep -qa 'acquireLatestHardwareBuffer' "$lib"; then
+  lacks=()
+  for native in "${natives[@]}"; do
+    grep -qa "${native#* }" "$lib" || lacks+=("${native%% *}")
+  done
+  if [ "${#lacks[@]}" -eq 0 ]; then
     abis+=("$abi")
   else
-    miss "$abi's libflutter.so is the stock engine (no patch 0006)"
+    miss "$abi's libflutter.so carries no patch ${lacks[*]}"
   fi
 done < <(find "$scratch" -path '*/lib/*/libflutter.so' | sort)
 [ -n "$(find "$scratch" -name libflutter.so)" ] ||
@@ -135,5 +144,5 @@ if [ "${#misses[@]}" -gt 0 ]; then
   exit 1
 fi
 echo "check_android_release: ok — createHardwareBufferTexture on $creator ·" \
-  "HardwareBufferConsumer.acquireLatestHardwareBuffer · .readSignal ·" \
-  "patched libflutter.so in ${abis[*]}"
+  "HardwareBufferConsumer.acquireLatestHardwareBuffer ·" \
+  ".hardwareBufferReadSignal · libflutter.so of 0006 · 0007 in ${abis[*]}"

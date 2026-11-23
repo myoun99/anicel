@@ -173,7 +173,10 @@ sealed class ScreenTexture {
     surfaceWaits
       ..waits = 0
       ..waitMicros = 0
-      ..readsPastTheBound = 0;
+      ..readsPastTheBound = 0
+      ..cuts = 0
+      ..screensCut = 0
+      ..heard = false;
   }
 
   /// A texture of [width] × [height] device pixels on [engine] — and the
@@ -607,6 +610,7 @@ final class _AlternatedTextures extends ScreenTexture {
   @override
   Future<void> _free() async {
     _waiting.remove(this);
+    _turns.dispose();
     _open -= 1;
     if (_open == 0 && _tick != null) {
       SchedulerBinding.instance.cancelFrameCallbackWithId(_tick!);

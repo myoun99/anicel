@@ -122,6 +122,141 @@ void main() {
     expect(counted.waitMicros, ScreenTurns.readBoundMicros);
   });
 
+  /// Draws [frames] frames, one at each paint where a surface is to be had,
+  /// each up by the next frame — every surface shown painted once more and
+  /// told submitted, read only where [reads] says.
+  ({int drawn, int shown}) drawEveryFrame(
+    ScreenTurns screen, {
+    required int from,
+    required int frames,
+    required bool reads,
+    required int shownAtFirst,
+  }) {
+    var shown = shownAtFirst;
+    var drawn = 0;
+    int? drawing;
+    for (var frame = from; frame < from + frames; frame += 1) {
+      now = frame * 16667;
+      if (drawing != null) {
+        screen.shown(drawing, frame - 1);
+        unread[drawing] += 1;
+        shown = drawing;
+        drawing = null;
+      }
+      if (reads) {
+        for (var surface = 0; surface < unread.length; surface += 1) {
+          if (surface != shown) {
+            unread[surface] = 0;
+          }
+        }
+      }
+      drawing = screen.take(frame);
+      if (drawing != null) {
+        drawn += 1;
+      }
+    }
+    return (drawn: drawn, shown: shown);
+  }
+
+  test('🎯㉠the word cut off — a patched engine whose reads are never told — '
+      'costs three bounds, and then a frame drawn at every paint never '
+      'waits', () {
+    final screen = turns(3);
+    final first = drawEveryFrame(
+      screen,
+      from: 1,
+      frames: 60,
+      reads: false,
+      shownAtFirst: 0,
+    );
+    expect(screen.cut, isTrue);
+    expect(counted.cuts, 1);
+    expect(counted.screensCut, 1);
+    expect(counted.readsPastTheBound, ScreenTurns.cutAfter);
+    final waitsWhenCut = counted.waits;
+    final then = drawEveryFrame(
+      screen,
+      from: 61,
+      frames: 600,
+      reads: false,
+      shownAtFirst: first.shown,
+    );
+    expect(counted.waits, waitsWhenCut, reason: 'cut off, nothing waits');
+    expect(then.drawn, 600);
+    expect(counted.readsPastTheBound, ScreenTurns.cutAfter);
+    expect(counted.heard, isFalse);
+    screen.dispose();
+    expect(counted.screensCut, 0, reason: 'a screen let go of is not cut');
+  });
+
+  test('🎯㉡cut off, a read heard of any surface has the screen wait for the '
+      'word again — and ㉢it frees the surface it is of alone', () {
+    final screen = turns(3);
+    final first = drawEveryFrame(
+      screen,
+      from: 1,
+      frames: 60,
+      reads: false,
+      shownAtFirst: 0,
+    );
+    expect(screen.cut, isTrue);
+    final others = [
+      for (var surface = 0; surface < 3; surface += 1)
+        if (surface != first.shown) surface,
+    ];
+    expect(others.every((surface) => unread[surface] > 0), isTrue);
+    // A late read, of one surface.
+    unread[others.last] = 0;
+    now += 16667;
+    expect(screen.take(1000), others.last, reason: 'the one read, alone');
+    expect(screen.cut, isFalse);
+    expect(counted.screensCut, 0);
+    expect(counted.heard, isTrue);
+    screen.shown(others.last, 1000);
+    unread[others.last] += 1;
+    final waits = counted.waits;
+    now += 16667;
+    expect(
+      screen.take(1003),
+      isNull,
+      reason: 'the other is still to be read: the word is waited for again',
+    );
+    expect(counted.waits, waits + 1);
+  });
+
+  test('a read heard between bounds keeps the word: three bounds cut it off '
+      'only in a row', () {
+    final screen = turns(3);
+    expect(screen.take(1), 1);
+    screen.shown(1, 1);
+    unread[0] = 1;
+    unread[1] = 1;
+    unread[2] = 1;
+    var frame = 10;
+    for (var round = 0; round < 5; round += 1) {
+      now += 1;
+      expect(screen.take(frame), isNull, reason: 'round $round');
+      now += ScreenTurns.readBoundMicros;
+      final surface = screen.take(frame)!;
+      screen.shown(surface, frame);
+      frame += 10;
+      // The word comes, late: the others are read, and heard.
+      for (final other in [0, 1, 2]) {
+        if (other != surface) {
+          unread[other] = 0;
+        }
+      }
+      screen.wouldTake(frame);
+      for (final other in [0, 1, 2]) {
+        unread[other] = 1;
+      }
+    }
+    expect(counted.readsPastTheBound, 5);
+    expect(screen.cut, isFalse);
+    expect(counted.cuts, 0);
+    expect(counted.heard, isTrue);
+  });
+
   test('the surface the widget names before any frame is up is not drawn '
       'on first', () {
     final screen = turns(3);

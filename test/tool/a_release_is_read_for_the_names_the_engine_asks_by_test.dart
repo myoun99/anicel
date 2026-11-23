@@ -15,7 +15,8 @@ import '../helpers/dart_sources.dart';
 /// The patches are the Android stack the engine is built with: each
 /// `<n>-android-…` patch up to the number `android_patch` names — 0006 and
 /// 0007 on it, whose read signal took the method a long and the consumer a
-/// `readSignal` (2026-11-24).
+/// `hardwareBufferReadSignal` (2026-11-24) — a name the stock engine holds
+/// nowhere, so each ABI's native is read for it as for 0006's.
 void main() {
   String read(String path) =>
       File(path).readAsStringSync().replaceAll('\r\n', '\n');
@@ -70,9 +71,12 @@ void main() {
 
   test('the read signal the C++ asks the consumer for by name is the one '
       'the check reads', () {
-    expect(patch, contains('+    long readSignal();'));
-    expect(patch, contains('"readSignal", "()J");'));
-    expect(check, contains('name == "readSignal" && type == "()J"'));
+    expect(patch, contains('+    long hardwareBufferReadSignal();'));
+    expect(patch, contains('"hardwareBufferReadSignal", "()J");'));
+    expect(
+      check,
+      contains('name == "hardwareBufferReadSignal" && type == "()J"'),
+    );
   });
 
   test('the consumer the C++ finds by name is the one the check reads', () {
@@ -92,7 +96,13 @@ void main() {
     );
     expect(check, contains('name == "acquireLatestHardwareBuffer"'));
     expect(check, contains('type == "()Landroid/hardware/HardwareBuffer;"'));
-    expect(check, contains("grep -qa 'acquireLatestHardwareBuffer'"));
+    // Each ABI's native, by the name each patch's asks the embedding for.
+    expect(
+      check,
+      contains("natives=('0006 acquireLatestHardwareBuffer' "
+          "'0007 hardwareBufferReadSignal')"),
+    );
+    expect(check, contains(r'grep -qa "${native#* }" "$lib"'));
   });
 
   test('a definition is read from dexdump, never a grep of the dex', () {

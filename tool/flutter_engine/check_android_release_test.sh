@@ -46,7 +46,9 @@ dex_of() {
   mv "$scratch/dex_$name/classes.dex" "$scratch/$name.dex"
 }
 
-# pack <out> <dex dir in it> <lib dir in it> <dex> <abi=patched|stock>…
+# pack <out> <dex dir in it> <lib dir in it> <dex> <abi=patched|0006|stock>…
+# — patched is 0006 · 0007's native; the stock one holds `readSignal`, as
+# the stock engine's strings do.
 pack() {
   local out=$1 dexdir=$2 libdir=$3 dex=$4
   local tree="$scratch/tree_$(basename "$1")"
@@ -55,12 +57,16 @@ pack() {
   cp "$dex" "$tree/$dexdir/classes.dex"
   for abi in "$@"; do
     mkdir -p "$tree/$libdir/${abi%%=*}"
-    if [ "${abi#*=}" = patched ]; then
-      printf 'ELF io/flutter/view/TextureRegistry$HardwareBufferConsumer\0acquireLatestHardwareBuffer\0' \
-        > "$tree/$libdir/${abi%%=*}/libflutter.so"
-    else
-      printf 'ELF stock engine\0' > "$tree/$libdir/${abi%%=*}/libflutter.so"
-    fi
+    case "${abi#*=}" in
+    patched)
+      printf 'ELF io/flutter/view/TextureRegistry$HardwareBufferConsumer\0acquireLatestHardwareBuffer\0hardwareBufferReadSignal\0' \
+        > "$tree/$libdir/${abi%%=*}/libflutter.so" ;;
+    0006)
+      printf 'ELF io/flutter/view/TextureRegistry$HardwareBufferConsumer\0acquireLatestHardwareBuffer\0readSignal\0' \
+        > "$tree/$libdir/${abi%%=*}/libflutter.so" ;;
+    *)
+      printf 'ELF stock engine\0readSignal\0' > "$tree/$libdir/${abi%%=*}/libflutter.so" ;;
+    esac
   done
   "$jdk/bin/jar" cfM "$out" -C "$tree" . || fail "jar could not pack $out"
 }
@@ -69,7 +75,7 @@ consumer='io/flutter/view/TextureRegistry.java=package io.flutter.view;
 public interface TextureRegistry {
   interface HardwareBufferConsumer {
     android.hardware.HardwareBuffer acquireLatestHardwareBuffer();
-    long readSignal();
+    long hardwareBufferReadSignal();
   }
 }'
 renderer='io/flutter/embedding/engine/renderer/e.java=package io.flutter.embedding.engine.renderer;
@@ -99,7 +105,7 @@ public interface R {
 consumer_renamed='io/flutter/view/a.java=package io.flutter.view;
 public interface a {
   android.hardware.HardwareBuffer acquireLatestHardwareBuffer();
-  long readSignal();
+  long hardwareBufferReadSignal();
 }'
 # 0006's consumer: no read signal for the C++ to ask by name.
 consumer_unsignalled='io/flutter/view/TextureRegistry.java=package io.flutter.view;
@@ -182,7 +188,7 @@ passed=$((passed + 1))
 # and that alone is named.
 pack "$scratch/unsignalled.apk" . lib "$scratch/consumer_unsignalled.dex" arm64-v8a=patched
 said=$(bash "$check" "$scratch/unsignalled.apk" 2>&1) && fail "a consumer with no signal passed"
-echo "$said" | grep -q 'HardwareBufferConsumer.readSignal()J is not' ||
+echo "$said" | grep -q 'HardwareBufferConsumer.hardwareBufferReadSignal()J is not' ||
   fail "the missing signal is not named: $said"
 echo "$said" | grep -q 'acquireLatestHardwareBuffer is not' &&
   fail "the kept acquire was refused: $said"
@@ -199,9 +205,19 @@ passed=$((passed + 1))
 pack "$scratch/mixed.aab" base/dex base/lib "$scratch/good.dex" \
   arm64-v8a=patched armeabi-v7a=stock x86_64=patched
 said=$(bash "$check" "$scratch/mixed.aab" 2>&1) && fail "a stock ABI passed"
-[ "$(echo "$said" | grep -c 'stock engine')" -eq 1 ] &&
-  echo "$said" | grep -q "armeabi-v7a's libflutter.so is the stock engine" ||
+[ "$(echo "$said" | grep -c 'carries no patch')" -eq 1 ] &&
+  echo "$said" | grep -q "armeabi-v7a's libflutter.so carries no patch 0006 0007" ||
   fail "the stock ABI is not named alone: $said"
+passed=$((passed + 1))
+
+# 6b — one ABI on 0006's native alone, the lay mixed: named by that ABI and
+# the patch it lacks (관제 2026-11-24 03:1x).
+pack "$scratch/mixed_0006.aab" base/dex base/lib "$scratch/good.dex" \
+  arm64-v8a=patched armeabi-v7a=patched x86_64=0006
+said=$(bash "$check" "$scratch/mixed_0006.aab" 2>&1) && fail "an ABI of 0006 alone passed"
+[ "$(echo "$said" | grep -c 'carries no patch')" -eq 1 ] &&
+  echo "$said" | grep -q "x86_64's libflutter.so carries no patch 0007$" ||
+  fail "the ABI of 0006 alone is not named alone: $said"
 passed=$((passed + 1))
 
 # 7 — a release with no libflutter.so at all is refused.
