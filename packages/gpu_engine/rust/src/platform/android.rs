@@ -56,6 +56,8 @@ use crate::device::storage_texture;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
 
+pub use super::vulkan::{keep_shaders, pipelines_found};
+
 const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 const AHB: vk::ExternalMemoryHandleTypeFlags =
     vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID;

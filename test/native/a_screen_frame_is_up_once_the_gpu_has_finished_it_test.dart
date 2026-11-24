@@ -72,16 +72,16 @@ void main() {
 
     /// A screen on [surface] whose frames the GPU finishes as the test says
     /// — each frame's [gates] in order — and how it told it put one up.
-    ({ScreenTexture screen, List<Completer<void>> gates, List<bool> told})
+    ({ScreenTexture screen, List<Completer<GpuWaited?>> gates, List<bool> told})
     aScreen() {
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       final told = <bool>[];
       final screen = ScreenTexture.debugOnSurface(
         surface,
         id: before,
         nextId: after,
         done: () {
-          final gate = Completer<void>();
+          final gate = Completer<GpuWaited?>();
           gates.add(gate);
           return gate.future;
         },
@@ -166,6 +166,43 @@ void main() {
         expect(up.finish, greaterThanOrEqualTo(40000));
         expect(up.draw, lessThan(up.finish));
         expect(up.show, lessThan(up.finish));
+      });
+
+      // 🔬Its finish told apart (🗣️관제 2026-11-24, card the-galaxy-tab-
+      // canvas-went-slow-on-build-1095: 「FINISH 넷으로」): what the engine
+      // said its wait stood in turn and in the driver, what was left till
+      // this isolate heard, and the wait for the canvas's other pictures —
+      // the four the whole of it.
+      test('its finish is what its wait stood in turn and in the driver, '
+          'what was left till it was heard, and the wait for the others — '
+          'the four the whole of it', () async {
+        final (:screen, :gates, told: _) = aScreen();
+
+        screen.present((_) {});
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        gates.single.complete((queuedMicros: 7000, polledMicros: 20000));
+        await pumpEventQueue();
+
+        final up = ScreenTexture.upMicros.last;
+        final went = up.went!;
+        expect((went.queued, went.polled), (7000, 20000));
+        expect(went.heard, greaterThanOrEqualTo(60000 - 27000 - 1000));
+        expect(went.together, greaterThanOrEqualTo(0));
+        expect(
+          went.queued + went.polled + went.heard + went.together,
+          up.finish,
+        );
+      });
+
+      test('where the engine kept no word of its wait, its finish is told '
+          'apart into none', () async {
+        final (:screen, :gates, told: _) = aScreen();
+
+        screen.present((_) {});
+        gates.single.complete();
+        await pumpEventQueue();
+
+        expect(ScreenTexture.upMicros.last.went, isNull);
       });
 
       test('its show is what the hand to Flutter kept this thread '
@@ -510,7 +547,7 @@ void main() {
 
     /// Every screen the canvas opens is on a surface of its own, each frame
     /// drawn on it put up once [done] has ended — as the app's are.
-    void screensFinishedBy(Future<void> Function() done) {
+    void screensFinishedBy(Future<GpuWaited?> Function() done) {
       final opener = debugOpenEngineScreen;
       addTearDown(() => debugOpenEngineScreen = opener);
       debugOpenEngineScreen = (_, width, height) async {
@@ -542,14 +579,14 @@ void main() {
 
     /// The GPU finishing each frame at once till [hold] is called, then
     /// as the test opens each frame's gate, in order.
-    ({List<Completer<void>> gates, void Function() hold}) aGpuHeld() {
+    ({List<Completer<GpuWaited?>> gates, void Function() hold}) aGpuHeld() {
       var holding = false;
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       screensFinishedBy(() {
         if (!holding) {
           return Future.value();
         }
-        gates.add(Completer<void>());
+        gates.add(Completer<GpuWaited?>());
         return gates.last.future;
       });
       return (gates: gates, hold: () => holding = true);
@@ -1042,12 +1079,12 @@ void main() {
         'nothing more', (tester) async {
       // The GPU finishes at once, till the test holds it.
       var holding = false;
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       screensFinishedBy(() {
         if (!holding) {
           return Future.value();
         }
-        gates.add(Completer<void>());
+        gates.add(Completer<GpuWaited?>());
         return gates.last.future;
       });
       final float = SelectionFloatOverlay(null);

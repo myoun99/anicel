@@ -382,7 +382,7 @@ void main() {
     aSmallView(tester);
     // The GPU finishes at once, till the test holds it.
     var holding = false;
-    final gates = <Completer<void>>[];
+    final gates = <Completer<GpuWaited?>>[];
     debugOpenEngineScreen = (_, width, height) async {
       surface = shownSurfaceOf(width, height);
       surfaces.add(surface);
@@ -392,7 +392,7 @@ void main() {
           if (!holding) {
             return Future.value();
           }
-          gates.add(Completer<void>());
+          gates.add(Completer<GpuWaited?>());
           return gates.last.future;
         },
       );

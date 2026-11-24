@@ -26,7 +26,24 @@ typedef _Frame = ({int asked, Object? drawnFor});
 /// thread again. ↩️On Android that thread waited in the draw for the
 /// window's next image and in the show for the present, on the way builds
 /// 1095 to 1097 showed a window by (rust/src/platform/android.rs).
-typedef ScreenUp = ({int draw, int finish, int show});
+/// Where the engine said how its done was waited, [went] says what the
+/// finish went to ([ScreenFinish]).
+typedef ScreenUp = ({int draw, int finish, int show, ScreenFinish? went});
+
+/// 🔬What a frame's finish went to, in microseconds — the four parts it is
+/// made of: its done stood in turn on the engine's thread behind the
+/// bodies handed there before it ([queued]), its poll stood in the driver
+/// till the GPU had finished all that was submitted ([polled]) — of any
+/// caller's, so the GPU's own work and whatever ran before it alike —,
+/// this isolate then heard so ([heard]), and the frame waited for the
+/// canvas's other pictures to finish with it ([together]).
+///
+/// 🗣️유저 2026-11-24 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
+/// build 1102): a stroke's slowest frame finished in 80 ms where the
+/// engine's own GPU and thread took 16 — and the finish was one number,
+/// four things in it nothing told apart. 🗣️관제 the same day: 「모든가능성
+/// 철저하게 검사해서 디버그화면 만들면되지」.
+typedef ScreenFinish = ({int queued, int polled, int heard, int together});
 
 /// What the canvas view shows the engine's screen on: a texture of the
 /// view's size in device pixels, and the way a frame drawn on it reaches
@@ -50,7 +67,7 @@ sealed class ScreenTexture {
     this.width,
     this.height, {
     required int surfaces,
-    required Future<void> Function()? done,
+    required Future<GpuWaited?> Function()? done,
     GpuEngine? engine,
   }) : _bytes = width * height * 4 * surfaces,
        _done = done,
@@ -244,7 +261,7 @@ sealed class ScreenTexture {
     GpuSurface surface, {
     int id,
     int? nextId,
-    Future<void> Function()? done,
+    Future<GpuWaited?> Function()? done,
     GpuEngine? engine,
   }) =
       _SurfaceTexture;
@@ -263,9 +280,16 @@ sealed class ScreenTexture {
   /// one drawn was never finished and none is up.
   Object? get drawnLastFor => (_frames.laying ?? _frames.shown)?.drawnFor;
 
-  /// Ends once the GPU has finished what a frame submitted: null where a
-  /// frame is shown as soon as it is drawn ([debugOnSurface]).
-  final Future<void> Function()? _done;
+  /// Ends once the GPU has finished what a frame submitted, with how the
+  /// wait went ([GpuWaited]): null where a frame is shown as soon as it is
+  /// drawn ([debugOnSurface]).
+  final Future<GpuWaited?> Function()? _done;
+
+  /// How the done of the frame begun last went, and when — since its draw
+  /// began — this isolate heard it ([ScreenFinish]). Frames are drawn one
+  /// at a time ([_frames]) and each is put up only once its done is heard,
+  /// so what is here as one is put up is its own.
+  ({GpuWaited? waited, int heard})? _itsDone;
 
   /// 🚨★★★A FRAME IS PUT UP ONCE THE GPU HAS FINISHED IT, and the last one
   /// put up stands meanwhile ([LaidWhole] — the shape tool's law, I-69-Q4ⓒ):
@@ -351,7 +375,9 @@ sealed class ScreenTexture {
       _putUp();
       return;
     }
-    final finished = done();
+    final finished = done().then((waited) {
+      _itsDone = (waited: waited, heard: _sinceItsDraw.elapsedMicroseconds);
+    });
     unawaited(
       (upTogether?.call(finished) ?? finished).then(
         (_) {
@@ -414,12 +440,31 @@ sealed class ScreenTexture {
       draw: _itsDrawMicros,
       finish: heard - _itsDrawMicros,
       show: _sinceItsDraw.elapsedMicroseconds - heard,
+      went: _finishWent(heard),
     );
     _wentUp(up);
     final (told, engine) = (tookAsItWentUp, _engine);
     if (told != null && engine != null) {
       told(up, engine.took());
     }
+  }
+
+  /// What the finish of the frame up [heard] after its draw began went
+  /// to ([ScreenFinish]) — null where the engine kept no word of its wait.
+  ScreenFinish? _finishWent(int heard) {
+    final itsDone = _itsDone;
+    final waited = itsDone?.waited;
+    if (itsDone == null || waited == null) {
+      return null;
+    }
+    final ownDone = itsDone.heard - _itsDrawMicros;
+    final (:queuedMicros, :polledMicros) = waited;
+    return (
+      queued: queuedMicros,
+      polled: polledMicros,
+      heard: ownDone - queuedMicros - polledMicros,
+      together: heard - itsDone.heard,
+    );
   }
 
   static void _report(Object error, StackTrace stack) =>

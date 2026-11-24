@@ -2231,6 +2231,41 @@ fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go
     assert!(made().is_some_and(|its_own| its_own != any));
 }
 
+// What the compiler made, and each pass that ran on the pass that takes
+// any plan while its own was still to come, is counted where the frame
+// statistics read it (`gpu_engine_compiles`): the pipeline compiled apart
+// is one more made, with its time, and its pass counts as standing in no
+// more (🗣️유저 2026-11-24, card the-galaxy-tab-canvas-went-slow-on-
+// build-1095: 「앱 키고 초기에 스트로크 초기렉」 — the readout said none).
+#[test]
+fn a_pass_that_stands_in_for_its_own_is_counted_and_its_own_compile_too() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("compile the composite");
+    let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
+    let compiles = || {
+        let mut into = [0u64; 6];
+        // SAFETY: `engine` is live and `into` holds six words.
+        unsafe { crate::device::gpu_engine_compiles(&engine, into.as_mut_ptr()) };
+        into
+    };
+    let [opened, micros, longest, under_way, stood_in, _] = compiles();
+    assert!(opened > 0 && micros > 0 && longest > 0, "the full passes, made as it opened, are counted");
+    assert!(longest <= micros);
+    assert_eq!((under_way, stood_in), (0, 0));
+    engine.apart.hold();
+    let _ = composite.pass(&engine, own);
+    let _ = composite.pass(&engine, own);
+    assert_eq!(compiles()[4], 2, "each pass on the one that takes any, its own to come");
+    engine.apart.let_go();
+    composite.settle();
+    let _ = composite.pass(&engine, own);
+    let [made, micros_after, _, under_way, stood_in, _] = compiles();
+    assert_eq!(made, opened + 1, "its own pass made, one more");
+    assert!(micros_after > micros, "with the time it took");
+    assert_eq!((under_way, stood_in), (0, 2), "its own runs now, nothing compiling");
+}
+
 // The executor an app opens has the tiles' full pass and the surface's,
 // both made as it is (`Composite::showing`): its first show compiles
 // nothing, and nothing is left to compile apart. Where the adapter stores

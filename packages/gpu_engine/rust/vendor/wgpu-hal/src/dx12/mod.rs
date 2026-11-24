@@ -84,8 +84,6 @@ mod dcomp;
 mod descriptor;
 mod device;
 mod device_creation;
-// ANICEL: what DXC and the driver made, kept on disk (compile_cache.rs).
-mod compile_cache;
 mod instance;
 mod pipeline_desc;
 mod sampler;
@@ -784,8 +782,8 @@ pub struct Device {
     compiler_container: Arc<shader_compilation::CompilerContainer>,
     shader_cache: Mutex<ShaderCache>,
     /// ANICEL: where what DXC and the driver make is kept
-    /// ([`compile_cache`]).
-    compile_cache: compile_cache::CompileCache,
+    /// ([`crate::auxil::compile_cache`]).
+    compile_cache: auxil::compile_cache::CompileCache,
     /// ANICEL: which adapter and driver this is — what the driver makes of
     /// a pipeline is kept by it ([`Device::pipeline_asked`]).
     adapter_named: Vec<u8>,

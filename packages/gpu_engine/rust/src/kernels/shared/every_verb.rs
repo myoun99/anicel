@@ -29,7 +29,7 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 18] = [
+const ON_THEIR_CALLERS: [(&str, &str); 21] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
@@ -55,6 +55,18 @@ const ON_THEIR_CALLERS: [(&str, &str); 18] = [
          caller would stay for what it asked not to stay for",
     ),
     ("gpu_engine_done_failure", "takes the engine's own word of a wait (`Ended`)"),
+    (
+        "gpu_engine_done_waited",
+        "takes the engine's own word of how a wait went (`WaitsWent`): no device is asked, \n         and a screen takes it on the UI's thread as it hears its frame done",
+    ),
+    (
+        "gpu_engine_compiles",
+        "the engine's own counts of its compiles (`Compiles`) and the hal device's of the \n         pipelines its folder answered — a word the compile cache keeps, under no lock the \n         device's work holds (`platform::pipelines_found`): the frame statistics read it on \n         the UI's thread, which behind a compile would stand",
+    ),
+    (
+        "gpu_engine_pictures_bytes",
+        "the engine's own count of the pictures' pages made (`Pictures::bytes`): no device is \n         asked, and the frame statistics read it on the UI's thread",
+    ),
     ("gpu_engine_apart_hold", "the engine's own count (`Apart`)"),
     ("gpu_engine_apart_let", "the engine's own count (`Apart`)"),
     ("gpu_engine_apart_held", "the engine's own count (`Apart`)"),

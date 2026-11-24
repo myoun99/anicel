@@ -333,9 +333,9 @@ void main() {
       addTearDown(ScreenTexture.debugForgetUps);
       // Each part largest in a frame of its own.
       for (final up in const [
-        (draw: 1000, finish: 4000, show: 2000),
-        (draw: 3000, finish: 20000, show: 500),
-        (draw: 2000, finish: 6000, show: 9000),
+        (draw: 1000, finish: 4000, show: 2000, went: null),
+        (draw: 3000, finish: 20000, show: 500, went: null),
+        (draw: 2000, finish: 6000, show: 9000, went: null),
       ]) {
         ScreenTexture.debugWentUp(up);
       }
@@ -351,11 +351,38 @@ void main() {
       expect([stats.screenDrawP50, stats.screenDrawP95], [2.0, 3.0]);
       expect([stats.screenFinishP50, stats.screenFinishP95], [6.0, 20.0]);
       expect([stats.screenShowP50, stats.screenShowP95], [2.0, 9.0]);
+      expect(stats.screenFinishWent, isNull, reason: 'no frame said its parts');
+    });
+
+    test('a finish\'s parts are those of the frames that said them', () {
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      ScreenTexture.debugWentUp((draw: 0, finish: 90000, show: 0, went: null));
+      for (final (queued, polled) in const [
+        (1000, 6000),
+        (3000, 4000),
+        (2000, 5000),
+      ]) {
+        ScreenTexture.debugWentUp((
+          draw: 0,
+          finish: queued + polled + 900,
+          show: 0,
+          went: (queued: queued, polled: polled, heard: 600, together: 300),
+        ));
+      }
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+
+      final went = FrameStats.latest.value!.screenFinishWent!;
+      expect([went.queuedP50, went.queuedP95], [2.0, 3.0]);
+      expect([went.polledP50, went.polledP95], [5.0, 6.0]);
+      expect([went.heardP50, went.heardP95], [0.6, 0.6]);
+      expect([went.togetherP50, went.togetherP95], [0.3, 0.3]);
     });
 
     test('the screens\' rates are slopes over the interval between two '
         'publications, as the bakes\' is', () {
-      const up = (draw: 0, finish: 1000, show: 0);
+      const up = (draw: 0, finish: 1000, show: 0, went: null);
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
       ScreenTexture.debugWentUp(up, behind: true);
@@ -866,7 +893,12 @@ void main() {
       MeasurementMode.frameStats.value = true;
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
-      ScreenTexture.debugWentUp((draw: 1100, finish: 22200, show: 3300));
+      ScreenTexture.debugWentUp((
+        draw: 1100,
+        finish: 22200,
+        show: 3300,
+        went: (queued: 5000, polled: 12000, heard: 3000, together: 2200),
+      ));
       PointerClock.handled(points: 3, micros: 4400);
       FrameStats.debugFeed(<FrameTiming>[
         _frame(
@@ -892,6 +924,8 @@ void main() {
         (' draw', '1.1'),
         (' finish', '22.2'),
         (' show', '3.3'),
+        ('  went', 'queue 5.0/5.0  gpu 12.0/12.0  heard 3.0/3.0  together '
+            r'2\.2/2\.2$'),
         ('POINTER', '4.4'),
         ('POINTER', 'pts/s'),
       ]) {
@@ -935,7 +969,8 @@ void main() {
         (' pen→up', r'p50   9\.9'),
         // No engine is open in a test: none of its figures, not a zero.
         ('GPU', r'behind —  max —  timestamps —$'),
-        ('MEMORY', r'app \d+\.\d MB  screens 0\.0 MB  vram —$'),
+        ('MEMORY', r'app \d+\.\d MB  screens 0\.0 MB  pictures —  vram —$'),
+        ('COMPILE', r'—$'),
       ]) {
         expect(
           find.textContaining(RegExp('^${RegExp.escape(line)}.*$figure')),

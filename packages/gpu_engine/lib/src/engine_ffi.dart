@@ -281,6 +281,11 @@ external int engineUnfinished(
 @Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_submits_behind')
 external int engineSubmitsBehind(Pointer<Engine> engine);
 
+@Native<Void Function(Pointer<Engine>, Pointer<Uint64>)>(
+  symbol: 'gpu_engine_compiles',
+)
+external void engineCompiles(Pointer<Engine> engine, Pointer<Uint64> into);
+
 @Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_clocked')
 external bool engineClocked(Pointer<Engine> engine);
 
@@ -307,6 +312,15 @@ external void doneThen(
   Pointer<Engine> engine,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> then,
   int wait,
+);
+
+@Native<Bool Function(Pointer<Engine>, Uint64, Pointer<Uint64>)>(
+  symbol: 'gpu_engine_done_waited',
+)
+external bool doneWaited(
+  Pointer<Engine> engine,
+  int wait,
+  Pointer<Uint64> into,
 );
 
 @Native<Size Function(Pointer<Engine>, Uint64, Pointer<Uint8>, Size)>(
@@ -1307,6 +1321,9 @@ external int keptBytes();
   symbol: 'gpu_engine_pictures_idle_bytes',
 )
 external int picturesIdleBytes(Pointer<Engine> engine);
+
+@Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_pictures_bytes')
+external int picturesBytes(Pointer<Engine> engine);
 
 @Native<Uint64 Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_pictures_unowned_bytes',

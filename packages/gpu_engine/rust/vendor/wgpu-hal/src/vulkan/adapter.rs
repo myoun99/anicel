@@ -2995,6 +2995,8 @@ impl super::Adapter {
             #[cfg(feature = "renderdoc")]
             render_doc: Default::default(),
             counters: Default::default(),
+            compile_cache: Default::default(),
+            adapter_named: adapter_named(&self.phd_capabilities.properties),
         };
 
         Ok(crate::OpenDevice { device, queue })
@@ -3564,4 +3566,18 @@ fn query_cooperative_matrix_properties(
         result.len()
     );
     result
+}
+
+/// ANICEL — not wgpu's: which adapter `properties` are of and which driver
+/// runs it, as bytes — what the driver made of a pipeline is kept by them
+/// (`super::Device::kept_compute_pipeline`): the vendor, the device, the
+/// driver's version and the identity it gives what its pipeline caches
+/// hold, which changes with any build of it that makes them otherwise.
+fn adapter_named(properties: &vk::PhysicalDeviceProperties) -> Vec<u8> {
+    let mut named = Vec::new();
+    for word in [properties.vendor_id, properties.device_id, properties.driver_version] {
+        named.extend_from_slice(&word.to_le_bytes());
+    }
+    named.extend_from_slice(&properties.pipeline_cache_uuid);
+    named
 }

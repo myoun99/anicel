@@ -352,6 +352,12 @@ class GpuEngine {
   /// are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
 
+  /// The bytes of the pages the engine's pictures have their tiles on,
+  /// made — a page whole, its free slots too: what the frame statistics'
+  /// MEMORY line says the engine's pictures hold, beside what the OS says
+  /// the app does. Read off the engine's thread.
+  int get pictureBytes => rust.picturesBytes(_engine);
+
   /// The bytes of the tiles the engine's pictures hold that none of them
   /// weighs. Screens composed of the same hold one tile for it, weighed by
   /// the screen that made it ([GpuScreen.bytes]); that one let go while
@@ -476,6 +482,24 @@ class GpuEngine {
   /// Asks nothing of the engine's thread or the device.
   int get submitsBehind => rust.engineSubmitsBehind(_engine);
 
+  /// What this engine's compiler made since it opened, and what ran
+  /// meanwhile without it (rust/src/device.rs, `Compiles`) — the frame
+  /// statistics' COMPILE line. Asks nothing of the engine's thread or the
+  /// device.
+  GpuCompiles get compiles => using((arena) {
+    final into = arena<Uint64>(6);
+    rust.engineCompiles(_engine, into);
+    return (
+      made: into[0],
+      micros: into[1],
+      longestMicros: into[2],
+      underWay: into[3],
+      stoodIn: into[4],
+      // The OS keeps them, and says nothing (rust/src/platform/apple.rs).
+      found: into[5] == -1 ? null : into[5],
+    );
+  });
+
   /// Whether this engine's device has a clock of its own
   /// (rust/src/clock.rs): what a timed engine tells the GPU's time by
   /// ([took]) — none told where it has not.
@@ -578,8 +602,11 @@ class GpuEngine {
   /// a screen's frame is put up as the GPU finishes it, the thread that
   /// builds the app's frames waiting for none of it ([debugWaitsHere]).
   ///
-  Future<void> done() {
-    final ended = Completer<void>();
+  /// Ends with how the wait went ([GpuWaited]) — null where the engine
+  /// kept no word of it — for whoever reads why a frame took as long as it
+  /// did (`ScreenTexture`'s finish).
+  Future<GpuWaited?> done() {
+    final ended = Completer<GpuWaited?>();
     rust.doneThen(
       _engine,
       _waits.told,
@@ -588,20 +615,33 @@ class GpuEngine {
     return ended.future;
   }
 
+  /// How the wait [wait] went where it finished — taken
+  /// (rust/src/device.rs, `gpu_engine_done_waited`).
+  GpuWaited? _waitedOf(int wait) => _closed
+      ? null
+      : using((arena) {
+          final into = arena<Uint64>(2);
+          if (!rust.doneWaited(_engine, wait, into)) {
+            return null;
+          }
+          return (queuedMicros: into[0], polledMicros: into[1]);
+        });
+
   /// The waits on their way ([done]), and how a thread of the engine's
   /// tells this isolate one has ended: by its number, and whether the GPU
   /// finished.
-  static final _waits = _Told<({Completer<void> ended, GpuEngine engine})>((
-    wait,
-    asked,
-    finished,
-  ) {
-    if (finished) {
-      asked.ended.complete();
-    } else {
-      asked.ended.completeError(GpuRefused(asked.engine._whyNotDone(wait)));
-    }
-  });
+  static final _waits =
+      _Told<({Completer<GpuWaited?> ended, GpuEngine engine})>((
+        wait,
+        asked,
+        finished,
+      ) {
+        if (finished) {
+          asked.ended.complete(asked.engine._waitedOf(wait));
+        } else {
+          asked.ended.completeError(GpuRefused(asked.engine._whyNotDone(wait)));
+        }
+      });
 
   /// Why the wait [wait] did not end with the GPU done — taken. 🚨Of an
   /// engine closed meanwhile nothing is read: its thread tells the waits
@@ -927,6 +967,28 @@ final int gpuTileBytes = gpuTileSide * gpuTileSide * 4;
 
 /// Where a [GpuPool] keeps a tile: a slot of one of its pages.
 typedef GpuTile = ({int page, int slot});
+
+/// What an engine's compiler made since it opened ([GpuEngine.compiles]):
+/// pipelines [made] and the microseconds they took in all, the longest of
+/// them, compiles [underWay] now, composite passes run on the pass that
+/// takes any plan while their own was still to come ([stoodIn]), and the
+/// pipelines the folder it keeps them in answered ([found]) — null where
+/// the OS keeps them and says nothing (Apple).
+typedef GpuCompiles = ({
+  int made,
+  int micros,
+  int longestMicros,
+  int underWay,
+  int stoodIn,
+  int? found,
+});
+
+/// How a wait for the GPU went where it finished ([GpuEngine.done]): the
+/// microseconds it stood in turn on the engine's thread behind the bodies
+/// handed there before it ([queuedMicros]), and those its poll stood in
+/// the driver till the GPU had finished all that was submitted — of any
+/// caller's ([polledMicros]).
+typedef GpuWaited = ({int queuedMicros, int polledMicros});
 
 /// What one place of the engine took since it was last asked
 /// ([GpuEngine.took]): whose time it is — the [gpu]'s, of the submits

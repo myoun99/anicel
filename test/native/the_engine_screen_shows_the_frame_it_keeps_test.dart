@@ -1155,11 +1155,11 @@ void main() {
       addTearDown(screen.free);
       final target = shownSurfaceOf(300, 140);
       addTearDown(target.free);
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       final texture = ScreenTexture.debugOnSurface(
         target,
         done: () {
-          final gate = Completer<void>();
+          final gate = Completer<GpuWaited?>();
           gates.add(gate);
           return gate.future;
         },
@@ -1170,7 +1170,7 @@ void main() {
       final failure = GpuRefused('the GPU did not finish within 30s');
 
       /// A frame of the texture's, the GPU ending it as [end] says.
-      Future<void> aFrame(void Function(Completer<void> gate) end) async {
+      Future<void> aFrame(void Function(Completer<GpuWaited?> gate) end) async {
         texture.present(
           (next) => drawn.add(drawnOn(next, screen, withRoom)),
         );

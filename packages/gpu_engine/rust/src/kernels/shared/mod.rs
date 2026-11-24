@@ -323,30 +323,33 @@ pub extern "C" fn gpu_engine_kernels_built_here() -> u64 {
 }
 
 /// The module and the pipeline of `source`, on the thread that asks — which
-/// has the compiler to itself, by the turn it shows.
+/// has the compiler to itself, by the turn it shows, which counts it
+/// (`CompilerTurn::counted`).
 fn compiled(
-    _turn: &CompilerTurn,
+    turn: &CompilerTurn,
     device: &wgpu::Device,
     source: String,
     entry: &str,
     constants: &[(&str, f64)],
     zeroed: bool,
 ) -> wgpu::ComputePipeline {
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(entry),
-        source: wgpu::ShaderSource::Wgsl(source.into()),
-    });
-    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some(entry),
-        layout: None,
-        module: &module,
-        entry_point: Some(entry),
-        compilation_options: wgpu::PipelineCompilationOptions {
-            constants,
-            zero_initialize_workgroup_memory: zeroed,
-            ..Default::default()
-        },
-        cache: None,
+    turn.counted(device, || {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(entry),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(entry),
+            layout: None,
+            module: &module,
+            entry_point: Some(entry),
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants,
+                zero_initialize_workgroup_memory: zeroed,
+                ..Default::default()
+            },
+            cache: None,
+        })
     })
 }
 

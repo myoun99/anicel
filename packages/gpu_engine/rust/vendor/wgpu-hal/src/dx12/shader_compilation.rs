@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::ffi::CStr;
 use std::path::PathBuf;
 
-use super::compile_cache::{self, Made, Turn};
+use crate::auxil::compile_cache::{self, Made, Turn};
 use crate::auxil::dxgi::result::HResult;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -37,7 +37,7 @@ pub(super) struct CompilerStaticDxc {
 
 /// ANICEL — not wgpu's: the DXC compilers one device compiles with, one to
 /// each compile under way, and what DXC made kept on disk
-/// ([`super::compile_cache`]).
+/// ([`crate::auxil::compile_cache`]).
 ///
 /// ↩️wgpu-hal 30 made one compiler and compiled on it from whatever thread
 /// asked, with no lock — and 「objects created by DxcCreateInstance aren't
@@ -181,7 +181,7 @@ impl DxcCompilers {
 
     /// What DXC makes of `source`: what an earlier compile kept on disk
     /// where all that is asked is the same — waiting for it where another
-    /// process compiles it now ([`super::compile_cache::CompileCache::turn`]) —
+    /// process compiles it now ([`crate::auxil::compile_cache::CompileCache::turn`]) —
     /// else compiled on a compiler no other compile holds — one of
     /// [`Self::spare`], or `make`'s where none is — and kept.
     #[allow(clippy::too_many_arguments)]
@@ -455,7 +455,7 @@ unsafe fn dxc_create_instance<T: DxcObj>(
 struct OPCWSTR {
     inner: Vec<u16>,
     /// ANICEL: what it says, for what DXC was asked to be known by
-    /// ([`super::compile_cache::asked`]).
+    /// ([`crate::auxil::compile_cache::asked`]).
     text: String,
 }
 

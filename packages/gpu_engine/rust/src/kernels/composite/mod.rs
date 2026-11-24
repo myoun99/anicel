@@ -1276,6 +1276,9 @@ impl Composite {
         if begins {
             self.compile_apart(engine);
         }
+        if made.is_none() {
+            engine.compiles.stood_in();
+        }
         made.unwrap_or(for_full)
     }
 

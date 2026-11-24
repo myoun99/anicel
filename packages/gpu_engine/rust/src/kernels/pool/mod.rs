@@ -1855,9 +1855,10 @@ impl Pictures {
         self.kept().pool.as_ref().map_or(at, |pool| pool.lies(at))
     }
 
-    /// Test seam: the bytes of the pool's pages made ([`Pool::bytes`]) —
-    /// one given back or away counts nothing.
-    #[cfg(test)]
+    /// The bytes of the pool's pages made ([`Pool::bytes`]) — one given
+    /// back or away counts nothing: what the frame statistics' MEMORY line
+    /// says the engine's pictures hold (`gpu_engine_pictures_bytes`), and
+    /// what tests count.
     pub(crate) fn bytes(&self) -> u64 {
         self.kept().pool.as_ref().map_or(0, Pool::bytes)
     }

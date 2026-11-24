@@ -88,6 +88,8 @@ pub struct Engine {
     no_page: wgpu::Buffer,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
+    /// What its compiler made, counted ([`Compiles`]).
+    pub(crate) compiles: Arc<Compiles>,
     /// When what is compiled apart may take the compiler ([`Apart`]).
     pub(crate) apart: Apart,
     /// How fast the device spends a plugin's share, once a plugin first
@@ -108,6 +110,9 @@ pub struct Engine {
     /// Why each wait no caller stayed for failed, till the caller asks
     /// ([`gpu_engine_done_failure`]).
     ended: Ended,
+    /// How each wait no caller stayed for went where it finished, till the
+    /// caller takes it ([`gpu_engine_done_waited`]).
+    waits_went: WaitsWent,
     /// What the bodies handed over unwaited refused, till a done tells it
     /// ([`Engine::posted`]).
     posted_refused: PostedRefused,
@@ -449,7 +454,86 @@ impl Apart {
 /// 묶는다 — 디스크 캐시 + 나란히 컴파일」): wgpu-hal is ours to patch
 /// (Cargo.toml, `[patch.crates-io]`), and each compile under way takes a
 /// DXC compiler no other holds (vendor/wgpu-hal, `DxcCompilers`).
-pub(crate) struct CompilerTurn(());
+///
+/// It counts what is compiled in it ([`Compiles`], [`Self::counted`]).
+pub(crate) struct CompilerTurn(Arc<Compiles>);
+
+impl CompilerTurn {
+    /// What `compile` makes — `device` asked for a pipeline — counted as
+    /// one compile, with how long it took and what the folder that keeps
+    /// them has answered since ([`Compiles`]).
+    pub(crate) fn counted<T>(&self, device: &wgpu::Device, compile: impl FnOnce() -> T) -> T {
+        let compiles = &self.0;
+        compiles.under_way.fetch_add(1, Ordering::Relaxed);
+        let began = Instant::now();
+        let made = compile();
+        let took = began.elapsed().as_micros() as u64;
+        compiles.found_on(device);
+        compiles.under_way.fetch_sub(1, Ordering::Relaxed);
+        compiles.made.fetch_add(1, Ordering::Relaxed);
+        compiles.micros.fetch_add(took, Ordering::Relaxed);
+        compiles.longest.fetch_max(took, Ordering::Relaxed);
+        made
+    }
+}
+
+/// What the engine's compiler made since the engine opened, and what ran
+/// meanwhile without it — the frame statistics' COMPILE line
+/// ([`gpu_engine_compiles`]).
+///
+/// 🗣️유저 2026-11-24 (card the-galaxy-tab-canvas-went-slow-on-build-1095):
+/// 「앱 키고 초기에 스트로크 초기렉 아직있고, 시간지나면 점점 괜찮아져」 — what a
+/// launch warms is its compiles (every kernel, the composite's own passes,
+/// what a launch compiles after the wait window), and the readout said
+/// none of them: 🗣️관제 the same day 「몇번을 임시빌드로 테스트하게
+/// 만드는거냐고 … 모든가능성 철저하게 검사해서 디버그화면 만들면되지」.
+pub(crate) struct Compiles {
+    /// Pipelines the device made ([`CompilerTurn::counted`]).
+    made: AtomicU64,
+    /// What they took in all, and the longest of them, in microseconds.
+    micros: AtomicU64,
+    longest: AtomicU64,
+    /// Compiles under way now.
+    under_way: AtomicU64,
+    /// Passes of the composite run on the pass that takes any plan while
+    /// their own was still to be compiled (`Composite::pass`).
+    stood_in: AtomicU64,
+    /// The pipelines the folder that keeps them answered
+    /// (`platform::pipelines_found`) as the engine opened and as each
+    /// compile left it — the only times it changes —, `u64::MAX` where the
+    /// OS keeps them and says nothing. ⛔Read where the device is in hand,
+    /// never as the statistics ask: they ask on the thread frames are
+    /// built on, which takes no GPU device in hand (`Engine::device`,
+    /// test/flutter_test_config.dart).
+    found: AtomicU64,
+}
+
+impl Compiles {
+    /// Counting from `device` as it opened.
+    fn of(device: &wgpu::Device) -> Self {
+        let compiles = Self {
+            made: AtomicU64::new(0),
+            micros: AtomicU64::new(0),
+            longest: AtomicU64::new(0),
+            under_way: AtomicU64::new(0),
+            stood_in: AtomicU64::new(0),
+            found: AtomicU64::new(0),
+        };
+        compiles.found_on(device);
+        compiles
+    }
+
+    /// One pass run on the pass that takes any plan meanwhile.
+    pub(crate) fn stood_in(&self) {
+        self.stood_in.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// What the folder `device` keeps its pipelines in has answered, now.
+    fn found_on(&self, device: &wgpu::Device) {
+        let found = platform::pipelines_found(device).unwrap_or(u64::MAX);
+        self.found.store(found, Ordering::Relaxed);
+    }
+}
 
 /// How many threads the engine compiles on ([`CompilerTurn`]): one to each
 /// of the device's cores, a tablet's few among them.
@@ -702,6 +786,7 @@ impl Engine {
                     pages,
                     no_page,
                     kernels: Kernels::default(),
+                    compiles: Arc::new(Compiles::of(&device)),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
                     pictures: Default::default(),
@@ -709,6 +794,7 @@ impl Engine {
                     spares,
                     refusals,
                     ended: Ended::default(),
+                    waits_went: WaitsWent::default(),
                     posted_refused: PostedRefused::default(),
                     adapter,
                     device,
@@ -976,7 +1062,8 @@ impl Engine {
         work: impl FnOnce(&CompilerTurn) -> T + Send + 'static,
     ) -> T {
         self.thread.stands_aside();
-        self.compiling.run(move || work(&CompilerTurn(()))).expect("the engine's thread")
+        let compiles = Arc::clone(&self.compiles);
+        self.compiling.run(move || work(&CompilerTurn(compiles))).expect("the engine's thread")
     }
 
     /// The texture's bytes, rows top to bottom with no padding — for
@@ -1154,12 +1241,37 @@ impl Engine {
     }
 
     fn done_within(&self, limit: Duration, then: impl FnOnce(Result<(), String>) + Send + 'static) {
-        let told = Told { then: Some(then), refusals: self.refusals.clone() };
+        self.done_waited(limit, move |done| then(done.map(|_| ())));
+    }
+
+    /// [`Self::done_then`], told how the wait went where the GPU finished
+    /// ([`Waited`]): how long it stood in turn on the engine's thread
+    /// before its poll was asked, and how long the poll stood in the driver
+    /// till the GPU had finished all that was submitted.
+    fn done_waited(&self, limit: Duration, then: impl FnOnce(Result<Waited, String>) + Send + 'static) {
+        let asked = Instant::now();
+        // Set as the poll is asked, read as it is told — ⛔not a Told made
+        // in the body: a body never run drops what it holds untold, and a
+        // Told dropped tells its caller the device is gone ([`Told`]).
+        let polled: Arc<OnceLock<(Duration, Instant)>> = Arc::default();
+        let read = Arc::clone(&polled);
+        let told = Told {
+            then: Some(move |done: Result<(), String>| {
+                then(done.map(|()| match read.get() {
+                    Some(&(queued, from)) => Waited { queued, polled: from.elapsed() },
+                    None => Waited { queued: asked.elapsed(), polled: Duration::ZERO },
+                }))
+            }),
+            refusals: self.refusals.clone(),
+        };
         let (asker, refused) = (std::thread::current().id(), self.posted_refused.clone());
         let (polls, device, tells) = (self.polls.clone(), self.device.clone(), self.tells.clone());
         self.thread.posts(move || match refused.taken(asker) {
             Some(why) => told.tell(Err(format!("a body handed over unwaited failed: {why}"))),
-            None => told.once_polled(&tells, Poll::asked_of(&polls, &device), limit),
+            None => {
+                let _ = polled.set((asked.elapsed(), Instant::now()));
+                told.once_polled(&tells, Poll::asked_of(&polls, &device), limit);
+            }
         });
     }
 
@@ -1395,6 +1507,28 @@ struct Ended(Arc<Mutex<HashMap<u64, String>>>);
 
 impl Ended {
     fn kept(&self) -> std::sync::MutexGuard<'_, HashMap<u64, String>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// How a wait for the GPU went where it finished ([`Engine::done_waited`]):
+/// how long it stood in turn on the engine's thread behind the bodies
+/// handed there before it, and how long its poll stood in the driver till
+/// the GPU had finished all that was submitted — of any caller's.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Waited {
+    pub(crate) queued: Duration,
+    pub(crate) polled: Duration,
+}
+
+/// How each wait that finished went ([`Waited`], [`gpu_engine_done_then`]),
+/// by the number its caller knows it by — kept till that caller takes it
+/// ([`gpu_engine_done_waited`]).
+#[derive(Clone, Default)]
+struct WaitsWent(Arc<Mutex<HashMap<u64, Waited>>>);
+
+impl WaitsWent {
+    fn kept(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Waited>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -2741,13 +2875,65 @@ pub unsafe extern "C" fn gpu_engine_done_then(
 ) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    let ended = engine.ended.clone();
-    engine.done_then(move |done| {
-        if let Err(why) = &done {
-            ended.kept().insert(wait, why.clone());
+    let (ended, went) = (engine.ended.clone(), engine.waits_went.clone());
+    engine.done_waited(WAIT_LIMIT, move |done| {
+        match &done {
+            Ok(waited) => {
+                went.kept().insert(wait, *waited);
+            }
+            Err(why) => {
+                ended.kept().insert(wait, why.clone());
+            }
         }
         then(wait, done.is_ok());
     });
+}
+
+/// Takes how the wait `wait` went where it finished
+/// ([`gpu_engine_done_then`], [`Waited`]): into `into` — two words, the
+/// microseconds it stood in turn on the engine's thread, then those its
+/// poll stood in the driver — and true; false where none is kept under
+/// that number. It is kept no more.
+///
+/// # Safety
+/// `engine` is live and `into` holds two words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_done_waited(engine: *const Engine, wait: u64, into: *mut u64) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let Some(waited) = engine.waits_went.kept().remove(&wait) else {
+        return false;
+    };
+    // SAFETY: `into` holds two words.
+    let into = unsafe { std::slice::from_raw_parts_mut(into, 2) };
+    into[0] = waited.queued.as_micros() as u64;
+    into[1] = waited.polled.as_micros() as u64;
+    true
+}
+
+/// What `engine`'s compiler made since it opened ([`Compiles`]) into
+/// `into` — six words: pipelines made, the microseconds they took in all,
+/// the longest of them, compiles under way now, composite passes run on the
+/// pass that takes any plan while their own was to come, and pipelines the
+/// folder it keeps them in answered (`platform::pipelines_found`) or
+/// `u64::MAX` where the OS keeps them and says nothing. Asks nothing of
+/// the engine's thread, and takes no device in hand (`Compiles::found`).
+///
+/// # Safety
+/// `engine` is live and `into` holds six words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_compiles(engine: *const Engine, into: *mut u64) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let compiles = &engine.compiles;
+    // SAFETY: `into` holds six words.
+    let into = unsafe { std::slice::from_raw_parts_mut(into, 6) };
+    into[0] = compiles.made.load(Ordering::Relaxed);
+    into[1] = compiles.micros.load(Ordering::Relaxed);
+    into[2] = compiles.longest.load(Ordering::Relaxed);
+    into[3] = compiles.under_way.load(Ordering::Relaxed);
+    into[4] = compiles.stood_in.load(Ordering::Relaxed);
+    into[5] = compiles.found.load(Ordering::Relaxed);
 }
 
 /// Takes why the wait `wait` failed ([`gpu_engine_done_then`]): copies it
@@ -3091,6 +3277,48 @@ mod tests {
         });
         assert!(got_through, "a body stood behind a wait no caller stayed for");
         assert_eq!(told.recv_timeout(IN_TIME), Ok(Ok(())));
+    }
+
+    // How a wait no caller stays for went where it finished is kept under
+    // its number for its caller to take, once (`gpu_engine_done_waited`):
+    // the time it stood in turn on the engine's thread behind a body, and
+    // apart from it the time its poll stood in the driver — here inside a
+    // map's answer — which a screen's finish says apart (🗣️관제 2026-11-24,
+    // card the-galaxy-tab-canvas-went-slow-on-build-1095: 「FINISH 넷으로」).
+    #[test]
+    fn how_a_wait_went_is_kept_for_its_caller_to_take_once() {
+        use super::{gpu_engine_done_then, gpu_engine_done_waited, gpu_engine_stand_still};
+        use std::sync::{Mutex, PoisonError};
+        use std::time::{Duration, Instant};
+        static TOLD: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());
+        extern "C" fn then(wait: u64, finished: bool) {
+            TOLD.lock().unwrap_or_else(PoisonError::into_inner).push((wait, finished));
+        }
+        let told = |wait| TOLD.lock().unwrap_or_else(PoisonError::into_inner).iter().find(|it| it.0 == wait).copied();
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let (stood, in_the_driver) = (Duration::from_millis(300), Duration::from_millis(600));
+        let buffer = engine.readback(4);
+        // SAFETY: `engine` is live.
+        unsafe { gpu_engine_stand_still(engine, stood.as_millis() as u32) };
+        buffer.map_async(wgpu::MapMode::Read, .., move |_| std::thread::sleep(in_the_driver));
+        let wait = 0x5eed_0001;
+        // SAFETY: `engine` is live; `then` any thread may call.
+        unsafe { gpu_engine_done_then(engine, then, wait) };
+        let deadline = Instant::now() + IN_TIME;
+        while told(wait).is_none() {
+            assert!(Instant::now() < deadline, "the wait was never told");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(told(wait), Some((wait, true)));
+        let mut into = [0u64; 2];
+        // SAFETY: `engine` is live and `into` holds two words.
+        assert!(unsafe { gpu_engine_done_waited(engine, wait, into.as_mut_ptr()) }, "kept for its caller");
+        let [queued, polled] = into.map(Duration::from_micros);
+        assert!(queued >= stood - Duration::from_millis(50), "it stood in turn behind the body: {queued:?}");
+        assert!(polled >= in_the_driver - Duration::from_millis(50), "its poll stood in the driver: {polled:?}");
+        // SAFETY: as above.
+        assert!(!unsafe { gpu_engine_done_waited(engine, wait, into.as_mut_ptr()) }, "taken, kept no more");
     }
 
     // 🚨A wait no caller stays for is told at its limit that the GPU did

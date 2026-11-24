@@ -407,12 +407,20 @@ pub fn shader_compiler() -> wgpu::Dx12Compiler {
 }
 
 /// What DXC and the driver make for `device` kept in `folder`, or nowhere
-/// where it is `None` (vendor/wgpu-hal, compile_cache.rs).
+/// where it is `None` (vendor/wgpu-hal, auxil/compile_cache.rs — Vulkan's
+/// by the same code).
 pub fn keep_shaders(device: &wgpu::Device, folder: Option<PathBuf>) {
     // SAFETY: names only where the hal device keeps what it made.
     if let Some(hal_device) = unsafe { device.as_hal::<Dx12>() } {
         hal_device.keep_shaders_in(folder);
     }
+}
+
+/// How many of `device`'s pipelines the folder it keeps them in has
+/// answered ([`keep_shaders`]).
+pub fn pipelines_found(device: &wgpu::Device) -> Option<u64> {
+    // SAFETY: only reads a count.
+    unsafe { device.as_hal::<Dx12>() }.map(|hal_device| hal_device.pipelines_found())
 }
 
 /// cargo test's engine is the test binary, beside which nothing installs
@@ -593,30 +601,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         assert_eq!(super::device_went_by(first_engine().device()), WENT_UNSAID);
     }
 
-    // ---- What DXC and the driver made, kept (vendor/wgpu-hal, compile_cache.rs) ----
+    // ---- What DXC and the driver made, kept (vendor/wgpu-hal, auxil/compile_cache.rs) ----
 
-    // Each test's engines are its own, so that no other test's compiles go
-    // into its folder, and the folder is its own.
-    const WRITES_SEVEN: &str = "
-@group(0) @binding(0) var<storage, read_write> out: array<u32>;
-@compute @workgroup_size(1)
-fn main() { out[0] = 7u; }
-";
+    // What every keeping platform's pins share — and the pins of what the
+    // driver made of a pipeline — are kept_tests.rs's; DXC's are here.
+    use crate::platform::kept_tests::{WRITES_SEVEN, first_word, keeping, kept_files, kept_in, pipelines_found};
 
-    /// The test's folder to keep in, gone with the test — at its end, or as
-    /// it panics (oracle's `TempFile`). ↩️Each test removed its folder at
-    /// its last line, which a test that failed first never reached: 33 were
-    /// left in Temp on the main PC on 11-18 (card
-    /// engine-kept-tests-leave-their-folder-when-they-fail).
-    fn kept_in(name: &str) -> oracle::TempFile {
-        oracle::TempFile::at(&format!("gpu_engine_kept_{name}"))
-    }
-
-    fn keeping(turn: &DeviceTurn, folder: &std::path::Path) -> crate::device::Engine {
-        let engine = turn.engine();
-        super::keep_shaders(engine.device(), Some(folder.to_path_buf()));
-        engine
-    }
 
     fn found(engine: &crate::device::Engine) -> u64 {
         // SAFETY: only reads a count.
@@ -628,41 +618,7 @@ fn main() { out[0] = 7u; }
         unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_waited()
     }
 
-    fn pipelines_found(engine: &crate::device::Engine) -> u64 {
-        // SAFETY: only reads a count.
-        unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").pipelines_found()
-    }
 
-    /// The files of `folder` whose extension is `extension` — `dxil` what
-    /// DXC made, `pso` what the driver made of a pipeline, `turn` a turn.
-    fn kept_files(folder: &std::path::Path, extension: &str) -> Vec<(std::path::PathBuf, u64)> {
-        let mut files: Vec<_> = std::fs::read_dir(folder)
-            .map(|entries| {
-                entries
-                    .filter_map(|entry| {
-                        let entry = entry.ok()?;
-                        Some((entry.path(), entry.metadata().ok()?.len()))
-                    })
-                    .filter(|(path, _)| path.extension().is_some_and(|it| it == extension))
-                    .collect()
-            })
-            .unwrap_or_default();
-        files.sort();
-        files
-    }
-
-    /// What `pipeline` writes to the first word of the buffer at binding 0.
-    fn first_word(engine: &crate::device::Engine, pipeline: &wgpu::ComputePipeline) -> u32 {
-        use crate::kernels::shared::{Encoded, encode, whole};
-        let out = engine.filled(
-            "kept DXIL",
-            &[0; 4],
-            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        );
-        encode(engine, &[Encoded { pipeline, bound: whole(&[(0, &out)]), groups: (1, 1, 1) }]);
-        let bytes = crate::testing::read_buffer(engine, &out);
-        u32::from_le_bytes(bytes[..4].try_into().unwrap())
-    }
 
     // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
     // 「디스크 캐시」): what one engine's DXC made, the next is handed — and
@@ -801,25 +757,6 @@ fn main() { out[0] = 7u; }
         assert_eq!(kept_files(&folder, "pso").len(), 2);
         assert_eq!(pipelines_found(&next), 2, "and each pipeline");
         assert_eq!((first_word(&next, &seven), first_word(&next, &eight)), (7, 8));
-    }
-
-    // 🔬What the driver made of a pipeline, the next engine is handed — and
-    // it is that pipeline (board two-tests-spend-the-wait-windows-minute-
-    // under-load, 11-18: from the eleventh process on, NVIDIA's own cache
-    // made every pipeline again).
-    #[test]
-    fn what_the_driver_made_of_a_pipeline_is_handed_to_the_next_engine() {
-        let turn = a_device_of_its_own();
-        let kept = kept_in("pso_handed");
-        let folder = kept.path();
-        let first = keeping(&turn, &folder);
-        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&first), 0, "nothing was kept before");
-        assert_eq!(kept_files(&folder, "pso").len(), 1, "what the driver made is kept, in one file");
-        let next = keeping(&turn, &folder);
-        let handed = pipeline(&next, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&next), 1, "the next engine is handed it");
-        assert_eq!(first_word(&next, &handed), 7);
     }
 
     // What the driver made of another shader's pipeline, kept whole under

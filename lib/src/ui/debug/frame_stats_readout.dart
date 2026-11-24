@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuCompiles;
 
 import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import 'engine_stages.dart';
@@ -80,6 +81,38 @@ class FrameStatsReadout extends StatelessWidget {
   /// What is not said — no engine open, no answer of the OS's — as no
   /// figure, not a zero.
   static String _orNone(Object? value) => value?.toString() ?? '—';
+
+  /// A finish's parts as the readout says them: queue, GPU, heard,
+  /// together, each `p50/p95` in milliseconds — `—` where no frame said
+  /// them.
+  static String _wentWords(FinishWentMillis? went) {
+    if (went == null) {
+      return '—';
+    }
+    String part(double p50, double p95) =>
+        '${p50.toStringAsFixed(1)}/${p95.toStringAsFixed(1)}';
+    return 'queue ${part(went.queuedP50, went.queuedP95)}  '
+        'gpu ${part(went.polledP50, went.polledP95)}  '
+        'heard ${part(went.heardP50, went.heardP95)}  '
+        'together ${part(went.togetherP50, went.togetherP95)}';
+  }
+
+  /// What the engine's compiler made as the readout says it: how many,
+  /// what they took in all and the longest, how many are under way, the
+  /// passes a second that stood in for their own, and how many the folder
+  /// it keeps them in answered — `—` where the OS keeps them and says
+  /// nothing, and where no engine is open.
+  static String _compileWords(GpuCompiles? compiles, double fullPerSecond) {
+    if (compiles == null) {
+      return '—';
+    }
+    return 'made ${compiles.made}  '
+        'in ${(compiles.micros / 1e6).toStringAsFixed(1)} s  '
+        'longest ${(compiles.longestMicros / 1000).toStringAsFixed(0)} ms  '
+        'now ${compiles.underWay}  '
+        'full pass ${fullPerSecond.toStringAsFixed(1)}/s  '
+        'disk ${_orNone(compiles.found)}';
+  }
 
   /// [micros] in milliseconds to a tenth, unpadded — none where null.
   static String _msOf(int? micros) =>
@@ -191,6 +224,9 @@ class FrameStatsReadout extends StatelessWidget {
                     }}',
                 ' finish p50${_ms(stats.screenFinishP50)}  '
                     'p95${_ms(stats.screenFinishP95)}',
+                // What the finish went to, part by part (`ScreenFinish`),
+                // each its p50/p95 — its row always there.
+                '  went  ${_wentWords(stats.screenFinishWent)}',
                 ' show   p50${_ms(stats.screenShowP50)}  '
                     'p95${_ms(stats.screenShowP95)}',
                 // The waits for a buffer Flutter can no longer read
@@ -242,8 +278,16 @@ class FrameStatsReadout extends StatelessWidget {
                       false => 'none',
                       null => '—',
                     }}',
+                // What the engine's compiler made, and the composite's
+                // passes that stood in for their own ([GpuCompiles]).
+                'COMPILE '
+                    '${_compileWords(stats.compiles, stats.fullPassPerSecond)}',
                 'MEMORY  app ${_mb(stats.footprintMegabytes)}  '
                     'screens ${_mb(stats.screensMegabytes)}  '
+                    'pictures ${switch (stats.picturesMegabytes) {
+                      final megabytes? => _mb(megabytes),
+                      null => '—',
+                    }}  '
                     'vram ${switch (stats.videoMegabytes) {
                       null => '—',
                       (:final used, budget: null) => _mb(used),

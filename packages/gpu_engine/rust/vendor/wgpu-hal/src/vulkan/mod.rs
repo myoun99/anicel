@@ -563,6 +563,13 @@ pub struct Device {
     #[cfg(feature = "renderdoc")]
     render_doc: crate::auxil::renderdoc::RenderDoc,
     counters: Arc<wgt::HalCounters>,
+    /// ANICEL — not wgpu's: what the driver made of each pipeline, kept in
+    /// a folder for the next launch ([`crate::auxil::compile_cache`]).
+    compile_cache: crate::auxil::compile_cache::CompileCache,
+    /// ANICEL — not wgpu's: which adapter this is and which driver runs it,
+    /// as bytes — what the driver made of a pipeline is kept by them
+    /// ([`Device::keep_shaders_in`]).
+    adapter_named: Vec<u8>,
     // Struct members are dropped from first to last, put the Device last to ensure that
     // all resources that depends on it are destroyed before it like the mem_allocator
     shared: Arc<DeviceShared>,

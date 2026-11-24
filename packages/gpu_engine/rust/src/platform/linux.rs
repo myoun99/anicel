@@ -35,6 +35,8 @@ use wgpu::hal::api::Vulkan;
 /// Flutter on Linux draws with GL; the engine reaches it through Vulkan.
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
 
+pub use super::vulkan::{keep_shaders, pipelines_found};
+
 /// DRM_FORMAT_ABGR8888 (drm_fourcc.h): R, G, B, A in memory.
 const ABGR8888: u32 = u32::from_le_bytes(*b"AB24");
 /// DRM_FORMAT_MOD_LINEAR (drm_fourcc.h).

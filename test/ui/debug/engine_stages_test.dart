@@ -37,7 +37,11 @@ void main() {
     groups: 0,
   );
   StagedFrame frame(int finish, List<GpuPlaceTook> took, {ScreenAsk? asked}) =>
-      (up: (draw: 1000, finish: finish, show: 500), asked: asked, took: took);
+      (
+        up: (draw: 1000, finish: finish, show: 500, went: null),
+        asked: asked,
+        took: took,
+      );
 
   const show = r'src\kernels\composite\screen.rs:412';
   const copy = 'src/platform/android.rs:237';
@@ -259,7 +263,9 @@ void main() {
         mode: GpuSampling.nearest,
       );
       ScreenAsked.shown(asked);
-      told!((draw: 100, finish: 9000, show: 50), [gpu(show, 4000)]);
+      told!((draw: 100, finish: 9000, show: 50, went: null), [
+        gpu(show, 4000),
+      ]);
 
       final summary = EngineStages.summary!;
       expect(summary.frames, 1);
@@ -274,7 +280,9 @@ void main() {
     test('no more frames are kept than the newest', () {
       MeasurementMode.engineStages.value = true;
       for (var at = 0; at < EngineStages.framesKept + 5; at++) {
-        EngineStages.wentUp((draw: 0, finish: at, show: 0), [gpu(show, at)]);
+        EngineStages.wentUp((draw: 0, finish: at, show: 0, went: null), [
+          gpu(show, at),
+        ]);
       }
 
       final summary = EngineStages.summary!;
@@ -300,7 +308,9 @@ void main() {
     expect(line('STAGES'), findsNothing);
 
     MeasurementMode.engineStages.value = true;
-    EngineStages.wentUp((draw: 100, finish: 9000, show: 50), [gpu(show, 4000)]);
+    EngineStages.wentUp((draw: 100, finish: 9000, show: 50, went: null), [
+      gpu(show, 4000),
+    ]);
     // The readout is built again as the statistics publish, and with
     // their window.
     FrameStats.debugFeed([

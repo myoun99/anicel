@@ -10,8 +10,9 @@ import 'package:anicel/src/ui/debug/measurement_mode.dart';
 /// itself (card the-galaxy-tab-canvas-went-slow-on-build-1095, 관제
 /// 2026-11-23 23:24: 쌓인 걸음 · 메모리): the submits it has not heard
 /// finished, whether its device stamps their GPU time, and what the OS says
-/// it uses of its adapter's memory. On a file of its own: the engine, once
-/// open, stays open for every test after it.
+/// it uses of its adapter's memory — and what its compiler made and what
+/// its pictures hold (관제 2026-11-24: COMPILE · MEMORY 내역). On a file of
+/// its own: the engine, once open, stays open for every test after it.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
@@ -52,5 +53,7 @@ void main() {
       stats.videoMegabytes?.used,
       used == null ? isNull : used / 1024 / 1024,
     );
+    expect(stats.compiles, engine.compiles);
+    expect(stats.picturesMegabytes, engine.pictureBytes / 1024 / 1024);
   });
 }

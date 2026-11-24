@@ -2,6 +2,7 @@ import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuCompiles;
 
 import '../../native/app_gpu_engine.dart'
     show appGpuEngineOpen, appGpuVideoMemory;
@@ -15,6 +16,19 @@ import 'measurement_mode.dart';
 import 'pointer_clock.dart';
 import 'screen_asked.dart';
 import 'stroke_steps.dart';
+
+/// What a screen's finish went to (`ScreenFinish`), each part's p50 and
+/// p95 in milliseconds.
+typedef FinishWentMillis = ({
+  double queuedP50,
+  double queuedP95,
+  double polledP50,
+  double polledP95,
+  double heardP50,
+  double heardP95,
+  double togetherP50,
+  double togetherP95,
+});
 
 /// One publication of the frame clock: percentiles over a rolling window,
 /// plus the two numbers nobody in this app had ever read.
@@ -58,6 +72,7 @@ class FrameStatsSnapshot {
     required this.screenDrawP95,
     required this.screenFinishP50,
     required this.screenFinishP95,
+    required this.screenFinishWent,
     required this.screenShowP50,
     required this.screenShowP95,
     required this.screenPath,
@@ -83,8 +98,11 @@ class FrameStatsSnapshot {
     required this.gpuBehind,
     required this.gpuBehindWorst,
     required this.gpuClocked,
+    required this.compiles,
+    required this.fullPassPerSecond,
     required this.footprintMegabytes,
     required this.screensMegabytes,
+    required this.picturesMegabytes,
     required this.videoMegabytes,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
@@ -192,6 +210,10 @@ class FrameStatsSnapshot {
   final double screenDrawP95;
   final double screenFinishP50;
   final double screenFinishP95;
+
+  /// [screenFinishP50]'s parts (`ScreenFinish`), each its p50 and p95
+  /// over the frames that said them — null where none did.
+  final FinishWentMillis? screenFinishWent;
   final double screenShowP50;
   final double screenShowP95;
 
@@ -271,13 +293,22 @@ class FrameStatsSnapshot {
   /// null where no engine is open.
   final bool? gpuClocked;
 
+  /// What the engine's compiler made since it opened (`GpuEngine.compiles`)
+  /// — null where no engine is open — and the composite's passes a second
+  /// that ran on the pass that takes any plan while their own was still to
+  /// come.
+  final GpuCompiles? compiles;
+  final double fullPassPerSecond;
+
   /// What the process holds as the OS says it
   /// (`QaMemory.processFootprintOrRssBytes`), what the engine's screens
-  /// hold (`ScreenTexture.liveBytes`), and the adapter memory the engine's
-  /// device uses and may use (`appGpuVideoMemory`) — null where the OS
-  /// says none.
+  /// hold (`ScreenTexture.liveBytes`), what the pages its pictures lie on
+  /// hold (`GpuEngine.pictureBytes` — null where no engine is open), and
+  /// the adapter memory the engine's device uses and may use
+  /// (`appGpuVideoMemory`) — null where the OS says none.
   final double footprintMegabytes;
   final double screensMegabytes;
+  final double? picturesMegabytes;
   final ({double used, double? budget})? videoMegabytes;
 
   /// The engine's retained-raster accounting, and the reason this class
@@ -444,6 +475,7 @@ abstract final class FrameStats {
     int points,
     int pointerMicros,
     int steps,
+    int stoodIn,
   })?
   _lastCounted;
 
@@ -651,6 +683,11 @@ abstract final class FrameStats {
     final upDraws = [for (final up in ups) up.draw]..sort();
     final upFinishes = [for (final up in ups) up.finish]..sort();
     final upShows = [for (final up in ups) up.show]..sort();
+    final wents = [for (final up in ups) ?up.went];
+    List<int> partOf(int Function(ScreenFinish went) part) =>
+        [for (final went in wents) part(went)]..sort();
+    final engine = appGpuEngineOpen.value;
+    final compiles = engine?.compiles;
     final packets = [...PointerClock.packetMicros]..sort();
     final dabs = [...StrokeSteps.dabsKept]..sort();
     final held = [...StrokeSteps.heldMicros]..sort();
@@ -670,6 +707,7 @@ abstract final class FrameStats {
       points: PointerClock.pointsCounted,
       pointerMicros: PointerClock.microsCounted,
       steps: StrokeSteps.stepsCounted,
+      stoodIn: compiles?.stoodIn ?? 0,
     );
     final before = _lastCounted;
     _lastCounted = counted;
@@ -700,6 +738,14 @@ abstract final class FrameStats {
       screenDrawP95: _percentileMillis(upDraws, 0.95),
       screenFinishP50: _percentileMillis(upFinishes, 0.50),
       screenFinishP95: _percentileMillis(upFinishes, 0.95),
+      screenFinishWent: wents.isEmpty
+          ? null
+          : _finishWentOf(
+              queued: partOf((went) => went.queued),
+              polled: partOf((went) => went.polled),
+              heard: partOf((went) => went.heard),
+              together: partOf((went) => went.together),
+            ),
       screenShowP50: _percentileMillis(upShows, 0.50),
       screenShowP95: _percentileMillis(upShows, 0.95),
       screenPath: ScreenTexture.path,
@@ -725,9 +771,15 @@ abstract final class FrameStats {
       landing: StrokeSteps.landing,
       gpuBehind: behind,
       gpuBehindWorst: behindWorst,
-      gpuClocked: appGpuEngineOpen.value?.clocked,
+      gpuClocked: engine?.clocked,
+      compiles: compiles,
+      fullPassPerSecond: aSecond(counted.stoodIn, before?.stoodIn),
       footprintMegabytes: _megabytes(QaMemory.processFootprintOrRssBytes),
       screensMegabytes: _megabytes(ScreenTexture.liveBytes),
+      picturesMegabytes: switch (engine?.pictureBytes) {
+        final bytes? => _megabytes(bytes),
+        null => null,
+      },
       videoMegabytes: switch (video?.used) {
         final used? => (
           used: _megabytes(used),
@@ -773,6 +825,23 @@ abstract final class FrameStats {
       steps: ups.length,
     );
   }
+
+  /// The p50 and p95 of each part of a finish, sorted.
+  static FinishWentMillis _finishWentOf({
+    required List<int> queued,
+    required List<int> polled,
+    required List<int> heard,
+    required List<int> together,
+  }) => (
+    queuedP50: _percentileMillis(queued, 0.50),
+    queuedP95: _percentileMillis(queued, 0.95),
+    polledP50: _percentileMillis(polled, 0.50),
+    polledP95: _percentileMillis(polled, 0.95),
+    heardP50: _percentileMillis(heard, 0.50),
+    heardP95: _percentileMillis(heard, 0.95),
+    togetherP50: _percentileMillis(together, 0.50),
+    togetherP95: _percentileMillis(together, 0.95),
+  );
 
   static double _percentileMillis(List<int> sortedMicros, double p) =>
       _ranked(sortedMicros, p) / 1000.0;

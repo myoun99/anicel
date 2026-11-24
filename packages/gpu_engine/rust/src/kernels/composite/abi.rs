@@ -1554,6 +1554,20 @@ pub unsafe extern "C" fn gpu_engine_pictures_idle_bytes(engine: *const Engine) -
     engine.pictures.idle_bytes() + engine.work.bytes() + engine.spares.bytes()
 }
 
+/// The bytes of the pages `engine`'s pictures have their tiles on, made
+/// (kernels/pool's `Pictures::bytes`) — a page whole, its free slots too:
+/// the frame statistics' MEMORY line, beside what the OS says the app
+/// holds (card the-galaxy-tab-canvas-went-slow-on-build-1095, 2026-11-24:
+/// 520 → 1372 MB at a pen's first touch, none of it the screens').
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_bytes(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.pictures.bytes()
+}
+
 /// The bytes of the tiles `engine`'s pictures hold that none of them
 /// weighs: made by a picture let go since, and held by others made of the
 /// same (kernels/pool's `Told`; F-610 — a tile is weighed once, by the

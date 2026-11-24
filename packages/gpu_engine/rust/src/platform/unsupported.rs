@@ -5,6 +5,14 @@ use std::ffi::c_void;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::empty();
 
+/// No device opens here, so nothing is compiled to keep.
+pub fn keep_shaders(_device: &wgpu::Device, _folder: Option<std::path::PathBuf>) {}
+
+/// No device opens here.
+pub fn pipelines_found(_device: &wgpu::Device) -> Option<u64> {
+    None
+}
+
 pub struct SharedHandle;
 
 impl SharedHandle {

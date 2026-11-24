@@ -40,6 +40,10 @@ mod android;
 mod apple;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod vulkan;
+#[cfg(all(test, any(windows, target_os = "linux")))]
+mod kept_tests;
 #[cfg(not(any(
     windows,
     target_os = "android",
@@ -99,15 +103,31 @@ static SHADERS_KEPT_IN: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Keeps what `device`'s shader compiler makes in the app's folder for
 /// them ([`SHADERS_KEPT_IN`]), for the next launch to hand the driver
-/// instead of compiling it again: on Windows what DXC makes, and what the
-/// driver makes of each pipeline on it (vendor/wgpu-hal, compile_cache.rs).
-/// 🗣️유저 2026-11-13,
+/// instead of compiling it again — 🚨ON EVERY PLATFORM, each backend by its
+/// own means (`native::keep_shaders`): D3D12 keeps what DXC makes and what
+/// the driver makes of each pipeline, Vulkan (Android, Linux) what the
+/// driver makes of each pipeline — both by one code (vendor/wgpu-hal,
+/// auxil/compile_cache.rs) — and on Apple the OS keeps Metal's itself
+/// (apple.rs). 🗣️유저 2026-11-13,
 /// the-wait-window-stands-seven-seconds-on-the-surface-Q1 「디스크 캐시」.
-#[cfg_attr(not(windows), allow(unused_variables))]
+///
+/// ↩️TILL 2026-11-24 WINDOWS ALONE KEPT ANY (`#[cfg(windows)]` here, by no
+/// one's word — the cards say only that the Surface was where it was
+/// measured): the Galaxy Tab (Adreno 740, Vulkan) compiled every kernel
+/// and pass at every launch (card the-galaxy-tab-canvas-went-slow-on-build-
+/// 1095, 2026-11-24 — 「앱 키고 초기에 스트로크 초기렉 아직있고, 시간지나면
+/// 점점 괜찮아져」). 🗣️관제 the same day: the law split by platform made one
+/// (절대명령 1).
 pub(crate) fn keep_shaders(device: &wgpu::Device) {
     let folder = SHADERS_KEPT_IN.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    #[cfg(windows)]
-    windows::keep_shaders(device, folder);
+    native::keep_shaders(device, folder);
+}
+
+/// How many of `device`'s pipelines the folder it keeps them in has
+/// answered since it opened ([`keep_shaders`]) — none where the OS keeps
+/// them and says nothing (Apple).
+pub(crate) fn pipelines_found(device: &wgpu::Device) -> Option<u64> {
+    native::pipelines_found(device)
 }
 
 /// Names the folder — `folder`'s `length` bytes of UTF-8 — where each

@@ -44,6 +44,21 @@ use wgpu::hal::api::Metal;
 /// IOSurface.
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::METAL;
 
+/// The OS keeps what Metal's compiler made — the Metal shader cache, each
+/// app's own, which the system keeps and hands back across launches — so
+/// the engine hands nothing here: wgpu 30 gives Metal no pipeline cache
+/// (`wgpu::PipelineCache`: Vulkan only), and `MTLBinaryArchive`, Metal's
+/// own way to keep pipelines by hand, is not reached through it.
+/// ⚠️Not seen on a device by this engine: a launch's compile times on an
+/// iPad say whether the OS answers.
+pub fn keep_shaders(_device: &wgpu::Device, _folder: Option<std::path::PathBuf>) {}
+
+/// Nothing the engine kept is handed — the OS's cache says nothing of
+/// what it answered ([`keep_shaders`]).
+pub fn pipelines_found(_device: &wgpu::Device) -> Option<u64> {
+    None
+}
+
 const BYTES_PER_TEXEL: usize = 4;
 
 /// The CVPixelBuffer Flutter is handed, over the IOSurface the texture
