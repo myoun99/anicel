@@ -1390,10 +1390,10 @@ typedef EffectWorn = ({StringId owner, StringId wearer});
 /// (`FxPluginOutcomes`), and where its header asks.
 typedef FxPluginWorn = ({StringId owner, EffectId effect, StringId wearer});
 
-/// What a picture's plug-in steps told as they ran or were kept — the last
-/// of each place it is worn at, its sample and whether it failed: told
-/// again, as the frame it is shown for, each time the picture is shown
-/// (`EngineFramePicture.tellAs`).
+/// What a picture's plug-in steps told as they ran or were kept — whether
+/// the last at each place it is worn failed: told again, as the frame it is
+/// shown for, each time the picture is shown (`EngineFramePicture.tellAs`)
+/// — a frame whose key is the picture's, so its steps are the same.
 ///
 /// 🚨BY WHERE IT IS WORN, NOT BY WHO HEARD (card the-first-stroke-on-a-frame-
 /// come-to-runs-its-plugins-once ③, 2026-11-25): one picture is the frame
@@ -1403,8 +1403,7 @@ typedef FxPluginWorn = ({StringId owner, EffectId effect, StringId wearer});
 /// heard the run that made it and told again to that one, a picture shown
 /// at another frame of its key told the frame it was made at, and the
 /// other's header never greyed.
-typedef FxPluginRunsTold =
-    Map<FxPluginWorn, ({ResolvedLayerEffect sample, bool failed})>;
+typedef FxPluginRunsTold = Map<FxPluginWorn, bool>;
 
 /// An effect with its parameters SAMPLED at one frame — what the composite
 /// carries and what the caches compare. Values are in [specs]' order, which

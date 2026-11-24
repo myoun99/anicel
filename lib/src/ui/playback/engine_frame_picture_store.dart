@@ -82,8 +82,9 @@ class EngineFramePicture extends ChangeNotifier {
   }
 
   /// Tells each of [steps] — the plug-in steps of the frame it is shown for
-  /// (`pluginStepsOf`) — how the same step went here, where one did: its
-  /// run, the frame's, is who hears ([FxPluginRunsTold]).
+  /// (`pluginStepsOf`), whose key is this picture's — how the step worn at
+  /// its place went here, where one did: its run, the frame's, is who hears
+  /// ([FxPluginRunsTold]).
   ///
   /// 🚨THE ONE IT IS SHOWN FOR, NOT THE ONE IT WAS MADE FOR (card the-first-
   /// stroke-on-a-frame-come-to-runs-its-plugins-once ③, 2026-11-25): a run
@@ -94,8 +95,7 @@ class EngineFramePicture extends ChangeNotifier {
   /// greyed.
   void tellAs(List<ResolvedLayerEffect> steps) {
     for (final step in steps) {
-      if (_told[step.worn] case (:final sample, :final failed)
-          when sample == step) {
+      if (_told[step.worn] case final failed?) {
         step.run?.tell(failed: failed);
       }
     }

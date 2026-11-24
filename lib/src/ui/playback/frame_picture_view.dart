@@ -1098,7 +1098,7 @@ class _FramePictureViewState extends State<FramePictureView>
       shown
         ..removeListener(_written)
         ..release();
-      _shown = there.hold()..tellAs(pluginStepsOf(widget.nodes));
+      _shown = there.hold();
       there.addListener(_written);
     }
   }

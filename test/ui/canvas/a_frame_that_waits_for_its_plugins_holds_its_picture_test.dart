@@ -638,13 +638,20 @@ void main() {
   // ITS OWN SAMPLE (`FxPluginStages`): any of them another, it runs again.
   ResolvedLayerEffect brightened(double by) =>
       fx(EffectKind.brightnessContrast, {'brightness': by});
-  ResolvedLayerEffect aPluginAt(FxPluginRunner runner, int frame) =>
-      ResolvedLayerEffect(
-        kind: EffectKind.plugin,
-        plugin: shiftingFxPluginDescription,
-        values: const [],
-        run: fxPluginRunOf(runner, frame: frame),
-      );
+  // Sampled and bound at [frame] as every route samples one
+  // (`sampleLayerEffectAt`, `deviceFxPluginBinding`).
+  ResolvedLayerEffect aPluginAt(
+    FxPluginRunner runner,
+    int frame, {
+    FxPluginTold? told,
+  }) => ResolvedLayerEffect(
+    kind: EffectKind.plugin,
+    plugin: shiftingFxPluginDescription,
+    values: const [],
+    frame: frame,
+    worn: shiftingFxPluginWorn,
+    run: fxPluginRunOf(runner, frame: frame, told: told),
+  );
   for (final (what, changed) in [
     (
       'a value before it',
@@ -1005,6 +1012,82 @@ void main() {
       reason: 'the frame two on is the pen\'s frame\'s picture',
     );
     expect(runner.renders, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨ONE PICTURE, TOLD AS THE FRAME IT IS SHOWN FOR (`EngineFramePicture.
+  // tellAs`, card the-first-stroke-on-a-frame-come-to-runs-its-plugins-once
+  // ③): a plug-in that reads no moment draws its cel alike at every frame,
+  // so the frames share the picture — and the one it goes to, by a view or
+  // handed out, hears how its steps went, not the one it was made for.
+  Future<
+    ({
+      Map<int, List<bool>> heard,
+      ShiftingFxPlugin runner,
+      List<CompositeNode<CanvasStackRow>> Function(int frame) at,
+      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      handAnew,
+    })
+  >
+  failedAtTheFirst(WidgetTester tester) async {
+    final runner = ShiftingFxPlugin(by: 0, fails: true, readsTheMoment: false);
+    final heard = <int, List<bool>>{};
+    ResolvedLayerEffect sampleAt(int frame) => aPluginAt(
+      runner,
+      frame,
+      told: ({required failed}) => (heard[frame] ??= []).add(failed),
+    );
+    final (store: _, overlay: _, :handAnew) = await standingBeside(tester, [
+      sampleAt(0),
+    ]);
+    expect(heard[0], isNotEmpty, reason: '⛔premise: made, and told');
+    expect(heard[0]!.last, isTrue, reason: '⛔fixture: it fails');
+    return (
+      heard: heard,
+      runner: runner,
+      at: (int frame) => beside([sampleAt(frame)]),
+      handAnew: handAnew,
+    );
+  }
+
+  testWidgets('a plugin that reads no moment and failed is told so at another '
+      'frame of its cel the view goes to, its picture the first frame\'s', (
+    tester,
+  ) async {
+    final (:heard, :runner, :at, :handAnew) = await failedAtTheFirst(tester);
+    await handAnew(beside(const []));
+    await lendBothClocks(tester, rounds: 4);
+    final runs = runner.renders;
+
+    await handAnew(at(1));
+    await lendBothClocks(tester, rounds: 4);
+
+    expect(runner.renders, runs, reason: '⛔premise: the first frame\'s');
+    expect(heard[1], [true]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a plugin that reads no moment and failed is told so at another '
+      'frame of its cel its picture is handed out for', (tester) async {
+    final (:heard, :runner, :at, handAnew: _) = await failedAtTheFirst(tester);
+    final runs = runner.renders;
+    final pictures = tester
+        .widget<FramePictureView>(theFramesPicture())
+        .run
+        .pictures;
+
+    final handed = (await tester.runAsync(
+      () => pictures.pictureOf(at(2), (
+        cut: cut,
+        frameIndex: 2,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      ), shouldAbort: () => false),
+    ))!;
+    addTearDown(handed.release);
+
+    expect(runner.renders, runs, reason: '⛔premise: the first frame\'s');
+    expect(heard[2], [true]);
     await tester.pumpWidget(const SizedBox());
   });
 

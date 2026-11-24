@@ -185,7 +185,7 @@ final class FxPluginStages implements PluginSteps {
         :final worn?,
         run: _?,
       ) when stage.ran)
-        worn: (sample: stage.effect, failed: stage.output == null),
+        worn: stage.output == null,
   };
 
   /// [record], each plugin's step met in it drawing what its plugin made
