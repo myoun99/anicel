@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/picture_up_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -621,6 +622,10 @@ void main() {
       final laid = layersLaid();
       await seenThrough(CanvasViewport());
       await tester.pump();
+      // Its pan's first step draws the rest of its texture (the pin after
+      // this one): from that frame on, the frame drawn last serves.
+      await seenThrough(CanvasViewport(panX: 1));
+      await tester.pump();
       // Where a frame drawn for the view as it stands is laid.
       final home = laid.last;
       expect(
@@ -636,7 +641,7 @@ void main() {
       hold();
 
       // Within what the screen spares of its box.
-      await seenThrough(CanvasViewport(panX: 10, panY: 6));
+      await seenThrough(CanvasViewport(panX: 11, panY: 6));
       expect(gates, isEmpty, reason: 'a pan the frame up serves drew one');
       expect(
         laid.last,
@@ -646,7 +651,7 @@ void main() {
 
       // Past it — as far as the frame up still holds the box's corner.
       final far = -home.left;
-      await seenThrough(CanvasViewport(panX: far, panY: 6));
+      await seenThrough(CanvasViewport(panX: 1 + far, panY: 6));
       expect(gates, hasLength(1), reason: 'the next frame is asked for');
       expect(
         laid.last,
@@ -654,7 +659,7 @@ void main() {
         reason: 'what is up moves on with the view meanwhile',
       );
 
-      await seenThrough(CanvasViewport(panX: far + 20, panY: 6));
+      await seenThrough(CanvasViewport(panX: 1 + far + 20, panY: 6));
       expect(gates, hasLength(1), reason: 'the frame on the GPU serves it');
       expect(laid.last, home.shift(Offset(far + 20, 6)));
 
@@ -667,6 +672,53 @@ void main() {
         home.shift(const Offset(20, 0)),
         reason: 'the frame drawn a step back stands a step from the view',
       );
+    });
+
+    // 🚨A FRAME THROUGH ANOTHER CAMERA DRAWS WHAT THE BOX HOLDS ALONE — the
+    // box and the margin a pan spares on every side
+    // (`EngineStackScreen.show`'s `holding`) —, so the frame drawn last
+    // serves no pan of it: the pan's first step asks for the frame that
+    // draws the rest, what is up moving on with the view within that
+    // margin meanwhile, and from that frame on the frame drawn last serves.
+    // 🔬A zoom's frame drew all of the Galaxy Tab's 3584 × 2560 texels for
+    // a view of 2960 × 1848 (card the-galaxy-tab-canvas-went-slow-on-
+    // build-1095).
+    testWidgets('a frame through another camera draws what the box holds '
+        'alone: the first step of a pan after it draws the rest, and the '
+        'frame drawn last serves the pan from that one on', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      addTearDown(ScreenAsked.debugForget);
+      final seenThrough = await standOver(tester, float);
+      final laid = layersLaid();
+      ScreenAsked.debugForget();
+      await seenThrough(CanvasViewport(zoom: 0.5));
+      await tester.pump();
+      final home = laid.last;
+      final (width, height) = (viewSize.width.ceil(), viewSize.height.ceil());
+      expect(
+        (ScreenAsked.last?.columns, ScreenAsked.last?.rows),
+        (width + 2 * 128, height + 2 * 128),
+        reason: 'the box and the margin a pan spares on every side alone',
+      );
+      hold();
+
+      await seenThrough(CanvasViewport(zoom: 0.5, panX: 10, panY: 6));
+      expect(gates, hasLength(1), reason: 'the rest is asked for');
+      expect(
+        laid.last,
+        home.shift(const Offset(10, 6)),
+        reason: 'what is up moves on with the view meanwhile',
+      );
+      gates.last.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(laid.last, home, reason: 'the frame that came up');
+
+      await seenThrough(CanvasViewport(zoom: 0.5, panX: 30, panY: 6));
+      expect(gates, hasLength(1), reason: 'the frame drawn last serves it');
+      expect(laid.last, home.shift(const Offset(20, 0)));
     });
 
     testWidgets('a view turned draws every step of a pan: it pans by parts '
@@ -811,14 +863,18 @@ void main() {
       final laid = layersLaid();
       await seenThrough(CanvasViewport());
       await tester.pump();
+      // On the frame its pan's first step drew, which holds all of its
+      // texture (`EngineStackScreen.show`'s `holding`).
+      await seenThrough(CanvasViewport(panX: 1));
+      await tester.pump();
       final home = laid.last;
       hold();
 
-      final panned = CanvasViewport(panX: 10.4, panY: 6);
+      final panned = CanvasViewport(panX: 11.4, panY: 6);
       await seenThrough(panned);
 
       expect(gates, isEmpty, reason: '⛔premise: the frame up serves it');
-      expect(canvas.view.standing(panned), CanvasViewport(panX: 10, panY: 6));
+      expect(canvas.view.standing(panned), CanvasViewport(panX: 11, panY: 6));
       expect(laid.last, home.shift(const Offset(10, 6)));
     });
 
@@ -835,10 +891,14 @@ void main() {
       final laid = layersLaid();
       await seenThrough(CanvasViewport());
       await tester.pump();
+      // On the frame its pan's first step drew, which holds all of its
+      // texture (`EngineStackScreen.show`'s `holding`).
+      await seenThrough(CanvasViewport(panX: 1));
+      await tester.pump();
       final home = laid.last;
       hold();
 
-      final panned = CanvasViewport(panX: 10, panY: 6);
+      final panned = CanvasViewport(panX: 11, panY: 6);
       await seenThrough(panned);
       expect(gates, isEmpty, reason: '⛔premise: the frame up serves the pan');
       expect(laid.last, home.shift(const Offset(10, 6)), reason: '⛔premise');

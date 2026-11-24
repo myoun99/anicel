@@ -179,9 +179,9 @@ final class EngineStackScreen {
   /// that read a tile made again since ([_Lays.since]) — the kept frame
   /// differs nowhere else, a lay making again the tiles its rect meets,
   /// whole (`Screen::compose`) —, and nothing where none was. A stroke's
-  /// step draws its dabs' tiles, not the screen. Whole through any other
-  /// camera, on a target that holds another's frame or none known, and
-  /// past the lays kept apart.
+  /// step draws its dabs' tiles, not the screen. What the view holds alone
+  /// (below) through any other camera, on a target that holds another's
+  /// frame or none known, and past the lays kept apart.
   ///
   /// 🗣️유저 2026-11-21, on a Galaxy Tab (card
   /// the-galaxy-tab-canvas-went-slow-on-build-1095): 「캔버스조작, 즉
@@ -199,12 +199,28 @@ final class EngineStackScreen {
   /// 「처음은 100미만 팬,줌」 — 🔬a frame past the margin a pan's screen
   /// spares drew all of its 3584×2560 texels again at × 0.63, 43 ms of its
   /// GPU (rust/src/kernels/composite/moved.rs has the rest).
+  ///
+  /// 🚨THROUGH ANOTHER CAMERA, WHAT THE VIEW HOLDS ALONE ([holding]): the
+  /// texels its box and the margin a pan spares lie on — the rest of
+  /// [target] on the show after, through this camera or its own panned, as
+  /// what it does not hold ([_outside]) — and what [target] holds is told
+  /// on it ([heldIn]): a pan the frame drawn last serves stands it within
+  /// that alone (`_RenderFrameScreen._servedByTheFrameDrawnLast`). Null, the
+  /// whole of it — what a view of no room asks (`frame_shots.dart`).
+  /// 🔬A zoom's frame draws its target whole at every step, and its cost is
+  /// the texels it draws, every one alike, the camera's taps on a canvas
+  /// drawn over (S5 cut 352, every row shown, × 0.85 on an RTX 4080: 1.6
+  /// ms walking alone, 4.2 located, 10.7 with Blend's taps — 관제 ·
+  /// 브러시/렌더링 2026-11-24, card the-galaxy-tab-canvas-went-slow-on-build-
+  /// 1095): the Galaxy Tab's 2960 × 1848 with its margin is 6.77M of the
+  /// 9.17M its 3584 × 2560 holds.
   void show(
     GpuSurface target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
     (int, int) corner = (0, 0),
+    (int, int, int, int)? holding,
   }) {
     final screen =
         _screen ??
@@ -212,8 +228,10 @@ final class EngineStackScreen {
     final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
     final through = _throughOf(viewport, devicePixelRatio, corner, size);
     final (:inverse, :mode, size: _, at: _) = through;
+    final (columns, rows) = size;
+    final asked = _within(holding ?? (0, 0, columns, rows), size);
     // Read before the draw, which forgets it.
-    final (:moved, :drawn) = _toShow(target.kept, through);
+    final (:moved, :drawn, :held) = _toShow(target.kept, through, asked);
     if (moved != null) {
       _composite.move(target, moved);
     }
@@ -225,23 +243,38 @@ final class EngineStackScreen {
       // For the frame statistics ([ScreenAsked]).
       ScreenAsked.shown(_asked(moved, drawn, scale, mode));
     }
-    target.kept = (of: this, lay: _lays.last, through: through);
+    target.kept = (of: this, lay: _lays.last, through: through, held: held);
   }
 
+  /// The texels a target [kept] says it holds of a screen's frame
+  /// ([GpuSurface.kept]), [left, top, right, bottom) — null where it says
+  /// none: never shown on, or a frame given up on it.
+  static (int, int, int, int)? heldIn(Object? kept) =>
+      kept is _ShownOn ? kept.held : null;
+
   /// What a show onto a target holding what [kept] says does through the
-  /// camera [through]: the move of what the target holds — none where it
-  /// holds nothing of this screen's that moves to this camera
-  /// ([_movedBy]) — and the texels it draws then, [left, top, right,
-  /// bottom) each. All of them, unless the target holds this screen's
-  /// frame through this camera or its own panned; then what the move
-  /// uncovers ([_uncovered]) and those that read a tile made again since,
-  /// and nothing where neither is.
-  ({(int, int)? moved, List<(int, int, int, int)> drawn}) _toShow(
-    Object? kept,
-    _Through through,
-  ) {
+  /// camera [through], [holding] the texels its view holds: the move of
+  /// what the target holds — none where it holds nothing of this screen's
+  /// that moves to this camera ([_movedBy]) —, the texels it draws then,
+  /// [left, top, right, bottom) each, and those it holds after. [holding]
+  /// alone, unless the target holds this screen's frame through this
+  /// camera or its own panned; then what it does not hold once moved
+  /// ([_outside]) — what a pan uncovers, and what a show through another
+  /// camera left of it — and those that read a tile made again since: all
+  /// of it held then, and nothing drawn where none of these is.
+  ({
+    (int, int)? moved,
+    List<(int, int, int, int)> drawn,
+    (int, int, int, int) held,
+  })
+  _toShow(Object? kept, _Through through, (int, int, int, int) holding) {
     final (columns, rows) = through.size;
-    final whole = (moved: null, drawn: [(0, 0, columns, rows)]);
+    final (fromX, _, toX, _) = holding;
+    final whole = (
+      moved: null,
+      drawn: [if (fromX < toX) holding],
+      held: holding,
+    );
     if (kept is! _ShownOn || !identical(kept.of, this)) {
       return whole;
     }
@@ -258,9 +291,15 @@ final class EngineStackScreen {
         ? null
         : _texelsReading(_tilesMet(again), through);
     final still = dx == 0 && dy == 0;
+    final (left, top, right, bottom) = kept.held;
+    final stillHeld = _within(
+      (left + dx, top + dy, right + dx, bottom + dy),
+      through.size,
+    );
     return (
       moved: still ? null : by,
-      drawn: [..._uncovered(by, through.size), ?changed],
+      drawn: [..._outside(stillHeld, through.size), ?changed],
+      held: (0, 0, columns, rows),
     );
   }
 
@@ -367,8 +406,15 @@ typedef _Through = ({
 });
 
 /// What a target keeps of a screen's frame ([GpuSurface.kept]): whose, as of
-/// which lay of its ([_Lays.last]), and through which camera.
-typedef _ShownOn = ({EngineStackScreen of, int lay, _Through through});
+/// which lay of its ([_Lays.last]), through which camera, and over which of
+/// its texels, [left, top, right, bottom) — what a show through another
+/// camera drew ([EngineStackScreen.show]'s `holding`), or all of them.
+typedef _ShownOn = ({
+  EngineStackScreen of,
+  int lay,
+  _Through through,
+  (int, int, int, int) held,
+});
 
 /// The steps of a pixel the engine reads a camera's entries in: Q.20, each
 /// rounded to the nearest, halves away from zero
@@ -460,17 +506,31 @@ _Through _throughOf(
   return ownAlike ? (toX - fromX, toY - fromY) : null;
 }
 
-/// The texels of a target of [size] that a move by [by] uncovers — those
-/// no texel moved lands on: a band of columns along the side it moves away
-/// from and one of rows along the other, less the columns' — [left, top,
-/// right, bottom) each, none along a way it moves none. [by] moves less
-/// than [size] along each.
-List<(int, int, int, int)> _uncovered((int, int) by, (int, int) size) {
-  final (dx, dy) = by;
+/// [rect], [left, top, right, bottom), within a target of [size]: none of
+/// it where they do not meet — an empty one at the target's corner.
+(int, int, int, int) _within((int, int, int, int) rect, (int, int) size) {
+  final (left, top, right, bottom) = rect;
   final (columns, rows) = size;
-  // What the texels moved land on, across and down.
-  final (left, right) = dx > 0 ? (dx, columns) : (0, columns + dx);
-  final (top, bottom) = dy > 0 ? (dy, rows) : (0, rows + dy);
+  final (fromX, fromY) = (left.clamp(0, columns), top.clamp(0, rows));
+  final (toX, toY) = (right.clamp(fromX, columns), bottom.clamp(fromY, rows));
+  return toX == fromX || toY == fromY ? (0, 0, 0, 0) : (fromX, fromY, toX, toY);
+}
+
+/// The texels of a target of [size] that hold nothing outside [held] —
+/// within it ([_within]): a band of columns either side of it and one of
+/// rows above and under it, less the columns' — [left, top, right, bottom)
+/// each, none along a side it reaches; all of the target where [held] is
+/// empty. A move of a target holding all of it holds what the texels moved
+/// land on, so what it uncovers is this of that.
+List<(int, int, int, int)> _outside(
+  (int, int, int, int) held,
+  (int, int) size,
+) {
+  final (columns, rows) = size;
+  final (left, top, right, bottom) = held;
+  if (left == right || top == bottom) {
+    return [(0, 0, columns, rows)];
+  }
   return [
     if (left > 0) (0, 0, left, rows),
     if (right < columns) (right, 0, columns, rows),

@@ -966,6 +966,113 @@ void main() {
       }
     });
 
+    // 🚨THROUGH ANOTHER CAMERA, WHAT THE VIEW HOLDS ALONE
+    // ([EngineStackScreen.show]'s `holding`): its box and the margin a pan
+    // spares — the rest by the show after, through this camera or its own
+    // panned, as what the target does not hold. The frame then is the one
+    // drawn whole, byte for byte, and what the target holds is told
+    // ([EngineStackScreen.heldIn]) for a pan the frame drawn last serves
+    // (`_RenderFrameScreen`). 🔬A zoom's frame drew all of the Galaxy Tab's
+    // 3584 × 2560 texels for a view of 2960 × 1848 with its margin, 6.77M
+    // of 9.17M (card the-galaxy-tab-canvas-went-slow-on-build-1095).
+    test('through another camera it draws what the view holds alone — the '
+        'rest by the show after, as what the target does not hold', () async {
+      final (columns, rows) = roomy;
+      const holding = (40, 20, 260, 120);
+      const heldTexels = 220 * 100;
+      Camera through(double zoom, (int, int) pan) => (
+        name: 'zoomed to $zoom, panned to $pan',
+        viewport: CanvasViewport(
+          zoom: zoom,
+          panX: pan.$1.toDouble(),
+          panY: pan.$2.toDouble(),
+        ),
+        devicePixelRatio: 1,
+        size: roomy,
+        drawn: null,
+      );
+      ScreenAsk? heldOn(
+        GpuSurface target,
+        EngineStackScreen screen,
+        Camera camera,
+        (int, int, int, int) holding,
+      ) {
+        ScreenAsked.debugForget();
+        screen.show(
+          target,
+          camera.size,
+          viewport: camera.viewport,
+          devicePixelRatio: camera.devicePixelRatio,
+          holding: holding,
+        );
+        return ScreenAsked.last;
+      }
+
+      for (final (name, (dx, dy)) in const [
+        ('shown again', (0, 0)),
+        ('panned by whole texels', (7, -3)),
+      ]) {
+        final screen = EngineStackScreen(engine.composite, engine.letters);
+        final target = shownSurfaceOf(columns, rows);
+        try {
+          await screen.compose(frameOf(celOf(const [5, 7, 9])));
+          expect(EngineStackScreen.heldIn(target.kept), isNull, reason: name);
+          for (final camera in [through(1, (30, 12)), through(0.5, (30, 12))]) {
+            final asked = heldOn(target, screen, camera, holding);
+            expect(
+              (asked?.columns, asked?.rows, asked?.texels, asked?.moved),
+              (220, 100, heldTexels, null),
+              reason: '$name, ${camera.name}: what the view holds alone',
+            );
+            expect(
+              EngineStackScreen.heldIn(target.kept),
+              holding,
+              reason: '$name, ${camera.name}',
+            );
+          }
+
+          final after = through(0.5, (30 + dx, 12 + dy));
+          final asked = heldOn(target, screen, after, holding);
+          expect(
+            (asked?.texels, asked?.moved),
+            (columns * rows - heldTexels, dx == 0 && dy == 0 ? null : (dx, dy)),
+            reason: '$name: the rest alone',
+          );
+          expect(
+            EngineStackScreen.heldIn(target.kept),
+            (0, 0, columns, rows),
+            reason: '$name: all of it held',
+          );
+          expect(
+            target.fingerprint(),
+            whole(screen, after),
+            reason: '$name: the frame drawn whole',
+          );
+          expect(
+            heldOn(target, screen, after, holding),
+            isNull,
+            reason: '$name: nothing more to draw',
+          );
+        } finally {
+          target.free();
+          screen.free();
+        }
+      }
+
+      // What reaches past the target: what lies within it.
+      final screen = EngineStackScreen(engine.composite, engine.letters);
+      addTearDown(screen.free);
+      final target = shownSurfaceOf(columns, rows);
+      addTearDown(target.free);
+      await screen.compose(frameOf(celOf(const [5, 7, 9])));
+      expect(
+        heldOn(target, screen, through(1, (30, 12)), (-30, 20, 260, 400))
+            ?.texels,
+        260 * 120,
+      );
+      expect(EngineStackScreen.heldIn(target.kept), (0, 20, 260, rows));
+    });
+
     // What no whole texels move onto is drawn whole: a pan by a part of a
     // texel — a view turned, whose pan nothing snaps
     // (`renderSnappedViewport`) —, and one by as many texels as the target

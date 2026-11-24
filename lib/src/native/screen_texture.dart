@@ -280,6 +280,12 @@ sealed class ScreenTexture {
   /// one drawn was never finished and none is up.
   Object? get drawnLastFor => (_frames.laying ?? _frames.shown)?.drawnFor;
 
+  /// What the target the frame begun last was drawn on holds of it, as who
+  /// drew it said ([GpuSurface.kept]) — that frame's, the one
+  /// [drawnLastFor] tells of, or nothing known: none where it was given up
+  /// ([present]), and none of the frame up after it.
+  Object? get drawnLastKept => _drawnOnLast?.kept;
+
   /// Ends once the GPU has finished what a frame submitted, with how the
   /// wait went ([GpuWaited]): null where a frame is shown as soon as it is
   /// drawn ([debugOnSurface]).

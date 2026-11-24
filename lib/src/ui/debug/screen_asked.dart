@@ -2,9 +2,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
 
 /// What a show of a canvas's screen asked of the engine: the box round the
-/// texels of its target it drew, columns by rows — all of them, or where
-/// the frame was made again since the target's last and what a pan
-/// uncovered (`EngineStackScreen.show`) —, how many texels its walks drew,
+/// texels of its target it drew, columns by rows — what the view holds
+/// through another camera, or where the frame was made again since the
+/// target's last and what the target did not hold once moved
+/// (`EngineStackScreen.show`) —, how many texels its walks drew,
 /// by how many texels it moved what the target held first (null, none),
 /// the display's scale there (`displayScaleOf`) and R1's mode by it.
 typedef ScreenAsk = ({

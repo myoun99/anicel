@@ -44,20 +44,22 @@ class EngineFramePicture extends ChangeNotifier {
   bool get gone => _gone;
 
   /// The picture through [viewport] at [devicePixelRatio] onto [target] of
-  /// [size] texels, the view's corner on its texel [corner]
-  /// ([EngineStackScreen.show]).
+  /// [size] texels, the view's corner on its texel [corner], what it holds
+  /// on the texels [holding] ([EngineStackScreen.show]).
   void show(
     GpuSurface target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
     (int, int) corner = (0, 0),
+    (int, int, int, int)? holding,
   }) => _screen.show(
     target,
     size,
     viewport: viewport,
     devicePixelRatio: devicePixelRatio,
     corner: corner,
+    holding: holding,
   );
 
   /// 🚨WHAT ITS PLUG-INS' STEPS TOLD as it was made and as each was composed

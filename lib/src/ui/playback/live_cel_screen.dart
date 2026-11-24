@@ -199,7 +199,7 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
     (int, int) size,
     _OnTheTexture on,
   ) {
-    final (:viewport, :devicePixelRatio, :corner) = on;
+    final (:viewport, :devicePixelRatio, :corner, :holding) = on;
     final screen = _screen();
     if (_held == null) {
       final lay = _wholeLays += 1;
@@ -216,6 +216,7 @@ class _LiveCelScreenState extends State<LiveCelScreen> implements _FrameFeed {
       viewport: viewport,
       devicePixelRatio: devicePixelRatio,
       corner: corner,
+      holding: holding,
     );
   }
 
