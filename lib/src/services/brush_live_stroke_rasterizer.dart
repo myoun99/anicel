@@ -714,7 +714,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       engineBlendModeOf(mode, erase: erase),
       dabs,
       shown,
-      erases: erase,
     );
   }
 
@@ -726,9 +725,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     BitmapSurface base,
     int laid,
     List<BrushDab>? dabs,
-    Map<TileCoord, ({BitmapTile tile, int revision})> shown, {
-    required bool erases,
-  }) {
+    Map<TileCoord, ({BitmapTile tile, int revision})> shown,
+  ) {
     // ⏳A blur's reads the cel all round each tile it lands
     // ([_rubOnEngine]): not made of the tile under it alone, and not made
     // again yet.
@@ -746,7 +744,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         unlaid.add(coord);
       }
     }
-    _handedOver(handed.values.toList(), again, erases: erases);
+    _handedOver(
+      handed.values.toList(),
+      again,
+      erases: laid == GpuBlend.erase,
+    );
     final landed = _landOnEngine(
       _asksOf(unlaid, base),
       laid,
@@ -769,7 +771,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// landing compared keeps its own: made again by [again] should the
   /// device go with them, and what each is beside the tile it landed on
   /// told, with no wait ([EngineTileLedger.toldOf]) — shown till then as
-  /// the stroke showed its cel under the pen ([erases]).
+  /// the stroke showed its cel under the pen: [erases] where the engine lays
+  /// it with its eraser, which adds no ink.
   void _handedOver(
     List<PromotedStrokeTile> handed,
     LandsAgain? again, {
