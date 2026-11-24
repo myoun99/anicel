@@ -44,6 +44,23 @@ class MainActivity : FlutterActivity() {
     // in a callback; the channel result waits here for it.
     private var pendingMicResult: MethodChannel.Result? = null
 
+    // H69 (user 2026-11-24, Galaxy Tab: 「앱 기동후 선긋고 언두 키보드로하면
+    // 안먹어. b같은거 누르면 되」): the window comes up in touch mode with no
+    // view focused - Android gives none on its own there since API 28 - and
+    // a key reaches a view only through focus. Flutter's view takes every
+    // touch itself (its onTouchEvent never asks for focus as a view's own
+    // does), so only a key that types something, which takes the window out
+    // of touch mode, gave it focus: Ctrl+Z types nothing (measured on the
+    // emulator 11-24: before B every key went to a window with no focus).
+    // Whenever the window is in front with nothing focused, Flutter's view
+    // is - every key the hardware sends then reaches it.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && currentFocus == null) {
+            findViewById<View>(FlutterActivity.FLUTTER_VIEW_ID)?.requestFocus()
+        }
+    }
+
     // I-104 (user 2026-10-15: 「아이패드같은거 조작안하면 화면 꺼지는데 …
     // 안꺼지도록」; I-104-Q1, 2026-10-16: on the iPad and Android, always
     // while the app is in front). The flag is the WINDOW's, and Android
