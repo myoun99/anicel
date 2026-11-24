@@ -442,6 +442,14 @@ void main() {
     RepaintCause.reset();
     await mouse.moveTo(canvasGlobalOffset(tester, const Offset(80, 70)));
     expect(RepaintCause.debugMarkedCause, isNull);
+
+    // None: nothing is drawn at the aim, so nothing names it (H80).
+    await tester.pump();
+    choose(DrawingCursor.none);
+    await tester.pump();
+    RepaintCause.reset();
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(100, 90)));
+    expect(RepaintCause.debugMarkedCause, isNull, reason: 'none');
   });
 
   group('where the system shows no cursor (iPadOS) the app draws the one '
