@@ -67,7 +67,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
 
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   opensTheEnginesScreens();
   late Directory temp;
 

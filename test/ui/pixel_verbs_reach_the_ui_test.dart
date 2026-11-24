@@ -1,4 +1,3 @@
-import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,7 +43,6 @@ import '../helpers/wait_window.dart'
 /// WHOLE map changed, which one stale button cannot break. This names these
 /// two so that it can.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   /// A project whose drawing rows have cels on frames 0-2 and NOTHING after,
   /// so stepping the playhead crosses a real 「그림 있음 → 없음」 edge.
   Project projectWithEarlyCels() {

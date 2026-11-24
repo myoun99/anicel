@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -36,7 +35,6 @@ import '../../helpers/wait_window.dart';
 /// and the fit — and a sound's block is born with the preset's name tag and
 /// words. Copied as it is placed: the row can still be answered otherwise.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
 
   setUp(() async {

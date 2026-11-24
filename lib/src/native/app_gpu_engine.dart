@@ -324,6 +324,20 @@ String? debugTakeAppGpuEngineNoted() {
   return engine == null || engine.isGone ? null : engine.debugTakeNoted();
 }
 
+/// Test seam: ends once the GPU has finished all that was handed to the
+/// app's engine ([GpuEngine.done]) — at once where none is open or its
+/// device is gone. What every test waits for as it ends, before it is
+/// asked of the screens it made (`flutter_test_config.dart`): a lay on the
+/// engine's clock lands by then, and frees what its store let go of
+/// meanwhile.
+@visibleForTesting
+Future<void> debugAppGpuEngineDone() async {
+  final engine = _its.engine;
+  if (engine != null && !engine.isGone) {
+    await engine.done();
+  }
+}
+
 /// Test seam: whether anything has asked for the app's engine since the
 /// app last let one go — opened it or begun to ([openAppGpuEngine]), or
 /// made it at once ([appGpuEngine]). [appGpuEngineOpen] says only the

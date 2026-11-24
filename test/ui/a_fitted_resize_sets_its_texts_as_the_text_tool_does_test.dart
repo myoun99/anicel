@@ -1,4 +1,3 @@
-import '../helpers/screens_left_of_the_engine.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_picture_place.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -25,7 +24,6 @@ import '../helpers/draw_on_current_frame.dart';
 /// tool's tests stand it in: under a widget test's clock its raster never
 /// answers.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   testWidgets('a cel\'s text fitted ×2 through the app\'s own cut commands '
       'is set again at twice its size', (tester) async {
     debugCelTextBaker = boxFillingBake;

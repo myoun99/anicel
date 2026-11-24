@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -83,7 +82,6 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// live composite (유저 답 conte-picture-display-Q1 「실시간 합성
 /// (정확)」), so the stroke shows in it while it is drawn.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
   const canvas = CanvasSize(width: 640, height: 360);
   const cutId = CutId('39');

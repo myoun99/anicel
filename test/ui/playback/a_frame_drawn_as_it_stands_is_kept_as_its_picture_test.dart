@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -49,7 +48,6 @@ import '../../helpers/settle_async.dart';
 /// cel in hand, the live rows showing nothing no cel stores — and the
 /// store lays it where it is not, as ever.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
   const tileSize = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);

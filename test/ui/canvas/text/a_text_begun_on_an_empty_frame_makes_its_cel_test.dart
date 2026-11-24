@@ -1,4 +1,3 @@
-import '../../../helpers/screens_left_of_the_engine.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
@@ -22,7 +21,6 @@ import '../../../helpers/cel_text_tool_harness.dart';
 /// and the text that made it are ONE step of history, as the stroke and its
 /// cel are (「답은 추천대로」 = merged).
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   setUp(() {
     AppInput.settings.value = const AppInputSettings(
       autoCreateFrameOnDraw: true,

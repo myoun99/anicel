@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -46,7 +45,6 @@ import '../../helpers/rail_group_button.dart';
 /// Q1 (2026-09-27): 「창 없이 바로 바꾼다 (언두 하나)」. Driven the way the
 /// user would: a pool row dragged onto a reference row's frames.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
 
   setUp(() async {

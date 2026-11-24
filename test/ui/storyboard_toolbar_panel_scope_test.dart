@@ -1,4 +1,3 @@
-import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -21,7 +20,6 @@ import 'flyout_test_helpers.dart' show readCommandEnabled;
 /// pressed in a timeline context, they keep the cut-local dispatch they
 /// always had. Every press here is REAL INPUT on the mounted button.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) =>
       pumpStoryboardHost(
         tester,

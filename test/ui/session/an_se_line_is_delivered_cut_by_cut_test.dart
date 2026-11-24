@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -135,7 +134,6 @@ String _pillOn(WidgetTester tester) => tester
     .keyValue;
 
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   test('⛔premise: the line plays in both cuts — the window\'s list, and the '
       'cut each of its frames stands in', () {
     final a = _aLineAcrossTwoCuts();

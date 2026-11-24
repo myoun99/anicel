@@ -9,6 +9,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart'
     show
         AppKernels,
+        debugAppGpuEngineDone,
         debugAppShaderFolder,
         debugOpenAppGpuEngineHere,
         debugTakeAppGpuEngineNoted;
@@ -120,11 +121,17 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // widgets free as they go is freed by then. Red is the test that left it:
   // the screens it MADE are asked, and where each was made is told. A file
   // of the ledger leaves the kinds it declares
-  // (test/helpers/screens_left_of_the_engine.dart).
-  GpuScreen.debugNoteWhereMade = true;
+  // (test/helpers/screens_left_of_the_engine.dart). Asked once the GPU has
+  // finished what the test handed it: a picture a store laid on the
+  // engine's clock lands by then, and is freed where its store was let go
+  // of meanwhile. ↩️Asked at once till 2026-11-24's second count, a lay
+  // still on its way was red or not by how soon its GPU answered — six
+  // files of the first count left none in the second, and one never seen
+  // before left one.
   var enteredBefore = 0;
   var madeBefore = GpuScreen.debugMade;
-  tearDown(() {
+  tearDown(() async {
+    await debugAppGpuEngineDone();
     final entered = debugDeviceEnteredHere - enteredBefore;
     enteredBefore += entered;
     final left = [
@@ -250,6 +257,9 @@ void startATestFile() {
   // config from the engine, which it reaches all the same since Q24
   // (gpu_adapter_choice.dart says why, and why that is the law).
   debugGpuAdapterChoice = GpuAdapterChoice.first;
+  // Each screen notes where it was made, for what each test is asked of
+  // the screens it made as it ends (testExecutable).
+  GpuScreen.debugNoteWhereMade = true;
   // 🚨A TEST'S POOL KEEPS TO NO BUDGET BUT ITS OWN, not to the OS's — the
   // machine's VRAM as the other suites beside it leave it — till the test
   // sets one (GpuPool.debugBudgetTillOneIsSet has the law and the reds).

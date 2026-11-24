@@ -9,7 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// .dart says why). 🔬The first count, 2026-11-24, every file: 163 files
 /// leave some — 106 of a shot, 42 of a lay, 14 both — and one more, the
 /// eraser's block file, of its view (red already, for another reason: it
-/// is not in the ledger). A file here declares which it leaves
+/// is not in the ledger). Counted again once each test waited for the
+/// GPU to finish before it was asked (the config says why), the same day:
+/// 42 of the 56 files that left a lay left none — 124 files, 14 of them
+/// leaving a lay. A file here declares which it leaves
 /// ([itsTestsLeaveScreensOfTheEngine]); a screen of another kind is red
 /// in it as anywhere. The total is pinned
 /// (test/architecture/a_file_leaves_screens_only_by_the_ledger_test.dart):
@@ -24,10 +27,10 @@ enum ScreensLeft {
   /// (test/helpers/until_the_panel_pictures_land.dart).
   ofAShot('frameOnTheEngine.showOn'),
 
-  /// A picture the session's store laid or was laying
-  /// (engine_frame_picture_store.dart, `_lay`): kept by a store whose
-  /// session the test never ends, or its lay's answer came after the
-  /// test's zone stopped.
+  /// A picture the session's store laid (engine_frame_picture_store.dart,
+  /// `_lay`): kept by a store whose session the test never ends. ↩️Or its
+  /// lay was still on the GPU when the test was asked — till each test
+  /// waited for the GPU first, which a lay hears in no one's zone.
   ofALay('EngineFramePictureStore._lay');
 
   const ScreensLeft(this.madeIn);

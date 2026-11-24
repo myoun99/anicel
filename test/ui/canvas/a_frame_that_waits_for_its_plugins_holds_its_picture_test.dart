@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -75,7 +74,6 @@ import '../../helpers/settle_async.dart';
 /// gpu-canonical-store-Q12: 「캔버스 자리에 준비 중 표시를 둔다」); while it
 /// waits for a plugin it is not.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   const tileSize = defaultCelTileSize;
   // ⚠️Wide enough that a folder drawn whole with a plugin's reach on it
   // is held: none is past a page ([HeldSubtreeRasters]).

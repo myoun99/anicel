@@ -47,7 +47,7 @@ import 'package:anicel/src/ui/export/export_cels_board.dart';
 /// plan's arithmetic is pinned in `export_cel_group_plan_test.dart`, the
 /// pixels in `a_linked_cel_wears_the_paper_of_the_cut_that_shows_it_test`.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

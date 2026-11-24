@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +39,6 @@ import '../../helpers/export_preview_probe.dart';
 /// and I-153-Q1 「고를 때 생긴다」: a folder column stands only while the
 /// rule makes its folder.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

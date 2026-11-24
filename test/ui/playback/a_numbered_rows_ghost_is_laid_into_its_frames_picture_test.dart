@@ -1,7 +1,6 @@
 @Tags(['gpu'])
 library;
 
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart' show defaultCelTileSize;
 import 'package:anicel/src/models/canvas_point.dart';
@@ -34,7 +33,6 @@ import '../../helpers/draw_on_current_frame.dart';
 /// row is now (`celNumberedRow`, 🗣️Q1 a 유저 2026-11-17 「그린다」), in
 /// place and over the frame, tinted or not.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
 
   const canvasSize = CanvasSize(width: 128, height: 64);

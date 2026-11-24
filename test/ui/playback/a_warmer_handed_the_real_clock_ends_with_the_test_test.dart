@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +32,6 @@ import '../../helpers/settle_async.dart';
 /// lends the clock last, one whose last word starts a walk over frames
 /// with nothing to make, one that holds the warmer to its end.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   /// A session whose warmer has asked the engine for a cut's pictures, and
   /// the real clock lent till what the engine made for the walk has come
   /// back — waiting for the fake clock to run it.

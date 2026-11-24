@@ -1,4 +1,3 @@
-import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -25,7 +24,6 @@ import '../helpers/storyboard_host.dart';
 /// Measured on the real storyboard: an S row's sound block, painted into a
 /// recording canvas, and the sheet under it.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   const soundStart = 3;
   const soundLength = 12;
 

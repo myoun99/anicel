@@ -4,7 +4,6 @@
 // And the rasterize of reference rows its one button ran — the reference
 // header's RASTERIZE's now (I-120-Q11 「하나만 남기도록」): a movie decoded
 // behind the wait window, one bar for the batch, as ONE undo.
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -39,7 +38,6 @@ import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
 
   setUp(() async {

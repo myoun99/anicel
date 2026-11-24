@@ -1,4 +1,3 @@
-import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -37,7 +36,6 @@ import '../../helpers/settle_async.dart';
 /// ([StandsWithItsPicture]); a press meanwhile is the frame moved to's,
 /// from its first point (11-15 ① (나), [PressesWaitForTheFrame]).
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
   const canvasSize = CanvasSize(width: 16, height: 16);
 
