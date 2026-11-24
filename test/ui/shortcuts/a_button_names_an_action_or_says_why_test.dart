@@ -273,6 +273,7 @@ void main() {
     'RailButton',
     'RailGlyphButton',
     'CommandPill',
+    'CommandPill.bakedWhole',
     'ToolSettingAction',
     'ToolSettingAction.glyph',
     'ToolSettingAction.flip',
