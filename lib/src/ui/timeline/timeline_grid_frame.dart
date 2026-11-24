@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../widgets/live_sheet.dart';
 import 'frame_ruler_view.dart';
 import 'layer_rail_window.dart'
     show LayerRailSplitter, TimelineRulerViewCorner;
@@ -48,21 +49,28 @@ class TimelineGridHeaderRow extends StatelessWidget {
   final ValueChanged<FrameRulerView>? onRulerViewChanged;
   final Key cornerKey;
 
+  // 🚨A SHEET UNDER THE ROW ([LiveSheet]): the corner's hover is laid on
+  // it, and the dock keeps its image (card a-hover-in-a-capsule-or-a-dock-
+  // takes-the-regions-image-again, 2026-11-24). The legend lays a sheet of
+  // its own on its plate. ↩️The corner painted its hover in its own
+  // picture.
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      legend,
-      const SizedBox(width: LayerRailSplitter.thickness),
-      TimelineRulerViewCorner(
-        key: cornerKey,
-        width: barWidth,
-        height: height,
-        rulerView: rulerView,
-        onChanged: onRulerViewChanged,
-      ),
-      Expanded(child: ruler),
-    ],
+  Widget build(BuildContext context) => LiveSheet(
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        legend,
+        const SizedBox(width: LayerRailSplitter.thickness),
+        TimelineRulerViewCorner(
+          key: cornerKey,
+          width: barWidth,
+          height: height,
+          rulerView: rulerView,
+          onChanged: onRulerViewChanged,
+        ),
+        Expanded(child: ruler),
+      ],
+    ),
   );
 }
 

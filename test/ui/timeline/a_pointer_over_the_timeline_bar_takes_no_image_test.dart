@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/press_face.dart';
@@ -41,9 +42,11 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      const RepaintBoundary(
+      RepaintBoundary(
         key: _capture,
-        child: MaterialApp(home: HomePage()),
+        // The app's own theme: a plate's hover is its hover colour, which
+        // the default light theme makes too faint to tell on a dark plate.
+        child: MaterialApp(theme: buildAppTheme(), home: const HomePage()),
       ),
     );
     await tester.pumpAndSettle();
