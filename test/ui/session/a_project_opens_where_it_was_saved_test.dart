@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_sections.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
@@ -551,5 +553,100 @@ void main() {
     );
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
     reopened.dispose();
+  });
+
+  test('🚨the sections the panels hide come back hidden with the file — '
+      'through the append, and shown again too — and hiding one is no edit '
+      '(H77, 유저 2026-11-24: 「se나 카메라 섹션 표시 상태가 파일에? '
+      '기억되도록」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    final steps = s.historyManager.undoCount;
+    TabRailWiring.of(s).toggleSection(TimelineSection.se);
+    TabRailWiring.of(s).toggleSection(TimelineSection.camera);
+    expect(
+      s.historyManager.undoCount,
+      steps,
+      reason: 'no undo step takes a section back',
+    );
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'and hiding one marks nothing unsaved',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(reopened.railView.hiddenSections.value, {
+      TimelineSection.se,
+      TimelineSection.camera,
+    });
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    TabRailWiring.of(reopened).toggleSection(TimelineSection.camera);
+    await reopened.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    reopened.dispose();
+
+    final again = await openedSession(projectPath);
+    expect(
+      again.railView.hiddenSections.value,
+      {TimelineSection.se},
+      reason: 'shown again, the file keeps that too',
+    );
+    again.dispose();
+
+    final fresh = EditorSessionManager(initialProject: twoCuts());
+    await fresh.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    fresh.dispose();
+    final shown = await openedSession(projectPath);
+    expect(
+      shown.railView.hiddenSections.value,
+      isEmpty,
+      reason: 'a file that hid nothing shows every section',
+    );
+    shown.dispose();
+  });
+
+  test('🚨a saved row in a section the file hides opens standing on a shown '
+      'row — the sections are hidden before the standing law asks (H77 · '
+      'F-169)', () async {
+    final project = createDefaultProject();
+    final cut = project.tracks.first.cuts.first;
+    final camera = cameraLayerIdForCut(cut.id);
+    File(projectPath).writeAsBytesSync(
+      buildAnicelArchiveBytes(
+        project: project,
+        cels: const [],
+        sessionFields: AnicelSessionFields(
+          resume: {
+            'cutId': cut.id.value,
+            'layerId': camera.value,
+            'hiddenSections': ['camera'],
+          },
+        ),
+      ),
+    );
+
+    final opened = await openedSession(projectPath);
+    expect(opened.railView.hiddenSections.value, {TimelineSection.camera});
+    expect(
+      opened.activeLayerId,
+      isNot(camera),
+      reason: 'the camera row is off the screen, so the open stands on the '
+          'row that stands in for it',
+    );
+    opened.dispose();
   });
 }

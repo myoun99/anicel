@@ -4159,6 +4159,7 @@ class EditorSessionManager extends ChangeNotifier
     timelineZoom: timelineZoom,
     panelViews: panelViews,
     laneGraphs: railView.laneGraphs,
+    hiddenSections: railView.hiddenSections,
     mediaFileViews: mediaFileViews,
   );
 

@@ -1,5 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_sections.dart' show TimelineSection;
 import '../../models/playback_mode.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
@@ -45,6 +46,7 @@ class ProjectResume {
     this.layerAxisOffsets = const {},
     this.rulerView = FrameRulerView.frames,
     this.laneGraphs = LaneGraphsView.none,
+    this.hiddenSections = const {},
     this.mediaFileViews = const {},
   });
 
@@ -100,6 +102,13 @@ class ProjectResume {
   /// keeps it.
   final LaneGraphsView laneGraphs;
 
+  /// The SE and camera sections the frame panels hide (the timeline
+  /// toolbar's toggles, `RailView.hiddenSections`) — 🗣️H77 (유저
+  /// 2026-11-24 「se나 카메라 섹션 표시 상태가 파일에? 기억되도록」): a view
+  /// setting kept here as the zooms are. Hiding one is no edit, and the file
+  /// still keeps it; a file that says nothing shows every section.
+  final Set<TimelineSection> hiddenSections;
+
   /// The page and the framing each file was left at in the viewers, by the
   /// file's path (F-382, `MediaFileViews`) — a view kept here as the zooms
   /// are: looking at a reference is no edit, and the file still keeps it. A
@@ -134,6 +143,8 @@ class ProjectResume {
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
+    if (hiddenSections.isNotEmpty)
+      'hiddenSections': [for (final section in hiddenSections) section.name],
     if (mediaFileViews.isNotEmpty)
       'mediaFileViews': {
         for (final MapEntry(key: path, value: view) in mediaFileViews.entries)
@@ -179,6 +190,11 @@ class ProjectResume {
               if (key is String && key.isNotEmpty) key,
         },
       ),
+      hiddenSections: {
+        if (json['hiddenSections'] case final List<Object?> names)
+          for (final section in TimelineSection.values)
+            if (names.contains(section.name)) section,
+      },
       mediaFileViews: {
         for (final MapEntry(:key, :value)
             in anicelObjectMapField(json['mediaFileViews']).entries)

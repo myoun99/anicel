@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer_sections.dart' show TimelineSection;
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/playback_mode.dart' show defaultPlaybackMode;
 import '../../models/project.dart';
@@ -151,12 +152,14 @@ class ProjectFileDoor {
     required TimelineZoomMemory timelineZoom,
     required PanelViewMemory panelViews,
     required ValueNotifier<LaneGraphsView> laneGraphs,
+    required ValueNotifier<Set<TimelineSection>> hiddenSections,
     required MediaFileViews mediaFileViews,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
        _panelViews = panelViews,
        _laneGraphs = laneGraphs,
+       _hiddenSections = hiddenSections,
        _mediaFileViews = mediaFileViews,
        _failedCopies = failedCopies,
        _project = project,
@@ -193,6 +196,11 @@ class ProjectFileDoor {
   /// Whose header graphs and pinned lanes a save keeps and an open puts
   /// back ([ProjectResume.laneGraphs]) — the rail's (`RailView.laneGraphs`).
   final ValueNotifier<LaneGraphsView> _laneGraphs;
+
+  /// Whose hidden SE and camera sections a save keeps and an open puts
+  /// back ([ProjectResume.hiddenSections], H77) — the rail's
+  /// (`RailView.hiddenSections`).
+  final ValueNotifier<Set<TimelineSection>> _hiddenSections;
 
   /// Whose files' pages and framings in the viewers a save keeps and an
   /// open puts back ([ProjectResume.mediaFileViews], F-382).
@@ -938,6 +946,7 @@ class ProjectFileDoor {
     ),
     rulerView: _panelViews.rulerView.value,
     laneGraphs: _laneGraphs.value,
+    hiddenSections: _hiddenSections.value,
     mediaFileViews: _mediaFileViews.views,
   );
 
@@ -1213,6 +1222,10 @@ class ProjectFileDoor {
     // came INTO a session whose rail view could be folding the saved row
     // away (F-169 ②); a session born for its file has nothing folded, and
     // what a file itself shuts — a folder — is not the view's to open.
+    // The sections the panels hid are hidden again BEFORE it is asked
+    // (H77), so the row it seats is one the panels show; a section the file
+    // hid is the file's, not the view's to open, as a folder is.
+    _hiddenSections.value = resume.hiddenSections;
     _keepStandingShown();
     _resumeTools(resume.tools);
     // A file that says nothing plays as a new project does.

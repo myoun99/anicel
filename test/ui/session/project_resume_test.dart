@@ -3,6 +3,7 @@ import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_sections.dart';
 import 'package:anicel/src/ui/session/media_file_views.dart';
 import 'package:anicel/src/ui/session/project_resume.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
@@ -193,6 +194,42 @@ void main() {
         }).laneGraphs,
         LaneGraphsView.none,
         reason: 'not a map, not a list: nothing was saved',
+      );
+    });
+  });
+
+  group('the sections the panels hide (H77)', () {
+    test('round-trip through the JSON, each section alone and together', () {
+      for (final hidden in [
+        for (final section in TimelineSection.values) {section},
+        {TimelineSection.se, TimelineSection.camera},
+      ]) {
+        expect(
+          ProjectResume.fromJson(
+            ProjectResume(hiddenSections: hidden).toJson(),
+          ).hiddenSections,
+          hidden,
+        );
+      }
+      expect(
+        ProjectResume.none.toJson().containsKey('hiddenSections'),
+        isFalse,
+        reason: 'every section shown, as a new project shows them, is not '
+            'written',
+      );
+    });
+
+    test('🚨a name that cannot be read is dropped ALONE', () {
+      expect(
+        ProjectResume.fromJson({
+          'hiddenSections': ['se', 7, 'sideways', ''],
+        }).hiddenSections,
+        {TimelineSection.se},
+      );
+      expect(
+        ProjectResume.fromJson({'hiddenSections': 'se'}).hiddenSections,
+        isEmpty,
+        reason: 'not a list: nothing was saved',
       );
     });
   });
