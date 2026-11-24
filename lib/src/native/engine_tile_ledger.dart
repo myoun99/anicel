@@ -840,30 +840,39 @@ final GpuEngine _engine;
     } on GpuRefused {
       said = null;
     } finally {
-      for (final (at, (:tile, :under)) in asked.indexed) {
-        final change = said?.changes[at];
-        if (said != null) {
-          final box = _boundsOf(said.inks[at]);
-          tile.rememberInkBounds(box);
-          // 🗣️브러시/렌더링 2026-11-24: a tile told the same is the tile
-          // under it in the cel from here on ([toldInPlaceOf] · the commit's
-          // `toldTidied`), and the box goes with it — it is that tile's
-          // bytes the test read.
-          if (change == GpuChange.same) {
-            under?.rememberInkBounds(box);
-          }
-        }
-        tile.toldInk(null);
-        // ⚠️Only while its bytes are still the engine's alone: one whose
-        // bytes came here meanwhile has let the tile it landed on go
-        // ([_Slot.keepsNothing]), and told the same then it would read as
-        // told the same as none.
-        final slot = _slotNow(tile);
-        if (slot != null && tile.isOnlyOnEngine) {
-          slot.told = change;
+      _tell(asked, said);
+      told.complete();
+    }
+  }
+
+  /// Each of [asked] told what [said] — null where the engine could not
+  /// tell — says of it, as [toldOf] has it.
+  void _tell(
+    List<({BitmapTile tile, BitmapTile? under})> asked,
+    ({List<GpuChange> changes, List<GpuInkBox?> inks})? said,
+  ) {
+    for (final (at, (:tile, :under)) in asked.indexed) {
+      final change = said?.changes[at];
+      if (said != null) {
+        final box = _boundsOf(said.inks[at]);
+        tile.rememberInkBounds(box);
+        // 🗣️브러시/렌더링 2026-11-24: a tile told the same is the tile
+        // under it in the cel from here on ([toldInPlaceOf] · the commit's
+        // `toldTidied`), and the box goes with it — it is that tile's
+        // bytes the test read.
+        if (change == GpuChange.same) {
+          under?.rememberInkBounds(box);
         }
       }
-      told.complete();
+      tile.toldInk(null);
+      // ⚠️Only while its bytes are still the engine's alone: one whose
+      // bytes came here meanwhile has let the tile it landed on go
+      // ([_Slot.keepsNothing]), and told the same then it would read as
+      // told the same as none.
+      final slot = _slotNow(tile);
+      if (slot != null && tile.isOnlyOnEngine) {
+        slot.told = change;
+      }
     }
   }
 
