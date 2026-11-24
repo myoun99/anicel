@@ -587,15 +587,17 @@ impl Engine {
     /// Flutter names one — asking what the app asks of its own ([`asked`]),
     /// as 1099 did.
     ///
-    /// 🚧관제 2026-11-23 20:1x (PR 1502 shard 4, card
-    /// bundled-files-find-the-engine-already-open): the candidate for the
-    /// segfault of build 1100's Linux `flutter test` on lavapipe, not its
-    /// cause — none is found yet. The flutter tester crashed in
-    /// the_engine_keys_a_row_as_each_pixel_is_keyed_test, alone too, after
-    /// its device came to ask [`used`]'s limits (99f2b3e25); 1099 asked
-    /// these on the same mesa and stood. The next bundle's CI is the
-    /// experiment: green, and the limits are why (why they crash it is a
-    /// card of its own); red, and they are not, and this goes back.
+    /// 🚨관제 2026-11-24 12:1x (card bundled-files-find-the-engine-already-open,
+    /// from the experiment 관제 set 2026-11-23 20:1x): [`used`]'s limits were
+    /// why build 1100's Linux `flutter test` segfaulted on lavapipe. The
+    /// flutter tester crashed in the_engine_keys_a_row_as_each_pixel_is_keyed_test,
+    /// alone too, after its device came to ask them (99f2b3e25, PR 1502
+    /// shard 4); 1099 had asked these on the same mesa and stood. With this
+    /// back (ff1afe336), that test ran and passed in PR 1503 (shard 1, job
+    /// 137699858883) and PR 1504 (shard 4, job 137990725233); the stalls
+    /// those runs had besides are no limit's. ⛔Do not have `flutter test`'s
+    /// device ask [`used`] again till why they crash the tester is known —
+    /// a card of its own (the-used-limits-crash-lavapipe-s-flutter-tester).
     /// cargo's tests keep [`Self::open_first`], so a kernel that uses more
     /// is still refused in its own test.
     #[cfg(not(test))]
