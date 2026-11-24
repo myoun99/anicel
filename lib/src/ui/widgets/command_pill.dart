@@ -155,7 +155,7 @@ class CommandPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pill = DecoratedBox(
+    final face = DecoratedBox(
       decoration: _faceIn(context),
       child: LiveSheet(
         child: SizedBox(
@@ -190,6 +190,14 @@ class CommandPill extends StatelessWidget {
         ),
       ),
     );
+    // 🚨A LAYER OF ITS OWN, ITS FILL IN IT: the fill is painted before the
+    // sheet, and painted in the bar's picture it was a picture the size of
+    // the bar after the pill before it, which a still region could not draw
+    // under that pill's sheet — a part of the region's image as wide as the
+    // bar for every pill (the panel header's four in a comma drag: 36.5 →
+    // 32.2 MB of the timeline dock's image, card a-drag-holds-more-than-
+    // the-dock-once-on-master, 11-25).
+    final pill = RepaintBoundary(child: face);
     // Opacity and NOT a per-child enablement sweep: the law is about the
     // WHOLE noun standing down, and a disabled child already dims itself.
     // Wrapping keeps the geometry identical to the enabled pill by
