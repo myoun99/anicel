@@ -6314,6 +6314,34 @@ class SharedTexture {
   /// platform's texture but Android's.
   int get unread => rust.screenUnread(id);
 
+  /// Why this platform's texture can tell no read of Flutter's GPU — [unread]
+  /// is then always 0 and a screen draws by its frames alone — in the
+  /// adapter's own words, for the frame statistics' `wait` line: null where
+  /// it tells, Android's by patch 0007.
+  ///
+  /// 🗣️관제 2026-11-24 (card every-platform-knows-the-screen-was-read ②,
+  /// 유저 11-23 「전플랫폼 최대한 통일하는방향으로」): one law, the Dart
+  /// side's (the app's ScreenTurns); an adapter has only how it knows, and
+  /// one that cannot says why by name. Each why is read off Flutter 3.47.4's
+  /// source (the card's table, 11-24 11:15). ⚠️Android's GL texture tells
+  /// nothing either (0007's image_external_texture_gl.cc), and is not told
+  /// apart here: no adapter of Android's knows which backend Flutter drew by.
+  static String? get untold => untoldOn(Platform.operatingSystem);
+
+  @visibleForTesting
+  static String? untoldOn(String os) => switch (os) {
+    'android' => null,
+    // A surface descriptor's release_callback is called as it is bound,
+    // before the GPU reads it (windows/external_texture_d3d.cc:112-115).
+    'windows' => 'D3D 는 묶을 때 알린다',
+    // Populated once a frame is marked available, told nothing after the
+    // draw (embedder/embedder_external_texture_gl.cc:45 · 203).
+    'linux' => 'FlTextureGL 은 알리지 않는다',
+    // copyPixelBuffer hands a buffer over and is told nothing after.
+    'macos' || 'ios' => 'FlutterTexture 는 알리지 않는다',
+    _ => '알림 없음',
+  };
+
   /// Shows slot 0 (front) or 1 (back) on the next frame. On Android the
   /// texture's one buffer is what it shows each paint: nothing to tell.
   bool show(int slot) => Platform.isAndroid || shim.textureShow(id, slot);

@@ -234,8 +234,13 @@ final class ScreenWaits {
   int screensCut = 0;
   bool heard = false;
 
+  /// Why the newest screen's texture can tell no read, in its adapter's
+  /// words (`SharedTexture.untold`): null where it tells, or none opened.
+  String? untold;
+
   /// What is counted, read at once — the word 「끊김」 while any screen's is
-  /// cut off, 「신호」 once a read was heard, none till one is.
+  /// cut off, 「신호」 once a read was heard, 「못 냄 · 」 and why where the
+  /// texture can tell none, none till one is.
   ScreenWaitsRead get read => (
     waits: waits,
     waitMicros: waitMicros,
@@ -245,7 +250,10 @@ final class ScreenWaits {
         ? '끊김'
         : heard
         ? '신호'
-        : '—',
+        : switch (untold) {
+            final why? => '못 냄 · $why',
+            null => '—',
+          },
   );
 }
 

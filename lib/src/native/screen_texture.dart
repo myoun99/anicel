@@ -176,7 +176,8 @@ sealed class ScreenTexture {
       ..readsPastTheBound = 0
       ..cuts = 0
       ..screensCut = 0
-      ..heard = false;
+      ..heard = false
+      ..untold = null;
   }
 
   /// A texture of [width] × [height] device pixels on [engine] — and the
@@ -190,6 +191,7 @@ sealed class ScreenTexture {
     _pathsEngine = WeakReference(engine);
     try {
       final opened = await _AlternatedTextures.open(engine, width, height);
+      surfaceWaits.untold = SharedTexture.untold;
       _refused = null;
       return opened;
     } on GpuRefused catch (refused) {

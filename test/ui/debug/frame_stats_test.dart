@@ -2,7 +2,7 @@ import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, SharedTexture;
 
 import 'package:anicel/main.dart';
 import 'package:anicel/src/native/screen_texture.dart';
@@ -824,7 +824,19 @@ void main() {
       expect(
         find.text(' wait   0  0.0 ms  past bound 0  cut 0  —'),
         findsOneWidget,
-        reason: 'Windows: nothing tells its reads, and nothing waits',
+        reason: 'no screen opened: nothing tells its reads, nothing waits',
+      );
+
+      ScreenTexture.surfaceWaits.untold = SharedTexture.untoldOn('windows');
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.text(
+          ' wait   0  0.0 ms  past bound 0  cut 0  못 냄 · D3D 는 묶을 때 알린다',
+        ),
+        findsOneWidget,
+        reason: 'a texture that can tell no read says why, by its adapter',
       );
 
       ScreenTexture.surfaceWaits
