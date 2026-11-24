@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🚨A STROKE PAST THE CONTE'S LAST CELL MAKES THE NEXT CUT (H44 — 유저
 /// 09-26: 「칸이 비어있는 곳, 비어있는 다음컷이나. 그런곳은 일단
@@ -115,7 +116,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // The panel goes first (tear-downs run last-added first): what it
     // listens to and draws into is let go after it.
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -38,6 +38,7 @@ import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/placement_reading.dart';
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️brush-fidelity-Q9 (유저 2026-10-18): 「통일하면 좋음」 — the cut tool's
 /// stamp ghost is what a click there lands, in every blend, normal too: the
@@ -157,6 +158,7 @@ void main() {
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
     addTearDown(slot.dispose);
+    theTreeGoesFirst(tester);
     // ONE sink, held: a panel built again hears a cel change through the
     // sink it was built with (`brush_canvas_selection_test`).
     final sink = BrushEditCacheInvalidationSink();

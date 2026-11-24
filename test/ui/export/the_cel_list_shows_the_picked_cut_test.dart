@@ -29,6 +29,7 @@ import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// F-177 (유저 2026-09-22): 「범위를 프로젝트로 설정시 미리보기 셀 출력
 /// 리스트가 모든 컷 합쳐서 레이어들 보여주는데, 그게아니라 컷 리스트가 있고,
@@ -99,7 +100,7 @@ void main() {
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

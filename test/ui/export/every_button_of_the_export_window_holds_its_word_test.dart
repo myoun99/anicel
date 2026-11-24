@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-486 (유저 2026-10-27): 「출력창 셀 탭, 콘티같은거 일본어에서 빈
 /// 버튼되는데 아마 길어서 문제생기는듯. 일단 출력창 버튼들 자동맞춤해서
@@ -138,7 +139,7 @@ void main() {
       // joined the documents' strip (I-151) and French outgrew it.
       await tester.binding.setSurfaceSize(const Size(1400, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),

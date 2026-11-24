@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/paper_editing_kit.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-153-Q2 (유저 2026-11-04): 「셀 탭에 키 + 손가락 플립」 — the canvas's
 /// keys and its one-finger flip on the Cels tab, read by the same bindings
@@ -112,7 +113,7 @@ void main() {
     );
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

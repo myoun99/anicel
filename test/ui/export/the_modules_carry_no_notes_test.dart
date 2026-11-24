@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The export window's modules carry no explanatory copy.
 ///
@@ -21,7 +22,7 @@ void main() {
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );

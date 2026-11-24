@@ -52,6 +52,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// A paper document written as a Photoshop document keeps its strata apart
 /// (I-117 — 🗣️유저 2026-10-21): 「타임시트는 알듯이 층 나눠져있는대로 출력.
@@ -119,7 +120,7 @@ void main() {
   }) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

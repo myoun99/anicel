@@ -44,6 +44,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The Cels tab's RUN, down to the files on disk — the plan and the list
 /// are pinned beside it (`export_cel_group_plan_test.dart`,
@@ -164,7 +165,7 @@ void main() {
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

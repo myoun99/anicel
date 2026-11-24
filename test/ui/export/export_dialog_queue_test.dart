@@ -24,6 +24,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 void main() {
   itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
@@ -84,7 +85,7 @@ void main() {
     // than 「Art」 did (F-578-Q4).
     await tester.binding.setSurfaceSize(const Size(2040, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

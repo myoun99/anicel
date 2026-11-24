@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🚨THE BAND OF A CELL IS ITS BLOCK'S OWN HANDWRITING.
 ///
@@ -96,7 +97,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // The panel goes first (tear-downs run last-added first).
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

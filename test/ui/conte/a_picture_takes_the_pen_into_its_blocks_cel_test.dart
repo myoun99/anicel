@@ -68,6 +68,7 @@ import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross;
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -198,7 +199,7 @@ void main() {
       // (tear-downs run last-added first).
       final stroke = ActiveStrokeOverlayModel();
       addTearDown(stroke.dispose);
-      addTearDown(() => tester.pumpWidget(const SizedBox()));
+      theTreeGoesFirst(tester);
       picture = contePictures(page, (
         cutOf: (id) => id == cutId ? drawn : null,
         celKeyOf: celKeyOf,

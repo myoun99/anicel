@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The Cels list's rules column (F-289) was drawn 168 wide around the words
 /// it holds — 셀 · 콘티 · 미술 · 디렉션 in one strip, 기준 · 어태치 beside
@@ -96,7 +97,7 @@ void main() {
   Future<void> pumpCels(WidgetTester tester, Size surface) async {
     await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     final session = film();
     addTearDown(session.dispose);
     await tester.pumpWidget(

@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-486-Q1 (유저 2026-10-27): 「칸 이름만 맞춘다」.
 ///
@@ -80,7 +81,7 @@ void main() {
       addTearDown(session.dispose);
       await tester.binding.setSurfaceSize(const Size(1300, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),

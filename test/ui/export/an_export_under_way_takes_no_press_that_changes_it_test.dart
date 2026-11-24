@@ -63,6 +63,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/paper_editing_kit.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// A movie run that writes one byte where the movie goes, at once — so a
 /// movie is handed over as every tab's files are, and held there as they
@@ -572,7 +573,7 @@ void main() {
     // the project scope makes (I-153).
     await tester.binding.setSurfaceSize(const Size(2200, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

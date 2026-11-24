@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// F-144 (유저 2026-09-16): 「셀 출력의 왼쪽 출력될 셀 리스트, 타임라인은
 /// 아래서부터 미술,A,B,C인데 셀 리스트는 C,B,A,미술임. 제대로 타임라인 방향
@@ -94,7 +95,7 @@ void main() {
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

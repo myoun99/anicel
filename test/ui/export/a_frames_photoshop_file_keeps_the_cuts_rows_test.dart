@@ -48,6 +48,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The Image tab's frame written as a Photoshop document keeps the cut's
 /// rows — 🗣️I-117-Q2 (유저 2026-10-22): 「층을 지키고 그 효과는 뺀다」: a
@@ -504,7 +505,7 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(1280, 720));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

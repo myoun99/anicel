@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 void main() {
   group('BrushEditCanvasView', () {
@@ -66,6 +67,7 @@ void main() {
         final viewport = CanvasViewport(zoom: 1.25, panX: 3, panY: 4);
         final overlayModel = ActiveStrokeOverlayModel()..dabs.add(_dab());
         addTearDown(overlayModel.dispose);
+        theTreeGoesFirst(tester);
 
         await tester.pumpWidget(
           _app(

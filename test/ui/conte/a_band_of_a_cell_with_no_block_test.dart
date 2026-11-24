@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🚨THE BAND OF A CELL WITH NO BLOCK DRAWS AS ITS PICTURE DOES (유저 답
 /// conte-drawing-target-Q3 「그림 칸과 같이 (토글을 따른다)」).
@@ -155,7 +156,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // The panel goes first (tear-downs run last-added first): what it
     // listens to and draws into is let go after it.
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

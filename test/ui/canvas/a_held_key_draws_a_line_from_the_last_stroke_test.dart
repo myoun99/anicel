@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-119 (유저 2026-10-21): 「브러시 도구(브러시,지우개) 전용기능, …
 /// 누르고있으면 저번에 찍은 마지막 dab? 점 부터 현재 호버중인 커서까지
@@ -123,7 +124,7 @@ void main() {
     await tester.pump();
     // The panel goes before its overlay does: the view resets the host's
     // overlay on its way out.
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     return (
       coordinator: coordinator,
       history: history,

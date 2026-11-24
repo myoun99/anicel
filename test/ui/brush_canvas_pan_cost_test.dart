@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/number_pad_keyboard.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// What a PAN costs the panel beyond the redraw it genuinely owes.
 ///
@@ -125,6 +126,7 @@ void main() {
     // to the field that had been caught rather than to the rule.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
+    theTreeGoesFirst(tester);
     final panelBuilds = <int>[0];
     final painters = <BitmapSurfacePainter?>[];
     await pumpPanel(
@@ -177,6 +179,7 @@ void main() {
     // that must not be served stale.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
+    theTreeGoesFirst(tester);
     final panelBuilds = <int>[0];
     final painters = <BitmapSurfacePainter?>[];
     await pumpPanel(
@@ -225,6 +228,7 @@ void main() {
     // is every rebuild.
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
+    theTreeGoesFirst(tester);
     final panelBuilds = <int>[0];
     final painters = <BitmapSurfacePainter?>[];
     await pumpPanel(

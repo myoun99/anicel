@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../../helpers/sheet_photo_drops.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️유저 I-97-Q3 (2026-10-15): 「브러시 허용이면 어느 도구든 사진을 누르면
 /// 집는다」 — 「사진 누르면 변형도구 상자 뜨고, 아래에 알약 공용화되있는거
@@ -113,7 +114,7 @@ void main() {
       Size(besideATimesheet ? 1600 : 1000, 700),
     );
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

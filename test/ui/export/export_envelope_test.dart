@@ -45,6 +45,7 @@ import '../../helpers/files_written_under.dart';
 import '../../helpers/sheet_image_runs.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The cut envelope (컷 봉투) as the Cels tab writes it (F-289, 유저
 /// 2026-10-05: 「컷봉투탭도 셀 내부로 편입 … 기존의 컷봉투탭에 있던 용지는
@@ -262,7 +263,7 @@ void main() {
       // the Cels list's rules stand as wide as their words (F-486).
       await tester.binding.setSurfaceSize(const Size(1400, 660));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

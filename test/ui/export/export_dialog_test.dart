@@ -65,6 +65,7 @@ import '../../helpers/temp_dir.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 void main() {
   itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
@@ -192,7 +193,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // Unmount at teardown: the dialog's dispose cancels the preview
     // debounce timer — otherwise every test ends with a pending Timer.
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

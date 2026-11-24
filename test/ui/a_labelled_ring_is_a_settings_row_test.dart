@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../helpers/boolean_dot_probe.dart';
 import '../helpers/text_finders.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// 🚨★★★A RING BESIDE A LABEL IS ONE ROW — 유저 answered board
 /// `one-boolean-row-shape-Q1` on 2026-09-24: 「**설정 줄 하나로**」.
@@ -119,7 +120,7 @@ void main() {
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

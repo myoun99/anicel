@@ -41,6 +41,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/written_wav.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The AE Script tab's run, down to the files on disk: the cels the Cels
 /// list picks, written as the tab writes them, and the script beside them
@@ -169,7 +170,7 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -35,6 +35,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️유저 I-97 (2026-10-15): a pool picture dropped on a conte cell's band
 /// is a PHOTO in the handwriting a stroke started there writes (H49) —
@@ -156,7 +157,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // The panel goes first (tear-downs run last-added first): what it
     // listens to and draws into is let go after it.
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -33,6 +33,7 @@ import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-289 (유저 2026-10-06): the export window's preview is a canvas-base
 /// panel that wears what the tab's file is — the Sequence and the Image tab
@@ -112,7 +113,7 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
