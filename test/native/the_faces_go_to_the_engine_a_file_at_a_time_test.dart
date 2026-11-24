@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../helpers/project_scratch_folder.dart';
+
 /// 🚨THE ENGINE'S FACES GO OVER A FILE AT A TIME (board
 /// engine-faces-load-35-mb-on-the-ui-thread, 🔬저장 11-14: the 35 MB of
 /// the bundled faces copied in one stop — 50–120 ms of the UI the first
@@ -94,10 +96,9 @@ void main() {
   Future<List<List<String>>> inAnApk(
     Object? Function(int place, Map<String, Object> span) answer,
   ) async {
-    final apk = File(
-      '${Directory.systemTemp.createTempSync('anicel-apk-').path}/base.apk',
-    );
-    addTearDown(() => apk.parent.deleteSync(recursive: true));
+    final folder = Directory.systemTemp.createTempSync('anicel-apk-');
+    deleteAfterSessionEnds(folder);
+    final apk = File('${folder.path}/base.apk');
     final spans = <Map<String, Object>>[];
     final holder = BytesBuilder(copy: false)..add([1, 2, 3]);
     for (final file in files) {
