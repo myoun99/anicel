@@ -1447,12 +1447,7 @@ class BrushFrameStore {
     }
     final behind = _behind(shell);
     _writeDownWhatWaits(key, behind);
-    // In its place in the line ([_storeHot] puts a cel last).
-    _bakedSurfaces[key] = behind;
-    _hotWeights.weigh(key, behind);
-    if (_displayCaches.containsKey(key)) {
-      storeRebuiltDisplayCache(key: key, previewSurface: behind);
-    }
+    _inItsPlace(key, behind);
     return true;
   }
 
@@ -2455,9 +2450,6 @@ class BrushFrameStore {
   /// dirty as it was, at its revision, with what it keeps. False, and
   /// nothing changed, where [from] is its hot picture no longer.
   ///
-  /// ⚠️In its place in the line, as [_becomesItsShell] puts a shell: the
-  /// second picture taken for the same pixels — a third is where the two
-  /// become one.
   bool takeSamePicture(
     BrushFrameKey key,
     BitmapSurface from,
@@ -2467,12 +2459,21 @@ class BrushFrameStore {
     if (!identical(_bakedSurfaces[key], from)) {
       return false;
     }
-    _bakedSurfaces[key] = to;
-    _hotWeights.weigh(key, to);
-    if (_displayCaches.containsKey(key)) {
-      storeRebuiltDisplayCache(key: key, previewSurface: to);
-    }
+    _inItsPlace(key, to);
     return true;
+  }
+
+  /// [surface] as [key]'s hot picture in its place in the line ([_storeHot]
+  /// puts a cel last), weighed as what it holds, and its display cache
+  /// with it: the same pixels, held by other objects — a shell
+  /// ([_becomesItsShell]) or a told picture ([takeSamePicture]). ↩️Each
+  /// wrote these lines itself till the second (2026-11-24, ③-1).
+  void _inItsPlace(BrushFrameKey key, BitmapSurface surface) {
+    _bakedSurfaces[key] = surface;
+    _hotWeights.weigh(key, surface);
+    if (_displayCaches.containsKey(key)) {
+      storeRebuiltDisplayCache(key: key, previewSurface: surface);
+    }
   }
 
   /// Every tile the HOT surfaces hold, into [tiles] (an identity set) — what

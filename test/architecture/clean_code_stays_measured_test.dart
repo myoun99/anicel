@@ -2110,7 +2110,16 @@ void main() {
   /// fields — it went to the tick (`TickSceneLayer._movedAloneIn`), whose
   /// fields they are. ⛔Not split further to fit: what is left is when the
   /// region takes its own image again, which a seam would say in two places.
-  const longClasses = 87;
+  ///
+  /// ⚠️87 → 88 on 2026-11-24, ONE name: `UndoSurfaceSnapshot` crossed
+  /// (599 → 605) when a told picture came to take the handed tiles' place
+  /// in the step that holds them (card the-start-of-every-stroke-stalls-on-
+  /// the-galaxy-tab ③-1, 관제 2026-11-24 ⓐ): `heldHere`, its picture while
+  /// no drop and no park under way moves it out — what the step may take a
+  /// told picture into. 🔬`clean_code_diff` against master (`714123138`)
+  /// names this one and no other class. ⛔Not split to fit: whether it is
+  /// dropped, parking or let go are its own fields, read beside them.
+  const longClasses = 88;
 
   late CleanCodeScan scan;
   setUpAll(() {
