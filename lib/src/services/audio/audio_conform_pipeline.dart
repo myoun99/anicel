@@ -356,6 +356,7 @@ class AudioConformPipeline {
     this.bucketsPerSecond = 40,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
+    this.onRead,
   });
 
   final AudioDecodeCallback decode;
@@ -369,6 +370,10 @@ class AudioConformPipeline {
   /// rational, never a float factor.
   final int speedNumerator;
   final int speedDenominator;
+
+  /// Hears how much of the source [ensureConform] has read, of what it
+  /// reads.
+  final void Function(double fraction)? onRead;
 
   /// The fingerprint [source] carries — the IDENTITY, content-derived so it
   /// survives being copied to another machine — without holding the source.
@@ -538,7 +543,6 @@ class AudioConformPipeline {
     required String? conformPath,
     MediaByteSource? source,
     MediaByteSource? carriedConform,
-    void Function(double fraction)? onRead,
   }) {
     // Where the bytes actually are: the file at the path unless the caller
     // says otherwise — an archive range for media the project carries.

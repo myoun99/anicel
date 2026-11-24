@@ -483,12 +483,12 @@ ConformResult runConformHere(
     bucketsPerSecond: request.bucketsPerSecond,
     speedNumerator: request.speedNumerator,
     speedDenominator: request.speedDenominator,
+    onRead: onRead,
   );
   return pipeline.ensureConform(
     sourcePath: request.sourcePath,
     conformPath: request.conformPath,
     source: request.source,
     carriedConform: request.carriedConform,
-    onRead: onRead,
   );
 }

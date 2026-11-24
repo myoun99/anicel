@@ -72,13 +72,15 @@ void main() {
       'second half', () {
     final heard = <double>[];
     final request = aSound();
-    final pipeline = AudioConformPipeline(
-      decode: openAudioSource,
-      resample: (
-          {required channels, required inputRate, required outputRate}) =>
-          throw StateError('the sound is at the project rate'),
-    );
-    final made = pipeline.ensureConform(
+    AudioConformPipeline pipeline({void Function(double)? onRead}) =>
+        AudioConformPipeline(
+          decode: openAudioSource,
+          resample: (
+              {required channels, required inputRate, required outputRate}) =>
+              throw StateError('the sound is at the project rate'),
+          onRead: onRead,
+        );
+    final made = pipeline().ensureConform(
       sourcePath: request.sourcePath,
       conformPath: '${directory.path}/a.conform',
     );
@@ -90,10 +92,9 @@ void main() {
       file.lastModifiedSync().add(const Duration(seconds: 5)),
     );
 
-    pipeline.ensureConform(
+    pipeline(onRead: heard.add).ensureConform(
       sourcePath: request.sourcePath,
       conformPath: '${directory.path}/a.conform',
-      onRead: heard.add,
     );
 
     expect(heard, isNotEmpty);
