@@ -24,6 +24,7 @@ import 'native_scratch.dart';
     Pointer<Int64>,
     Pointer<Int32>,
     Pointer<Int32>,
+    Pointer<NativeFunction<Void Function(Double)>>,
   )
 >(symbol: 'qa_audio_decode_span_window')
 external int _decodeSpan(
@@ -37,6 +38,7 @@ external int _decodeSpan(
   Pointer<Int64> frameCount,
   Pointer<Int32> channels,
   Pointer<Int32> sampleRate,
+  Pointer<NativeFunction<Void Function(Double)>> told,
 );
 
 @Native<Void Function(Pointer<Float>)>(symbol: 'qa_audio_decode_free')
@@ -171,9 +173,14 @@ final class QaAudioDecoder {
   /// [span] is a `MediaSpan` (`media_byte_source.dart`) by shape: a record
   /// type is its fields, so a source's span is handed over as it is, and this
   /// layer imports nothing to say so.
+  ///
+  /// [onProgress] hears, as it decodes, the frames decoded of the frames to
+  /// decode — those before [window] too (`window` in stream.rs) — and
+  /// nothing for a decode to the end, which has no whole.
   QaDecodedAudio? decodeSpan(
     ({String path, int offset, int length, bool framed}) span, {
     ({int start, int count})? window,
+    void Function(double fraction)? onProgress,
   }) {
     final (:path, :offset, :length, :framed) = span;
     if (path.isEmpty ||
@@ -183,6 +190,10 @@ final class QaAudioDecoder {
       return null;
     }
     final native = path.toNativeUtf8();
+    // Called back on this thread, inside the call below.
+    final told = onProgress == null
+        ? null
+        : NativeCallable<Void Function(Double)>.isolateLocal(onProgress);
     try {
       return _harvest(
         (samplesOut, frameCountOut, channelsOut, sampleRateOut) => _decodeSpan(
@@ -196,9 +207,11 @@ final class QaAudioDecoder {
           frameCountOut,
           channelsOut,
           sampleRateOut,
+          told?.nativeFunction ?? nullptr,
         ),
       );
     } finally {
+      told?.close();
       calloc.free(native);
     }
   }

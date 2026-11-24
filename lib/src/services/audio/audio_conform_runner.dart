@@ -429,14 +429,16 @@ Float32List runFilterHere(FilterRequest request) {
 /// saw it (2026-09-24).
 ///
 /// [window]: only those of the sound's own frames, and only those held — see
-/// [QaAudioDecoder.decodeSpan].
+/// [QaAudioDecoder.decodeSpan], as [onProgress] is.
 ({Float32List samples, int channels, int sampleRate})? decodeAudioSource(
   MediaByteSource source, {
   ({int start, int count})? window,
+  void Function(double fraction)? onProgress,
 }) {
   final decoded = QaAudioDecoder.instance.decodeSpan(
     _spanOf(source),
     window: window,
+    onProgress: onProgress,
   );
   if (decoded == null) {
     return null;

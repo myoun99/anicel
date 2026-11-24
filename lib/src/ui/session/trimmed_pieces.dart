@@ -121,7 +121,13 @@ class TrimmedPieces {
           withSound: parts == MovieParts.pictureAndSound,
           pull: pull,
         ),
-        MediaAssetKind.audio => await _sound(source, work, trim, pull),
+        MediaAssetKind.audio => await _sound(
+          source,
+          work,
+          trim,
+          pull,
+          onProgress,
+        ),
         MediaAssetKind.pdf => await _pages(source, work, trim, onProgress),
         MediaAssetKind.image => await _frames(source, work, trim, onProgress),
       };
@@ -204,6 +210,7 @@ class TrimmedPieces {
     String work,
     _Trim trim,
     ({int numerator, int denominator}) pull,
+    void Function(double fraction)? onProgress,
   ) async {
     final peaks = await _soundPeaks(normalizedMediaPath(source));
     if (peaks == null) {
@@ -215,8 +222,15 @@ class TrimmedPieces {
       inFrame: trim.inFrame,
       outFrame: trim.outFrame,
     );
-    final wav = await onAWorker(
-      () => soundSpanAsWav(MediaFileBytes(source), kept, clock, pull: pull),
+    final wav = await onAWorkerReporting(
+      onProgress,
+      (report) => soundSpanAsWav(
+        MediaFileBytes(source),
+        kept,
+        clock,
+        pull: pull,
+        onProgress: report,
+      ),
     );
     if (wav == null) {
       return null;

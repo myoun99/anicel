@@ -321,6 +321,36 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    // 🗣️유저 11-24 (decoder-reads-skip-the-percent-Q3 「풀어 낸 프레임 ÷ 풀
+    // 프레임」): a sound's cut decodes up to the span's end and no further,
+    // so it tells the frames decoded of the frames to decode.
+    testWidgets("🗣️a sound's cut tells the frames it has decoded of those "
+        'to decode — the ones before the span too — up to the whole',
+        (tester) async {
+      final s = session();
+      final source = writeWav('long.wav', 10);
+      final heard = <double>[];
+
+      final cut = await tester.runAsync(
+        () => s.trimmedPieces.cut(
+          source,
+          MediaAssetKind.audio,
+          inFrame: 120,
+          outFrame: 149,
+          onProgress: heard.add,
+        ),
+      );
+
+      expect(cut, isNotNull);
+      expect(heard.length, greaterThan(1), reason: 'told along the way');
+      expect(heard.first, lessThan(0.9), reason: 'from before the span');
+      for (var i = 1; i < heard.length; i += 1) {
+        expect(heard[i], greaterThanOrEqualTo(heard[i - 1]), reason: '$heard');
+      }
+      expect(heard.last, 1);
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('🚨a sound is cut in its OWN time — at 1001/1000 project frame '
         'f plays source time f / rate × 1001/1000, and the piece starts there '
         '(cut from the conform instead, it would be sped twice)', (

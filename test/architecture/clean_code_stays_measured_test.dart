@@ -1205,7 +1205,20 @@ void main() {
   /// (`68e631395`) names that one added and nothing gone. ⛔Not kept on the
   /// stroke to fit: the overlay holds what it shows and lets each go, and
   /// pen-up asks it, so no tile it let go is handed over.
-  const wideSignatures = 458;
+  ///
+  /// ⚠️458 → 461 on 2026-11-24, three named as the rule above asks (card
+  /// decoder-reads-skip-the-percent-Q3 — 유저 2026-11-24: 「풀어 낸 프레임 ÷
+  /// 풀 프레임」): a sound's cut tells the window how far its decode has
+  /// come, and the hearer goes down the one road its frames take —
+  /// `TrimmedPieces._sound` (five — the file, the piece's work path, the
+  /// span, its pull, the hearer), `soundSpanAsWav` and `decodeAudioOfFrames`
+  /// (five each — the source, the frames, the clock, the pull, the hearer),
+  /// as `_movie` (six) always took who hears its frames written.
+  /// `_pulledBetween` (five → six) was counted already. 🔬The scan against
+  /// master (`98c519c3d`) names those three added and nothing gone. ⛔Not
+  /// folded into the span or the clock to fit: the pull is how a sound's
+  /// frames are counted, the hearer is the window's — two questions.
+  const wideSignatures = 461;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

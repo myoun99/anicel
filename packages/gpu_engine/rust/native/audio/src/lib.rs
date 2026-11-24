@@ -184,11 +184,12 @@ fn hand_over(samples: &[f32]) -> *mut f32 {
 /// `qa_audio_decode_span_window`: the container's `window_count` frames of
 /// sound from frame `window_start` ([window]). The format that read it, or 0
 /// when nothing could; on success the caller owns `*out_samples` (null when
-/// no frames came) and lets it go with [qa_audio_decode_free].
+/// no frames came) and lets it go with [qa_audio_decode_free]. `told`, when
+/// not null, is called on this thread with how far it has come ([window]).
 ///
 /// # Safety
 /// `path` is null or a NUL-terminated string; each out pointer null or
-/// writable.
+/// writable; `told` null or callable until this returns.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_audio_decode_span_window(
     path: *const c_char,
@@ -201,6 +202,7 @@ pub unsafe extern "C" fn qa_audio_decode_span_window(
     out_frame_count: *mut i64,
     out_channels: *mut i32,
     out_sample_rate: *mut i32,
+    told: Option<unsafe extern "C" fn(f64)>,
 ) -> i32 {
     // SAFETY: the caller's contract.
     let outs = unsafe { (out_samples.as_mut(), out_frame_count.as_mut(), out_channels.as_mut(), out_sample_rate.as_mut()) };
@@ -216,7 +218,13 @@ pub unsafe extern "C" fn qa_audio_decode_span_window(
     }
     // SAFETY: the caller's contract.
     let path = unsafe { CStr::from_ptr(path) };
-    let Some(sound) = window(path, offset, length, framed != 0, window_start, window_count) else {
+    let mut tell = |fraction: f64| {
+        if let Some(told) = told {
+            // SAFETY: the caller's contract — callable until this returns.
+            unsafe { told(fraction) }
+        }
+    };
+    let Some(sound) = window(path, offset, length, framed != 0, window_start, window_count, &mut tell) else {
         return FORMAT_UNKNOWN;
     };
     // A window past the sound's end kept nothing, and that is an answer.
@@ -258,6 +266,7 @@ pub unsafe extern "C" fn qa_audio_decode_span(
             out_frame_count,
             out_channels,
             out_sample_rate,
+            None,
         )
     }
 }

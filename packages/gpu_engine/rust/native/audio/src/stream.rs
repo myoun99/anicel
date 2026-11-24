@@ -251,15 +251,42 @@ pub struct Window {
 /// its frames: ask for nothing, then for what that says to ask. A window
 /// past the end is no frames, not a failure. None when nothing could read
 /// it.
-pub fn window(path: &CStr, offset: i64, length: i64, framed: bool, first: i64, count: i64) -> Option<Window> {
+///
+/// `told` hears how far it has come: the frames decoded of the frames to
+/// decode, `first + count` — those before the window are decoded too, to
+/// pass them (🗣️유저 11-24, decoder-reads-skip-the-percent-Q3 「풀어 낸
+/// 프레임 ÷ 풀 프레임」: a cut reads only up to its end, so the bytes it will
+/// read are not known before it ends; a movie's cut counts its frames the
+/// same way). A window to the end (-1) has no whole, and tells nothing.
+pub fn window(
+    path: &CStr,
+    offset: i64,
+    length: i64,
+    framed: bool,
+    first: i64,
+    count: i64,
+    told: &mut dyn FnMut(f64),
+) -> Option<Window> {
     if first < 0 {
         return None;
     }
     let mut stream = Stream::open(path, offset, length, framed)?;
     let channels = stream.channels as usize;
+    let whole = if count < 0 { 0 } else { first + count };
+    let mut tell = |decoded: i64| {
+        if whole > 0 {
+            told(decoded as f64 / whole as f64);
+        }
+    };
     let mut samples = Vec::new();
-    if count != 0 {
-        stream.pass(None, first);
+    let mut passed = 0;
+    while count != 0 && passed < first {
+        let got = stream.pass(None, (first - passed).min((BLOCK_FRAMES * 16) as i64));
+        if got == 0 {
+            break;
+        }
+        passed += got;
+        tell(passed);
     }
     let mut kept = 0;
     while count < 0 || kept < count {
@@ -273,6 +300,7 @@ pub fn window(path: &CStr, offset: i64, length: i64, framed: bool, first: i64, c
         if got == 0 {
             break;
         }
+        tell(passed + kept);
     }
     samples.truncate(kept as usize * channels);
     Some(Window { samples, format: stream.format, channels: stream.channels, sample_rate: stream.sample_rate })
