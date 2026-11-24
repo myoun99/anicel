@@ -667,8 +667,20 @@ impl Pool {
     /// too, as it stays made, and one given back or away nothing: what
     /// stands in its place is the engine's ([`Engine::no_page`]).
     pub(crate) fn bytes(&self) -> u64 {
+        self.made_bytes(|_| true)
+    }
+
+    /// The bytes of the pages of folded tiles among [`Pool::bytes`] — the
+    /// cels' pool parted in the debug window's memory (card
+    /// one-debug-window-shows-everything: every sum shows its parts).
+    pub(crate) fn folded_bytes(&self) -> u64 {
+        self.made_bytes(|page| matches!(page, Page::Folded(_)))
+    }
+
+    /// The bytes of the pages made that `which` takes, each counted whole.
+    fn made_bytes(&self, which: impl Fn(&Page) -> bool) -> u64 {
         let made = |(book, buffer): (&Option<Page>, &wgpu::Buffer)| {
-            book.as_ref().is_some_and(Page::is_made).then(|| buffer.size())
+            book.as_ref().is_some_and(|page| page.is_made() && which(page)).then(|| buffer.size())
         };
         self.pages.iter().zip(&self.buffers).filter_map(made).sum()
     }
@@ -2336,4 +2348,15 @@ pub unsafe extern "C" fn gpu_engine_pool_ahead_bytes(pool: *const Pool) -> u64 {
     // SAFETY: see the function's contract.
     let pool = unsafe { &*pool };
     pool.ahead_bytes()
+}
+
+/// The bytes of a pool's pages of folded tiles ([`Pool::folded_bytes`]).
+///
+/// # Safety
+/// `pool` is live and its caller's alone (`gpu_engine_pool_new`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_folded_bytes(pool: *const Pool) -> u64 {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &*pool };
+    pool.folded_bytes()
 }

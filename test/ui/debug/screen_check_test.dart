@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
-import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/screen_check.dart';
 
@@ -68,8 +68,8 @@ void main() {
 
   testWidgets('the check has its row and its probe\'s room before any check '
       'has run', (tester) async {
-    MeasurementMode.frameStats.value = true;
-    addTearDown(() => MeasurementMode.frameStats.value = false);
+    MeasurementMode.debugWindow.value = true;
+    addTearDown(() => MeasurementMode.debugWindow.value = false);
     addTearDown(ScreenCheck.debugForget);
     ScreenCheck.debugForget();
     FrameStats.debugFeed(<FrameTiming>[
@@ -83,7 +83,7 @@ void main() {
       ),
     ]);
     await tester.pumpWidget(
-      const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      const MaterialApp(home: DebugWindowHost(child: SizedBox())),
     );
     FrameStats.publish();
     await tester.pump();

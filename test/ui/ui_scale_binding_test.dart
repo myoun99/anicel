@@ -230,7 +230,7 @@ void main() {
       await sendTap(tester, const Offset(600, 400));
       expect(PointerClock.packetsCounted, 0, reason: 'the statistics are off');
 
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       await sendTap(tester, const Offset(600, 400));
 
       expect(PointerClock.packetsCounted, 1);

@@ -415,7 +415,7 @@ void main() {
 
   testWidgets('and a move under a cursor the system wears is not named as '
       'the cause of the next frame — it causes none', (tester) async {
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     addTearDown(MeasurementMode.reset);
     addTearDown(RepaintCause.reset);
     choose(DrawingCursor.brush);
@@ -922,7 +922,7 @@ void main() {
         );
         if (tool == CanvasTool.fill) {
           // The system moves the bucket: a move costs the app no frame.
-          MeasurementMode.frameStats.value = true;
+          MeasurementMode.debugWindow.value = true;
           addTearDown(MeasurementMode.reset);
           addTearDown(RepaintCause.reset);
           await tester.pump();

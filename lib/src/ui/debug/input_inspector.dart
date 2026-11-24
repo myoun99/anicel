@@ -15,6 +15,7 @@ import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/content_scrollbar.dart';
 import 'key_trace.dart';
+import 'measurement_mode.dart';
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
 ///
@@ -30,10 +31,11 @@ import 'key_trace.dart';
 /// platform, for any tablet brand — so it is both our development probe
 /// and the remote-diagnosis channel for user reports.
 abstract final class InputInspector {
-  /// Whether the overlay is shown (Settings ▸ Input Inspector). Static like
-  /// the other app-level input state ([AppColors.accentSettings] idiom);
-  /// tests flip it and MUST tearDown-reset via [reset].
-  static final ValueNotifier<bool> visible = ValueNotifier<bool>(false)
+  /// Whether the inspector watches — the debug window's one switch
+  /// ([MeasurementMode.debugWindow]; 유저 2026-11-24,
+  /// one-debug-window-shows-everything Q2), the same notifier, so the two
+  /// cannot disagree. Tests flip it and MUST tearDown-reset via [reset].
+  static final ValueNotifier<bool> visible = MeasurementMode.debugWindow
     ..addListener(_watchKeys);
 
   /// 🗣️F-241 (유저 2026-09-29): 「컨트롤 좌우 화살표 … 됏다가 안됏다가

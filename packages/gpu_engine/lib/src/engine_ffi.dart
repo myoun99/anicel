@@ -595,6 +595,9 @@ external int poolBytes(Pointer<Pool> pool);
 @Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_ahead_bytes')
 external int poolAheadBytes(Pointer<Pool> pool);
 
+@Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_folded_bytes')
+external int poolFoldedBytes(Pointer<Pool> pool);
+
 @Native<Pointer<Planned> Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_plan_new',
 )

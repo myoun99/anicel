@@ -188,10 +188,23 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// of the store that needs it among them (관제 2026-11-15,
   /// a-picture-lay-holds-the-raster-thread), which the pool's own `bytes`
   /// leaves to its budget.
-  static int get appPoolBytes => switch (opened?.pool) {
-    null => 0,
-    final pool => pool.bytes + pool.aheadBytes,
-  };
+  static int get appPoolBytes {
+    final (:pages, :folded, :ahead) = appPoolParts;
+    return pages + folded + ahead;
+  }
+
+  /// [appPoolBytes] parted: the pages of tiles, the pages of folded tiles,
+  /// and the page made ahead — the debug window's memory shows each (card
+  /// one-debug-window-shows-everything).
+  static ({int pages, int folded, int ahead}) get appPoolParts =>
+      switch (opened?.pool) {
+        null => (pages: 0, folded: 0, ahead: 0),
+        final pool => (
+          pages: pool.bytes - pool.foldedBytes,
+          folded: pool.foldedBytes,
+          ahead: pool.aheadBytes,
+        ),
+      };
 
   /// The most a pool is told it may make: past any device.
   static const int _unbounded = 0x7fffffffffffffff;

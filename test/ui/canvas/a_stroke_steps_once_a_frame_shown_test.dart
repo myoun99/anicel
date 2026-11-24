@@ -327,7 +327,7 @@ void main() {
   // it goes, with the dabs it carried.
   group('the frame statistics', () {
     setUp(() {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       StrokeSteps.forget();
     });
     tearDown(() {
@@ -436,7 +436,7 @@ void main() {
     });
 
     testWidgets('count nothing while they are off', (tester) async {
-      MeasurementMode.frameStats.value = false;
+      MeasurementMode.debugWindow.value = false;
       final overlay = ActiveStrokeOverlayModel(tileSize: 128);
       addTearDown(overlay.dispose);
       final pen = await aPenOn(tester, overlay: overlay, together: null);

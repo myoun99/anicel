@@ -34,7 +34,7 @@ abstract final class PictureWrites {
 
   /// A change of a frame shown went onto the screen [how].
   static void wrote(PictureWrite how) {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     _counted[how.index] += 1;

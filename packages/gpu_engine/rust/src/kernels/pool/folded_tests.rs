@@ -288,6 +288,7 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     let places = stored(&mut pool, &tiles.iter().collect::<Vec<_>>());
     assert_eq!(places, [at(0, 0), at(0, 1), at(0, 2), at(0, 3)]);
     let (as_they_were, taken_before) = (laid(&pool, &places), pool.taken());
+    assert_eq!(pool.folded_bytes(), 0, "a page of tiles is none of the folded pages' bytes");
     assert_eq!(fold(&mut pool, &places), (4, Some(true)));
     // Folded, and no place given: every tile lies in its slot still.
     assert!(places.iter().all(|&at| pool.lies(at) == at));
@@ -302,6 +303,7 @@ fn a_tile_folded_keeps_its_name_and_reads_as_it_was() {
     // its place, none of the pool's bytes, and its slots none.
     assert_eq!(pool.pages().len(), 2);
     assert_eq!((pool.pages()[0].size(), pool.bytes()), (NO_PAGE_BYTES, 4 * TILE_BYTES));
+    assert_eq!(pool.folded_bytes(), 4 * TILE_BYTES, "the pool's bytes, all the folded page's");
     let lain = u64::from(ONE + TWO + SIXTEEN) * GRANULE_BYTES + TILE_BYTES;
     assert_eq!(pool.idle_bytes(), 4 * TILE_BYTES - lain);
     assert!(read(&pool, &places) == Some(tiles.concat()));
@@ -386,6 +388,7 @@ fn a_tile_whole_let_go_gives_its_place_back() {
     // free, the pool's room, and stays: idle are that slot, and the
     // folded page but for the tile whole and a granule.
     assert_eq!(pool.bytes(), 6 * TILE_BYTES);
+    assert_eq!(pool.folded_bytes(), 3 * TILE_BYTES, "of the two, the folded page");
     assert_eq!(pool.idle_bytes(), 3 * TILE_BYTES - u64::from(ONE) * GRANULE_BYTES);
     assert!(pool.stamps().of(at(1, 1)).is_some());
     pool.release(places[1]).expect("release");

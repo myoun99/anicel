@@ -429,15 +429,6 @@ class RenderStaticRaster extends RenderProxyBox {
   StandDownReason get standDown => _standDown;
   StandDownReason _standDown = StandDownReason.none;
 
-  /// Bakes by what the app was doing at the time.
-  ///
-  /// The report says WHICH panels re-bake and HOW OFTEN; this says WHY,
-  /// as far as a correlational answer can. `pointer` appearing here at
-  /// all is the finding — it means a panel is being re-baked because the
-  /// mouse moved somewhere else entirely, which is the exact cost this
-  /// whole thing exists to remove and is invisible by every other means.
-  final Map<String, int> captureCauses = <String, int>{};
-
   int _streak = 0;
   int? _lastCaptureSerial;
 
@@ -672,8 +663,7 @@ class RenderStaticRaster extends RenderProxyBox {
     captureCount += 1;
     StaticRaster.debugNoteCapture();
     if (RepaintCause.collecting) {
-      final cause = RepaintCause.attribute();
-      captureCauses[cause] = (captureCauses[cause] ?? 0) + 1;
+      RepaintCause.tally(RepaintCause.attribute());
     }
 
     _blit(context, offset);

@@ -308,13 +308,13 @@ void main() {
         reason:
             '${entry.key.debugLabel} re-baked while the pointer was somewhere '
             'else entirely — that is the whole cost this wrapper removes.\n'
-            'Causes so far: ${entry.key.captureCauses}',
+            'Causes so far: ${RepaintCause.bakes}',
       );
     }
   });
 
   testWidgets('a bake caused by the pointer says so', (tester) async {
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     RepaintCause.install();
     addTearDown(() {
       MeasurementMode.reset();
@@ -324,9 +324,10 @@ void main() {
     await _pumpWorkspace(tester);
     final rasters = _surfaces().toList();
     expect(rasters, isNotEmpty);
-    for (final raster in rasters) {
-      raster.captureCauses.clear();
-    }
+    RepaintCause.forget();
+    final countsBefore = {
+      for (final raster in rasters) raster: raster.captureCount,
+    };
 
     // ⛔A point on the VISIBLE canvas, not a hardcoded one. (800, 500) was
     // on the drawing while the bottom region opened 350 tall; D37 opens it
@@ -359,16 +360,17 @@ void main() {
     );
 
     // 2. And no panel re-baked BECAUSE of it.
-    for (final raster in rasters) {
-      expect(
-        raster.captureCauses.containsKey('pointer'),
-        isFalse,
-        reason:
-            '${raster.debugLabel} re-baked on a pointer move — the panel is '
-            'paying its full price again and looks identical while doing it.\n'
-            'Causes: ${raster.captureCauses}',
-      );
-    }
+    expect(
+      RepaintCause.bakes.containsKey('pointer'),
+      isFalse,
+      reason:
+          'a panel re-baked on a pointer move — it is paying its full price '
+          'again and looks identical while doing it.\n'
+          'Causes: ${RepaintCause.bakes}  baked: ${[
+            for (final raster in rasters)
+              if (raster.captureCount != countsBefore[raster]) raster.debugLabel,
+          ]}',
+    );
   });
 
   testWidgets(
@@ -620,7 +622,7 @@ void main() {
         baked.add(
           '${raster.debugLabel} '
           '(${size.width.round()}x${size.height.round()}) '
-          'x${raster.captureCount} ${raster.captureCauses}',
+          'x${raster.captureCount}',
         );
       }
     }

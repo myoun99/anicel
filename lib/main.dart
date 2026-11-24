@@ -29,9 +29,8 @@ import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/debug/engine_stages.dart';
 import 'src/ui/debug/frame_stats.dart';
-import 'src/ui/debug/frame_stats_readout.dart';
+import 'src/ui/debug/debug_window.dart';
 import 'src/ui/debug/repaint_cause.dart';
-import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
@@ -340,11 +339,6 @@ class AnicelApp extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([
         AppColors.accentSettings,
-        // Settings ▸ Frame Timing Overlay: a MaterialApp property, so the
-        // toggle has to reach this build — that is what makes it usable
-        // on a tablet, where a --dart-define costs a rebuild and an
-        // install.
-        MeasurementMode.frameTimingOverlay,
         // The UI scale has TWO halves and this is the widget one: the
         // binding rescales the root matrix, and this rebuild carries the
         // matching MediaQuery down (see
@@ -370,7 +364,6 @@ class AnicelApp extends StatelessWidget {
         // overlay rather than of [HomePage], and most of the surfaces that
         // had no bar of their own live exactly there.
         scrollBehavior: const AppScrollBehavior(),
-        showPerformanceOverlay: MeasurementMode.frameTimingOverlay.value,
         // Above every route and below the Navigator: the measurement
         // readouts have to outrank dialogs and popovers, which are the
         // Navigator's children.
@@ -387,7 +380,7 @@ class AnicelApp extends StatelessWidget {
         // BELOW the Navigator is not.
         builder: (context, child) => EffectiveDevicePixelRatioScope(
           uiScale: AppUiScale.value.value,
-          child: MeasurementReadoutHost(
+          child: DebugWindowHost(
             child: child ?? const SizedBox.shrink(),
           ),
         ),

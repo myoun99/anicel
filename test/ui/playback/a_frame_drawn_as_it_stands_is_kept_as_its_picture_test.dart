@@ -242,7 +242,7 @@ void main() {
     final first = await handed(tester, canvas, treeOf());
     expect(canvas.store.laid, [first], reason: 'made once it was painted');
     // As the frame statistics count it (PictureWrites, H67).
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     addTearDown(MeasurementMode.reset);
     final before = PictureWrites.counted;
 

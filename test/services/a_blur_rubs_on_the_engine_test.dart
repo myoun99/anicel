@@ -318,14 +318,14 @@ void main() {
     final blurs = EngineStrokes.blurs;
     final kept = blurs.bytes;
     expect(kept, greaterThan(0));
-    final counted = EngineStrokes.idleBytes;
+    expect(EngineStrokes.blurBytes, kept, reason: 'what the census reads');
     blurs.letGo();
-    expect(EngineStrokes.idleBytes, counted - kept);
+    expect(EngineStrokes.blurBytes, 0);
     rub();
     expect(blurs.bytes, greaterThan(0));
     EngineStrokes.letGoIdle();
     expect(blurs.bytes, 0);
-    expect(EngineStrokes.idleBytes, 0);
+    expect(EngineStrokes.idleStrokeBytes + EngineStrokes.blurBytes, 0);
   });
 
   test('a stroke re-derived from its dabs is the stroke watched', () {

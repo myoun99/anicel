@@ -353,9 +353,9 @@ class GpuEngine {
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
 
   /// The bytes of the pages the engine's pictures have their tiles on,
-  /// made — a page whole, its free slots too: what the frame statistics'
-  /// MEMORY line says the engine's pictures hold, beside what the OS says
-  /// the app does. Read off the engine's thread.
+  /// made — a page whole, its free slots too: what the debug window says
+  /// the engine's pictures hold by its own count, beside the census's
+  /// holders of them. Read off the engine's thread.
   int get pictureBytes => rust.picturesBytes(_engine);
 
   /// The bytes of the tiles the engine's pictures hold that none of them
@@ -1325,6 +1325,10 @@ class GpuPool implements _OfAnEngine {
   /// till it is made. Not among [bytes], which a store's budget counts
   /// (rust/src/kernels/pool/mod.rs).
   int get aheadBytes => rust.poolAheadBytes(_pool);
+
+  /// The bytes of the pages of folded tiles among [bytes]
+  /// (rust/src/kernels/pool/mod.rs).
+  int get foldedBytes => rust.poolFoldedBytes(_pool);
 
   /// Frees the pool's pages; before its engine is closed. Asked again, it
   /// is refused as any ask of a freed pool is ([_pool]).

@@ -98,12 +98,13 @@ abstract final class EngineStrokes {
     }
   }
 
-  /// The bytes the strokes kept hold, for the memory census.
-  static int get idleBytes =>
-      (_idle.orNull ?? const <GpuStroke>[]).fold(
-        _blurs.compiled?.bytes ?? 0,
-        (bytes, stroke) => bytes + stroke.bytes,
-      );
+  /// The bytes of the strokes kept for the next pen-down, for the memory
+  /// census — beside the blurs' ([blurBytes]).
+  static int get idleStrokeBytes => (_idle.orNull ?? const <GpuStroke>[])
+      .fold(0, (bytes, stroke) => bytes + stroke.bytes);
+
+  /// The bytes the blurs compiled hold.
+  static int get blurBytes => _blurs.compiled?.bytes ?? 0;
 
   /// The OS says memory is tight: the strokes kept go.
   static void letGoIdle() {

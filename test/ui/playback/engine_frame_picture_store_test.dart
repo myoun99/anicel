@@ -383,7 +383,7 @@ void main() {
 
   group('a step on its way to another key', () {
     // How each went, as the frame statistics count it (PictureWrites, H67).
-    setUp(() => MeasurementMode.frameStats.value = true);
+    setUp(() => MeasurementMode.debugWindow.value = true);
     tearDown(MeasurementMode.reset);
     PictureWritesCounted since(PictureWritesCounted before) {
       final now = PictureWrites.counted;

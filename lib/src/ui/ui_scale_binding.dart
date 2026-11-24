@@ -189,7 +189,7 @@ mixin UiScaleViewConfiguration on RendererBinding {
   void _handleScaledPointerDataPacket(ui.PointerDataPacket packet) {
     // 🔬Timed while the frame statistics are up, and not otherwise
     // ([PointerClock]).
-    final dealtWith = MeasurementMode.frameStats.value
+    final dealtWith = MeasurementMode.debugWindow.value
         ? (Stopwatch()..start())
         : null;
     try {

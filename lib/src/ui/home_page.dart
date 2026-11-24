@@ -68,6 +68,7 @@ import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
+import 'debug/debug_window.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
 import 'input/one_pointer_shows_the_cursor.dart';
@@ -589,6 +590,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       letGo: _letGo,
       landsFirst: _canvasSelectionCommands.landPendingMoveThen,
     )..addListener(_followProjectOnScreen);
+    // The debug window's census adds up every open project, and sits
+    // above every route, where none is in reach.
+    DebugWindow.openSessions = () => _projects.sessions;
     _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
@@ -1238,6 +1242,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DebugWindow.openSessions = null;
     // The pan flag is app-wide: a shell that goes away must not keep it.
     _keyHolds.dispose();
     PencilInteractionService.instance.onPencilTap = null;

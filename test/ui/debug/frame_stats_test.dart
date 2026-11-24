@@ -9,7 +9,7 @@ import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/engine_behind.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
-import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/debug/pointer_clock.dart';
@@ -82,31 +82,31 @@ void main() {
   });
 
   group('the switch', () {
-    test('is off unless --dart-define=QA_FRAME_STATS=true seeds it', () {
+    test('is off unless --dart-define=QA_DEBUG_WINDOW=true seeds it', () {
       expect(
-        MeasurementMode.startWithFrameStats,
+        MeasurementMode.startWithDebugWindow,
         isFalse,
         reason: 'default builds must not draw a measurement readout',
       );
-      expect(MeasurementMode.frameStats.value, isFalse);
+      expect(MeasurementMode.debugWindow.value, isFalse);
     });
 
     test('reset returns it to the build default', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       MeasurementMode.reset();
       expect(
-        MeasurementMode.frameStats.value,
-        MeasurementMode.startWithFrameStats,
+        MeasurementMode.debugWindow.value,
+        MeasurementMode.startWithDebugWindow,
       );
     });
 
     test('turning it off empties the window and unpublishes', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 2)]);
       FrameStats.publish();
       expect(FrameStats.latest.value, isNotNull);
 
-      MeasurementMode.frameStats.value = false;
+      MeasurementMode.debugWindow.value = false;
       expect(
         FrameStats.latest.value,
         isNull,
@@ -116,10 +116,10 @@ void main() {
 
     test('turning it off forgets the pointer packets timed while it was '
         'up', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       PointerClock.handled(points: 2, micros: 300);
 
-      MeasurementMode.frameStats.value = false;
+      MeasurementMode.debugWindow.value = false;
 
       expect(PointerClock.packetsCounted, 0);
       expect(PointerClock.packetMicros, isEmpty);
@@ -145,7 +145,7 @@ void main() {
     });
 
     test('republishes on the frame clock, not on every frame', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
 
       // First frame publishes immediately — otherwise the readout would
       // sit on "no frames yet" for a quarter second after every toggle.
@@ -471,7 +471,7 @@ void main() {
         'most read at a frame built since the last publication', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       var behind = 7;
       EngineBehind.debugNow = () => behind;
       addTearDown(() => EngineBehind.debugNow = null);
@@ -495,7 +495,7 @@ void main() {
     testWidgets('the stroke lines are the newest steps and their slope — the '
         'dabs each carried, how long its first dab was held for it, and how '
         'long till the frame that showed it was up', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       var now = 0;
       StrokeSteps.debugMicros = () => now;
       addTearDown(() => StrokeSteps.debugMicros = null);
@@ -564,7 +564,7 @@ void main() {
         'third and of its last, of its own steps alone — none under three', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       var now = 0;
       StrokeSteps.debugMicros = () => now;
       addTearDown(() => StrokeSteps.debugMicros = null);
@@ -609,7 +609,7 @@ void main() {
       expect(stats.strokeAlong, (first: 2.0, last: 8.0, steps: 9));
 
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
       expect(
@@ -627,7 +627,7 @@ void main() {
       // publication (a quarter second) by the whole window's span
       // (seconds), and so answered "0.0/s" no matter what was baking.
       // Only a fixture that actually bakes can tell the two apart.
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       final repaint = ValueNotifier<int>(0);
       addTearDown(repaint.dispose);
 
@@ -712,7 +712,7 @@ void main() {
       // a panel closes or a dock is rearranged. A slope taken across that
       // is negative, and `-4.0/s` is printed on screen as confidently as
       // any other number.
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       final repaint = ValueNotifier<int>(0);
       addTearDown(repaint.dispose);
 
@@ -780,20 +780,21 @@ void main() {
     ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: MeasurementReadoutHost(child: Text('app', textDirection: TextDirection.ltr)),
+          home: DebugWindowHost(child: Text('app', textDirection: TextDirection.ltr)),
         ),
       );
-      expect(find.byType(FrameStatsReadout), findsNothing);
+      expect(find.byType(DebugWindow), findsNothing);
 
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       await tester.pump();
-      expect(find.byType(FrameStatsReadout), findsOneWidget);
+      expect(find.byType(DebugWindow), findsOneWidget);
 
       // The instrument sits over whatever panel happens to be under it,
-      // so it must not be the thing that receives the click.
+      // so it must not be the thing that receives the click — but for its
+      // head's own buttons.
       final ignoring = tester.widgetList<IgnorePointer>(
         find.ancestor(
-          of: find.byType(FrameStatsReadout),
+          of: find.textContaining('MEMORY  app'),
           matching: find.byType(IgnorePointer),
         ),
       );
@@ -801,9 +802,9 @@ void main() {
     });
 
     testWidgets('says so when no frames have arrived', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
       expect(find.textContaining('no frames yet'), findsOneWidget);
@@ -812,7 +813,7 @@ void main() {
     testWidgets('prints raster, UI, latency and both cache lines', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       FrameStats.debugFeed(<FrameTiming>[
         _frame(
           uiMs: 0.4,
@@ -825,7 +826,7 @@ void main() {
       FrameStats.publish();
 
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
 
@@ -840,13 +841,13 @@ void main() {
     testWidgets('prints the screens\' waits for a buffer Flutter can no '
         'longer read: none, with no word, where nothing tells the reads; '
         'the cut word and its counts where it was cut off', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       FrameStats.publish();
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
       expect(
@@ -891,7 +892,7 @@ void main() {
 
     testWidgets('prints what a frame waited for, a screen\'s frame part by '
         'part, and the pointer packets', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
       ScreenTexture.debugWentUp((
@@ -912,7 +913,7 @@ void main() {
       FrameStats.publish();
 
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
 
@@ -945,7 +946,7 @@ void main() {
 
     testWidgets('prints a stroke\'s steps, the submits behind on the GPU, the '
         'memory held and the display\'s rate', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       var now = 0;
       StrokeSteps.debugMicros = () => now;
       addTearDown(() => StrokeSteps.debugMicros = null);
@@ -959,7 +960,7 @@ void main() {
       FrameStats.publish();
 
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
 
@@ -970,7 +971,9 @@ void main() {
         (' pen→up', r'p50   9\.9'),
         // No engine is open in a test: none of its figures, not a zero.
         ('GPU', r'behind —  max —  timestamps —$'),
-        ('MEMORY', r'app \d+\.\d MB  screens 0\.0 MB  pictures —  vram —$'),
+        // The census's sum, its counted share and the rest — the window's
+        // memory is the census's (ONE CENSUS).
+        ('MEMORY', r'app \d+\.\d MB  counted \d+\.\d  rest \d+\.\d$'),
         ('COMPILE', r'—$'),
       ]) {
         expect(
@@ -1012,7 +1015,7 @@ void main() {
         'till there is one — and the press to up over the strokes kept', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       var now = 0;
       StrokeSteps.debugMicros = () => now;
       addTearDown(() => StrokeSteps.debugMicros = null);
@@ -1021,7 +1024,7 @@ void main() {
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       FrameStats.publish();
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
       expect(find.text(' first  —'), findsOneWidget);
@@ -1090,11 +1093,11 @@ void main() {
 
     testWidgets('says the way the screen reaches Flutter\'s, and why it was '
         'refused, on a row of its own', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       addTearDown(() => ScreenTexture.debugPathIs(''));
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
 
       ScreenTexture.debugPathIs('ahb');
@@ -1118,12 +1121,12 @@ void main() {
         'display\'s scale and the mode —, on the line of its draw', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       addTearDown(ScreenAsked.debugForget);
       ScreenAsked.debugForget();
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       FrameStats.publish();
       await tester.pump();
@@ -1194,13 +1197,13 @@ void main() {
     });
   });
 
-  testWidgets('the app mounts the readout host above every route', (
+  testWidgets('the app mounts the debug window\'s host above every route', (
     tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pump();
     expect(
-      find.byType(MeasurementReadoutHost),
+      find.byType(DebugWindowHost),
       findsOneWidget,
       reason: 'MaterialApp.builder is the only level above the Navigator',
     );

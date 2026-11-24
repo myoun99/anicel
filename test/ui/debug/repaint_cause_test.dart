@@ -46,7 +46,7 @@ void main() {
   setUp(() {
     TestWidgetsFlutterBinding.ensureInitialized();
     RepaintCause.install();
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     RepaintCause.reset();
   });
   tearDown(() {
@@ -91,8 +91,8 @@ void main() {
   ) async {
     final repaint = ValueNotifier<int>(0);
     addTearDown(repaint.dispose);
-    final raster = await pumpBake(tester, repaint);
-    raster.captureCauses.clear();
+    await pumpBake(tester, repaint);
+    RepaintCause.forget();
 
     // A test body runs in the same scheduler phase a pointer event is
     // dispatched in. Asserting it makes the fixture's relevance a fact
@@ -105,13 +105,13 @@ void main() {
     await tester.pump(_oneFrame);
 
     expect(
-      raster.captureCauses['pointer'],
+      RepaintCause.bakes['pointer'],
       isNotNull,
       reason:
           'the bake happened on the frame the mark was waiting for, so the '
           'mark is what caused it — answering unknown here is the bug',
     );
-    expect(raster.captureCauses.containsKey('unknown'), isFalse);
+    expect(RepaintCause.bakes.containsKey('unknown'), isFalse);
   });
 
   testWidgets('the mark is spent — a later bake does not reuse it', (
@@ -122,23 +122,23 @@ void main() {
     // in the app would read `pointer`.
     final repaint = ValueNotifier<int>(0);
     addTearDown(repaint.dispose);
-    final raster = await pumpBake(tester, repaint);
+    await pumpBake(tester, repaint);
 
     RepaintCause.note('pointer');
     repaint.value += 1;
     await tester.pump(_oneFrame);
-    raster.captureCauses.clear();
+    RepaintCause.forget();
 
     // No new mark. This bake has no explanation and must say so.
     repaint.value += 1;
     await tester.pump(_oneFrame);
 
     expect(
-      raster.captureCauses['unknown'],
+      RepaintCause.bakes['unknown'],
       isNotNull,
       reason: 'a second bake with nothing marked since is unattributed',
     );
-    expect(raster.captureCauses.containsKey('pointer'), isFalse);
+    expect(RepaintCause.bakes.containsKey('pointer'), isFalse);
   });
 
   testWidgets('two bakes on ONE frame share that frame\'s mark', (
@@ -172,23 +172,19 @@ void main() {
         .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
         .toList();
     expect(rasters, hasLength(2));
-    for (final raster in rasters) {
-      raster.captureCauses.clear();
-    }
+    RepaintCause.forget();
 
     RepaintCause.note('pointer');
     repaint.value += 1;
     await tester.pump(_oneFrame);
 
-    for (final raster in rasters) {
-      expect(
-        raster.captureCauses['pointer'],
-        isNotNull,
-        reason:
-            '${raster.debugLabel} baked on the same frame, so claiming the '
-            'mark must not consume it for its sibling',
-      );
-    }
+    expect(
+      RepaintCause.bakes['pointer'],
+      2,
+      reason:
+          'both baked on the same frame, so claiming the mark must not '
+          'consume it for the sibling',
+    );
   });
 
   testWidgets('an unclaimed mark expires with its frame', (tester) async {
@@ -211,8 +207,8 @@ void main() {
     // do not bake.
     final outside = ValueNotifier<int>(0);
     addTearDown(outside.dispose);
-    final raster = await pumpBake(tester, repaint, outside: outside);
-    raster.captureCauses.clear();
+    await pumpBake(tester, repaint, outside: outside);
+    RepaintCause.forget();
 
     RepaintCause.note('pointer');
 
@@ -229,7 +225,7 @@ void main() {
           'this is the assertion that caught the fixture, not the code',
     );
     expect(
-      raster.captureCauses,
+      RepaintCause.bakes,
       isEmpty,
       reason:
           'something baked during the quiet stretch, so the mark was claimed '
@@ -246,7 +242,7 @@ void main() {
       reason: 'the frame-end sweep never ran, so nothing was under test',
     );
     expect(
-      raster.captureCauses.containsKey('pointer'),
+      RepaintCause.bakes.containsKey('pointer'),
       isFalse,
       reason:
           'a mark from thirty frames ago explains nothing, and blaming the '
@@ -255,9 +251,9 @@ void main() {
           'pending=${RepaintCause.debugPending} '
           'sweeps=${RepaintCause.debugSweeps} '
           'causeFrame=${RepaintCause.debugCauseFrame} '
-          'causes=${raster.captureCauses}',
+          'causes=${RepaintCause.bakes}',
     );
-    expect(raster.captureCauses['unknown'], isNotNull);
+    expect(RepaintCause.bakes['unknown'], isNotNull);
   });
 
   testWidgets('install registers exactly once however often it is called', (
@@ -270,18 +266,18 @@ void main() {
   });
 
   testWidgets('nothing is collected while the switch is off', (tester) async {
-    MeasurementMode.frameStats.value = false;
+    MeasurementMode.debugWindow.value = false;
     final repaint = ValueNotifier<int>(0);
     addTearDown(repaint.dispose);
-    final raster = await pumpBake(tester, repaint);
-    raster.captureCauses.clear();
+    await pumpBake(tester, repaint);
+    RepaintCause.forget();
 
     RepaintCause.note('pointer');
     repaint.value += 1;
     await tester.pump(_oneFrame);
 
     expect(
-      raster.captureCauses,
+      RepaintCause.bakes,
       isEmpty,
       reason: 'the instrument must cost nothing when it is not being read',
     );

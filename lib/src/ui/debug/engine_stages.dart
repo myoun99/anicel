@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart' show GpuPlaceTook;
 
@@ -17,13 +19,14 @@ typedef StagedFrame = ({
 
 /// One place of the engine over some frames — the frames kept, or one of
 /// them: whose time it is, where ([EngineStages.shortPlace]), its
-/// microseconds, times and workgroups in all, and the most microseconds it
-/// took in one frame.
+/// microseconds, times and workgroups in all, the most microseconds it
+/// took in one frame, and in one time ([GpuPlaceTook.longest]).
 typedef StagedPlace = ({
   bool gpu,
   String place,
   int micros,
   int mostInAFrame,
+  int longestOnce,
   int times,
   int groups,
 });
@@ -106,7 +109,7 @@ abstract final class EngineStages {
       return;
     }
     _installed = true;
-    MeasurementMode.engineStages.addListener(_onSwitch);
+    MeasurementMode.debugWindow.addListener(_onSwitch);
     _onSwitch();
   }
 
@@ -114,7 +117,7 @@ abstract final class EngineStages {
   /// before is another window's.
   static void _onSwitch() {
     _frames.clear();
-    ScreenTexture.tookAsItWentUp = MeasurementMode.engineStages.value
+    ScreenTexture.tookAsItWentUp = MeasurementMode.debugWindow.value
         ? wentUp
         : null;
   }
@@ -129,9 +132,8 @@ abstract final class EngineStages {
     }
   }
 
-  /// Test hygiene: no frame kept.
-  @visibleForTesting
-  static void debugForget() => _frames.clear();
+  /// No frame kept — the debug window's reset, and test hygiene.
+  static void forget() => _frames.clear();
 
   /// What the frames kept say; null with none.
   static EngineStagesSummary? get summary =>
@@ -167,6 +169,7 @@ abstract final class EngineStages {
           place: shortPlace(took.place),
           micros: (before?.micros ?? 0) + took.micros,
           mostInAFrame: before?.mostInAFrame ?? 0,
+          longestOnce: math.max(before?.longestOnce ?? 0, took.longest),
           times: (before?.times ?? 0) + took.times,
           groups: (before?.groups ?? 0) + took.groups,
         );
@@ -179,6 +182,7 @@ abstract final class EngineStages {
             place: place.place,
             micros: place.micros,
             mostInAFrame: micros,
+            longestOnce: place.longestOnce,
             times: place.times,
             groups: place.groups,
           );
@@ -256,7 +260,9 @@ abstract final class EngineStages {
         _placeLine(
           place,
           frames,
-          most: '  max${_ms(place.mostInAFrame, width: 7)}',
+          most:
+              '  max${_ms(place.mostInAFrame, width: 7)}'
+              '  once${_ms(place.longestOnce, width: 7)}',
         ),
       'SLOWEST${_ms(_whole(slowest.up))}  '
           'draw${_ms(slowest.up.draw, width: 6)}  '

@@ -145,7 +145,7 @@ abstract final class StrokeSteps {
 
   /// A stroke was pressed: its first step is told from here ([firstStep]).
   static void pressed() {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     _pressedAt = _micros();
@@ -165,7 +165,7 @@ abstract final class StrokeSteps {
 
   /// A dab was queued for the stroke's next step.
   static void queued() {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     _firstQueuedAt ??= _micros();
@@ -176,7 +176,7 @@ abstract final class StrokeSteps {
   static void stepped(int dabs, {required PicturesUpTogether? together}) {
     final first = _firstQueuedAt;
     _firstQueuedAt = null;
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     _stepsCounted += 1;
@@ -227,7 +227,7 @@ abstract final class StrokeSteps {
   /// The pen lifted from a stroke: its landing is told from here
   /// ([landing]).
   static void lifted() {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     _liftedAt = _micros();
@@ -237,7 +237,7 @@ abstract final class StrokeSteps {
   /// to the frame after it being up, of the pictures going up [together]
   /// ([landing]) — or from here, where no lift was told.
   static void landed({required PicturesUpTogether? together}) {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     final now = _micros();

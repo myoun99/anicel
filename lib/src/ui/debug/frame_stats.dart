@@ -4,9 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuCompiles;
 
-import '../../native/app_gpu_engine.dart'
-    show appGpuEngineOpen, appGpuVideoMemory;
-import '../../native/qa_memory.dart';
+import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import '../../native/screen_texture.dart';
 import '../../native/screen_turns.dart' show ScreenWaitsRead;
 import '../widgets/static_raster.dart';
@@ -50,6 +48,11 @@ typedef FinishWentMillis = ({
 class FrameStatsSnapshot {
   const FrameStatsSnapshot({
     required this.frames,
+    required this.frameMean,
+    required this.frameTotals,
+    required this.screenMean,
+    required this.finishMean,
+    required this.screenTotals,
     required this.windowSeconds,
     required this.displayHertz,
     required this.rasterP50,
@@ -99,11 +102,6 @@ class FrameStatsSnapshot {
     required this.gpuBehindWorst,
     required this.gpuClocked,
     required this.compiles,
-    required this.footprintMegabytes,
-    required this.screensMegabytes,
-    required this.picturesMegabytes,
-    required this.videoMegabytes,
-    required this.mappings,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
@@ -123,6 +121,40 @@ class FrameStatsSnapshot {
   /// — Flutter renders on demand, so an idle app reporting nothing is
   /// not a finding.
   final int frames;
+
+  /// The window's frames on average, part by part, in milliseconds: the
+  /// wait for the build, the build, the wait for the raster and the raster
+  /// — their sum is the latency's mean, so the debug window's bar of a
+  /// frame adds up to its whole (card one-debug-window-shows-everything:
+  /// 「every sum shows its parts and the rest」). Means, not medians: the
+  /// medians of parts add to no frame's whole.
+  final ({double buildWait, double build, double rasterWait, double raster})
+  frameMean;
+
+  /// Each frame of the window's latency, in milliseconds, oldest first —
+  /// the debug window's graph.
+  final List<double> frameTotals;
+
+  /// The engine's screen frames on average, in milliseconds: the draw, the
+  /// finish and the show, which add to a frame's way up — null where no
+  /// screen put one up.
+  final ({double draw, double finish, double show})? screenMean;
+
+  /// What the finishes that said their parts went to, on average, in
+  /// milliseconds — and those same finishes' whole, so what the parts do
+  /// not name is the rest. Null where no finish said its parts.
+  final ({
+    double queued,
+    double polled,
+    double heard,
+    double together,
+    double whole,
+  })?
+  finishMean;
+
+  /// Each screen frame's way up, in milliseconds, oldest first — the debug
+  /// window's graph.
+  final List<double> screenTotals;
 
   /// Wall span the window covers, from the first frame's vsync to the
   /// last's. [framesPerSecond] divides by it.
@@ -297,21 +329,6 @@ class FrameStatsSnapshot {
   /// — null where no engine is open.
   final GpuCompiles? compiles;
 
-  /// What the process holds as the OS says it
-  /// (`QaMemory.processFootprintOrRssBytes`), what the engine's screens
-  /// hold (`ScreenTexture.liveBytes`), what the pages its pictures lie on
-  /// hold (`GpuEngine.pictureBytes` — null where no engine is open), and
-  /// the adapter memory the engine's device uses and may use
-  /// (`appGpuVideoMemory`) — null where the OS says none.
-  final double footprintMegabytes;
-  final double screensMegabytes;
-  final double? picturesMegabytes;
-  final ({double used, double? budget})? videoMegabytes;
-
-  /// The mappings that hold the most of the process's memory, as the OS
-  /// accounts them (`QaMemory.mappings`) — null where it keeps no such
-  /// account, or before its first read.
-  final String? mappings;
 
   /// The engine's retained-raster accounting, and the reason this class
   /// exists.
@@ -513,22 +530,22 @@ abstract final class FrameStats {
     // At each frame built, not at each batch of timings: a release build
     // hands those over a few times a second.
     SchedulerBinding.instance.addPersistentFrameCallback((_) {
-      if (MeasurementMode.frameStats.value) {
+      if (MeasurementMode.debugWindow.value) {
         _readBehind();
       }
     });
-    MeasurementMode.frameStats.addListener(_onEnabledChanged);
+    MeasurementMode.debugWindow.addListener(_onEnabledChanged);
     _onEnabledChanged();
   }
 
   static void _onEnabledChanged() {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       reset();
     }
   }
 
   static void _record(List<FrameTiming> timings) {
-    if (!MeasurementMode.frameStats.value || timings.isEmpty) {
+    if (!MeasurementMode.debugWindow.value || timings.isEmpty) {
       return;
     }
     debugFeed(timings);
@@ -566,8 +583,8 @@ abstract final class FrameStats {
   /// Test hygiene: empties the window and unpublishes. Does NOT
   /// unregister the callback — installation is once per process by
   /// contract, and a test that could undo it would let the next test
-  /// double-register.
-  @visibleForTesting
+  /// double-register. The debug window's reset begins its window again
+  /// by it too.
   static void reset() {
     _window.clear();
     _lastPublishedVsync = null;
@@ -620,8 +637,6 @@ abstract final class FrameStats {
     }
     return behind;
   }
-
-  static double _megabytes(int bytes) => bytes / 1024 / 1024;
 
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
     // A figure of each of the window's frames, in microseconds, sorted for
@@ -697,7 +712,6 @@ abstract final class FrameStats {
     final behind = _readBehind();
     final behindWorst = _behindWorst;
     _behindWorst = null;
-    final video = appGpuVideoMemory;
 
     // Counters all, read as the bakes' total is: each one's slope over the
     // interval since the last publication.
@@ -714,8 +728,42 @@ abstract final class FrameStats {
     double aSecond(int now, int? then) =>
         then == null || rateSeconds <= 0 ? 0.0 : (now - then) / rateSeconds;
 
+    double mean(Iterable<int> micros) => micros.isEmpty
+        ? 0
+        : micros.fold(0, (sum, each) => sum + each) / micros.length / 1000;
     return FrameStatsSnapshot(
       frames: window.length,
+      frameMean: (
+        buildWait: mean(buildWait),
+        build: mean(ui),
+        rasterWait: mean(rasterWait),
+        raster: mean(raster),
+      ),
+      frameTotals: [
+        for (final timing in window) timing.totalSpan.inMicroseconds / 1000,
+      ],
+      screenMean: ups.isEmpty
+          ? null
+          : (
+              draw: mean(upDraws),
+              finish: mean(upFinishes),
+              show: mean(upShows),
+            ),
+      finishMean: wents.isEmpty
+          ? null
+          : (
+              queued: mean(partOf((went) => went.queued)),
+              polled: mean(partOf((went) => went.polled)),
+              heard: mean(partOf((went) => went.heard)),
+              together: mean(partOf((went) => went.together)),
+              whole: mean([
+                for (final up in ups)
+                  if (up.went != null) up.finish,
+              ]),
+            ),
+      screenTotals: [
+        for (final up in ups) (up.draw + up.finish + up.show) / 1000,
+      ],
       windowSeconds: spanSeconds,
       displayHertz: _displayHertz(),
       rasterP50: _percentileMillis(raster, 0.50),
@@ -773,23 +821,6 @@ abstract final class FrameStats {
       gpuBehindWorst: behindWorst,
       gpuClocked: engine?.clocked,
       compiles: compiles,
-      footprintMegabytes: _megabytes(QaMemory.processFootprintOrRssBytes),
-      screensMegabytes: _megabytes(ScreenTexture.liveBytes),
-      picturesMegabytes: switch (engine?.pictureBytes) {
-        final bytes? => _megabytes(bytes),
-        null => null,
-      },
-      videoMegabytes: switch (video?.used) {
-        final used? => (
-          used: _megabytes(used),
-          budget: switch (video?.budget) {
-            final budget? => _megabytes(budget),
-            null => null,
-          },
-        ),
-        null => null,
-      },
-      mappings: QaMemory.mappings,
       layerCacheCount: last.layerCacheCount,
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,

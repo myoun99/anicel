@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/debug/stroke_steps.dart';
 void main() {
   var now = 0;
   setUp(() {
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     StrokeSteps.forget();
     now = 0;
     StrokeSteps.debugMicros = () => now;
@@ -131,7 +131,7 @@ void main() {
 
   testWidgets('nothing is counted while the statistics are off, nor held '
       'from a dab queued then', (tester) async {
-    MeasurementMode.frameStats.value = false;
+    MeasurementMode.debugWindow.value = false;
     StrokeSteps.queued();
     StrokeSteps.stepped(4, together: null);
     await aFrame(tester);
@@ -139,7 +139,7 @@ void main() {
     expect(StrokeSteps.dabsKept, isEmpty);
 
     StrokeSteps.queued();
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     now = 4000;
     StrokeSteps.stepped(3, together: null);
     await aFrame(tester);
@@ -278,9 +278,9 @@ void main() {
     testWidgets('is none of a press while the statistics were off', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = false;
+      MeasurementMode.debugWindow.value = false;
       StrokeSteps.pressed();
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       StrokeSteps.queued();
       StrokeSteps.stepped(1, together: null);
       await aFrame(tester);
@@ -348,12 +348,12 @@ void main() {
 
   test('a landing is none while the statistics are off, nor timed from a '
       'lift told then', () {
-    MeasurementMode.frameStats.value = false;
+    MeasurementMode.debugWindow.value = false;
     StrokeSteps.lifted();
     StrokeSteps.landed(together: null);
     expect(StrokeSteps.landing, isNull);
     now = 3000;
-    MeasurementMode.frameStats.value = true;
+    MeasurementMode.debugWindow.value = true;
     StrokeSteps.landed(together: null);
     expect(StrokeSteps.landing?.commit, 0);
   });
@@ -365,7 +365,7 @@ void main() {
     PictureWrites.wrote(PictureWrite.copied);
     PictureWrites.wrote(PictureWrite.copied);
     PictureWrites.wrote(PictureWrite.whole);
-    MeasurementMode.frameStats.value = false;
+    MeasurementMode.debugWindow.value = false;
     PictureWrites.wrote(PictureWrite.whole);
     final after = PictureWrites.counted;
     expect(

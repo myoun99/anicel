@@ -197,6 +197,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 13] = [
             "gpu_engine_run_contours_read",
             "gpu_engine_pool_bytes",
             "gpu_engine_pool_ahead_bytes",
+            "gpu_engine_pool_folded_bytes",
             "gpu_engine_grid_kept_bytes",
             "gpu_engine_grid_most_side",
             "gpu_engine_surface_texture",

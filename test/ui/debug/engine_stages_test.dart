@@ -7,7 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuPlaceTook, GpuSampling;
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/engine_stages.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
-import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
 
@@ -19,15 +19,20 @@ import 'package:anicel/src/ui/debug/screen_asked.dart';
 /// (rust/src/took.rs) and read
 /// (test/native/a_timed_engine_tells_what_each_place_took_test.dart).
 void main() {
-  GpuPlaceTook gpu(String place, int micros, {int times = 1, int groups = 0}) =>
-      (
-        gpu: true,
-        place: place,
-        times: times,
-        micros: micros,
-        longest: micros,
-        groups: groups,
-      );
+  GpuPlaceTook gpu(
+    String place,
+    int micros, {
+    int times = 1,
+    int groups = 0,
+    int? longest,
+  }) => (
+    gpu: true,
+    place: place,
+    times: times,
+    micros: micros,
+    longest: longest ?? micros,
+    groups: groups,
+  );
   GpuPlaceTook cpu(String place, int micros, {int times = 1}) => (
     gpu: false,
     place: place,
@@ -51,12 +56,12 @@ void main() {
   setUp(() {
     MeasurementMode.reset();
     EngineStages.install();
-    EngineStages.debugForget();
+    EngineStages.forget();
     ScreenAsked.debugForget();
   });
   tearDown(() {
     MeasurementMode.reset();
-    EngineStages.debugForget();
+    EngineStages.forget();
     ScreenAsked.debugForget();
     FrameStats.reset();
   });
@@ -129,6 +134,17 @@ void main() {
     expect(summary.places.single.mostInAFrame, 7000);
   });
 
+  test("a place's longest once is the longest of any one time it was told, "
+      'not of a frame', () {
+    final summary = EngineStages.summarize([
+      frame(10000, [gpu(show, 9000, times: 3, longest: 3000)]),
+      frame(10000, [gpu(show, 5000, times: 2, longest: 4000)]),
+    ]);
+
+    expect(summary.places.single.mostInAFrame, 9000);
+    expect(summary.places.single.longestOnce, 4000);
+  });
+
   test('the slowest frame is the one longest from its draw to being up, '
       'told by its own places', () {
     const stall = (
@@ -188,10 +204,10 @@ void main() {
     // figures are what a photograph is read for.
     expect([for (final line in lines) line.replaceAll(RegExp(' +'), ' ')], [
       'STAGES 2f a frame 74.00 gpu 56.00 cpu 10.00',
-      ' gpu stroke/pile:88 45.00 max 90.00 12.5x 0.2k',
-      ' cpu device:1040 10.00 max 20.00 0.5x',
-      ' gpu composite/screen:412 6.00 max 12.00 0.5x 4.5k',
-      ' gpu platform/android:237 5.00 max 6.00 1.0x',
+      ' gpu stroke/pile:88 45.00 max 90.00 once 90.00 12.5x 0.2k',
+      ' cpu device:1040 10.00 max 20.00 once 20.00 0.5x',
+      ' gpu composite/screen:412 6.00 max 12.00 once 12.00 0.5x 4.5k',
+      ' gpu platform/android:237 5.00 max 6.00 once 6.00 1.0x',
       'SLOWEST 126.00 draw 1.00 finish 124.50 show 0.50 865x864 x1.35 '
           'nearest',
       ' gpu 96.00 cpu 20.00',
@@ -243,14 +259,14 @@ void main() {
     tearDown(() => ScreenTexture.tookAsItWentUp = null);
 
     test('is off in an ordinary build, and nobody is told of a frame', () {
-      expect(MeasurementMode.startWithEngineStages, isFalse);
-      expect(MeasurementMode.engineStages.value, isFalse);
+      expect(MeasurementMode.startWithDebugWindow, isFalse);
+      expect(MeasurementMode.debugWindow.value, isFalse);
       expect(ScreenTexture.tookAsItWentUp, isNull);
     });
 
     test('on, the frames that go up are kept with what was asked of each; '
         'off again, none is kept and nobody is told', () {
-      MeasurementMode.engineStages.value = true;
+      MeasurementMode.debugWindow.value = true;
       final told = ScreenTexture.tookAsItWentUp;
       expect(told, isNotNull);
 
@@ -272,13 +288,13 @@ void main() {
       expect(summary.slowest.asked, asked);
       expect(summary.places.single.micros, 4000);
 
-      MeasurementMode.engineStages.value = false;
+      MeasurementMode.debugWindow.value = false;
       expect(ScreenTexture.tookAsItWentUp, isNull);
       expect(EngineStages.summary, isNull);
     });
 
     test('no more frames are kept than the newest', () {
-      MeasurementMode.engineStages.value = true;
+      MeasurementMode.debugWindow.value = true;
       for (var at = 0; at < EngineStages.framesKept + 5; at++) {
         EngineStages.wentUp((draw: 0, finish: at, show: 0, went: null), [
           gpu(show, at),
@@ -294,25 +310,27 @@ void main() {
     });
   });
 
-  testWidgets('the statistics show the stages under their own lines while '
-      'the switch is on, and not while it is off', (tester) async {
+  testWidgets('the debug window shows the stages under the frame\'s lines '
+      'while it is up, and nothing while it is closed', (tester) async {
     addTearDown(() => ScreenTexture.tookAsItWentUp = null);
-    MeasurementMode.frameStats.value = true;
-    // Hosted as the app hosts it: placed under the top strip, as tall as
-    // its lines.
     await tester.pumpWidget(
-      const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      const MaterialApp(home: DebugWindowHost(child: SizedBox())),
     );
     Finder line(String text) => find.textContaining(text);
-
     expect(line('STAGES'), findsNothing);
 
-    MeasurementMode.engineStages.value = true;
+    MeasurementMode.debugWindow.value = true;
+    await tester.pump();
+    expect(
+      line('STAGES  timed, no frame yet'),
+      findsOneWidget,
+      reason: 'its rows stand before a frame is timed',
+    );
+
     EngineStages.wentUp((draw: 100, finish: 9000, show: 50, went: null), [
       gpu(show, 4000),
     ]);
-    // The readout is built again as the statistics publish, and with
-    // their window.
+    // The window is built again as the statistics publish.
     FrameStats.debugFeed([
       FrameTiming(
         vsyncStart: 0,
@@ -330,8 +348,7 @@ void main() {
     expect(line('composite/screen:412'), findsNWidgets(2));
     expect(line('SLOWEST'), findsOneWidget);
 
-    MeasurementMode.engineStages.value = false;
-    FrameStats.publish();
+    MeasurementMode.debugWindow.value = false;
     await tester.pump();
     expect(line('STAGES'), findsNothing);
   });

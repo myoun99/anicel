@@ -51,7 +51,6 @@ import '../dialogs/dialog_verb.dart';
 import '../dialogs/feedback_window.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../dialogs/work_settings_window.dart';
-import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../editor_session_manager.dart';
@@ -687,89 +686,23 @@ class EditorTopStrip extends StatelessWidget {
       label: 'Debug',
       icon: Icons.bug_report_outlined,
       submenuBuilder: () => [
-        // The pen program's diagnosis overlay (PEN-1): toggles the live
-        // pointer-event readout — kind/pressure/tilt straight from the
-        // platform, the driver-vs-app separator.
+        // 🗣️유저 2026-11-24 (one-debug-window-shows-everything Q2): ONE
+        // switch — the input inspector, the frame-timing graphs, the frame
+        // statistics and the engine's stages were four rows here, and the
+        // repaint tint a fifth; it rides the window's head now. A toggle
+        // rather than a build flag because flipping a --dart-define on a
+        // tablet costs a rebuild and an install.
         _item(
-          id: 'edit-input-inspector',
-          label: editorActionLabel(EditorActionIds.inputInspector),
-          shortcuts: const [EditorActionIds.inputInspector],
+          id: 'edit-debug-window',
+          label: editorActionLabel(EditorActionIds.debugWindow),
+          shortcuts: const [EditorActionIds.debugWindow],
           // ⛔Not the bug glyph: that one is the DEBUG row above, and a
-          // child repeating its parent's mark says nothing. This one is
-          // about the pointer.
-          icon: Icons.touch_app_outlined,
-          checked: InputInspector.visible.value,
-          onPressed: () {
-            InputInspector.visible.value = !InputInspector.visible.value;
-          },
-        ),
-        // Its sibling measurement switch: the inspector says what the
-        // platform DELIVERED, this says what the app did with the frame it
-        // had. A toggle rather than a build flag because flipping a
-        // --dart-define on a tablet costs a rebuild and an install.
-        _item(
-          id: 'edit-frame-timing-overlay',
-          label: editorActionLabel(EditorActionIds.frameTimingOverlay),
-          shortcuts: const [EditorActionIds.frameTimingOverlay],
-          icon: Icons.speed_outlined,
-          checked: MeasurementMode.frameTimingOverlay.value,
-          onPressed: () {
-            MeasurementMode.frameTimingOverlay.value =
-                !MeasurementMode.frameTimingOverlay.value;
-          },
-        ),
-        // The same clock in numbers, and the one to believe when the two
-        // disagree: percentiles instead of max/avg, END-TO-END LATENCY,
-        // which the graphs have no line for, and the engine's raster-cache
-        // counts, which are the only way from Dart to ask whether a repaint
-        // boundary bought anything on the GPU. It is also six lines of text
-        // at 4 Hz, where the graphs are two full-width bars redrawn every
-        // frame inside the scene whose raster time they report.
-        _item(
-          id: 'edit-frame-stats',
-          label: editorActionLabel(EditorActionIds.frameStats),
-          shortcuts: const [EditorActionIds.frameStats],
+          // child repeating its parent's mark says nothing.
           icon: Icons.query_stats_outlined,
-          checked: MeasurementMode.frameStats.value,
+          checked: MeasurementMode.debugWindow.value,
           onPressed: () {
-            MeasurementMode.frameStats.value = !MeasurementMode.frameStats.value;
-          },
-        ),
-        // The engine's work place by place, under the statistics' lines
-        // (`EngineStages`). ⏳Asked for, it brings the statistics up: its
-        // lines are lines of that readout and show nowhere else, and a
-        // photograph of a tablet out of reach with one switch forgotten
-        // is a build's round lost (브러시/렌더링 2026-11-22, the user away
-        // — theirs to overturn). Turned off, it leaves them up.
-        _item(
-          id: 'edit-engine-stages',
-          label: editorActionLabel(EditorActionIds.engineStages),
-          shortcuts: const [EditorActionIds.engineStages],
-          icon: Icons.stacked_bar_chart_outlined,
-          checked: MeasurementMode.engineStages.value,
-          onPressed: () {
-            MeasurementMode.engineStages.value =
-                !MeasurementMode.engineStages.value;
-            if (MeasurementMode.engineStages.value) {
-              MeasurementMode.frameStats.value = true;
-            }
-          },
-        ),
-        // Krita ships `KisRepaintDebugger` in production and Blender tints
-        // every drawn region under `debug_value == 888`, both for the same
-        // reason this program keeps rediscovering: a panel paying full price
-        // looks exactly like a free one. The standing report says WHICH
-        // panels bake; this says WHEN, while you work. A surface that
-        // strobes as the pen moves is re-baking on your pointer.
-        _item(
-          id: 'edit-show-repaints',
-          label: editorActionLabel(EditorActionIds.showRepaints),
-          shortcuts: const [EditorActionIds.showRepaints],
-          icon: Icons.flare_outlined,
-          checked: MeasurementMode.showRepaints.value,
-          onPressed: () {
-            MeasurementMode.showRepaints.value =
-                !MeasurementMode.showRepaints.value;
+            MeasurementMode.debugWindow.value =
+                !MeasurementMode.debugWindow.value;
           },
         ),
         // ↩️「Bake Static Panels」, the bakes' A/B switch, stood here from
