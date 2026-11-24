@@ -54,7 +54,7 @@ void main() {
     );
     await tester.tapAt(const Offset(100, 100));
     expect(
-      InputInspector.samples,
+      InputInspector.events,
       isEmpty,
       reason: 'the always-mounted listener must gate on visibility',
     );
@@ -62,7 +62,7 @@ void main() {
     InputInspector.visible.value = true;
     await tester.pump();
     await tester.tapAt(const Offset(100, 100));
-    expect(InputInspector.samples, isNotEmpty);
+    expect(InputInspector.events, isNotEmpty);
   });
 
   /// 🚨★★H21 (유저 2026-08-23): 「인풋 인스펙터가 리셋도안먹고 **처음 키고
@@ -92,9 +92,9 @@ void main() {
           'answer the question it exists for',
     );
     expect(
-      InputInspector.samples,
+      InputInspector.events,
       isEmpty,
-      reason: 'and it does NOT disturb the visibility gate on the samples',
+      reason: 'and it does NOT disturb the visibility gate on the events',
     );
 
     InputInspector.visible.value = true;
@@ -198,7 +198,7 @@ void main() {
     await tester.tapAt(const Offset(100, 100));
     await tester.pump();
     expect(
-      InputInspector.touchDownCount + InputInspector.samples.length,
+      InputInspector.touchDownCount + InputInspector.events.length,
       greaterThan(0),
     );
     expect(find.textContaining(' echo=2'), findsOneWidget);
@@ -209,7 +209,7 @@ void main() {
     await tester.pump();
 
     expect(InputInspector.visible.value, isFalse);
-    expect(InputInspector.samples, isEmpty);
+    expect(InputInspector.events, isEmpty);
     expect(InputInspector.touchDownCount, 0);
     expect(InputInspector.arrivals, 0);
     expect(InputInspector.echoes, 0);

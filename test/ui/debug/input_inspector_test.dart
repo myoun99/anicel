@@ -35,7 +35,7 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('inspector-probe-area')),
     );
-    expect(InputInspector.samples, isEmpty);
+    expect(InputInspector.events, isEmpty);
 
     InputInspector.visible.value = true;
     await tester.pump();
@@ -129,12 +129,13 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(InputInspector.samples, isNotEmpty);
-    expect(InputInspector.samples.map((sample) => sample.kind).toSet(), {
-      PointerDeviceKind.stylus,
-    });
+    expect(InputInspector.events, isNotEmpty);
     expect(
-      InputInspector.samples.map((sample) => sample.phase),
+      InputInspector.events.values.map((sample) => sample.kind).toSet(),
+      {PointerDeviceKind.stylus},
+    );
+    expect(
+      InputInspector.events.values.map((sample) => sample.phase),
       containsAll(<String>['down', 'move', 'up']),
     );
     // The card renders the rows (kind name visible in the readout).
@@ -156,14 +157,34 @@ void main() {
 
     InputInspector.clear();
     expect(InputInspector.peakPressure, 0);
-    expect(InputInspector.samples, isEmpty);
+    expect(InputInspector.events, isEmpty);
   });
 
-  test('the ring stays bounded', () {
-    for (var i = 0; i < InputInspector.capacity + 40; i += 1) {
-      InputInspector.record(const PointerHoverEvent());
+  test('one slot per kind and phase — the latest event of each, in the '
+      'order they first came', () {
+    InputInspector.visible.value = true;
+    InputInspector.record(
+      const PointerHoverEvent(
+        kind: PointerDeviceKind.stylus,
+        position: Offset(1, 0),
+      ),
+    );
+    InputInspector.record(const PointerDownEvent(position: Offset(2, 0)));
+    for (var i = 0; i < 40; i += 1) {
+      InputInspector.record(
+        PointerHoverEvent(
+          kind: PointerDeviceKind.stylus,
+          position: Offset(3 + i.toDouble(), 0),
+        ),
+      );
     }
-    expect(InputInspector.samples.length, InputInspector.capacity);
+    expect(
+      InputInspector.events.keys,
+      orderedEquals(['stylus hover', 'touch down']),
+    );
+    final events = InputInspector.events;
+    expect(events['stylus hover']!.position, const Offset(42, 0));
+    expect(events['touch down']!.position, const Offset(2, 0));
   });
 
   test('PEN-10: touch-down counter + probe notes — gated, one slot per '
@@ -209,7 +230,7 @@ void main() {
     InputInspector.reset();
   });
 
-  testWidgets('a PINNED line is state: on the card above the rows, and it '
+  testWidgets('a PINNED line is state: on the card, and it '
       'outlives the notes and the clear', (tester) async {
     // F-67 hands-on (2026-09-11): the layout probe went through `note`,
     // and the paint probes pushed it out of the ring (five lines then)
