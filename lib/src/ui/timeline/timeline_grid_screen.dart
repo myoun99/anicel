@@ -23,13 +23,6 @@ import '../listenable_rebind.dart';
 /// would lay it again.
 const int _screenRoom = 128;
 
-/// What a frame of a grid's screen was drawn for ([ScreenTexture.shownFor]):
-/// where it stands on the box, in the box's own pixels, and where each row
-/// it laid stood on the box as it was laid — so the frame, up after its
-/// rows moved on, stands where they went
-/// ([_RenderGridScreen._movedTogetherSince]).
-typedef _LaidFor = ({Rect at, Map<_RenderGridScreenSlot, Matrix4> stood});
-
 /// A tile a row lays on its grid's screen: the part [from] of its
 /// [picture], in the picture's pixels, onto the part [onto] of the row, in
 /// the row's own.
@@ -451,11 +444,10 @@ class _RenderGridScreen extends RenderBox {
     }
     final texture = screen._texture!;
     _askRowsAgain(texture, shown);
-    final standing = _rowsStanding();
     final laid = screen._laid;
     if (laid == null ||
         !_has(MatrixUtils.transformRect(toView, laid), shown) ||
-        _aRowMoved(standing)) {
+        _aRowMoved()) {
       final window = EngineScreenTexture.windowOf(texture, shown);
       final at = MatrixUtils.inverseTransformRect(toView, window);
       _layAt(
@@ -464,72 +456,16 @@ class _RenderGridScreen extends RenderBox {
         appGpuGridKernels.kept.lay,
         owner!.rootNode!,
         drawnFor: at,
-        standing: standing,
       );
       screen._laid = at;
     }
     return switch (texture.shownFor) {
-      final _LaidFor up when texture.showsAFrame => (
-        at: up.at.shift(_movedTogetherSince(up.stood, standing)),
+      final Rect at when texture.showsAFrame => (
+        at: at,
         id: texture.textureId.value,
       ),
       _ => null,
     };
-  }
-
-  /// Where each row that lays here stands on this box as this frame's
-  /// scene is built — asked once a frame of each, by [_composited].
-  Map<_RenderGridScreenSlot, Matrix4> _rowsStanding() => {
-    for (final slot in _screen._slots)
-      if (slot._laid.isNotEmpty) slot: slot.getTransformTo(this),
-  };
-
-  /// How far the rows the frame up was laid with ([stood]) have moved on
-  /// this box since, to where they stand [now] — all by one shift, as a
-  /// scroll of the rows over the box moves them; none where any moved
-  /// otherwise, or where none of them lays here still.
-  ///
-  /// 🐞Card a-fast-vertical-timeline-scroll-paints-row-pictures-a-notch-
-  /// behind-their-labels (검증 2026-11-25, rel 350b24871): a frame goes up
-  /// once the GPU has finished it, and the one up stands meanwhile
-  /// ([ScreenTexture.present], since 2026-11-12). Where a scroll moves the
-  /// box with its rows, that one moves with them. The timeline's rows
-  /// scroll INSIDE the box — their list is the box's child — so while the
-  /// frame laid where they went was still on the GPU, the one up showed
-  /// the cells, the lines and the pills a wheel's notch from the words and
-  /// the numbers Flutter drew where the rows went. 🚨So the frame up stands
-  /// where its rows stand, not where they stood: a row whose picture is
-  /// shown is shown under its words.
-  static Offset _movedTogetherSince(
-    Map<_RenderGridScreenSlot, Matrix4> stood,
-    Map<_RenderGridScreenSlot, Matrix4> now,
-  ) {
-    Offset? together;
-    for (final MapEntry(key: slot, value: then) in stood.entries) {
-      final standsNow = now[slot];
-      if (standsNow == null) {
-        continue;
-      }
-      final moved = _shiftBetween(then, standsNow);
-      if (moved == null ||
-          (together != null && (moved - together).distance > 1e-6)) {
-        return Offset.zero;
-      }
-      together ??= moved;
-    }
-    return together ?? Offset.zero;
-  }
-
-  /// [to] less [from], where the two differ by a translation alone — null
-  /// where they differ by more.
-  static Offset? _shiftBetween(Matrix4 from, Matrix4 to) {
-    final (was, now) = (from.storage, to.storage);
-    for (var i = 0; i < 16; i++) {
-      if (i != 12 && i != 13 && was[i] != now[i]) {
-        return null;
-      }
-    }
-    return Offset(now[12] - was[12], now[13] - was[13]);
   }
 
   /// Whether a row that lays here stands elsewhere on this box than where
@@ -543,9 +479,10 @@ class _RenderGridScreen extends RenderBox {
   /// screen asks where its rows stand instead, as it asks what the view
   /// shows. Against the BOX, not the view: a scroll moves the box and its
   /// rows together, and lays nothing.
-  bool _aRowMoved(Map<_RenderGridScreenSlot, Matrix4> standing) {
-    for (final MapEntry(key: slot, value: standsNow) in standing.entries) {
-      if (slot._standing != standsNow) {
+  bool _aRowMoved() {
+    for (final slot in _screen._slots) {
+      if (slot._laid.isNotEmpty &&
+          slot._standing != slot.getTransformTo(this)) {
         return true;
       }
     }
@@ -614,15 +551,13 @@ class _RenderGridScreen extends RenderBox {
 
   /// Presents every slot's tiles on [texture], from [origin] in the device
   /// pixels of [view] — what of them it holds, the rest of it clear — drawn
-  /// for [drawnFor], where it stands in the box, with each row where it
-  /// stands on the box ([standing]).
+  /// for [drawnFor], where it stands in the box.
   void _layAt(
     Offset origin,
     ScreenTexture texture,
     GpuGridLay lay,
     RenderObject view, {
     required Rect drawnFor,
-    required Map<_RenderGridScreenSlot, Matrix4> standing,
   }) {
     final (width, height) = (texture.width, texture.height);
     final laid = <GpuGridLaid>[];
@@ -630,7 +565,7 @@ class _RenderGridScreen extends RenderBox {
       if (slot._laid.isEmpty) {
         continue;
       }
-      slot._standing = standing[slot];
+      slot._standing = slot.getTransformTo(this);
       final slotToView = slot.getTransformTo(view);
       for (final (:picture, :from, :onto) in slot._laid) {
         final at = MatrixUtils.transformRect(slotToView, onto).shift(-origin);
@@ -649,7 +584,7 @@ class _RenderGridScreen extends RenderBox {
     }
     texture.present(
       (next) => lay.lay(next, (0, 0, width, height), laid),
-      drawnFor: (at: drawnFor, stood: standing),
+      drawnFor: drawnFor,
     );
   }
 
