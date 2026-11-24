@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../layout/render_shifted_child.dart';
+import '../listenable_rebind.dart';
 import 'axis_turn.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_window.dart'
@@ -459,8 +460,7 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
       return;
     }
     if (attached) {
-      current?.removeListener(_follow);
-      value.addListener(_follow);
+      rebindListener(current, value, _follow);
     }
     _geometryHandle = value;
     markNeedsLayout();

@@ -13,6 +13,7 @@ import '../theme/app_theme.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeightIn;
 import '../widgets/content_scrollbar.dart';
 import '../widgets/ellipsis_text.dart';
+import '../listenable_rebind.dart';
 
 /// One column of the pool's list right of its names: what its head says and
 /// what each file's line says under it.
@@ -378,8 +379,7 @@ class _RenderRidesTheScroll extends RenderProxyBox
       return;
     }
     if (attached) {
-      _controller.removeListener(_scrolled);
-      controller.addListener(_scrolled);
+      rebindListener(_controller, controller, _scrolled);
     }
     _controller = controller;
     _along = along;

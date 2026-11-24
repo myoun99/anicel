@@ -7,6 +7,7 @@ import 'drag_chip.dart';
 import 'live_sheet.dart';
 import 'owning_draggable.dart';
 import 'superellipse_clip.dart';
+import '../listenable_rebind.dart';
 
 /// THE app's grip band: a thin rule along an edge saying "there is a handle
 /// here", plus the one colour ladder every grip climbs.
@@ -298,8 +299,7 @@ class RenderGripBand extends RenderBox {
       return;
     }
     if (attached) {
-      _nearby.removeListener(_show);
-      value.addListener(_show);
+      rebindListener(_nearby, value, _show);
     }
     _nearby = value;
     _show();

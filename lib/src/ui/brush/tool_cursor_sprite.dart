@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'tool_cursor_look.dart';
+import '../listenable_rebind.dart';
 
 /// A tool cursor, drawn by the app and moved by the app — the same law on
 /// every platform (유저, F-130, 2026-09-15: 「앱 커서만 최대한 가볍게」; the
@@ -82,8 +83,7 @@ class RenderToolCursorSprite extends RenderBox {
       return;
     }
     if (attached) {
-      _position.removeListener(_aimMoved);
-      value.addListener(_aimMoved);
+      rebindListener(_position, value, _aimMoved);
     }
     _position = value;
     markNeedsPaint();
@@ -98,8 +98,7 @@ class RenderToolCursorSprite extends RenderBox {
     }
     _look = value;
     if (attached) {
-      old.painter.removeListener(markNeedsPaint);
-      value.painter.addListener(markNeedsPaint);
+      rebindListener(old.painter, value.painter, markNeedsPaint);
     }
     // The same rule `RenderCustomPaint` applies to a swapped painter, plus
     // the box and the hot spot, which the picture and its offset depend on.

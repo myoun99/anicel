@@ -44,6 +44,7 @@ import 'frame_pictures.dart';
 import 'frame_wait_mark.dart';
 import '../widgets/still_raster.dart';
 import 'stacked_frame_picture.dart';
+import '../listenable_rebind.dart';
 
 part 'live_cel_screen.dart';
 
@@ -1877,8 +1878,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       super.markNeedsPaint();
     }
     if (attached) {
-      _repaint?.removeListener(markNeedsPaint);
-      screen.repaint.addListener(markNeedsPaint);
+      rebindListener(_repaint, screen.repaint, markNeedsPaint);
     }
     _repaint = screen.repaint;
   }

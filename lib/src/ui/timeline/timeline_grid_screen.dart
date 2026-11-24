@@ -13,6 +13,7 @@ import '../engine_screen_texture.dart';
 import '../layout/device_grid.dart';
 import '../widgets/still_raster.dart';
 import 'timeline_grid_tile_picture.dart';
+import '../listenable_rebind.dart';
 
 /// How far past what the view shows a screen holds, in device pixels, along
 /// an axis on which the box goes on past it (공통 2026-11-09, for 관제's F).
@@ -751,8 +752,7 @@ class _RenderGridScreenSlot extends RenderProxyBox
       return;
     }
     if (attached) {
-      was?.removeListener(markNeedsPaint);
-      clip?.addListener(markNeedsPaint);
+      rebindListener(was, clip, markNeedsPaint);
     }
     _clip = clip;
     if (clip == null ||
