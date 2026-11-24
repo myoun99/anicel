@@ -810,6 +810,8 @@ void main() {
     'imPsdMerge': (s) => s.imPsdMerge,
     'imPsdExpand': (s) => s.imPsdExpand,
     'imNoSource': (s) => s.imNoSource,
+    'imAddFiles': (s) => s.imAddFiles,
+    'imAddFolder': (s) => s.imAddFolder,
     'imStatusImporting': (s) => s.imStatusImporting,
     'imStatusNothing': (s) => s.imStatusNothing,
     'imStepRecoding': (s) => s.imStepRecoding,
