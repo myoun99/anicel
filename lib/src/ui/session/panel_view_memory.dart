@@ -102,28 +102,22 @@ class PanelViewMemory {
       return;
     }
     if (was != null) {
-      _keepConteZoom(was, storyboardPixelsPerFrame.value);
+      _conteZoomsLeft[was] = storyboardPixelsPerFrame.value;
     }
     _conteZoomOf = now;
     storyboardPixelsPerFrame.value =
         _conteZoomsLeft.remove(now) ?? defaultStoryboardPixelsPerFrame;
   }
 
-  void _keepConteZoom(String timeline, double zoom) {
-    if (zoom == defaultStoryboardPixelsPerFrame) {
-      _conteZoomsLeft.remove(timeline);
-    } else {
-      _conteZoomsLeft[timeline] = zoom;
-    }
-  }
-
   /// Every timeline's conte zoom away from the default, by its id — the
   /// open one's as it stands — as a save writes them.
   Map<String, double> get conteZooms => {
-    ..._conteZoomsLeft,
-    if (_timeline()?.value case final open?
-        when storyboardPixelsPerFrame.value != defaultStoryboardPixelsPerFrame)
-      open: storyboardPixelsPerFrame.value,
+    for (final MapEntry(key: timeline, value: zoom) in {
+      ..._conteZoomsLeft,
+      if (_timeline()?.value case final open?)
+        open: storyboardPixelsPerFrame.value,
+    }.entries)
+      if (zoom != defaultStoryboardPixelsPerFrame) timeline: zoom,
   };
 
   /// Each timeline's conte zoom [saved] names, put back — the open one's

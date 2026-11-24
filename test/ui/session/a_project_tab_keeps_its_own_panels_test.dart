@@ -258,56 +258,75 @@ void main() {
     );
   }
 
-  testWidgets('🚨each cut shows the timeline where IT was left — its rows '
-      'and its frames, at its own zoom — not where the last cut was (H78, '
-      '유저 2026-11-24: 「타임라인별로 스크롤상태, 줌상태 별도기억, 내부컷도 '
-      '마찬가지」)', (tester) async {
-    final projects = await openWindow(tester, twoCutsOfManyRows());
-    final session = projects.active;
-    final firstCut = session.activeCutId!;
-    const secondCut = CutId('c2');
-    session.timelineZoom.remember(
-      secondCut,
-      TimelineZoomLimits.referencePixelsPerFrame * 2,
-    );
-    ScrollController along(String key) =>
-        scrollableOf(tester, find.byKey(ValueKey<String>(key))).controller!;
-    ScrollController rows() => along('timeline-vertical-scroll-viewport');
-    ScrollController frames() => along('timeline-frame-scroll-viewport');
-    final down = (rows().position.maxScrollExtent / 2).roundToDouble();
-    final across = (frames().position.maxScrollExtent / 2).roundToDouble();
-    expect(
-      [down, across],
-      everyElement(greaterThan(10)),
-      reason: '⛔전제: the rows and the frames overflow',
-    );
-    rows().jumpTo(down);
-    frames().jumpTo(across);
-    await tester.pumpAndSettle();
+  for (final (sheet, layersKey, framesKey, button) in [
+    (
+      'timeline',
+      'timeline-vertical-scroll-viewport',
+      'timeline-frame-scroll-viewport',
+      null,
+    ),
+    (
+      'sheet',
+      'xsheet-layer-horizontal-viewport',
+      'xsheet-frame-vertical-viewport',
+      'timeline-orientation-toggle-button',
+    ),
+  ]) {
+    testWidgets('🚨each cut shows the $sheet where IT was left — its layers '
+        'and its frames, at its own zoom — not where the last cut was (H78, '
+        '유저 2026-11-24: 「타임라인별로 스크롤상태, 줌상태 별도기억, 내부컷도 '
+        '마찬가지」)', (tester) async {
+      final projects = await openWindow(tester, twoCutsOfManyRows());
+      if (button != null) {
+        await tester.tap(find.byKey(ValueKey<String>(button)));
+        await tester.pumpAndSettle();
+      }
+      final session = projects.active;
+      final firstCut = session.activeCutId!;
+      const secondCut = CutId('c2');
+      session.timelineZoom.remember(
+        secondCut,
+        TimelineZoomLimits.referencePixelsPerFrame * 2,
+      );
+      ScrollController along(String key) =>
+          scrollableOf(tester, find.byKey(ValueKey<String>(key))).controller!;
+      ScrollController rows() => along(layersKey);
+      ScrollController frames() => along(framesKey);
+      final down = (rows().position.maxScrollExtent / 2).roundToDouble();
+      final across = (frames().position.maxScrollExtent / 2).roundToDouble();
+      expect(
+        [down, across],
+        everyElement(greaterThan(10)),
+        reason: '⛔전제: the layers and the frames overflow',
+      );
+      rows().jumpTo(down);
+      frames().jumpTo(across);
+      await tester.pumpAndSettle();
 
-    session.selectCut(secondCut);
-    await tester.pumpAndSettle();
-    expect(
-      [rows().offset, frames().offset],
-      [0, 0],
-      reason: 'a cut never scrolled opens at its start',
-    );
-    frames().jumpTo(64);
-    await tester.pumpAndSettle();
+      session.selectCut(secondCut);
+      await tester.pumpAndSettle();
+      expect(
+        [rows().offset, frames().offset],
+        [0, 0],
+        reason: 'a cut never scrolled opens at its start',
+      );
+      frames().jumpTo(64);
+      await tester.pumpAndSettle();
 
-    session.selectCut(firstCut);
-    await tester.pump();
-    expect(
-      [rows().offset, frames().offset],
-      [down, across],
-      reason: '🚨the first comes back where it was, from its first frame — '
-          'not bent by the zoom of the cut it came from',
-    );
-    await tester.pumpAndSettle();
-    session.selectCut(secondCut);
-    await tester.pumpAndSettle();
-    expect(frames().offset, 64);
-  });
+      session.selectCut(firstCut);
+      await tester.pump();
+      expect(
+        [rows().offset, frames().offset],
+        [down, across],
+        reason: '🚨the first comes back where it was, from its first frame — '
+            'not bent by the zoom of the cut it came from',
+      );
+      await tester.pumpAndSettle();
+      session.selectCut(secondCut);
+      await tester.pumpAndSettle();
+      expect(frames().offset, 64);
+    });
+  }
 
   testWidgets('🚨each timeline shows the conte where IT was left — its '
       'frames at its own zoom — and one never opened at the default (H78)', (
