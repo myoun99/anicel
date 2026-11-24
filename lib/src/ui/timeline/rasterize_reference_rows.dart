@@ -139,10 +139,15 @@ Future<void> _bake(
       }
     },
   );
-  if (left.isEmpty || !context.mounted) {
-    return;
+  if (left.isNotEmpty && context.mounted) {
+    await _sayLeft(context, left);
   }
-  await showAppNotice(
+}
+
+/// The rows a bake refused, named in one notice.
+Future<void> _sayLeft(BuildContext context, List<String> left) {
+  final strings = AppText.strings;
+  return showAppNotice(
     context,
     windowKey: const ValueKey<String>('reference-rasterize-left'),
     title: strings.commonNotice,
