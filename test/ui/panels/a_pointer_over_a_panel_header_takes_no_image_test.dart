@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/press_face.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
@@ -132,6 +133,36 @@ void main() {
       expect(region.debugCaptureCount, before, reason: label);
     }
     expect(hovered, greaterThanOrEqualTo(2), reason: 'controls were hovered');
+  });
+
+  testWidgets('🎯a pointer going onto a header\'s list door leaves its dock '
+      'drawn from its image, and takes none again', (tester) async {
+    // Card an-ink-well-repaints-its-material-for-a-hover-it-lays-no-ink-for
+    // (2026-11-24): the `⋮` of the brush library's header, a
+    // `PanelFlyoutTrigger` — read by where it stands, whatever it is made
+    // of, so a door that went back to an ink well is read as well.
+    final mouse = await pumpPage(tester);
+    final doors = find.descendant(
+      of: find.byKey(_header),
+      matching: find.byType(PanelFlyoutTrigger),
+    );
+    expect(doors, findsWidgets, reason: 'the header has a list door');
+    final header = tester.renderObject<RenderBox>(find.byKey(_header));
+    final region = regionOf(header)!;
+    await mouse.moveTo(header.localToGlobal(Offset(8, header.size.height / 2)));
+    await frames(tester, 30);
+    final before = region.debugCaptureCount;
+    for (final door in doors.evaluate()) {
+      final box = door.renderObject! as RenderBox;
+      await mouse.moveTo(box.localToGlobal(box.size.center(Offset.zero)));
+      await frames(tester, 3);
+      expect(region.debugDrawnFrom, isNotNull, reason: 'on the door');
+      await mouse.moveTo(
+        header.localToGlobal(Offset(8, header.size.height / 2)),
+      );
+      await frames(tester, 30);
+    }
+    expect(region.debugCaptureCount, before, reason: region.debugLabel);
   });
 
   testWidgets('the sheet cuts the dock\'s image no wider than the controls '

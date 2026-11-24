@@ -1,4 +1,3 @@
-import 'app_tooltip.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -1472,7 +1471,15 @@ Color _inkFor(PanelFlyoutItem entry) {
 /// control that is shut without saying so, which is the exact thing 유저
 /// R4 #12 rejected (잠궜는데 바꿀 수 있으면 잠금이 아니잖아). A host that
 /// needs a shut state owns the appearance of one.
-class PanelFlyoutTrigger extends StatelessWidget {
+///
+/// 🚨A CLEAR PLATE, the list's door every [PanelFlyoutButton] is
+/// ([RailFlyoutTrigger]): its hover fills its shape under [child], laid on
+/// the sheet where one is ([LiveSheet]) — and the region it stands in
+/// keeps its image (card an-ink-well-repaints-its-material-for-a-hover-it-
+/// lays-no-ink-for, 2026-11-24). ↩️A [Material] and an [InkWell], whose
+/// highlight had the Material paint again: a pointer passing over a panel
+/// header's `⋮` took the dock's image again.
+class PanelFlyoutTrigger extends StatefulWidget {
   const PanelFlyoutTrigger({
     super.key,
     required this.child,
@@ -1497,26 +1504,27 @@ class PanelFlyoutTrigger extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   @override
-  Widget build(BuildContext context) {
-    final Widget button = Material(
-      color: Colors.transparent,
-      child: ControlPressClaim(onPressed: () => showPanelFlyout(context, entries: entriesBuilder()), child: InkWell(
-        mouseCursor: AppCursors.press,
-        // `customBorder` and not `borderRadius`: the splash is a corner like
-        // any other and takes the app's superellipse, so this widget adds
-        // nothing to the circular-corner debt (`app_shapes_coverage_test`,
-        // which only ever ratchets down).
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        onTap: silentPress(() => showPanelFlyout(context, entries: entriesBuilder())),
-        child: Padding(padding: padding, child: child),
-      )),
-    );
-    final message = tooltip;
-    if (message == null) {
-      return button;
-    }
-    return AppTooltip(message: message, child: button);
-  }
+  State<PanelFlyoutTrigger> createState() => _PanelFlyoutTriggerState();
+}
+
+class _PanelFlyoutTriggerState extends State<PanelFlyoutTrigger>
+    with KeyboardPress {
+  @override
+  VoidCallback? get keyboardPress =>
+      () => showPanelFlyout(context, entries: widget.entriesBuilder());
+
+  @override
+  Widget build(BuildContext context) => keyboardReaches(
+    RailFlyoutTrigger(
+      tooltip: widget.tooltip ?? '',
+      entriesBuilder: widget.entriesBuilder,
+      focus: keyboardFocus,
+      // The app's superellipse, the corner the ink took (no circular
+      // corner — `app_shapes_coverage_test`).
+      shape: AppShapes.container(AppShapes.wellRadius),
+      child: Padding(padding: widget.padding, child: widget.child),
+    ),
+  );
 }
 
 /// [PanelFlyoutTrigger] for a rail's PLATE — the layer row's mark and take
