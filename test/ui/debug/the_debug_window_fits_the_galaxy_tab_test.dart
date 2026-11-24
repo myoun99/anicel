@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuPlaceTook;
 
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/engine_stages.dart';
@@ -89,6 +90,15 @@ Future<void> _openAtItsLongest(WidgetTester tester, Size size) async {
     ..physicalSize = size
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  // The OS's mappings at their longest: every one the engine names, each
+  // a long path.
+  QaMemory.debugMappings = () => [
+    for (var at = 0; at < mappingsNamed; at += 1)
+      '/data/app/~~${'x' * 22}==/com.myoun.anicel-${'y' * 22}==/lib/arm64/'
+          'libmapping_$at.so 1234.5',
+    'read 123 ms',
+  ].join('  ');
+  addTearDown(() => QaMemory.debugMappings = null);
 
   await tester.pumpWidget(
     // No theme: the window sets its own face (DebugType), whatever the

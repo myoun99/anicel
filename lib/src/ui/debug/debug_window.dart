@@ -402,6 +402,7 @@ List<String> memoryLines(MemoryCensus census) => [
   'MEMORY  app ${_DebugText.mb(census.footprintBytes)} MB  '
       'counted ${_DebugText.mb(census.trackedBytes)}  '
       'rest ${_DebugText.mb(census.untrackedBytes)}',
+  ...mappingLines(census.mappings),
   for (final item in census.items) ...itemLines(item),
   'VRAM    ${switch (census.videoMemory) {
     null => '—',
@@ -417,6 +418,42 @@ List<String> memoryLines(MemoryCensus census) => [
   // thread); the row stands meanwhile, saying none.
   'GPU blocks  —',
 ];
+
+/// Whose the app's memory is, mapping by mapping, where the OS keeps that
+/// account ([MemoryCensus.mappings]): how long the engine's read took, then
+/// a row for each mapping it names — [mappingsNamed] rows, whatever it
+/// said, so they stand where they stood (⛔없다가 생기는 UI 금지). A name
+/// keeps its end, where a path says its file, to the room of a row on the
+/// Galaxy Tab (🗣️관제 2026-11-24: 「갤탭 한 화면에 잘림 없이」) — the
+/// engine names a mapping as the OS does, at any length.
+List<String> mappingLines(String? said) {
+  final parts = said?.split('  ') ?? const <String>[];
+  final read = parts.lastOrNull;
+  final timed = read?.startsWith('read ') ?? false;
+  final named = timed ? parts.take(parts.length - 1).toList() : parts;
+  return [
+    ' maps   ${timed ? read : '—'}',
+    for (var at = 0; at < mappingsNamed; at += 1)
+      '  ${at < named.length ? _endOf(named[at]) : '—'}',
+  ];
+}
+
+/// How many mappings the engine names: its `MAPPINGS_NAMED`
+/// (native/memory/src/lib.rs).
+const int mappingsNamed = 4;
+
+/// A mapping's `name MiB` with the name cut to its last [_nameRoom]
+/// characters.
+String _endOf(String mapping) {
+  final at = mapping.lastIndexOf(' ');
+  final name = at < 0 ? mapping : mapping.substring(0, at);
+  final kept = name.length <= _nameRoom
+      ? name
+      : '…${name.substring(name.length - _nameRoom + 1)}';
+  return at < 0 ? kept : '$kept${mapping.substring(at)}';
+}
+
+const int _nameRoom = 40;
 
 /// A holder's lines: its sum, then its parts [partsALine] to a line under
 /// it — as many lines as it has parts for, whatever they hold, so its rows

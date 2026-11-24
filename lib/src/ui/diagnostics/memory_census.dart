@@ -97,6 +97,7 @@ class MemoryCensus {
     this.videoItems = const [],
     this.availableBytes,
     this.deviceBytes,
+    this.mappings,
   });
 
   /// What the OS says this PROCESS is holding — the SAME number that OS's
@@ -122,6 +123,12 @@ class MemoryCensus {
   /// ↩️a run with no native engine at all, until the connection round moved
   /// the question into the engine that ships with the app.
   final int footprintBytes;
+
+  /// Whose [footprintBytes] is, mapping by mapping, as the OS accounts it:
+  /// the mappings that hold the most, each with its MiB, and how long the
+  /// engine's read took (`QaMemory.mappings`) — null where the platform
+  /// keeps no such account, and till the engine's first read lands.
+  final String? mappings;
 
   /// How much more the OS will let this process take, where the platform
   /// says. Null where it will not — the number refuses to guess, and the
@@ -530,6 +537,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     footprintBytes: QaMemory.processFootprintOrRssBytes,
     availableBytes: QaMemory.availableMemoryBytes,
     deviceBytes: QaMemory.physicalMemoryBytes,
+    mappings: QaMemory.mappings,
     items: [...ram, if (textures) ...pictures]..sort(largestFirst),
     videoItems: textures ? const [] : (pictures..sort(largestFirst)),
     gpuMemoryIsRam: textures,

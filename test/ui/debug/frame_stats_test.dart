@@ -1,3 +1,4 @@
+import 'dart:io' show File;
 import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/material.dart';
@@ -19,6 +20,8 @@ import 'package:anicel/src/ui/debug/repaint_cause.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/debug/stroke_steps.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
+
+import '../../helpers/text_finders.dart';
 
 /// Repaints whenever its notifier ticks, so a test can make a bake happen
 /// on demand. `shouldRepaint` is false on purpose: the `repaint` listenable
@@ -1032,7 +1035,7 @@ void main() {
 
     testWidgets('keeps the mappings\' row under the memory, saying none '
         'till the OS says whose the memory is', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       String? said;
       QaMemory.debugMappings = () => said;
       addTearDown(() => QaMemory.debugMappings = null);
@@ -1040,20 +1043,46 @@ void main() {
         FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
         FrameStats.publish();
         await tester.pumpWidget(
-          const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+          const MaterialApp(home: DebugWindowHost(child: SizedBox())),
         );
         await tester.pump();
       }
 
-      await shown();
-      expect(find.text(' maps   —'), findsOneWidget);
+      List<String> rows() {
+        final lines = tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byKey(DebugWindow.linesKey),
+                matching: find.anyText(),
+              ),
+            )
+            .map((text) => text.data ?? '')
+            .toList();
+        final at = lines.indexWhere((line) => line.startsWith(' maps   '));
+        expect(at, greaterThanOrEqualTo(0), reason: 'the maps row stands');
+        return lines.sublist(at, at + 1 + mappingsNamed);
+      }
 
-      said = 'kgsl-3d0 412.3  [anon:scudo:primary] 210.0  read 23 ms';
       await shown();
+      expect(rows(), [' maps   —', '  —', '  —', '  —', '  —']);
+
+      final long = '/data/app/~~x/com.myoun.anicel-1/lib/arm64/${'a' * 30}.so';
+      said = 'kgsl-3d0 412.3  [anon:scudo:primary] 210.0  $long 64.5  '
+          'read 23 ms';
+      await shown();
+      expect(rows(), [
+        ' maps   read 23 ms',
+        '  kgsl-3d0 412.3',
+        '  [anon:scudo:primary] 210.0',
+        '  …${long.substring(long.length - 39)} 64.5',
+        '  —',
+      ]);
+
+      // As many as the engine names.
       expect(
-        find.text(' maps   kgsl-3d0 412.3  [anon:scudo:primary] 210.0  '
-            'read 23 ms'),
-        findsOneWidget,
+        File('packages/gpu_engine/rust/native/memory/src/lib.rs')
+            .readAsStringSync(),
+        contains('const MAPPINGS_NAMED: usize = $mappingsNamed;'),
       );
     });
 
