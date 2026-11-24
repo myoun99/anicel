@@ -47,13 +47,20 @@ void main() {
   test('its device gone before its copy came, a tile reads as the tile it '
       'landed on — as nothing where it landed on none — and forgets what '
       'its maker said of its ink', () {
-    final [onATile, onNone, read] = landed([tileOf(7), null, null], 9);
+    const said = (left: 1, top: 2, right: 3, bottom: 4);
+    final [onATile, onNone, read] = landedOn(ledger, [
+      tileOf(7),
+      null,
+      null,
+    ], 9, telling: said);
     expect(read.pixels, everyElement(9), reason: '⛔premise: what landed');
     expect(onATile.isOnlyOnEngine, isTrue, reason: '⛔premise: no copy here');
     expect(onNone.hasInk, isTrue, reason: '⛔premise: as its maker said');
-    const said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
-    onATile.rememberInkBounds(said);
-    expect(onATile.inkBounds, said, reason: '⛔premise: as its maker said');
+    expect(
+      onATile.inkBounds,
+      (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4),
+      reason: '⛔premise: as its maker said',
+    );
 
     engine.debugLose();
 
