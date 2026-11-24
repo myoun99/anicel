@@ -85,12 +85,18 @@ void main() {
 
   /// The memoized view pill, by identity. `_ensureShellBars` hands back the
   /// SAME widget instance while its token holds, so "did panning throw the
-  /// pill away" is a pointer comparison.
+  /// pill away" is a pointer comparison. The capsule's own hit shape is
+  /// the first under its key, whatever the capsule lays between them (its
+  /// still image, the live sheet over it).
   Object? pillBody(WidgetTester tester) {
-    final capsule = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey<String>('canvas-view-pill')),
+    final hit = tester.widget<SuperellipseHit>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('canvas-view-pill')),
+            matching: find.byType(SuperellipseHit),
+          )
+          .first,
     );
-    final hit = capsule.child! as SuperellipseHit;
     return (hit.child! as SizedBox).child;
   }
 
