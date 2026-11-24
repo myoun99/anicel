@@ -6,7 +6,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/press_face.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
@@ -64,24 +63,29 @@ void main() {
     return null;
   }
 
-  /// The controls of every header on screen, by the dock holding them.
-  Map<RenderStillRaster, List<RenderIconButtonPressFace>> headerFaces(
-    WidgetTester tester,
-  ) {
-    final faces = <RenderStillRaster, List<RenderIconButtonPressFace>>{};
-    for (final face in tester.renderObjectList<RenderIconButtonPressFace>(
-      find.descendant(
-        of: find.byKey(_header),
-        matching: find.byType(IconButtonPressFace),
-      ),
-    )) {
-      final region = regionOf(face);
-      if (!face.attached ||
-          region == null ||
-          !region.debugLabel.startsWith('dock:')) {
+  /// The controls of every header on screen, by the dock holding them —
+  /// every face that lights, whatever button it is (an icon button, a rail
+  /// glyph).
+  Map<RenderStillRaster, List<PressFace>> headerFaces(WidgetTester tester) {
+    final faces = <RenderStillRaster, List<PressFace>>{};
+    for (final element in find
+        .descendant(
+          of: find.byKey(_header),
+          matching: find.byWidgetPredicate((_) => true),
+        )
+        .evaluate()) {
+      final face = element.renderObject;
+      if (face is! PressFace || !face.attached) {
         continue;
       }
-      (faces[region] ??= []).add(face);
+      final region = regionOf(face);
+      if (region == null || !region.debugLabel.startsWith('dock:')) {
+        continue;
+      }
+      final inIt = faces[region] ??= [];
+      if (!inIt.contains(face)) {
+        inIt.add(face);
+      }
     }
     return faces;
   }
@@ -96,6 +100,16 @@ void main() {
     for (final MapEntry(key: region, value: inIt) in faces.entries) {
       final label = region.debugLabel;
       expect(region.debugDrawnFrom, isNotNull, reason: '$label, at rest');
+      // Onto the panel first, by its header's bare ground left of its
+      // controls: what coming onto a panel takes is its own (its scrollbar,
+      // the band on its tabs — card a-hover-in-a-capsule-or-a-dock-takes-
+      // the-regions-image-again, 2026-11-24 16:xx), and this reads what
+      // the header's controls take.
+      final header = tester.renderObject<RenderBox>(find.byKey(_header));
+      await mouse.moveTo(
+        header.localToGlobal(Offset(8, header.size.height / 2)),
+      );
+      await frames(tester, 30);
       final before = region.debugCaptureCount;
       for (final face in inIt) {
         await mouse.moveTo(face.localToGlobal(face.size.center(Offset.zero)));
@@ -111,7 +125,9 @@ void main() {
               '${face.localToGlobal(Offset.zero)}',
         );
       }
-      await mouse.moveTo(_away);
+      await mouse.moveTo(
+        header.localToGlobal(Offset(8, header.size.height / 2)),
+      );
       await frames(tester, 30);
       expect(region.debugCaptureCount, before, reason: label);
     }
@@ -176,7 +192,7 @@ void main() {
       final box = face.localToGlobal(Offset.zero) & face.size;
       await mouse.moveTo(box.center);
       await frames(tester, 2);
-      if (!face.debugState.hovered || face.debugLayerInk == null) {
+      if (!face.debugState.hovered || !face.pressEnabled) {
         // Dead: a dead control shows no hover.
         continue;
       }

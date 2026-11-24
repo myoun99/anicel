@@ -223,10 +223,13 @@ void main() {
     expect(plate.debugState.hovered, isTrue);
     expect(LiveSheet.underOf(tester.element(behind))!.debugLaid, 1);
     final hovered = await shot(tester);
+    // Before the name, in the tab's own room (its padding of 10): the test
+    // font draws each glyph a solid block in the name's colour, over the
+    // hover as over the rest, so what the name covers shows nothing.
     final inside = Rect.fromLTRB(
       box.left + 2,
       box.top + 2,
-      box.right - 30,
+      box.left + 9,
       box.bottom - 2,
     );
     expect(
