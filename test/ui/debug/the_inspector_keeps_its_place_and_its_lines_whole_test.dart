@@ -84,10 +84,15 @@ void main() {
 
     final panel = tester.getRect(find.byKey(_panel));
     final lines = find
-        .descendant(of: find.byKey(_panel), matching: find.byType(RichText))
+        .descendant(
+          of: find.byKey(_panel),
+          matching: find.byElementPredicate(
+            (element) => element.renderObject is RenderParagraph,
+          ),
+        )
         .evaluate()
         .map((element) => element.renderObject! as RenderParagraph)
-        .toList();
+        .toSet();
     expect(lines.length, greaterThan(20), reason: 'every line is laid');
     for (final line in lines) {
       final text = line.text.toPlainText();
