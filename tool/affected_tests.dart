@@ -2115,7 +2115,8 @@ Future<_BatchResult> _flutterTestIn(
     // 🗣️관제 2026-11-24 07:3x: where it stood, said before it is cut
     // (stuck_stacks.dart says why).
     await sayWhereTestersStand(process.pid, say: _report);
-    cutTree(process.pid);
+    final cut = cutTree(process.pid);
+    _report(cutSaid(cut, await stillStanding(cut)));
   });
   final memory = MemoryWatch(process.pid);
   final cpu = CpuWatch(process.pid);

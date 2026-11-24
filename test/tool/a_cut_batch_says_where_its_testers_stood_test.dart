@@ -73,7 +73,8 @@ void main() {
           '    // 🗣️관제 2026-11-24 07:3x: where it stood, said before it is cut\n'
           '    // (stuck_stacks.dart says why).\n'
           '    await sayWhereTestersStand(process.pid, say: _report);\n'
-          '    cutTree(process.pid);\n'),
+          '    final cut = cutTree(process.pid);\n'
+          '    _report(cutSaid(cut, await stillStanding(cut)));\n'),
     );
     final stacks = File('tool/stuck_stacks.dart').readAsStringSync();
     expect(

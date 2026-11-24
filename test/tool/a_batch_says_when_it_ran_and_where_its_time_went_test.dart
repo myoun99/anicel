@@ -221,7 +221,9 @@ void main() {
       Duration since(int before) =>
           Duration(microseconds: (mine() - before) ~/ 10);
       final before = mine();
-      if (!Platform.isWindows) return; // `ps` gives no CPU here: 0.
+      // ↩️Off Windows this stopped here till 2026-11-24: `ps` was asked no
+      // CPU time, and read 0. procps prints whole seconds — a step of three
+      // is past half a second there too.
       // Arithmetic and nothing else, three seconds of the wall between two
       // reads of the table, till it says half a second was spent.
       // ↩️It was one stretch of a second and a half, and the run's tests
