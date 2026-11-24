@@ -308,7 +308,8 @@ List<PanelFlyoutEntry> cutMenuEntries(
 class _CutCommandGroupState extends State<CutCommandGroup> {
   EditorSessionManager get session => widget.session;
 
-  /// Baked whole, as the layer pill is. ↩️In TWO zones round the cut's name
+  /// Baked whole, as the layer pill is, in the one zone it lays on its sheet
+  /// ([CommandPill.bakedWhole]). ↩️In TWO zones round the cut's name
   /// ([CommandGroupZone]) from F-463 ④: the name ticked, and a tick layer
   /// inside a bake kept the pill from baking (`panel_static_raster_test`).
   /// The name stands at the head of the bar's right group since F-491
@@ -316,7 +317,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
   /// heading since I-154 (`cutListButton`).
   @override
   Widget build(BuildContext context) {
-    return CommandPill(
+    return CommandPill.bakedWhole(
       head: PillNameCell(
         keyValue: 'cut-menu-button',
         label: AppText.strings.tlCut,

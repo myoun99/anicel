@@ -45,7 +45,25 @@ class CommandPill extends StatelessWidget {
     this.head,
     this.children = const <Widget>[],
     this.enabled = true,
-  });
+  }) : _bakedWhole = false;
+
+  /// A pill whose name and verbs bake as ONE zone ([CommandGroupZone]) —
+  /// the layer's, the cut's, the Fx's, each built again only as a whole.
+  ///
+  /// 🚨The zone stands INSIDE the pill's sheet, never round the pill (card
+  /// the-command-group-never-bakes-on-master, 2026-11-25): the sheet's two
+  /// layers are drawn live ([LiveSheet]), and a live layer inside a bake
+  /// keeps it from baking at all — the zone round the whole pill stood down
+  /// as nested from the day the sheet came in (9bf08eb75) until this.
+  /// ↩️The group round the pill laid the zone ([_StaticCommandGroup]'s
+  /// default); the frame pill and the shared pill already held their zones
+  /// inside them, on the sheet.
+  const CommandPill.bakedWhole({
+    super.key,
+    this.head,
+    this.children = const <Widget>[],
+    this.enabled = true,
+  }) : _bakedWhole = true;
 
   /// The noun's name cell — see [PillNameCell]. First, and the menu.
   ///
@@ -64,6 +82,9 @@ class CommandPill extends StatelessWidget {
   /// DIMS — it never disappears and never resizes, because the bar's law is
   /// 「자리는 못 박고 색만 죽인다」 (유저 확정).
   final bool enabled;
+
+  /// Whether the pill lays its one zone on its sheet ([CommandPill.bakedWhole]).
+  final bool _bakedWhole;
 
   /// The pill's outer height. [AppIconButtonSize.bar] plus 2px of breath on
   /// each side, which is what makes a pill sit inside a 36px command bar
@@ -138,10 +159,12 @@ class CommandPill extends StatelessWidget {
   /// a-capsule-or-a-dock-takes-the-regions-image-again, 2026-11-24). ↩️Each
   /// verb painted its hover in its own picture, over the fill; the bar's
   /// sheet lies under the fill, where a hover laid would not be seen.
-  /// ⚠️A pill stands in a bake, or holds bakes ([CommandGroupZone]), and a
-  /// sheet's live layers keep a bake from baking — but under Impeller, every
-  /// platform's renderer, a bake is a zone and no more
-  /// ([StaticRaster.capturePays]).
+  /// ⚠️A pill holds its bakes on its sheet ([CommandGroupZone]), never
+  /// stands in one: a sheet's live layers keep a bake round them from
+  /// baking. ↩️「Under Impeller a bake is a zone and no more」 let a zone
+  /// stand round three pills (9bf08eb75) — but where a capture pays
+  /// ([StaticRaster.capturePays]) they never baked again, and the census
+  /// caught it (the-command-group-never-bakes-on-master, 2026-11-25).
   static SuperellipseFace _faceIn(BuildContext context) => SuperellipseFace(
     color: AppColors.surface,
     // The app's control shape at this height — never a hand-typed radius:
@@ -155,39 +178,40 @@ class CommandPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final row = SizedBox(
+      height: heightIn(context),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // A headless pill still owes its first verb the same breath the
+          // name cell would have carried.
+          if (head case final head?)
+            head
+          else
+            const SizedBox(width: _headlessBreath),
+          ...children,
+          // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
+          // 이상해보임」.
+          //
+          // The head carries its own leading breath and the tail carried
+          // none, so the last verb sat flat against the border — which on
+          // the frame pill is `N`, a glyph with no bearing of its own
+          // (`_commaButton` is 24px wide with zero padding). The pill owes
+          // its contents the same margin on both ends, so it pays it here
+          // rather than in each bar: a trailing `SizedBox` in the frame
+          // pill alone would have fixed the complaint and left cut, layer
+          // and fx still lopsided.
+          // ⛔None when there are no verbs. A head-only pill (fx) already
+          // pays its own trailing padding, and adding the tail on top of
+          // it is the 「fx버튼의 오른쪽이 미묘하게 공간 있다」 gap.
+          if (children.isNotEmpty) SizedBox(width: _tailBreathFor(head)),
+        ],
+      ),
+    );
     final face = DecoratedBox(
       decoration: _faceIn(context),
       child: LiveSheet(
-        child: SizedBox(
-          height: heightIn(context),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // A headless pill still owes its first verb the same breath the
-              // name cell would have carried.
-              if (head case final head?)
-                head
-              else
-                const SizedBox(width: _headlessBreath),
-              ...children,
-              // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
-              // 이상해보임」.
-              //
-              // The head carries its own leading breath and the tail carried
-              // none, so the last verb sat flat against the border — which on
-              // the frame pill is `N`, a glyph with no bearing of its own
-              // (`_commaButton` is 24px wide with zero padding). The pill owes
-              // its contents the same margin on both ends, so it pays it here
-              // rather than in each bar: a trailing `SizedBox` in the frame
-              // pill alone would have fixed the complaint and left cut, layer
-              // and fx still lopsided.
-              // ⛔None when there are no verbs. A head-only pill (fx) already
-              // pays its own trailing padding, and adding the tail on top of
-              // it is the 「fx버튼의 오른쪽이 미묘하게 공간 있다」 gap.
-              if (children.isNotEmpty) SizedBox(width: _tailBreathFor(head)),
-            ],
-          ),
-        ),
+        child: _bakedWhole ? CommandGroupZone(child: row) : row,
       ),
     );
     // 🚨A LAYER OF ITS OWN, ITS FILL IN IT: the fill is painted before the
@@ -217,7 +241,9 @@ class CommandPill extends StatelessWidget {
 /// freezes, and a tick layer inside one keeps it from baking at all. So a
 /// pill with bakes of its own in it (the frame pill's groups), or with
 /// something that ticks in it (the cut's name did, F-463 ④ to F-491), is
-/// zoned round them, a zone on either side.
+/// zoned round them, a zone on either side. ⚠️And a pill's own sheet is
+/// such a layer: no zone stands round a pill — one baked whole lays its
+/// zone on its sheet ([CommandPill.bakedWhole]).
 class CommandGroupZone extends StatelessWidget {
   const CommandGroupZone({super.key, required this.child});
 
