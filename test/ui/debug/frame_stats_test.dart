@@ -7,12 +7,15 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, SharedTexture;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/screen_texture.dart';
+import 'package:anicel/src/services/memory_allowance.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/debug/engine_behind.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/debug/pointer_clock.dart';
+import 'package:anicel/src/ui/debug/repaint_cause.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/debug/stroke_steps.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
@@ -815,6 +818,42 @@ void main() {
       );
       await tester.pump();
       expect(_said('no frames yet'), findsOneWidget);
+    });
+
+    testWidgets("says the panels' bakes by their cause", (tester) async {
+      addTearDown(RepaintCause.forget);
+      RepaintCause.tally('pointer');
+      RepaintCause.tally('pointer');
+      MeasurementMode.debugWindow.value = true;
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(_said(RegExp('^bakes .*pointer 2')), findsOneWidget);
+    });
+
+    testWidgets('says the ceilings the holders are kept under (H74)', (
+      tester,
+    ) async {
+      final tiles = TilePictureBudget.instance.byteBudget;
+      addTearDown(() {
+        TilePictureBudget.instance.byteBudget = tiles;
+        MemoryAllowance.factor.value = 1;
+      });
+      TilePictureBudget.instance.byteBudget = 96 << 20;
+      MemoryAllowance.factor.value = 0.5;
+      MeasurementMode.debugWindow.value = true;
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      // No project open: nothing plays ahead and nothing is undone yet.
+      expect(
+        _said(
+          'BUDGET  playback —  tiles 96.0  undo — MB  allowance ×0.50',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('prints raster, UI, latency and both cache lines', (

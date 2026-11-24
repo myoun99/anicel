@@ -137,8 +137,8 @@ void main() {
   test("a place's longest once is the longest of any one time it was told, "
       'not of a frame', () {
     final summary = EngineStages.summarize([
-      frame(10000, [gpu(show, 9000, times: 3, longest: 3000)]),
-      frame(10000, [gpu(show, 5000, times: 2, longest: 4000)]),
+      frame(10000, [gpu(show, 9000, times: 3, longest: 4000)]),
+      frame(10000, [gpu(show, 5000, times: 2, longest: 3000)]),
     ]);
 
     expect(summary.places.single.mostInAFrame, 9000);
