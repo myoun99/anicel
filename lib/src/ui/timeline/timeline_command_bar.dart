@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets/command_pill.dart';
 import '../widgets/kept_tail_row.dart';
+import '../widgets/live_sheet.dart';
 import '../widgets/tick_layer.dart';
 import 'timeline_view_cluster.dart';
 
@@ -165,33 +166,41 @@ class _BarFrame extends StatelessWidget {
   final bool transport;
   final bool leading;
 
+  // 🚨A SHEET UNDER ITS CONTROLS ([LiveSheet]): their hover and press are
+  // laid on it, and the bar's tick is left as it was — the dock keeps its
+  // image (card a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-
+  // again, 2026-11-24). The bar's ground is its panel's, painted around it.
+  // ↩️Each face painted its state in the tick, and a pointer going onto any
+  // of them took the timeline's dock image again.
   @override
-  Widget build(BuildContext context) => TickLayer.heard(
-    child: Padding(
-      padding: TimelineCommandBar.padding,
-      child: FloorFoldRow(
-        gap: TimelineCommandBar._gap,
-        headPadding: leading ? TimelineCommandBar.leadingInset : 0,
-        // The transport is kept whole: a floor of its own, which the cut
-        // pill's reaches past where the pills hold one.
-        head: switch ((transport, leading)) {
-          (true, true) => const Row(
-            children: [
-              FoldFloor(child: _Seat(_Piece.transport)),
-              Expanded(child: _PillStrip(after: TimelineCommandBar._gap)),
-            ],
+  Widget build(BuildContext context) => LiveSheet(
+    child: TickLayer.heard(
+      child: Padding(
+        padding: TimelineCommandBar.padding,
+        child: FloorFoldRow(
+          gap: TimelineCommandBar._gap,
+          headPadding: leading ? TimelineCommandBar.leadingInset : 0,
+          // The transport is kept whole: a floor of its own, which the cut
+          // pill's reaches past where the pills hold one.
+          head: switch ((transport, leading)) {
+            (true, true) => const Row(
+              children: [
+                FoldFloor(child: _Seat(_Piece.transport)),
+                Expanded(child: _PillStrip(after: TimelineCommandBar._gap)),
+              ],
+            ),
+            (true, false) => const Row(
+              children: [FoldFloor(child: _Seat(_Piece.transport))],
+            ),
+            (false, true) => const _PillStrip(after: 0),
+            (false, false) => null,
+          },
+          // Reversed: it stands at its end, and hides from its start.
+          tail: const SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: _Seat(_Piece.cluster),
           ),
-          (true, false) => const Row(
-            children: [FoldFloor(child: _Seat(_Piece.transport))],
-          ),
-          (false, true) => const _PillStrip(after: 0),
-          (false, false) => null,
-        },
-        // Reversed: it stands at its end, and hides from its start.
-        tail: const SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: _Seat(_Piece.cluster),
         ),
       ),
     ),

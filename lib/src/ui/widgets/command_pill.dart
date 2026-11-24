@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 import 'grip_band.dart';
 import 'keyboard_press.dart';
+import 'live_sheet.dart';
 import 'panel_flyout.dart';
 import 'rail_glyph_button.dart';
 import 'static_raster.dart';
@@ -131,8 +132,16 @@ class CommandPill extends StatelessWidget {
   /// fills, so a toolbar's image and the screen agree there. Every pill
   /// stands on [AppColors.surface] (census 11-08: the timeline's and the
   /// storyboard's toolbars, and the timeline's with no cut) with nothing
-  /// painted behind it — its verbs' hovers are its children's, over the
-  /// fill.
+  /// painted behind it — its verbs' hovers are laid on a sheet of its own
+  /// over the fill ([LiveSheet], as a panel header's), so a pointer going
+  /// onto one takes no image of the dock holding the bar (card a-hover-in-
+  /// a-capsule-or-a-dock-takes-the-regions-image-again, 2026-11-24). ↩️Each
+  /// verb painted its hover in its own picture, over the fill; the bar's
+  /// sheet lies under the fill, where a hover laid would not be seen.
+  /// ⚠️A pill stands in a bake, or holds bakes ([CommandGroupZone]), and a
+  /// sheet's live layers keep a bake from baking — but under Impeller, every
+  /// platform's renderer, a bake is a zone and no more
+  /// ([StaticRaster.capturePays]).
   static SuperellipseFace _faceIn(BuildContext context) => SuperellipseFace(
     color: AppColors.surface,
     // The app's control shape at this height — never a hand-typed radius:
@@ -148,34 +157,36 @@ class CommandPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final pill = DecoratedBox(
       decoration: _faceIn(context),
-      child: SizedBox(
-        height: heightIn(context),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // A headless pill still owes its first verb the same breath the
-            // name cell would have carried.
-            if (head case final head?)
-              head
-            else
-              const SizedBox(width: _headlessBreath),
-            ...children,
-            // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
-            // 이상해보임」.
-            //
-            // The head carries its own leading breath and the tail carried
-            // none, so the last verb sat flat against the border — which on
-            // the frame pill is `N`, a glyph with no bearing of its own
-            // (`_commaButton` is 24px wide with zero padding). The pill owes
-            // its contents the same margin on both ends, so it pays it here
-            // rather than in each bar: a trailing `SizedBox` in the frame
-            // pill alone would have fixed the complaint and left cut, layer
-            // and fx still lopsided.
-            // ⛔None when there are no verbs. A head-only pill (fx) already
-            // pays its own trailing padding, and adding the tail on top of
-            // it is the 「fx버튼의 오른쪽이 미묘하게 공간 있다」 gap.
-            if (children.isNotEmpty) SizedBox(width: _tailBreathFor(head)),
-          ],
+      child: LiveSheet(
+        child: SizedBox(
+          height: heightIn(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // A headless pill still owes its first verb the same breath the
+              // name cell would have carried.
+              if (head case final head?)
+                head
+              else
+                const SizedBox(width: _headlessBreath),
+              ...children,
+              // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
+              // 이상해보임」.
+              //
+              // The head carries its own leading breath and the tail carried
+              // none, so the last verb sat flat against the border — which on
+              // the frame pill is `N`, a glyph with no bearing of its own
+              // (`_commaButton` is 24px wide with zero padding). The pill owes
+              // its contents the same margin on both ends, so it pays it here
+              // rather than in each bar: a trailing `SizedBox` in the frame
+              // pill alone would have fixed the complaint and left cut, layer
+              // and fx still lopsided.
+              // ⛔None when there are no verbs. A head-only pill (fx) already
+              // pays its own trailing padding, and adding the tail on top of
+              // it is the 「fx버튼의 오른쪽이 미묘하게 공간 있다」 gap.
+              if (children.isNotEmpty) SizedBox(width: _tailBreathFor(head)),
+            ],
+          ),
         ),
       ),
     );
