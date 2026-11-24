@@ -7,7 +7,7 @@ import '../helpers/dart_sources.dart';
 /// the count it began from, 🗣️관제 2026-11-24 「총 개수 고정」). A file
 /// taken out of it lowers [ledgered]; a file that leaves a screen frees it
 /// instead of joining.
-const ledgered = 124;
+const ledgered = 125;
 
 final _declares = RegExp(
   r'^  itsTestsLeaveScreensOfTheEngine\(',

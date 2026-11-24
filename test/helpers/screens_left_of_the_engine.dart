@@ -8,15 +8,18 @@ import 'package:flutter_test/flutter_test.dart';
 /// Each test ends with every screen it made freed (test/flutter_test_config
 /// .dart says why). 🔬The first count, 2026-11-24, every file: 163 files
 /// leave some — 106 of a shot, 42 of a lay, 14 both — and one more, the
-/// eraser's block file, of its view (red already, for another reason: it
-/// is not in the ledger). Counted again once each test waited for the
-/// GPU to finish before it was asked (the config says why), the same day:
-/// 42 of the 56 files that left a lay left none — 124 files, 14 of them
-/// leaving a lay. A file here declares which it leaves
+/// eraser's block file, of its view (red then for another reason, and
+/// left out). Counted again once each test waited for the GPU to finish
+/// before it was asked (the config says why), the same day: 42 of the 56
+/// files that left a lay left none — 124 files, 14 of them leaving a lay.
+/// ↩️Counted once more on master 7f1974785, the same day: the eraser's
+/// file leaves none, and the brush switch's file leaves a live cel's — 125
+/// files. A file here declares which it leaves
 /// ([itsTestsLeaveScreensOfTheEngine]); a screen of another kind is red
 /// in it as anywhere. The total is pinned
 /// (test/architecture/a_file_leaves_screens_only_by_the_ledger_test.dart):
-/// a file taken out lowers it, and none is put in.
+/// a file taken out lowers it, and one is put in only with its kind's
+/// reason and who takes it out.
 enum ScreensLeft {
   /// A shot's picture — a storyboard cell's, a media raster's
   /// (frame_shots.dart, `frameOnTheEngine`): it makes its screen and frees
@@ -31,7 +34,15 @@ enum ScreensLeft {
   /// `_lay`): kept by a store whose session the test never ends. ↩️Or its
   /// lay was still on the GPU when the test was asked — till each test
   /// waited for the GPU first, which a lay hears in no one's zone.
-  ofALay('EngineFramePictureStore._lay');
+  ofALay('EngineFramePictureStore._lay'),
+
+  /// A sheet's live cel's screen (live_cel_screen.dart, `_show`, laid by
+  /// `EngineStackScreen.compose`): the brush switch's file ends with it
+  /// held. Why the view's dispose does not free it is not read yet — the
+  /// brush's to fix (🗣️관제 2026-11-24: in the ledger with who takes it
+  /// out): the commit that frees it takes the file's line out, lowers the
+  /// total, and this kind with it where no file declares it.
+  ofALiveCel('_LiveCelScreenState._show');
 
   const ScreensLeft(this.madeIn);
 
