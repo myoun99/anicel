@@ -171,10 +171,12 @@ class _BarFrame extends StatelessWidget {
   // image (card a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-
   // again, 2026-11-24). The bar's ground is its panel's, painted around it.
   // ↩️Each face painted its state in the tick, and a pointer going onto any
-  // of them took the timeline's dock image again.
+  // of them took the timeline's dock image again. The sheet stands inside
+  // the tick, as a dock's tab strip's does: the tick is the bar's own layer
+  // (F-463), the one a notify that changes nothing leaves unpainted.
   @override
-  Widget build(BuildContext context) => LiveSheet(
-    child: TickLayer.heard(
+  Widget build(BuildContext context) => TickLayer.heard(
+    child: LiveSheet(
       child: Padding(
         padding: TimelineCommandBar.padding,
         child: FloorFoldRow(
