@@ -4476,15 +4476,105 @@ class GpuInk {
     if (walked < 0) {
       throw GpuRefused(_lastError());
     }
-    final put = out.asTypedList(capacity);
-    return [
-      for (var tile = 0; tile < walked; tile++)
-        _walkedAt(put, tile * _tileInkWords),
-    ];
+    return _walkedIn(out.asTypedList(capacity), walked);
   });
+
+  /// [run] with no wait: the cel's tiles read where [pool] holds them now,
+  /// the scan handed to the engine's thread, and each tile's ink told once
+  /// the GPU has written it (rust/src/kernels/cel_pixel/abi.rs,
+  /// `gpu_engine_ink_run_unwaited`). Fails as [GpuRefused] where the scan
+  /// failed.
+  ///
+  /// 🗣️관제 2026-11-12 (the UI never waits for the GPU) — card
+  /// the-ui-isolate-still-waits-for-the-gpu-in-places W3.
+  Future<List<GpuTileInk>> scanned(
+    GpuPool pool,
+    int x0,
+    int y0,
+    int columns,
+    int rows,
+    List<GpuTile?> tiles,
+  ) {
+    final told = Completer<List<GpuTileInk>>();
+    final capacity = tiles.nonNulls.length * _tileInkWords;
+    final out = malloc<Int32>(_held(capacity));
+    final walked = malloc<IntPtr>();
+    try {
+      _scans.handing(
+        (
+          told: told,
+          engine: _engine,
+          out: out,
+          walked: walked,
+          capacity: capacity,
+        ),
+        (number) => using((arena) {
+          rust.inkRunUnwaited(
+            _ink,
+            _engine._engine,
+            _engine._its(pool)._pool,
+            x0,
+            y0,
+            columns,
+            rows,
+            _tileWords(arena, columns, rows, tiles),
+            out,
+            capacity,
+            walked,
+            _scans.told,
+            number,
+          );
+          return 1;
+        }),
+      );
+    } catch (_) {
+      // Handed nothing: nothing tells, so nothing frees them but this.
+      malloc
+        ..free(out)
+        ..free(walked);
+      rethrow;
+    }
+    return told.future;
+  }
+
+  /// The scans on their way ([scanned]), each told by its number once the
+  /// GPU has written its boxes — or that it failed —, how many tiles it
+  /// walked written first.
+  static final _scans =
+      _Told<
+        ({
+          Completer<List<GpuTileInk>> told,
+          GpuEngine engine,
+          Pointer<Int32> out,
+          Pointer<IntPtr> walked,
+          int capacity,
+        })
+      >((_, scan, scanned) {
+        final walked = scan.walked.value;
+        final put = scan.out.asTypedList(scan.capacity);
+        try {
+          if (!scanned) {
+            scan.told.completeError(
+              _toldRefused(scan.engine, 'an ink scan failed'),
+            );
+            return;
+          }
+          scan.told.complete(_walkedIn(put, walked));
+        } finally {
+          malloc
+            ..free(scan.out)
+            ..free(scan.walked);
+        }
+      });
 
   void free() => rust.inkFree(_ink);
 }
+
+/// The first [walked] tiles' ink in [put], as the scan put them.
+List<GpuTileInk> _walkedIn(Int32List put, int walked) => [
+  for (var tile = 0; tile < walked; tile++)
+    _walkedAt(put, tile * _tileInkWords),
+];
 
 /// The channel a colour verb writes (rust/src/kernels/cel_pixel/mod.rs
 /// `Channel`): its [bytes], byte i at [base] + i × [stride] of a pixel's

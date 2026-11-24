@@ -89,8 +89,53 @@ impl Ink {
         engine: &Engine,
         pool: &[wgpu::Buffer],
         cel: &TileSet,
-        (per_pass, most): (usize, usize),
+        cut: (usize, usize),
     ) -> Option<Vec<TileInk>> {
+        match self.submitted_by(engine, pool, cel, cut)? {
+            None => Some(Vec::new()),
+            Some((places, boxes)) => Some(inks_of(&places, &engine.read_buffer(&boxes)?)),
+        }
+    }
+
+    /// [`Self::run`], the body that asks waiting for no GPU: `then` is
+    /// told each tile's ink on a thread of the engine's once the GPU has
+    /// written them ([`Engine::read_buffer_then`]) — or nothing where the
+    /// scan failed, and at once, here, where the walk met no tile or
+    /// nothing was submitted.
+    ///
+    /// 🗣️관제 2026-11-12 (the UI never waits for the GPU) — card
+    /// the-ui-isolate-still-waits-for-the-gpu-in-places W3: the box a
+    /// stroke's cel frames is found the moment the move tool asks, and
+    /// that scan waited for the GPU on the UI's thread.
+    pub(crate) fn scanned_then(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        cel: &TileSet,
+        then: impl FnOnce(Option<Vec<TileInk>>) + Send + 'static,
+    ) {
+        let most = tiles_a_pass(engine, TILE_WORDS as u64 * 4, 0);
+        let cut = most.map(|most| (self.pages.per_pass(), most));
+        match cut.and_then(|cut| self.submitted_by(engine, pool, cel, cut)) {
+            None => then(None),
+            Some(None) => then(Some(Vec::new())),
+            Some(Some((places, boxes))) => engine.read_buffer_then(&boxes, move |read| {
+                then(read.map(|boxes| inks_of(&places, boxes)));
+            }),
+        }
+    }
+
+    /// The scan of `cel` submitted, its passes binding `per_pass` pages and
+    /// taking `most` tiles at most: each walked tile's place on the cel's
+    /// grid, in the walk's order, and the buffer the GPU writes their boxes
+    /// to — none where the walk met no tile, and nothing is submitted.
+    fn submitted_by(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        cel: &TileSet,
+        (per_pass, most): (usize, usize),
+    ) -> Option<Option<(Vec<(i32, i32)>, wgpu::Buffer)>> {
         cut_by(&self.pages, (per_pass, most))?;
         let walk = walk(cel, pool.len(), None)?;
         // ⚠️DX12 makes a buffer of nothing and reads it back, so no test
@@ -100,7 +145,7 @@ impl Ink {
         // buffer of nothing either, and past the binding a device would
         // refuse it where this refuses the cel.
         if walk.is_empty() {
-            return Some(Vec::new());
+            return Some(None);
         }
         let bytes = walk.len() as u64 * 16;
         fits(engine, &[bytes], std::iter::empty())?;
@@ -125,17 +170,25 @@ impl Ink {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let boxes = le_words(&engine.read_buffer(&boxes)?);
-        let inks = walk.iter().zip(boxes.chunks_exact(4)).map(|(tile, found)| TileInk {
-            column: tile.column,
-            row: tile.row,
-            ink: (found[0] <= found[2]).then_some(InkBox {
-                left: found[0],
-                top: found[1],
-                right: found[2] + 1,
-                bottom: found[3] + 1,
-            }),
-        });
-        Some(inks.collect())
+        let places = walk.iter().map(|tile| (tile.column, tile.row)).collect();
+        Some(Some((places, boxes)))
     }
+}
+
+/// Each tile at `places` — the walk's order — and its ink, as `boxes`, the
+/// bytes the scan wrote, say it: four words a tile, none where its left
+/// passed its right.
+fn inks_of(places: &[(i32, i32)], boxes: &[u8]) -> Vec<TileInk> {
+    let boxes = le_words(boxes);
+    let inks = places.iter().zip(boxes.chunks_exact(4)).map(|(&(column, row), found)| TileInk {
+        column,
+        row,
+        ink: (found[0] <= found[2]).then_some(InkBox {
+            left: found[0],
+            top: found[1],
+            right: found[2] + 1,
+            bottom: found[3] + 1,
+        }),
+    });
+    inks.collect()
 }

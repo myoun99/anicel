@@ -83,4 +83,41 @@ void main() {
     );
     expect(() => ink.run(pool, 0, 0, 2, 1, [tile]), throwsArgumentError);
   });
+
+  /// 🗣️관제 2026-11-12 (the UI never waits for the GPU), card
+  /// the-ui-isolate-still-waits-for-the-gpu-in-places W3.
+  group('with no wait', () {
+    test('it tells what the scan answers, this thread waiting for no '
+        'GPU', () async {
+      final [a, b] = stored([
+        [(3, 5), (90, 40)],
+        [],
+      ]);
+      final answered = ink.run(pool, -1, 0, 3, 1, [a, null, b]);
+      expect(answered, hasLength(2), reason: '⛔CONTROL: two tiles walked');
+
+      final waits = debugWaitsHere;
+      final told = await ink.scanned(pool, -1, 0, 3, 1, [a, null, b]);
+
+      expect(told, answered);
+      expect(debugWaitsHere - waits, 0);
+    });
+
+    test('a cel of no tiles is told none', () async {
+      expect(await ink.scanned(pool, 0, 0, 2, 1, [null, null]), isEmpty);
+    });
+
+    test('what the engine refuses fails what it tells; what Dart refuses '
+        'throws', () async {
+      final [tile] = stored([
+        [(1, 1)],
+      ]);
+
+      await expectLater(
+        ink.scanned(pool, 0, 0, 2, 1, [tile, (page: 1, slot: 0)]),
+        throwsA(isA<GpuRefused>()),
+      );
+      expect(() => ink.scanned(pool, 0, 0, 2, 1, [tile]), throwsArgumentError);
+    });
+  });
 }
