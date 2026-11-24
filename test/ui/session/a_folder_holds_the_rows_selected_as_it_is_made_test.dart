@@ -8,7 +8,7 @@ import 'package:anicel/src/models/layer_sections.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
-    show resolveLayerDrop;
+    show PointerInRow, resolveLayerDrop;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 
@@ -349,6 +349,66 @@ void main() {
       reason: 'the folder and its row under the drawing row not picked',
     );
     _expectInItsOwnPlace(s, direction);
+  });
+
+  test('🎯held by the direction row, a selection lands as held by the '
+      'drawing row of it nearest the hand', () {
+    // Where the drawing rows picked stand in different folders, which of
+    // them the hand holds is an answer of its own: a gap on the edge of the
+    // held row's folder keeps it in, with the pointer still in its rows
+    // (F-312).
+    // 🔬Measured, every gap and pointer and every row dropped on, over four
+    // folder layouts and every pick of their drawing rows with the direction
+    // row (11-25): 23 of 14,427 answers split by the drawing row held — this
+    // layout's among them.
+    final s = session();
+    final rows = [s.activeLayerId!, ...addRows(s, 3)];
+    select(s, [rows[0]]);
+    addFolder(s);
+    select(s, [rows[2], rows[3]]);
+    final folder = addFolder(s);
+    s.rowSelection.value = const [];
+    final direction = _added(s, LayerKind.instruction);
+    final stack = sectionedLayerOrder(stackOf(s));
+    int at(LayerId id) => stack.indexWhere((layer) => layer.id == id);
+    final (outside, member) = (rows[1], rows[2]);
+    expect(
+      [stack.byId(outside)!.folderId, stack.byId(member)!.folderId],
+      [null, folder],
+      reason: '⛔premise: one row picked outside a folder, one in it',
+    );
+    expect(
+      at(member),
+      greaterThan(at(outside)),
+      reason: '⛔premise: the row in the folder is the nearer the hand',
+    );
+
+    List<String>? landed(LayerId hand) {
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: hand,
+        insertAt: at(outside),
+        alsoMoving: {outside, member, direction},
+        pointer: PointerInRow(outside),
+      );
+      if (plan == null) {
+        return null;
+      }
+      LayerId? folderOf(LayerId id) => plan.folderIds.containsKey(id)
+          ? plan.folderIds[id]
+          : stack.byId(id)!.folderId;
+      return [
+        for (final id in plan.order)
+          '${stack.byId(id)!.name} in ${folderOf(id)}',
+      ];
+    }
+
+    expect(
+      landed(member),
+      allOf(isNotNull, isNot(landed(outside))),
+      reason: '⛔premise: the row held decides here',
+    );
+    expect(landed(direction), landed(member));
   });
 
   test('a track\'s row picked first with the cut\'s — the cut\'s go in', () {
