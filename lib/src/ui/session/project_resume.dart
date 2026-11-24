@@ -75,7 +75,7 @@ class ProjectResume {
   final Map<CutId, double> timelineZoom;
 
   /// The conte's zoom each timeline was left at, by its id (F-267 → H78) —
-  /// one left at the default is not here.
+  /// one the conte never showed is not here.
   final Map<String, double> conteZooms;
 
   /// How far each frame panel was scrolled along its frames, by rail and
