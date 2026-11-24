@@ -826,7 +826,9 @@ impl super::Device {
 
     /// ANICEL — not wgpu's: how many pipelines of this device the folder
     /// [`Self::keep_shaders_in`] names has answered — what an earlier
-    /// compile kept handed to the driver.
+    /// compile kept handed to the driver, and taken by it where it says so
+    /// (`VkPipelineCreationFeedback`): a driver passes over data it cannot
+    /// use without a word, so what was handed is not what was taken.
     pub fn pipelines_found(&self) -> u64 {
         self.compile_cache.found(crate::auxil::compile_cache::Made::Pipeline)
     }
@@ -846,6 +848,11 @@ impl super::Device {
     /// pipeline alone holds, so each has a cache of its own for as long as
     /// it is made — the file D3D12 keeps a pipeline's blob in, by one code.
     ///
+    /// Where the driver says what it took ([`Self::pipelines_found`]) and
+    /// did not take what was kept — data it cannot use, which it passes over
+    /// without a word — it made the pipeline here, and that is kept over it
+    /// (D3D12's driver refuses such a blob out loud, and the same follows).
+    ///
     /// [`Made::Pipeline`]: crate::auxil::compile_cache::Made::Pipeline
     fn kept_compute_pipeline(
         &self,
@@ -853,16 +860,25 @@ impl super::Device {
         spv: &[u32],
     ) -> Result<vk::Pipeline, crate::PipelineError> {
         use crate::auxil::compile_cache::{self, Made, Turn};
-        let make = |initial: Option<&[u8]>| -> Result<(vk::Pipeline, vk::PipelineCache), crate::PipelineError> {
+        // What the driver made of `info` with a cache of its own handed
+        // `initial`, and whether it says it took it from there — true where
+        // it says nothing.
+        let make = |initial: Option<&[u8]>| -> Result<(vk::Pipeline, vk::PipelineCache, bool), crate::PipelineError> {
             let mut cache_info = vk::PipelineCacheCreateInfo::default();
             if let Some(initial) = initial {
                 cache_info = cache_info.initial_data(initial);
             }
             let cache = unsafe { self.shared.raw.create_pipeline_cache(&cache_info, None) }
                 .map_err(super::map_host_device_oom_err)?;
+            let mut said = vk::PipelineCreationFeedback::default();
+            let mut feedback = vk::PipelineCreationFeedbackCreateInfo::default().pipeline_creation_feedback(&mut said);
+            let info = if self.says_what_it_took { info.push_next(&mut feedback) } else { info };
             profiling::scope!("vkCreateComputePipelines");
-            match unsafe { self.shared.raw.create_compute_pipelines(cache, &[info], None) } {
-                Ok(mut made) => Ok((made.pop().unwrap(), cache)),
+            let made = unsafe { self.shared.raw.create_compute_pipelines(cache, &[info], None) };
+            let took = !said.flags.contains(vk::PipelineCreationFeedbackFlags::VALID)
+                || said.flags.contains(vk::PipelineCreationFeedbackFlags::APPLICATION_PIPELINE_CACHE_HIT);
+            match made {
+                Ok(mut made) => Ok((made.pop().unwrap(), cache, took)),
                 Err((_, error)) => {
                     unsafe { self.shared.raw.destroy_pipeline_cache(cache, None) };
                     Err(super::map_pipeline_err(error).into())
@@ -879,12 +895,25 @@ impl super::Device {
             &shader,
         ]);
         let kept = &self.compile_cache;
+        let keep = |cache: vk::PipelineCache| {
+            match unsafe { self.shared.raw.get_pipeline_cache_data(cache) } {
+                Ok(made) => kept.write(Made::Pipeline, &asked, &made),
+                Err(error) => log::warn!("compile cache: vkGetPipelineCacheData: {error}"),
+            }
+            let_go(cache);
+        };
         // Held till what the driver made is kept, or the pipeline fails.
         let _turn = match kept.turn(Made::Pipeline, &asked) {
             Turn::Kept(blob) => match make(Some(&blob)) {
-                Ok((raw, cache)) => {
+                Ok((raw, cache, true)) => {
                     let_go(cache);
                     kept.used(Made::Pipeline);
+                    return Ok(raw);
+                }
+                // Made here, what was kept passed over: kept over it.
+                Ok((raw, cache, false)) => {
+                    log::warn!("compile cache: the driver passed over a kept pipeline");
+                    keep(cache);
                     return Ok(raw);
                 }
                 // A driver takes what it cannot use as no data at all; one
@@ -897,12 +926,8 @@ impl super::Device {
             },
             Turn::Compile(turn) => turn,
         };
-        let (raw, cache) = make(None)?;
-        match unsafe { self.shared.raw.get_pipeline_cache_data(cache) } {
-            Ok(made) => kept.write(Made::Pipeline, &asked, &made),
-            Err(error) => log::warn!("compile cache: vkGetPipelineCacheData: {error}"),
-        }
-        let_go(cache);
+        let (raw, cache, _) = make(None)?;
+        keep(cache);
         Ok(raw)
     }
 

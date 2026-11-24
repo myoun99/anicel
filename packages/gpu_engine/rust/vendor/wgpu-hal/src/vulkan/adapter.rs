@@ -2997,6 +2997,8 @@ impl super::Adapter {
             counters: Default::default(),
             compile_cache: Default::default(),
             adapter_named: adapter_named(&self.phd_capabilities.properties),
+            says_what_it_took: self.phd_capabilities.device_api_version >= vk::API_VERSION_1_3
+                && self.instance.instance_api_version >= vk::API_VERSION_1_3,
         };
 
         Ok(crate::OpenDevice { device, queue })

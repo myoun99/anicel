@@ -759,49 +759,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         assert_eq!((first_word(&next, &seven), first_word(&next, &eight)), (7, 8));
     }
 
-    // What the driver made of another shader's pipeline, kept whole under
-    // this one's asking — as nothing in the folder can make it — is
-    // refused by the driver, and the pipeline made again and kept over it.
-    // 🧪What a refusal looks like whatever refuses: a driver updated past
-    // what the key names refuses alike, and the pipeline must still come.
-    #[test]
-    fn a_pipeline_the_driver_refuses_is_made_again_and_kept_over() {
-        let turn = a_device_of_its_own();
-        let kept = kept_in("pso_refused");
-        let folder = kept.path();
-        let first = keeping(&turn, &folder);
-        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
-        let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder, "pso")) else {
-            panic!("one pipeline is kept");
-        };
-        let _ = pipeline(&first, &[&WRITES_SEVEN.replace("7u", "8u")], "main");
-        let eight = kept_files(&folder, "pso").into_iter().map(|(path, _)| path).find(|path| *path != seven);
-        let (seven_file, eight_file) = (
-            std::fs::read(&seven).expect("seven's"),
-            std::fs::read(eight.expect("eight's")).expect("eight's"),
-        );
-        // A kept file (compile_cache.rs): the magic, what was asked's length,
-        // what was made's length and hash — eight bytes each — then what
-        // was asked, then what was made.
-        let made_from = |file: &[u8]| 32 + u64::from_le_bytes(file[8..16].try_into().unwrap()) as usize;
-        let forged = [
-            &seven_file[..16],
-            &eight_file[16..32],
-            &seven_file[32..made_from(&seven_file)],
-            &eight_file[made_from(&eight_file)..],
-        ]
-        .concat();
-        std::fs::write(&seven, &forged).expect("eight's pipeline under seven's asking");
-        let next = keeping(&turn, &folder);
-        let made = pipeline(&next, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&next), 0, "refused, so made again");
-        assert_eq!(first_word(&next, &made), 7, "and it is seven's");
-        let last = keeping(&turn, &folder);
-        let handed = pipeline(&last, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&last), 1, "kept over what was refused");
-        assert_eq!(first_word(&last, &handed), 7);
-    }
-
     /// What `WRITES_SEVEN` is kept as, made by an engine of its own in a
     /// folder of its own: (its file's name, its bytes).
     fn seven_as_kept(turn: &DeviceTurn, name: &str) -> (std::ffi::OsString, Vec<u8>) {

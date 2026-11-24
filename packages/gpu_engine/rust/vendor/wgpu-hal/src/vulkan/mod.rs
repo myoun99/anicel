@@ -570,6 +570,11 @@ pub struct Device {
     /// as bytes — what the driver made of a pipeline is kept by them
     /// ([`Device::keep_shaders_in`]).
     adapter_named: Vec<u8>,
+    /// ANICEL — not wgpu's: whether the driver says, of each pipeline it
+    /// makes, whether it took it from the cache it was handed
+    /// (`VkPipelineCreationFeedback`, core from Vulkan 1.3) — what
+    /// [`Device::pipelines_found`] counts where it does.
+    says_what_it_took: bool,
     // Struct members are dropped from first to last, put the Device last to ensure that
     // all resources that depends on it are destroyed before it like the mem_allocator
     shared: Arc<DeviceShared>,

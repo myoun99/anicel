@@ -165,6 +165,52 @@ fn a_pipeline_kept_for_another_adapter_is_not_handed() {
     assert_eq!(seven_next(&turn, &folder), (7, 0), "what another adapter made is handed to no one");
 }
 
+// What the driver made of another shader's pipeline, kept whole under
+// this one's asking — as nothing in the folder can make it — is not taken
+// by the driver, and the pipeline is made again and kept over it: D3D12's
+// refuses it out loud, Vulkan's passes over it and says so
+// (`VkPipelineCreationFeedback`, vendor/wgpu-hal, vulkan/device.rs) —
+// ⛔where it says nothing, what was handed is counted as taken.
+// 🧪What a refusal looks like whatever refuses: a driver updated past
+// what the key names refuses alike, and the pipeline must still come.
+#[test]
+fn a_pipeline_the_driver_does_not_take_is_made_again_and_kept_over() {
+    let turn = a_device_of_its_own();
+    let kept = kept_in("pso_refused");
+    let folder = kept.path();
+    let first = keeping(&turn, &folder);
+    let _ = pipeline(&first, &[WRITES_SEVEN], "main");
+    let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder, "pso")) else {
+        panic!("one pipeline is kept");
+    };
+    let _ = pipeline(&first, &[&WRITES_SEVEN.replace("7u", "8u")], "main");
+    let eight = kept_files(&folder, "pso").into_iter().map(|(path, _)| path).find(|path| *path != seven);
+    let (seven_file, eight_file) = (
+        std::fs::read(&seven).expect("seven's"),
+        std::fs::read(eight.expect("eight's")).expect("eight's"),
+    );
+    // A kept file (compile_cache.rs): the magic, what was asked's length,
+    // what was made's length and hash — eight bytes each — then what
+    // was asked, then what was made.
+    let made_from = |file: &[u8]| 32 + u64::from_le_bytes(file[8..16].try_into().unwrap()) as usize;
+    let forged = [
+        &seven_file[..16],
+        &eight_file[16..32],
+        &seven_file[32..made_from(&seven_file)],
+        &eight_file[made_from(&eight_file)..],
+    ]
+    .concat();
+    std::fs::write(&seven, &forged).expect("eight's pipeline under seven's asking");
+    let next = keeping(&turn, &folder);
+    let made = pipeline(&next, &[WRITES_SEVEN], "main");
+    assert_eq!(pipelines_found(&next), 0, "not taken, so made again");
+    assert_eq!(first_word(&next, &made), 7, "and it is seven's");
+    let last = keeping(&turn, &folder);
+    let handed = pipeline(&last, &[WRITES_SEVEN], "main");
+    assert_eq!(pipelines_found(&last), 1, "kept over what was not taken");
+    assert_eq!(first_word(&last, &handed), 7);
+}
+
 // A turn is let go as its holder is done: no compile leaves one in the
 // folder, where every later compile of that pipeline would wait on it.
 // Windows lets go of the file itself; elsewhere the turn removes it.
