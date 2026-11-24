@@ -30,7 +30,7 @@ use crate::fail;
 use crate::kernels::composite::{GRANULE_BYTES, TILE_BYTES, TileAt};
 use crate::kernels::shared::{
     Encoded, Given, Kernel, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, given,
-    page_table, plane, range, runs, tiles_a_pass, whole,
+    le_words, page_table, plane, range, runs, tiles_a_pass, whole,
 };
 
 /// The most a folded tile takes (fold.wgsl's FOLD_MOST), in bytes: half a
@@ -109,8 +109,8 @@ impl Folded {
 /// Tells `then` the tiles a fold `submitted` folded — their words and
 /// the sizes the GPU has yet to write — once it has written them, on a
 /// thread of the engine's, the thread that asks waiting for none of it
-/// ([`Engine::map_then`]): none where the read of the sizes failed, and
-/// at once, here, where nothing was submitted.
+/// ([`Engine::read_buffer_then`]): none where the read of the sizes
+/// failed, and at once, here, where nothing was submitted.
 fn sized_then(
     engine: &Engine,
     submitted: Option<(wgpu::Buffer, wgpu::Buffer)>,
@@ -119,11 +119,8 @@ fn sized_then(
     let Some((words, sizes)) = submitted else {
         return then(None);
     };
-    let bytes = sizes.size();
-    engine.map_then(engine.staged(&sizes, bytes), move |mapped| {
-        let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
-        let read = |sizes: wgpu::Buffer| Some(sizes.get_mapped_range(..).ok()?.chunks_exact(4).map(word).collect());
-        then(mapped.ok().and_then(read).map(|sizes| Folded { words, sizes }));
+    engine.read_buffer_then(&sizes, move |read| {
+        then(read.map(|sizes| Folded { words, sizes: le_words(sizes) }));
     });
 }
 

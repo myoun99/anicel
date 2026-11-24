@@ -1047,6 +1047,30 @@ impl Engine {
         self.mapped(&readback)
     }
 
+    /// [`Self::read_buffer`] with no wait for the caller, who goes on:
+    /// `then` is told `buffer`'s bytes on a thread of the engine's once
+    /// the GPU has written them ([`Self::map_then`]) — or nothing where
+    /// the map failed.
+    ///
+    /// 🚨ONE DOOR (rule of three, 공통 2026-11-24, card
+    /// the-ui-isolate-still-waits-for-the-gpu-in-places W3 — 관제: 「합칠 때
+    /// 두 기존 문도 그 한 문으로 옮겨 사본을 남기지 말 것」): a lift's flag,
+    /// a write's changes and a fold's sizes each staged, mapped and read
+    /// the mapped range alike — the third came, and every kernel whose
+    /// answer the UI waited for comes here.
+    pub(crate) fn read_buffer_then(
+        &self,
+        buffer: &wgpu::Buffer,
+        then: impl FnOnce(Option<&[u8]>) + Send + 'static,
+    ) {
+        self.map_then(self.staged(buffer, buffer.size()), move |mapped| {
+            match mapped.as_ref().ok().and_then(|buffer| buffer.get_mapped_range(..).ok()) {
+                Some(view) => then(Some(&view)),
+                None => then(None),
+            }
+        });
+    }
+
     /// A buffer the CPU maps, its copy of `buffer`'s first `size` bytes —
     /// a multiple of 4 — submitted: what [`Self::map`] then maps.
     pub(crate) fn staged(&self, buffer: &wgpu::Buffer, size: u64) -> wgpu::Buffer {

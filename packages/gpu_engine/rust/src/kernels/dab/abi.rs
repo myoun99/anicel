@@ -979,7 +979,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_tiles_told_unwaited(
     };
     // SAFETY: what `finish` holds is let go of on the engine's thread,
     // after it; `out` and `told` are the function's contract.
-    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+    engine.posted(unsafe { told_body(engine, pool, (told, number), finish, handed_to(out)) });
 }
 
 /// Lays the pool's tile set of `columns` × `rows` canvas tiles whose
@@ -1371,41 +1371,60 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
 /// What a finish is told by: its landing finished, or nothing.
 type Then = Box<dyn FnOnce(Option<Finished>) + Send>;
 
-/// The body a finish hands the engine's thread: `finish` run there on
-/// `pool`'s pages as they stand now — where the cel's tiles lay as it was
-/// asked, whatever a store or a fold makes of the pool meanwhile —, and
-/// what it is told handed out by `engine` to `out`, then `told` called
-/// with `number` and whether there is one.
+/// The body a verb with no wait for its caller hands the engine's thread:
+/// `work` run there on `pool`'s pages as they stand now — where the cel's
+/// tiles lay as it was asked, whatever a store or a fold makes of the pool
+/// meanwhile —, and what it is told `answer`ed on the thread of the
+/// engine's that tells it — put where its caller reads it, saying whether
+/// there is one —, then `told` called with `number` and that.
 ///
-/// ⛔Not a body that failed, whatever it finished: its caller's next done
+/// 🚨ONE BODY (rule of three, 공통 2026-11-24, card
+/// the-ui-isolate-still-waits-for-the-gpu-in-places W3 — 관제: 「합칠 때
+/// 두 기존 문도 그 한 문으로 옮겨 사본을 남기지 말 것」): a finish's
+/// (`gpu_engine_stamp_finish_unwaited`), a lift's
+/// (`gpu_engine_cel_pixels_lift_picture_unwaited`) and an ink scan's
+/// (`gpu_engine_ink_run_unwaited`) each spelled it — the third came.
+///
+/// ⛔Not a body that failed, whatever it made: its caller's next done
 /// would fail by it (`Engine::posted`) — a screen's frame, for a cut
 /// ahead that landed nothing. `told` says it.
 ///
 /// # Safety
-/// What `finish` holds is alive, and in no other thread's hands, till it
-/// has run; `out` is live till `told` is called, and `told` is one any
-/// thread may call.
-unsafe fn finishing<Finish>(
+/// What `work` and `answer` hold is alive, and in no other thread's
+/// hands, till each has run; `told` is one any thread may call.
+pub(crate) unsafe fn told_body<Made, Work, Answer>(
     engine: &Engine,
     pool: &Pool,
-    (out, told, number): (*mut *mut Finished, extern "C" fn(u64, bool), u64),
-    finish: Finish,
-) -> impl FnOnce() -> Option<()> + Send + 'static + use<Finish>
+    (told, number): (extern "C" fn(u64, bool), u64),
+    work: Work,
+    answer: Answer,
+) -> impl FnOnce() -> Option<()> + Send + 'static + use<Made, Work, Answer>
 where
-    Finish: FnOnce(&Engine, &[wgpu::Buffer], Then) + 'static,
+    Made: 'static,
+    Work: FnOnce(&Engine, &[wgpu::Buffer], Box<dyn FnOnce(Option<Made>) + Send>) + 'static,
+    Answer: FnOnce(&Engine, Option<Made>) -> bool + 'static,
 {
-    let handed = Sent((engine.clone(), pool.pages().to_vec(), out, finish));
+    let handed = Sent((engine.clone(), pool.pages().to_vec(), work, answer));
     move || {
-        let (engine, pages, out, finish) = handed.taken();
-        let (hands, out) = (engine.clone(), Sent(out));
-        let then = move |finished: Option<Finished>| {
-            let finished = finished.map(|finished| hands.hands(finished));
-            // SAFETY: live till `told` is called (the function's contract).
-            unsafe { *out.taken() = finished.unwrap_or(std::ptr::null_mut()) };
-            told(number, finished.is_some());
-        };
-        finish(&engine, &pages, Box::new(then));
+        let (engine, pages, work, answer) = handed.taken();
+        let (hands, answer) = (engine.clone(), Sent(answer));
+        let then = move |made: Option<Made>| told(number, answer.taken()(&hands, made));
+        work(&engine, &pages, Box::new(then));
         Some(())
+    }
+}
+
+/// What puts a finish where its caller reads it ([`told_body`]): handed
+/// out by the engine to `out`, or null where there is none.
+///
+/// # Safety
+/// `out` is live till the answer is given.
+unsafe fn handed_to(out: *mut *mut Finished) -> impl FnOnce(&Engine, Option<Finished>) -> bool {
+    move |engine, finished| {
+        let finished = finished.map(|finished| engine.hands(finished));
+        // SAFETY: see the function's contract.
+        unsafe { *out = finished.unwrap_or(std::ptr::null_mut()) };
+        finished.is_some()
     }
 }
 
@@ -1467,7 +1486,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_finish_unwaited(
     };
     // SAFETY: what `finish` holds is let go of on the engine's thread,
     // after it; `out` and `told` are the function's contract.
-    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+    engine.posted(unsafe { told_body(engine, pool, (told, number), finish, handed_to(out)) });
 }
 
 /// [`gpu_engine_stamp_finish_unwaited`] of `coverage` under `paint`, as
@@ -1521,7 +1540,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_finish_mask_unwaited(
     };
     // SAFETY: what `finish` holds is let go of on the engine's thread,
     // after it; `out` and `told` are the function's contract.
-    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+    engine.posted(unsafe { told_body(engine, pool, (told, number), finish, handed_to(out)) });
     true
 }
 

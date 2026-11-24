@@ -15,11 +15,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, Sent, let_go};
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::{Named, TileSet};
-use crate::kernels::dab::abi::{StampPicture, kept, reported};
+use crate::kernels::dab::abi::{StampPicture, kept, reported, told_body};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
@@ -221,28 +221,27 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture_unwaited(
     let (engine, pool) = unsafe { (&*engine, &*pool) };
     // SAFETY: see the function's contract.
     let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
-    let handed = Sent((engine.clone(), pool.pages().to_vec(), kernels, mask, out, cel));
-    engine.posted(move || {
-        let (engine, pages, kernels, mask, out, cel) = handed.taken();
+    let lift = move |engine: &Engine, pages: &[wgpu::Buffer], then: Box<dyn FnOnce(Option<_>) + Send>| {
         // SAFETY: each is let go of on this thread, after this (the
         // function's contract).
         let (kernels, mask) = unsafe { (&*kernels, (*mask).mask()) };
-        let (hands, out, size) = (engine.clone(), Sent(out), (mask.size.width, mask.size.height));
-        let then = move |lifted: Option<Lifted>| {
-            let ran = lifted.is_some();
-            let picture = match lifted {
-                Some(Lifted { rgba, anything: true }) => kept(&hands, Some(rgba), size),
-                _ => std::ptr::null_mut(),
-            };
-            // SAFETY: live till `told` is called (the function's contract).
-            unsafe { *out.taken() = picture };
-            told(number, ran);
+        let size = (mask.size.width, mask.size.height);
+        let sized = move |lifted: Option<Lifted>| then(lifted.map(|lifted| (lifted, size)));
+        kernels.lift.lifted_then(engine, pages, &cel, &mask, whole, sized);
+    };
+    let answer = move |engine: &Engine, lifted: Option<(Lifted, (u32, u32))>| {
+        let ran = lifted.is_some();
+        let picture = match lifted {
+            Some((Lifted { rgba, anything: true }, size)) => kept(engine, Some(rgba), size),
+            _ => std::ptr::null_mut(),
         };
-        kernels.lift.lifted_then(&engine, &pages, &cel, &mask, whole, then);
-        // ⛔Not a body that failed, whatever it lifted: its caller's next
-        // done would fail by it (`Engine::posted`). `told` says it.
-        Some(())
-    });
+        // SAFETY: live till `told` is called (the function's contract).
+        unsafe { *out = picture };
+        ran
+    };
+    // SAFETY: what `lift` holds is let go of on the engine's thread, after
+    // it; `out` and `told` are the function's contract.
+    engine.posted(unsafe { told_body(engine, pool, (told, number), lift, answer) });
 }
 
 /// Runs the verb `spec` states over the cel of `columns` × `rows` tiles

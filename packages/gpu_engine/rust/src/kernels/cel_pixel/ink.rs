@@ -18,11 +18,11 @@ use crate::device::Engine;
 use crate::kernels::composite::TileSet;
 use crate::kernels::mask::BYTE_WGSL;
 use crate::kernels::shared::{
-    Encoded, Given, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, pipeline, plane,
-    runs, tiles_a_pass,
+    Encoded, Given, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, le_words, pipeline,
+    plane, runs, tiles_a_pass,
 };
 
-use super::{TILE_WORDS, WALK_WGSL, entries, walk, words};
+use super::{TILE_WORDS, WALK_WGSL, entries, walk};
 
 /// The storage buffers a pass binds besides its pages: what it is given and
 /// the boxes — and the pass's first tile, a uniform.
@@ -125,7 +125,7 @@ impl Ink {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let boxes = words(&engine.read_buffer(&boxes)?);
+        let boxes = le_words(&engine.read_buffer(&boxes)?);
         let inks = walk.iter().zip(boxes.chunks_exact(4)).map(|(tile, found)| TileInk {
             column: tile.column,
             row: tile.row,

@@ -18,11 +18,11 @@ use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
-    Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, cut_by, encode_on, encoded,
+    Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, cut_by, encode_on, encoded, le_words,
     pipeline, plane, range, runs, tiles_a_pass,
 };
 
-use super::{TILE_WORDS, WALK_WGSL, alignment, band, entries, made, walk, words};
+use super::{TILE_WORDS, WALK_WGSL, alignment, band, entries, made, walk};
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the box's pixels and the flag — and the lift's words, a uniform one. A
@@ -74,7 +74,7 @@ impl Lift {
 
     /// [`Self::run`], the body that asks waiting for no GPU: `then` is
     /// told what the selection took on a thread of the engine's once the
-    /// GPU has said whether it took any ([`Engine::map_then`]) — or
+    /// GPU has said whether it took any ([`Engine::read_buffer_then`]) — or
     /// nothing where the lift failed, and at once, here, where the walk
     /// met no tile or nothing was submitted.
     ///
@@ -95,13 +95,9 @@ impl Lift {
         match cut.and_then(|cut| self.submitted_by(engine, pool, cel, mask, whole, cut)) {
             None => then(None),
             Some((rgba, None)) => then(Some(Lifted { rgba, anything: false })),
-            Some((rgba, Some(flag))) => {
-                let bytes = flag.size();
-                engine.map_then(engine.staged(&flag, bytes), move |mapped| {
-                    let read = |flag: wgpu::Buffer| Some(words(&flag.get_mapped_range(..).ok()?)[0] != 0);
-                    then(mapped.ok().and_then(read).map(|anything| Lifted { rgba, anything }));
-                });
-            }
+            Some((rgba, Some(flag))) => engine.read_buffer_then(&flag, move |read| {
+                then(read.map(|flag| Lifted { rgba, anything: le_words(flag)[0] != 0 }));
+            }),
         }
     }
 
@@ -118,7 +114,7 @@ impl Lift {
     ) -> Option<Lifted> {
         let (rgba, flag) = self.submitted_by(engine, pool, cel, mask, whole, cut)?;
         let anything = match flag {
-            Some(flag) => words(&engine.read_buffer(&flag)?)[0] != 0,
+            Some(flag) => le_words(&engine.read_buffer(&flag)?)[0] != 0,
             None => false,
         };
         Some(Lifted { rgba, anything })

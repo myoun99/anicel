@@ -36,8 +36,7 @@ fn uploaded(width: u32, height: u32, word: impl Fn(u32, u32) -> u32) -> Shown {
 
 /// The words `frame` holds, row after row.
 fn words(frame: &Shown) -> Vec<u32> {
-    let bytes = read_buffer(rig().engine, &frame.rows);
-    bytes.chunks_exact(4).map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]])).collect()
+    le_words(&read_buffer(rig().engine, &frame.rows))
 }
 
 /// Lays `source` at (`x`, `y`) over `onto` at `opacity`, under `cover`.

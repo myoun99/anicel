@@ -30,7 +30,7 @@ use crate::fail;
 use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::shared::{
     Encoded, Given, NO_PAGE, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits,
-    page_table, pipeline, plane, range, runs, tiles_a_pass,
+    le_words, page_table, pipeline, plane, range, runs, tiles_a_pass,
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
@@ -109,7 +109,7 @@ impl Write {
 
     /// [`Self::changed`], the body that asks waiting for no GPU: `then` is
     /// told what each tile is on a thread of the engine's once the GPU
-    /// has said ([`Engine::map_then`]) — or nothing where the test
+    /// has said ([`Engine::read_buffer_then`]) — or nothing where the test
     /// failed, and at once, here, where it submitted nothing.
     ///
     /// 🚨WHY (card opening-a-transform-box-holds-the-ui-over-half-a-second,
@@ -132,11 +132,7 @@ impl Write {
             None => then(None),
             Some(None) => then(Some(Vec::new())),
             Some(Some(changed)) => {
-                let bytes = changed.size();
-                engine.map_then(engine.staged(&changed, bytes), move |mapped| {
-                    let read = |words: wgpu::Buffer| Some(changes_of(&words.get_mapped_range(..).ok()?));
-                    then(mapped.ok().and_then(read));
-                });
+                engine.read_buffer_then(&changed, move |read| then(read.map(changes_of)));
             }
         }
     }
@@ -254,8 +250,7 @@ impl Write {
 
 /// What each tile is, by its word of the changed buffer's `bytes`.
 fn changes_of(bytes: &[u8]) -> Vec<Change> {
-    let word = |four: &[u8]| u32::from_le_bytes([four[0], four[1], four[2], four[3]]);
-    bytes.chunks_exact(4).map(|four| Change::of(word(four))).collect()
+    le_words(bytes).into_iter().map(Change::of).collect()
 }
 
 /// Fails unless `put` holds `tiles` tiles.

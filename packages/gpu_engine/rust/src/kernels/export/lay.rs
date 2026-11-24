@@ -11,8 +11,8 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, bands, buffer_holds, encode, fits, flat, plane, room, whole, words_bound,
-    words_buffer,
+    Encoded, ISQRT_WGSL, bands, buffer_holds, encode, fits, flat, le_words, plane, room, whole,
+    words_bound, words_buffer,
 };
 
 /// How much of what is laid each pixel of a frame takes: a byte each, four
@@ -76,10 +76,7 @@ impl Shown {
             ));
         }
         buffer_holds(engine, bytes)?;
-        let words: Vec<u32> = rgba
-            .chunks_exact(4)
-            .map(|pixel| u32::from_le_bytes([pixel[0], pixel[1], pixel[2], pixel[3]]))
-            .collect();
+        let words = le_words(rgba);
         let rows = words_buffer(engine, "export picture", &words, wgpu::BufferUsages::STORAGE);
         Some(Self::rgba(rows, picture))
     }

@@ -9,7 +9,7 @@ use crate::device::Engine;
 use crate::kernels::cel_pixel::tests::{
     CUTS, Cel, INK, OTHER, SIDE, hashed, hashed_cel, hashed_cel_on, one, rgba,
 };
-use crate::kernels::cel_pixel::words;
+use crate::kernels::shared::le_words;
 use crate::kernels::composite::tests::mix;
 use crate::kernels::mask::tests::{Masked, masked};
 use crate::kernels::mask::{Mask, MaskBox};
@@ -48,7 +48,7 @@ fn lifted(
         Some(cut) => lift.run_by(engine, &pages, &cel.set, &mask, whole, cut),
         None => lift.run(engine, &pages, &cel.set, &mask, whole),
     }?;
-    Some((words(&read_buffer(engine, &rgba)), anything))
+    Some((le_words(&read_buffer(engine, &rgba)), anything))
 }
 
 /// Over tile (0, 0): ink under alpha 200, another colour, a colour under

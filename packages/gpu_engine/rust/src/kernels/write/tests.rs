@@ -10,7 +10,7 @@ use super::{Change, Write};
 use crate::device::Engine;
 use crate::kernels::composite::tests::{Pool, mix};
 use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
-use crate::kernels::shared::{plane, words_buffer};
+use crate::kernels::shared::{le_words, plane, words_buffer};
 use crate::testing::{first_engine, read_buffer};
 
 struct Rig {
@@ -77,13 +77,6 @@ fn changed(
         Some(cut) => write.changed_by(engine, &pages, &put, &set.tiles, cut),
         None => write.changed(engine, &pages, &put, &set.tiles),
     }
-}
-
-fn words(bytes: &[u8]) -> Vec<u32> {
-    bytes
-        .chunks_exact(4)
-        .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
-        .collect()
 }
 
 /// Four tiles, two to a page: the first and the last as stored, the second
@@ -211,11 +204,11 @@ fn a_put_copies_each_tile_named_to_its_slot() {
     let writes = [(2, TileAt { page: 0, slot: 1 }), (0, TileAt { page: 1, slot: 2 })];
     Write::put(engine, &pages, &put(&tiles), &writes).expect("put");
     assert_eq!(
-        words(&read_buffer(engine, &pages[0])),
+        le_words(&read_buffer(engine, &pages[0])),
         [tile(0, 0), tiles[2].clone(), tile(2, 0)].concat()
     );
     assert_eq!(
-        words(&read_buffer(engine, &pages[1])),
+        le_words(&read_buffer(engine, &pages[1])),
         [tile(0, 1), tile(1, 1), tiles[0].clone()].concat()
     );
 }
@@ -242,9 +235,9 @@ fn a_write_refuses_what_is_not_there() {
     assert!(Write::put(engine, &pages, &two, &[(0, to(2))]).is_none());
     assert!(Write::put(engine, &pages, &two, &[(0, TileAt { page: 1, slot: 0 })]).is_none());
     // Each in a test of its own with a good one first: nothing is copied.
-    let before = words(&read_buffer(engine, &pages[0]));
+    let before = le_words(&read_buffer(engine, &pages[0]));
     assert!(Write::put(engine, &pages, &two, &[(1, to(0)), (2, to(1))]).is_none());
-    assert_eq!(words(&read_buffer(engine, &pages[0])), before);
+    assert_eq!(le_words(&read_buffer(engine, &pages[0])), before);
 }
 
 /// A put copies only from tiles a copy may read, to pages a copy may

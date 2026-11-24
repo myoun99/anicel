@@ -19,6 +19,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::matrix_tests::{each, graded};
 use crate::kernels::effects::matrix_words;
+use crate::kernels::shared::le_words;
 use crate::testing::{a_device_of_its_own, read_buffer};
 
 /// The chain's blurs, compiled once on the executor's device for every
@@ -415,11 +416,6 @@ fn where_it_stands(pixel: impl Fn(i32, i32) -> u32, stands: impl Fn(i32, i32) ->
         .collect()
 }
 
-/// The words of `bytes`, four bytes a pixel.
-fn words_of(bytes: &[u8]) -> Vec<u32> {
-    bytes.chunks_exact(4).map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]])).collect()
-}
-
 /// A read keeps the rows it names — the plan's tile sets, by slot — as
 /// they are stored over the chain's rectangle: a low alpha's colour as it
 /// is, nothing where a row has no tile, and nothing of a tile past the
@@ -443,7 +439,7 @@ fn a_read_keeps_each_row_it_names_as_it_is_stored() {
     let out = chained_over(tiles(came_to), Stored { pages: &pages, sets: &sets }, &[op]).expect("chain");
     assert_same(&held(&out), &pixels().map(|(x, y)| came_to(x, y)).collect::<Vec<_>>());
 
-    let row = |slot| words_of(&read.pixels(engine, whole(), Some(slot)).expect("kept"));
+    let row = |slot| le_words(&read.pixels(engine, whole(), Some(slot)).expect("kept"));
     assert_same(&row(0), &where_it_stands(|x, y| texel(102, x, y), second));
     assert_same(&row(1), &where_it_stands(|x, y| texel(101, x, y), |column, row| first(column, row) && column < 2));
     assert!(read.pixels(engine, whole(), Some(2)).is_none());
