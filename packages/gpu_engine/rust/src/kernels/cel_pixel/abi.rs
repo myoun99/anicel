@@ -440,63 +440,6 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
     })
 }
 
-/// [`gpu_engine_ink_run`] with no wait for its caller: the cel's tiles
-/// read where `pool` holds them now, the scan handed to the engine's
-/// thread — which waits for no GPU either (`Ink::scanned_then`) — and
-/// `told` called with `number` from a thread of the engine's once the GPU
-/// has written the boxes, `out` and `walked` written first: how many tiles
-/// it walked, or -1 — `told` false — where the scan failed or `out` holds
-/// too few words.
-///
-/// 🗣️관제 2026-11-12 (the UI never waits for the GPU) — card
-/// the-ui-isolate-still-waits-for-the-gpu-in-places W3.
-///
-/// # Safety
-/// As [`gpu_engine_ink_run`]'s, `ink` let go of after this; `out` and
-/// `walked` are live till `told` is called, and `told` is one any thread
-/// may call.
-#[unsafe(no_mangle)]
-#[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn gpu_engine_ink_run_unwaited(
-    ink: *const Ink,
-    engine: *const Engine,
-    pool: *const Pool,
-    x0: i32,
-    y0: i32,
-    columns: u32,
-    rows: u32,
-    tiles: *const u32,
-    out: *mut i32,
-    capacity: usize,
-    walked: *mut isize,
-    told: extern "C" fn(u64, bool),
-    number: u64,
-) {
-    // SAFETY: see the function's contract.
-    let (engine, pool) = unsafe { (&*engine, &*pool) };
-    // SAFETY: see the function's contract.
-    let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
-    let scan = move |engine: &Engine, pages: &[wgpu::Buffer], then: Box<dyn FnOnce(Option<_>) + Send>| {
-        if !room_for(&cel, capacity) {
-            return then(None);
-        }
-        // SAFETY: let go of on this thread, after this (the contract).
-        let ink = unsafe { &*ink };
-        ink.scanned_then(engine, pages, &cel, then);
-    };
-    let answer = move |_: &Engine, inks: Option<Vec<TileInk>>| {
-        // SAFETY: live till `told` is called, `out` holding `capacity`
-        // words the walk's fit (the function's contract).
-        let put = inks.map_or(-1, |inks| unsafe { put_inks(&inks, out) });
-        // SAFETY: as above.
-        unsafe { *walked = put };
-        put >= 0
-    };
-    // SAFETY: what `scan` holds is let go of on the engine's thread, after
-    // it; `out`, `walked` and `told` are the function's contract.
-    engine.posted(unsafe { told_body(engine, pool, (told, number), scan, answer) });
-}
-
 /// Whether `capacity` words hold the [`TILE_INK_WORDS`] of each tile
 /// `cel`'s walk takes — and the last error says why not where they do not.
 fn room_for(cel: &TileSet, capacity: usize) -> bool {

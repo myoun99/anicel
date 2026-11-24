@@ -1769,39 +1769,6 @@ external int inkRun(
   int capacity,
 );
 
-@Native<
-  Void Function(
-    Pointer<Ink>,
-    Pointer<Engine>,
-    Pointer<Pool>,
-    Int32,
-    Int32,
-    Uint32,
-    Uint32,
-    Pointer<Uint32>,
-    Pointer<Int32>,
-    Size,
-    Pointer<IntPtr>,
-    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
-    Uint64,
-  )
->(symbol: 'gpu_engine_ink_run_unwaited')
-external void inkRunUnwaited(
-  Pointer<Ink> ink,
-  Pointer<Engine> engine,
-  Pointer<Pool> pool,
-  int x0,
-  int y0,
-  int columns,
-  int rows,
-  Pointer<Uint32> tiles,
-  Pointer<Int32> out,
-  int capacity,
-  Pointer<IntPtr> walked,
-  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
-  int number,
-);
-
 @Native<Pointer<CelPixels> Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_cel_pixels_new',
 )

@@ -137,45 +137,6 @@ fn a_cel_cut_into_passes_finds_what_one_pass_finds() {
     }
 }
 
-/// What `cel`'s scan with no wait tells (`Ink::scanned_then`), the thread
-/// it is told on, and the waits for the GPU the thread that asked made.
-fn told(cel: &Cel) -> (Option<Vec<TileInk>>, std::thread::ThreadId, u64) {
-    use crate::device::gpu_engine_waits_here;
-    let Rig { engine, ink } = rig();
-    let pages = cel.pool.upload(engine);
-    let (tell, heard) = std::sync::mpsc::channel();
-    let waits = gpu_engine_waits_here();
-    ink.scanned_then(engine, &pages, &cel.set, move |inks| {
-        let _ = tell.send((inks, std::thread::current().id()));
-    });
-    let asked = gpu_engine_waits_here() - waits;
-    let (inks, on) = heard.recv().expect("told");
-    (inks, on, asked)
-}
-
-/// 🗣️관제 2026-11-12 (the UI never waits for the GPU), card
-/// the-ui-isolate-still-waits-for-the-gpu-in-places W3: the scan with no
-/// wait tells what the scan that waits answers, from a thread of the
-/// engine's — the thread that asked waiting for no GPU.
-#[test]
-fn a_scan_with_no_wait_tells_what_the_scan_answers() {
-    let spread = sparse_cel_on(|column| column.rem_euclid(3) as u16);
-    let (inks, on, waits) = told(&spread);
-    assert_eq!(inks, scanned(&spread, None), "⛔CONTROL: the same scan");
-    assert!(inks.is_some_and(|inks| inks.len() == 5), "⛔CONTROL: five tiles found");
-    assert_ne!(on, std::thread::current().id(), "told on the engine's thread");
-    assert_eq!(waits, 0, "who asked waited for no GPU");
-}
-
-/// A cel of no tiles submits nothing, and is told so at once, here.
-#[test]
-fn a_scan_with_no_wait_of_no_tiles_is_told_none_at_once() {
-    let none = cel((0, 0), (2, 1), |_, _| SOLID, |_, _| None);
-    let (inks, on, _) = told(&none);
-    assert_eq!(inks, Some(Vec::new()));
-    assert_eq!(on, std::thread::current().id(), "told where it was asked");
-}
-
 /// The sparse cel over three pages: the ledger's.
 #[test]
 fn every_device_finds_the_pinned_ink() {

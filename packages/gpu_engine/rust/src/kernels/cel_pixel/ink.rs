@@ -97,34 +97,6 @@ impl Ink {
         }
     }
 
-    /// [`Self::run`], the body that asks waiting for no GPU: `then` is
-    /// told each tile's ink on a thread of the engine's once the GPU has
-    /// written them ([`Engine::read_buffer_then`]) — or nothing where the
-    /// scan failed, and at once, here, where the walk met no tile or
-    /// nothing was submitted.
-    ///
-    /// 🗣️관제 2026-11-12 (the UI never waits for the GPU) — card
-    /// the-ui-isolate-still-waits-for-the-gpu-in-places W3: the box a
-    /// stroke's cel frames is found the moment the move tool asks, and
-    /// that scan waited for the GPU on the UI's thread.
-    pub(crate) fn scanned_then(
-        &self,
-        engine: &Engine,
-        pool: &[wgpu::Buffer],
-        cel: &TileSet,
-        then: impl FnOnce(Option<Vec<TileInk>>) + Send + 'static,
-    ) {
-        let most = tiles_a_pass(engine, TILE_WORDS as u64 * 4, 0);
-        let cut = most.map(|most| (self.pages.per_pass(), most));
-        match cut.and_then(|cut| self.submitted_by(engine, pool, cel, cut)) {
-            None => then(None),
-            Some(None) => then(Some(Vec::new())),
-            Some(Some((places, boxes))) => engine.read_buffer_then(&boxes, move |read| {
-                then(read.map(|boxes| inks_of(&places, boxes)));
-            }),
-        }
-    }
-
     /// The scan of `cel` submitted, its passes binding `per_pass` pages and
     /// taking `most` tiles at most: each walked tile's place on the cel's
     /// grid, in the walk's order, and the buffer the GPU writes their boxes
