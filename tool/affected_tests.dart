@@ -440,6 +440,8 @@ Future<void> main(List<String> args) async {
   }
   Directory.current = root;
   final twin = twinAsked == null ? null : _twinAt(twinAsked);
+  // Every way in runs past the same cache, so every one knows what changed.
+  final changed = _changedFiles(base);
 
   Future<Never> run(
     List<String> files, [
@@ -451,6 +453,7 @@ Future<void> main(List<String> args) async {
       concurrency: concurrency,
       cache: _openCache(imports),
       useCache: useCache,
+      changed: changed.where(isSuite).toSet(),
       redsTo: redsTo,
       inTheLine: turn.inTheLine,
       firstInLine: turn.first,
@@ -478,7 +481,6 @@ Future<void> main(List<String> args) async {
     await run(_wholeSuite());
   }
 
-  final changed = _changedFiles(base);
   if (changed.isEmpty && named.isEmpty) {
     _report('nothing has changed against $base — nothing to run.');
     _sayReds(redsTo, const []);
@@ -1221,6 +1223,7 @@ Future<int> _runTests(
   int? concurrency,
   ResultCache? cache,
   bool useCache = true,
+  required Set<String> changed,
   String? redsTo,
   bool inTheLine = true,
   bool firstInLine = false,
@@ -1228,7 +1231,7 @@ Future<int> _runTests(
   ({bool reversed})? bundle,
 }) async {
   final selected = useCache && cache != null
-      ? _withoutStillGreen(files, cache)
+      ? _withoutStillGreen(files, cache, changed: changed)
       : files;
   if (selected == null) {
     _report(listOnly
@@ -1622,19 +1625,53 @@ Future<int> _runTests(
   return worst;
 }
 
-/// [files] without those green on this machine with the inputs they have
-/// now ([ResultCache.stillGreenAmong]), or null when none is left.
-List<String>? _withoutStillGreen(List<String> files, ResultCache cache) {
-  final green = cache.stillGreenAmong(files);
-  if (green.isEmpty) return files;
-  _report('${green.length} of ${files.length} file(s) were green on this '
-      'machine with the inputs they have now — not run again (--no-cache '
-      'runs them).');
-  final left = [
-    for (final file in files)
-      if (!green.contains(file)) file,
-  ];
-  return left.isEmpty ? null : left;
+/// What of [files] runs past the cache, given the [green] among them —
+/// green on this machine with the inputs they have now: every file but a
+/// green one, and a [changed] test file whatever the cache holds ([kept]).
+///
+/// 🗣️유저 2026-11-24 13:12 (affected-tests-skipped-the-changed-test-file-
+/// Q1 「바뀐 시험 파일은 늘 돌린다」): a lane's changed test went unrun
+/// because an earlier run here had been green with the same inputs — and
+/// that test fixed a race that only reds on a busy machine, so one earlier
+/// green said nothing of the fix. A changed test runs because it changed,
+/// as [selectTests] picks it whatever it imports.
+({List<String> left, Set<String> letGo, List<String> kept}) pastTheCache(
+  List<String> files, {
+  required Set<String> green,
+  required Set<String> changed,
+}) {
+  final letGo = green.difference(changed);
+  return (
+    left: [
+      for (final file in files)
+        if (!letGo.contains(file)) file,
+    ],
+    letGo: letGo,
+    kept: green.intersection(changed).toList()..sort(),
+  );
+}
+
+/// [files] past the cache ([pastTheCache]), or null when none is left.
+List<String>? _withoutStillGreen(
+  List<String> files,
+  ResultCache cache, {
+  required Set<String> changed,
+}) {
+  final past = pastTheCache(
+    files,
+    green: cache.stillGreenAmong(files),
+    changed: changed,
+  );
+  if (past.kept.isNotEmpty) {
+    _report('${past.kept.length} changed test file(s) run although green '
+        'here with the inputs they have now: ${past.kept.join(', ')}');
+  }
+  if (past.letGo.isNotEmpty) {
+    _report('${past.letGo.length} of ${files.length} file(s) were green on '
+        'this machine with the inputs they have now — not run again '
+        '(--no-cache runs them).');
+  }
+  return past.left.isEmpty ? null : past.left;
 }
 
 /// Quarantines the [flaky] files on this machine and puts them on the
