@@ -1,8 +1,11 @@
 // PDF READ PROBE — does the app's own PDF open tell how far PDFium read the
 // file, and does a page range cut from one open?
 //
-//   flutter run -d windows -t tool/probe/pdf_read_probe_main.dart \
-//     --dart-define=PDF_IN=<a.pdf> --dart-define=PDF_OUT=<report.txt>
+//   flutter build windows --debug -t tool/probe/pdf_read_probe_main.dart
+//   PDF_IN=<a.pdf> PDF_OUT=<report.txt> build/windows/x64/runner/Debug/Anicel.exe
+//
+// The paths come from the environment, not --dart-define, so one build
+// probes every file.
 //
 // Then it opens the file ten times more, each with its time of day and a
 // two-minute limit — a callback open once did not end within 600 s
@@ -24,8 +27,8 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  const input = String.fromEnvironment('PDF_IN');
-  const output = String.fromEnvironment('PDF_OUT');
+  final input = Platform.environment['PDF_IN']!;
+  final output = Platform.environment['PDF_OUT']!;
   final out = File(output).openSync(mode: FileMode.write);
   void line(String words) {
     out.writeStringSync('${DateTime.now().toIso8601String()} $words\n');
@@ -37,7 +40,7 @@ Future<void> main() async {
     final heard = <double>[];
     final watch = Stopwatch()..start();
     final document = await PdfRenderService.open(
-      const MediaFileBytes(input),
+      MediaFileBytes(input),
       onRead: heard.add,
     );
     line(
