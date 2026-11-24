@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,6 +121,7 @@ Future<void> _dragSeRow(
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   testWidgets('a drag on an S row selects a frame range, snapped to whole '
       'sounds', (tester) async {
     await _openStoryboard(tester);

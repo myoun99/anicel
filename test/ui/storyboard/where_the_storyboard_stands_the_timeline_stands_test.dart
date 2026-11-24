@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,7 @@ import '../../helpers/rail_label_name.dart';
 /// cut-1 (0..12) has a conte row, cut-2 (15..25) has none, a gap between
 /// them, and S1 is the track's.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const conteId = LayerId('cut-1-conte');
   const cut1 = CutId('cut-1');
   const cut2 = CutId('cut-2');

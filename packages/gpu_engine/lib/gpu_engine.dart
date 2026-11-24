@@ -3755,10 +3755,12 @@ class GpuScreen implements _OfAnEngine {
   }
 
   GpuScreen._(this._composite, Pointer<rust.Screen> screen)
-    : _given = _Held(screen, 'a screen') {
-    _unfreed += 1;
+    : _given = _Held(screen, 'a screen'),
+      _serial = _made++ {
+    _unfreed[_serial] = debugNoteWhereMade ? StackTrace.current : null;
   }
 
+  final int _serial;
   final GpuComposite _composite;
 
   /// The engine's screen, for each ask of it — here, and of a job that
@@ -3895,16 +3897,29 @@ class GpuScreen implements _OfAnEngine {
   /// [GpuEngine.done] asked after this.
   void free() {
     rust.screenFree(_given.letGo());
-    _unfreed -= 1;
+    _unfreed.remove(_serial);
   }
 
-  static int _unfreed = 0;
+  static int _made = 0;
 
-  /// How many screens are made and not freed: what each test asks as it
-  /// ends (test/flutter_test_config.dart). Counted here, not read off the
-  /// engine's [liveBytes] — those are counted once a compose lands, so a
-  /// screen whose compose a test left in flight read as none or one by
-  /// when the engine got to it.
+  /// Each screen made and not freed, by the serial it was made at — with
+  /// where it was made while [debugNoteWhereMade].
+  static final _unfreed = <int, StackTrace?>{};
+
+  /// Whether a screen notes where it was made, for [debugUnfreedSince].
+  static bool debugNoteWhereMade = false;
+
+  /// How many screens were made: the serial the next one is made at.
+  static int get debugMade => _made;
+
+  /// The screens made at [serial] or after and not freed — where each was
+  /// made, or null where [debugNoteWhereMade] was off: what each test asks
+  /// as it ends of those it made (test/flutter_test_config.dart). Counted
+  /// here, not read off the engine's [liveBytes] — those are counted once a
+  /// compose lands, so a screen whose compose a test left in flight read as
+  /// none or one by when the engine got to it. ↩️A count of all the
+  /// unfreed till the baseline of 2026-11-24: a test that freed one an
+  /// earlier test made read as -1, red for the earlier one's.
   ///
   /// 🔬Card the-prerender-scheduler-rests-a-tile-late-on-ci (2026-11-24):
   /// a storyboard cell's picture (frame_shots.dart, `frameOnTheEngine`)
@@ -3912,7 +3927,10 @@ class GpuScreen implements _OfAnEngine {
   /// test ended first, its fake clock's zone ran no more, and the screen
   /// stayed for the process — its tiles counted by every picture store a
   /// later file of the bundle made.
-  static int get debugUnfreed => _unfreed;
+  static List<StackTrace?> debugUnfreedSince(int serial) => [
+    for (final MapEntry(:key, :value) in _unfreed.entries)
+      if (key >= serial) value,
+  ];
 }
 
 /// What a run put: its output tiles' pixels, on the GPU.

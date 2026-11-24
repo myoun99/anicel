@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -51,6 +52,7 @@ import '../helpers/until_the_panel_pictures_land.dart';
 /// zoom every cut on the film lands a picture, and the storyboard's ruler,
 /// rows and chrome were rebuilt once for each.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   opensTheEnginesScreens();
   Future<void> open(WidgetTester tester, String tab) async {
     await tester.tap(find.byKey(ValueKey<String>(tab)));

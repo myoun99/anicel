@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -42,6 +43,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 /// row with it. What stays is the shape of the cost: a crossing's, never a
 /// move's.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 24;
 
   Project project() => Project(

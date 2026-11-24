@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/brush_values_on_strip.dart';
@@ -26,6 +27,7 @@ import '../../helpers/rail_group_button.dart';
 /// what belongs to no surface in particular: the project file, and the
 /// app's own switches.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();

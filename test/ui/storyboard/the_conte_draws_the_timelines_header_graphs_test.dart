@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -82,6 +83,7 @@ import '../../helpers/storyboard_twirls.dart';
 /// timeline's own functions — so an S row's or a V row's graph stands in
 /// the conte where its lanes are, as tall as on the timeline.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const trackId = TrackId('track');
   const s1 = LayerId('s1');
   const s2 = LayerId('s2');

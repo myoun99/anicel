@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,6 +16,7 @@ import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 /// past the screen, so the columns overflowed and were cut where it ended:
 /// the Cels list's rules, its rail, the folder columns, the settings.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

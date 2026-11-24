@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,6 +30,7 @@ import 'package:anicel/src/ui/widgets/named.dart';
 /// pass by design, outside the kept column (F-244) — what is held to
 /// nothing here is what the box holds.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   final aRow = RegExp(
     '^(timeline-rail-row-|timeline-row-|timeline-frame-row-area-'
     '|xsheet-frame-column-area-|xsheet-row-cells-'

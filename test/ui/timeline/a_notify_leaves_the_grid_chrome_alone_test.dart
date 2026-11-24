@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,6 +21,7 @@ import '../../helpers/frame_census.dart';
 /// legend — all three grids alike, and every cut crossed is such a notify
 /// for them.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 

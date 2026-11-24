@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,6 +20,7 @@ import '../../helpers/frame_census.dart';
 /// layer with it — and the timeline's bar was painted with its host's layer
 /// on a notify. The bar keeps a layer of its own for that.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 

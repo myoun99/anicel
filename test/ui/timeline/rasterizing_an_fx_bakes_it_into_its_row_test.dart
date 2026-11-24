@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -66,6 +67,7 @@ import '../../helpers/wait_window.dart';
 /// Q4 switches off what changes the picture at its defaults; Q8 bakes no
 /// row without a picture of its own.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
 
   const canvasSize = CanvasSize(width: 64, height: 48);

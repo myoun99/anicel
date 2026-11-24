@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -24,6 +25,7 @@ import '../../helpers/brush_canvas_fixture.dart';
 /// 적용되도록」 — the view keys drive whichever panel lies on the floor, and
 /// press there what its bar has.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const zoomIn = LogicalKeyboardKey.f9;
   const turn = LogicalKeyboardKey.f10;
 

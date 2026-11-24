@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -220,6 +221,7 @@ List<int> _vKeys(EditorSessionManager session) => session.activeTrack.effects
     .toList();
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   testWidgets('a sweep from S1\'s cells into its Position lane holds every '
       'lane it crossed', (tester) async {
     final session = await _openS1Lanes(tester);

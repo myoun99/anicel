@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -62,6 +63,7 @@ import '../../helpers/temp_dir.dart';
 /// next as Photoshop lays them, ARE that picture, and the document's own
 /// composite is it to the byte.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   late Directory temp;
 
   setUp(() {

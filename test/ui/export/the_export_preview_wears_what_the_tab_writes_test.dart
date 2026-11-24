@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ import '../../helpers/text_finders.dart';
 /// The window's side of it: which document each tab hands the panel, and
 /// the name it writes on the plate.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

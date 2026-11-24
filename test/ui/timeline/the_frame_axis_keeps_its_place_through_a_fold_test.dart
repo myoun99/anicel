@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -30,6 +31,7 @@ import '../../helpers/scrollable_of.dart';
 /// overlay reads 「the same stored window the panel's own rail lays out
 /// against」 — and the frame axis joins it there.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// A cut long enough to scroll well to the right. ⚠️The default cut at
   /// this size scrolls 57px in all — the premise below caught it, and a
   /// "scroll" that short measures a fold that barely moved anything.

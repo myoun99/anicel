@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -38,6 +39,7 @@ import '../../helpers/app_faces.dart';
 /// words ran long, and then as `Flexible`s, which cut 「디렉션」 and
 /// 「어태치」 to an equal share of a column they fitted.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUpAll(loadTheAppFaces);
   setUp(() {
     AppExport.settings.value = AppExportSettings();

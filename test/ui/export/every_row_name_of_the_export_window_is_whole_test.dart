@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,7 @@ import '../../helpers/app_faces.dart';
 /// starts at one x and no name gives its end up. ↩️The column stood 54 in
 /// every language: 「ビットレート」 had 54 of its 60 px, 「Channels」 54 of 61.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

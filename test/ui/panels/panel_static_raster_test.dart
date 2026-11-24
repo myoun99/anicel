@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -193,6 +194,7 @@ const _mustBakeWhenActive = <String, List<String>>{
 };
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('every docked panel is wrapped, and the canvas is not', (
     tester,
   ) async {

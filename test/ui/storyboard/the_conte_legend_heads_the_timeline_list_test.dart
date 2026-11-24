@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,7 @@ import '../../helpers/wait_window.dart';
 /// 텍스트 강조색 … 오른쪽정렬로 오른쪽부터 삭제, 그 왼쪽에 복제 아이콘, 그
 /// 왼쪽에 연필아이콘」 — and 「트랙바꾸면 그래서 바뀌도록」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   late EditorSessionManager session;
 
   Finder inStoryboard(String key) => find.descendant(

@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,6 +45,7 @@ import '../helpers/rail_group_button.dart';
 /// flip window, the X-sheet's axis and the bound keys. The session half is
 /// `session/the_touched_panel_answers_test.dart`.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   EditorWorkspace workspaceOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace));
   EditorSessionManager sessionOf(WidgetTester tester) =>

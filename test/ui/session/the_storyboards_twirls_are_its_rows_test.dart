@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -38,6 +39,7 @@ import '../../helpers/named_finders.dart';
 /// view — so a reopen shut them all, an undo never reached them, and an S
 /// row twirled on one panel stood shut on the other.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   final transform = transformGroupHeaderLane.laneId;
   const blur = EffectId('v-blur');
   const hue = EffectId('v-hue');

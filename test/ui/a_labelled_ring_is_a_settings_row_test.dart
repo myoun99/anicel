@@ -1,4 +1,5 @@
 
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,6 +49,7 @@ import '../helpers/text_finders.dart';
 /// (tool-settings-panel-tidy, 유저 2026-10-10: 「켜고 끄는 줄도 같은
 /// 높이와 같은 글자」).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// ② — the ring's box starts where the label's box has ended.
   void expectRingRightOf(WidgetTester tester, Finder tile, Finder label) {
     final ring = tester.getRect(

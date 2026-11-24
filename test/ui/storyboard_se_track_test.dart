@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -116,6 +117,7 @@ Future<void> _openStoryboard(WidgetTester tester, Project project) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   testWidgets("tapping an S-row label selects that row of the STORYBOARD's "
       "rail — and leaves the CUT's row selection alone", (tester) async {
     await tester.pumpWidget(

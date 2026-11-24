@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -50,6 +51,7 @@ import '../../helpers/temp_dir.dart';
 /// answer, and the line that says which order this export takes. Every
 /// OS's road is driven from the Windows workstation through the OS seam.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// What a hand-over's window is asked when it is backed out of
   /// (`a_backed_out_hand_over_is_asked_about_test` has the law).
   const question = ValueKey<String>('hand-over-pending-dialog');

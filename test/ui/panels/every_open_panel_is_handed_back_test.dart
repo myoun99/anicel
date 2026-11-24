@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -13,6 +14,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 /// tab switch in one dock rebuilt the tool library, the tool settings, the
 /// colour and the onion panels in the others, about 2ms of a fold's 10.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

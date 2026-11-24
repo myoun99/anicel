@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -20,6 +21,7 @@ import '../helpers/poll_until.dart';
 /// frames of a large canvas. The trip is driven through the shell here, in
 /// the order Android drives it.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late EditorSessionManager session;
 
   Future<void> boot(WidgetTester tester) async {

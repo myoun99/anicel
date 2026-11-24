@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -151,6 +152,7 @@ Future<void> _dragTab(
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   group('EditorWorkspace tool bar', () {
     testWidgets('a single tool bar homes in the left edge dock', (
       tester,

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
@@ -23,6 +24,7 @@ import '../../helpers/words_cut_off.dart';
 /// ⚠️In the app's face or not at all ([loadTheAppFaces]), and in the real
 /// root ([AnicelApp]).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUpAll(loadTheAppFaces);
 
   void atTextScale(WidgetTester tester, double scale) {

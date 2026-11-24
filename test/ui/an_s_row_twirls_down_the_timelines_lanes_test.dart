@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -149,6 +150,7 @@ List<String> _laneIdsDownTheRail(WidgetTester tester, String prefix) {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('an SE row twirls down ONE list on both panels — the same '
       'lanes in the same order, the name tag and the effects included', (
     tester,

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -91,6 +92,7 @@ Set<String> _keysIn(WidgetTester tester, Finder bar, String pillKey) => {
 };
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<EditorSessionManager> openOnAnEmptyCel(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -55,6 +56,7 @@ import '../../helpers/text_finders.dart';
 /// a row each at the foot of the list, a block a file, turned off, stood on
 /// and written by the one law every drawing of the list answers to.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

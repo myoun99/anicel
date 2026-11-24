@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
@@ -147,6 +148,7 @@ Future<void> _collapse(WidgetTester tester) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('a ruler DRAG moves the timeline bar, and it already reads what '
       'the release will say', (tester) async {
     await _pump(tester, storyboard: false);

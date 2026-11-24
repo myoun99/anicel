@@ -10,6 +10,7 @@
 // that stops for good. ↩️Each waited thirty seconds of the file's own
 // until 2026-10-17; each waits `patiently` now, at the one ceiling (board
 // `a-test-awaits-a-future-with-a-ceiling-of-its-own`).
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -54,6 +55,7 @@ class _Counting extends FakeVideoBackend {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
   late String moviePath;
 

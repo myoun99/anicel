@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 /// (a-gate-rebuilds-the-whole-toolbar), so the language — a fact of every
 /// keep — is what hands the bar a new one here.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 

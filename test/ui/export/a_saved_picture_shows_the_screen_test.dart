@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
@@ -54,6 +55,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// its camera's eye shut unless the test opens it, as an open eye dims the
 /// picture round the frame.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   const canvas = CanvasSize(width: 200, height: 200);
   const cameraSize = CanvasSize(width: 100, height: 100);
   const cutId = CutId('cut');

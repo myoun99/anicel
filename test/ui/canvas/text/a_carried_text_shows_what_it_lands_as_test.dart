@@ -1,3 +1,4 @@
+import '../../../helpers/screens_left_of_the_engine.dart';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -38,6 +39,7 @@ import '../../../helpers/cel_text_tool_harness.dart';
 /// too, to the byte: what floats there is the landing itself (F-344-Q3,
 /// 유저 2026-10-15: 「놓을 때와 같은 코드로 — 완전히 같게」).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   int differing(Uint8List a, Uint8List b) {
     var count = 0;
     for (var i = 0; i < a.length; i += 4) {

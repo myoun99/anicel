@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,6 +98,7 @@ Project _project() {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   /// The conte as its tab hosts it ([pumpStoryboardHost]).
   Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) =>
       pumpStoryboardHost(tester, _project(), surface: const Size(1400, 900));

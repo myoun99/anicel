@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -44,6 +45,7 @@ import '../../helpers/run_edge_fixtures.dart';
 /// (or inside one) nor a canvas — whose picture following the drag IS the
 /// step.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 96;
 
   /// Two animation rows of six-frame blocks, and an S row for the lanes.

@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -33,6 +34,7 @@ import '../helpers/text_finders.dart';
 /// was observable under it, which is exactly why the contract needs its own
 /// file.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<EditorSessionManager> pumpHost(
     WidgetTester tester,
     EditorSessionManager manager,

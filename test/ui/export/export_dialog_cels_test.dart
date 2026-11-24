@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +63,7 @@ import '../../helpers/text_finders.dart';
 /// under the preview, the cut's rows as the timeline draws them: a switch on
 /// every row, a block for every drawing.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   opensTheEnginesScreens();
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());

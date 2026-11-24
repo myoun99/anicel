@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -53,6 +54,7 @@ import '../../helpers/export_scope_pick.dart';
 /// Cels tab writes, under the cels' one scope — and the answer above is
 /// the same.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

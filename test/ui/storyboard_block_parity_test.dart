@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -151,6 +152,7 @@ Future<void> _doubleTapAt(
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   setUp(TimelineDoubleTapGate.reset);
 
   group('B5① the transition blocks take the frame blocks\' double-tap law', () {

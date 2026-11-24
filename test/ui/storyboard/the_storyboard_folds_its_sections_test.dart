@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -23,6 +24,7 @@ import '../storyboard_conte_row_probe.dart';
 /// transition row, one S row (S1), its V row and, under that, its conte
 /// row (I-73) — a drawing row, by the section the timeline puts it in.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const vRow = TrackRowAddress(conteTrackId);
   const sRow = LayerRowAddress(conteSeId);
   final conteRow = LayerRowAddress(trackConteRowId(conteTrackId));

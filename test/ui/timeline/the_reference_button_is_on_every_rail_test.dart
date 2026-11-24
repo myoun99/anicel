@@ -2,6 +2,7 @@
 // column header, and the folded row's overlay (which mounts the real row, so
 // 「그대로」 has to include it). On the two you can press it opens the row's
 // popover — the host is what threads the door through to the row.
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
 
   setUp(() async {

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ import '../../helpers/temp_dir.dart';
 /// "nobody else" and the suite would stay green while a second layer's
 /// picture went missing.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
 
   setUp(() async {

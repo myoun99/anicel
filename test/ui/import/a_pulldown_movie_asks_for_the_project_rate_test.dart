@@ -4,6 +4,7 @@
 // 🗣️유저 10-06: 「알리는게 좋겠어」 · 「셋다 맞고」 — ①a difference that is no
 // pair is not named ②a sound alone is not ③taking the movie's rate keeps
 // the sound's timing; 10-10: 「1번」 — asked when Import is pressed.
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -32,6 +33,7 @@ import '../../helpers/number_pad_keyboard.dart';
 import '../../helpers/os_video_codec.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
 
   setUp(() async {

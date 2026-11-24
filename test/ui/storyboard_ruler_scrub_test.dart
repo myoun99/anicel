@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,6 +90,7 @@ int? _playheadFrame(WidgetTester tester) {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('the frame under the pointer is the frame it seeks, even after '
       'the drag has pushed the axis past the viewport edge', (tester) async {
     await _openStoryboard(tester);

@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/ui/home_page.dart';
 /// line moves: a ruler line that exists, or a preview channel that carries a
 /// value, is what the old build would also have passed.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 950));
     addTearDown(() => tester.binding.setSurfaceSize(null));

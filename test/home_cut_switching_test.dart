@@ -1,6 +1,7 @@
 // HomePage widget tests — switching cuts keeps every surface scoped.
 // Split from widget_test.dart (2026-09-04) so the suite runs across
 // isolates; the shared probes live in helpers/home_page_probes.dart.
+import 'helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
@@ -19,6 +20,7 @@ import 'helpers/the_classic_rail.dart';
 import 'helpers/named_finders.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('switches between existing sample cuts', (
     WidgetTester tester,
   ) async {

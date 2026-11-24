@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +43,7 @@ import '../../helpers/text_finders.dart';
 /// its top-left on the pointer — and a layer drag names every row it
 /// carries.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const pooled = 'C:/art/bg.png';
 
   Project project() => Project(

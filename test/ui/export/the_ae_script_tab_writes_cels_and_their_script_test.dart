@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -51,6 +52,7 @@ import '../../helpers/written_wav.dart';
 /// 거기서 셀부분 선택하는 동작은 셀 탭 그대로 사용하되, 용지 적용은
 /// 필요없으니 그런부분 없앤다던가?」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

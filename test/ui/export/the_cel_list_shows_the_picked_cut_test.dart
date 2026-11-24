@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,6 +42,7 @@ import '../../helpers/text_finders.dart';
 /// there, one control for one choice (I-153 시안 1, 「컷 열이 컷 고르기를
 /// 겸합니다」).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

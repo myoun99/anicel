@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,6 +43,7 @@ import '../../helpers/wait_window.dart' show waitOutTheWaitWindow;
 /// The collaborators are held BY THEIR OWN TYPES so the mutation runner names
 /// this file as their witness (it picks witnesses by import).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// A picture at the CUT's canvas size — the store answers only that shape.
   BitmapSurface ink(CanvasSize canvasSize) {
     const tile = defaultCelTileSize;

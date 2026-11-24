@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -45,6 +46,7 @@ import '../../helpers/export_preview_probe.dart';
 /// film lays the paper as a camera-size one does. ↩️It stood on its ground
 /// alone, whatever the paper.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

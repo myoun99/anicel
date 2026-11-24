@@ -1,6 +1,7 @@
 // HomePage widget tests — cut notes and the rename dialog.
 // Split from widget_test.dart (2026-09-04) so the suite runs across
 // isolates; the shared probes live in helpers/home_page_probes.dart.
+import 'helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
@@ -18,6 +19,7 @@ String get _noteTitle => AppText.strings.windowTitleOn(
 );
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('long multi-line cut note remains editable and savable', (
     WidgetTester tester,
   ) async {

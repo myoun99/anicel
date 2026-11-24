@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +30,7 @@ import '../../helpers/rail_group_button.dart';
 /// first frame it is open. A panel not shown since the project opened
 /// stands where the project left it (F-267).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Project longCut() {
     final project = createDefaultProject();
     final track = project.tracks.first;

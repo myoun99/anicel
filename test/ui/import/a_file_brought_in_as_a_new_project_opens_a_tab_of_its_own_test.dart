@@ -6,6 +6,7 @@
 // the file's size and as long as it runs (07-29 임포트 설계 §2: 「미디어
 // 크기로 새 프로젝트」) — and the project the window stands on is left as
 // it was (I-7: 「새 프로젝트는 현재 프로젝트 냅두고 새로 여는거야」).
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -37,6 +38,7 @@ import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   late Directory tempDir;
   late List<EditorSessionManager> letGo;
 

@@ -7,6 +7,7 @@
 // rows: every row the legend's columns can show names an action, every such
 // action has its row, and a key recorded for one does what the row does,
 // only where the row is shown.
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,6 +114,7 @@ Future<void> workIn(WidgetTester tester, WorkingPanel panel) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => _held = null);
 
   group('the registry', () {

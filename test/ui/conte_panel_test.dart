@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -152,6 +153,7 @@ Future<EditorSessionManager> _pumpConte(
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   test('the sheet reads the project: cells are panels, the number is the '
       'cut NAME, and dialogue comes off the SE row', () {
     final source = buildConteSheetSource(_project());

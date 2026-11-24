@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -33,6 +34,7 @@ import 'timeline_row_chrome_probe.dart';
 /// scroll window now, as the cells under it do (UI-R15), and draws what the
 /// window can reach; hit testing still reads every target.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// [blocks] blocks of four frames, back to back.
   Layer longLayer(int blocks) => Layer(
     id: const LayerId('long'),

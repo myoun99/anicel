@@ -3,6 +3,7 @@
 // splitter rides the bottom edge of a V row's label and moves the ONE height
 // every V row shares, inside its legal range — and the layout file keeps it
 // the way it keeps the rail widths, absent while it is the default.
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -103,6 +104,7 @@ Future<void> _dragSplitter(WidgetTester tester, double dy) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   testWidgets('dragging a V row\'s bottom edge moves the height every V row '
       'wears, and the layout file keeps it', (tester) async {
     final store = await _store(tester);

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -58,6 +59,7 @@ import '../../helpers/temp_dir.dart';
 /// 것을 알리듯이」. Its picture is the one its rows lay up: the cut's without
 /// what no row of it holds — the cost the answer was chosen at.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   // One tile, at the engine's side.
   const size = CanvasSize(
     width: defaultCelTileSize,

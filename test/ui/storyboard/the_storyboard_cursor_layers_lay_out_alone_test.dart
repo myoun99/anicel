@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -25,6 +26,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 /// profile build: the panel's paint-through 107ms of a 908ms tick sample).
 /// Each rides a layer of its own now — its own boundary and its own scope.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 24;
 
   Project project() => Project(

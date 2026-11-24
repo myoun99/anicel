@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
@@ -47,6 +48,7 @@ import '../../helpers/named_finders.dart';
 ///
 /// The timeline's half is `the_block_you_stand_on_wears_the_wash_test`.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   const trackEffect = EffectId('sb-fx');
 
   Project project() => Project(

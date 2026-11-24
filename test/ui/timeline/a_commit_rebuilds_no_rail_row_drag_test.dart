@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -41,6 +42,7 @@ import '../../helpers/row_folds.dart';
 /// row turned on its side — was built again at every commit (8,276 elements
 /// on 24 layers). It keeps them by the rail's memo now.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Project project() => Project(
     id: const ProjectId('rail-drags'),
     name: 'Rail drags',

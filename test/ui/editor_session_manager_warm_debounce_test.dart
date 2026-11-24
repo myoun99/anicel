@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import '../helpers/a_canvas_standing_on_a_frame.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,6 +46,7 @@ RenderCaches renderCachesOf(EditorSessionManager session) =>
     session.renderCaches;
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
   // The warm it restarts makes playback's rows, and a row asks the binding
   // for the quiet it takes its turn in ([QuietTurns]).

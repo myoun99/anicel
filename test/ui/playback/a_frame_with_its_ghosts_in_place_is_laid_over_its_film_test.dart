@@ -1,6 +1,7 @@
 @Tags(['gpu'])
 library;
 
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -41,6 +42,7 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 /// Laid by pictures of their own beside the session's, from its cels and
 /// trees: one laid whole, one over the film laid first.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
 
   // Past a piece across ([FramePictureStore] lays a picture a piece at a

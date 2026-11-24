@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -66,6 +67,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   opensTheEnginesScreens();
   late Directory temp;
 

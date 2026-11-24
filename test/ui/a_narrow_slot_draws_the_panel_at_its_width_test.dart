@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// on the panel's own frame rail. They draw at the slot's width now, as the
 /// conte and the envelope have since R3 #11.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   // 🪦A helper stood here that set the TOP STRIP's overflow aside: only a
   // window under 736 gives a slot under 640, and below ~770 the strip ran
   // off its end. The strip gives way now (top-strip-narrow-overflow,

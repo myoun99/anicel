@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -55,6 +56,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// 🗣️F-289 (유저 2026-10-05): 「디렉션레이어 출력시, 그림이 디렉션레이어의
 /// 지시인데, 그게아니라 그림 그릴수있는 레이어니 거기 있는 그림 출력하도록」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

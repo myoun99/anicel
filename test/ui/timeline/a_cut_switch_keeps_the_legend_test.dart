@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -35,6 +36,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 /// 🗣️F-408 ② (유저 2026-10-19): 「다른 레전드 행도 점검하면서 법 통일」 — the
 /// x-sheet's corner is the same legend, kept the same way.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   for (final orientation in TimelineOrientation.values) {
     testWidgets('$orientation: a cut switch builds nothing of the legend '
         'header again', (tester) async {

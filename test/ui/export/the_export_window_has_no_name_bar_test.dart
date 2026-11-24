@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -37,6 +38,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// 내보내기는 지금위치로하고 그 왼쪽에 붙여서 위치 지정하고 출력합니다라는
 /// 텍스트」, with the progress of a run between them 「출력때만 보이게」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   late Directory temp;
 
   setUp(() {

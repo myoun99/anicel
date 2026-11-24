@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -27,6 +28,7 @@ import '../timeline/timeline_ruler_probe.dart' show timelineRulerPainter;
 /// zoom another was left at, and a save of a tab behind wrote down the one in
 /// front.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// The default project with drawing rows enough for the rows to scroll.
   Project manyRows() {
     final project = createDefaultProject();

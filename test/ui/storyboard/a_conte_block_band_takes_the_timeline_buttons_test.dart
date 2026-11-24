@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,6 +27,7 @@ import '../storyboard_conte_row_probe.dart';
 /// verbs. [conteTrackProject]: cut-1's conte row is three panels, [0,4)
 /// [4,8) [8,12).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const conteId = LayerId('cut-1-conte');
   const edit = ValueKey<String>('shared-edit-button');
 

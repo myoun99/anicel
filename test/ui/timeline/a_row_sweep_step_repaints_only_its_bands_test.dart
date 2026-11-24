@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,6 +39,7 @@ import '../../helpers/repaint_strays.dart';
 /// its first row's name, a row a step: the timeline's rail, the x-sheet's
 /// header strip (the rail on its side) and the storyboard's rail.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 48;
 
   /// Eight drawing rows and six S rows on one track.

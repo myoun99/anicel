@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import '../tool/machine_cache.dart';
 import 'helpers/a_shown_surface.dart';
+import 'helpers/screens_left_of_the_engine.dart';
 import 'helpers/temp_dir.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
@@ -116,14 +117,22 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // budgets (`EnginePictures.unownedPictureBytes`), red 5 of 5 in the
   // bundle CI ran and green alone. Asked after the file's own tearDowns,
   // and after the widget tree a test pumped is taken down — a screen its
-  // widgets free as they go is freed by then. Red is the test that left it.
+  // widgets free as they go is freed by then. Red is the test that left it:
+  // the screens it MADE are asked, and where each was made is told. A file
+  // of the ledger leaves the kinds it declares
+  // (test/helpers/screens_left_of_the_engine.dart).
+  GpuScreen.debugNoteWhereMade = true;
   var enteredBefore = 0;
-  var unfreedBefore = 0;
+  var madeBefore = GpuScreen.debugMade;
   tearDown(() {
     final entered = debugDeviceEnteredHere - enteredBefore;
     enteredBefore += entered;
-    final unfreed = GpuScreen.debugUnfreed - unfreedBefore;
-    unfreedBefore += unfreed;
+    final left = [
+      for (final made in GpuScreen.debugUnfreedSince(madeBefore))
+        if (!screensThisFileLeaves.any((kind) => '$made'.contains(kind.madeIn)))
+          made,
+    ];
+    madeBefore = GpuScreen.debugMade;
     expect(
       entered,
       0,
@@ -132,8 +141,8 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
           'engine\'s ran its body here, not on the engine\'s thread',
     );
     expect(
-      unfreed,
-      0,
+      [for (final made in left) _whereMade(made)],
+      isEmpty,
       reason:
           'this test left screens of the engine unfreed: their tiles stay '
           'for every test after it in the process',
@@ -203,6 +212,12 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
 /// The Documents home a test stands in for the user's: in the run's own
 /// temp ([testExecutable]).
 late final String _documents;
+
+/// Where a screen a test left was made: the app's frames of [made].
+String _whereMade(StackTrace? made) => [
+  for (final frame in '$made'.split('\n'))
+    if (frame.contains('package:anicel/')) frame.trim(),
+].join(' ← ');
 
 /// Corpus-wide input baseline (UI-R22F #1).
 ///

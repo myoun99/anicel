@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -36,6 +37,7 @@ import '../../helpers/repaint_strays.dart';
 /// is not a tick's: what playing changes once (the play button's face, a
 /// raster going still) settles, and the run is long enough for it to.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   // Long cuts: the window reads no loop's wrap and no cut change.
   const frames = 96;
 

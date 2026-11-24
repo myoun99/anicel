@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -42,6 +43,7 @@ class _CountedCut extends Cut {
 /// times over: a cut's hash walking 68 layers, once a seat, was 213ms of the
 /// 2,475ms sixteen presses on the film's ruler took (S5 cut 352, debug).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('a rebuild of the film hashes no cut', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));

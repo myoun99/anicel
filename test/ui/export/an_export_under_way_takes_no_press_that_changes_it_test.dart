@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import 'dart:async';
 import 'dart:io';
@@ -125,6 +126,7 @@ typedef _Window = ({
 /// press of its own ([ControlPressClaim]) and tells the reader nothing, as
 /// the switch rows do.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   opensTheEnginesScreens();
   late Directory temp;
 

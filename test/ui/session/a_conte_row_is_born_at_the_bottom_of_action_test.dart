@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -25,6 +26,7 @@ import '../storyboard_conte_row_probe.dart';
 /// row stood on is the bottom one: above it — where they went — is not the
 /// bottom.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const cut2 = CutId('cut-2');
   const cel2 = LayerId('cut-2-cel');
 

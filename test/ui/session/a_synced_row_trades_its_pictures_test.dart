@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -24,6 +25,7 @@ import '../../helpers/a_cel_of_one_tile.dart';
 /// A range moved on the same frames onto another row of its attach group
 /// trades the rows' PICTURES: no cel, name, exposure or link moves.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   TestWidgetsFlutterBinding.ensureInitialized();
 
   /// A session whose base has cels on frames 0 and 2, under [mirrors]

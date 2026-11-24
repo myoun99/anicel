@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -59,6 +60,7 @@ import '../helpers/surface_rgba_in_place.dart';
 /// selection's hard outline. The paste's law, by every road the stamp has —
 /// the press on the canvas, the drag's trail, 원래 위치에 붙여넣기.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   // The one drawable row's timeline: three single cels, a cel HELD for two
   // frames (3–4), an EMPTY frame (5) and one more cel (6).
   const cels = ['c0', 'c1', 'c2', 'c3', 'c4'];

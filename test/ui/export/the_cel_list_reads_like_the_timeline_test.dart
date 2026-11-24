@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,6 +38,7 @@ import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 /// the namer's de-dup suffix rides on it, so re-walking it to fix a list
 /// would rename exported files.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

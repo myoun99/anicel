@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -14,6 +15,7 @@ import '../../helpers/named_finders.dart';
 /// The timeline's and the x-sheet's half is
 /// `timeline/a_hidden_folder_dims_what_it_hides_test`.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('a row turned off by its eye wears its name at the rail\'s '
       'off, and on again its own ink — the S row and the transition row, '
       'each by its own eye', (tester) async {

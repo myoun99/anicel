@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,6 +48,7 @@ import '../../helpers/timeline_host.dart';
 /// and a language switch — the panel strip is what hears the language and
 /// builds the tab again (`OpenTabContent`), and the tab alone has no strip.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// Either tab as the app lays it out in a 1700 × 900 window (🔬1069 ×
   /// 396, both, 2026-10-25).
   const appTab = Size(1069, 396);

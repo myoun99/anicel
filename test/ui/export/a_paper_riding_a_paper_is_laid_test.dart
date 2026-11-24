@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
@@ -33,6 +34,7 @@ import '../../helpers/export_preview_probe.dart';
 /// it shows its base's blocks through its cell links. The Cels tab laid such
 /// a paper as nothing, reading the row's own timeline.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -117,6 +118,7 @@ Future<void> _twirl(WidgetTester tester, int slot) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   for (final (slot, id, what) in [
     (0, _withSoundId, 'WITH a sound imported'),
     (1, _emptyId, 'with NO sound imported'),

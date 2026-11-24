@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -51,6 +52,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// The cut's FILM is one of its documents: a row at the foot of the list, a
 /// block a cut, written as the Sequence tab writes that cut.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 

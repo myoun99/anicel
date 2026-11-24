@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -71,6 +72,7 @@ Future<EditorSessionManager> _pumpStoryboard(
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('D1: with a leading gap, the storyboard start button PARKS at '
       'global 0 — the axis origin gaps included, where all-cuts play '
       'begins', (tester) async {

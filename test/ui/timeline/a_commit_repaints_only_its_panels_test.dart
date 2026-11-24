@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -38,6 +39,7 @@ import '../../helpers/repaint_strays.dart';
 /// what the FIRST edit of a session changes once (the undo door lighting)
 /// is not what every edit costs.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 96;
 
   Project project() => Project(

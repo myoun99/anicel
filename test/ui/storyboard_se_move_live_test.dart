@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -109,6 +110,7 @@ Finder _paperAt(int startFrame) =>
     find.byKey(ValueKey<String>('storyboard-se-paper-$_seLayerId-$startFrame'));
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(TimelineDoubleTapGate.reset);
 
   testWidgets('a REAL mouse drag inside the selection slides the sound — '

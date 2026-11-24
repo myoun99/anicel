@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -35,6 +36,7 @@ import '../../helpers/settle_async.dart';
 /// 아니라」), Q2 a (「상단 띠에서는 패널마다 버튼 하나 — 버튼이 곧 바닥의
 /// 탭」), Q3 c (「지금 자리 그대로 — 상단 띠의 그 자리는 처음엔 비어 있다」).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   final sheets = EditorWorkspace.railGroupId(right: true, slot: 2);
   final media = EditorWorkspace.railGroupId(right: true, slot: 3);
   final onion = EditorWorkspace.railGroupId(right: true, slot: 4);

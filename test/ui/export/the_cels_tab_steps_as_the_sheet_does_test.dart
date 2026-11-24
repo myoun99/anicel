@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +44,7 @@ import '../../helpers/paper_editing_kit.dart';
 /// as ◀ ▶ do, a row's step the rail's rows; no window over the preview,
 /// and a tick at each landing as the 「플립 진동」 setting says.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() {
     AppExport.settings.value = AppExportSettings();

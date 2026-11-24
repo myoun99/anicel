@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -39,6 +40,7 @@ typedef _Inputs = ({
 /// cluster on screen to be the one the changed panel builds when mounted
 /// afresh.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   final layers = [
     Layer(
       id: const LayerId('a'),
