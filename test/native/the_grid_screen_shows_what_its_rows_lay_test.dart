@@ -431,6 +431,161 @@ void main() {
     expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 
+  group('🚨rows that scroll over a box that stands still — the timeline\'s '
+      '(card a-fast-vertical-timeline-scroll-paints-row-pictures-a-notch-'
+      'behind-their-labels)', () {
+    // The GPU finishes at once, till the test holds it.
+    late bool holding;
+    late List<Completer<GpuWaited?>> gates;
+    setUp(() {
+      holding = false;
+      gates = [];
+      debugOpenEngineScreen = (_, width, height) async {
+        surface = shownSurfaceOf(width, height);
+        surfaces.add(surface);
+        return ScreenTexture.debugOnSurface(
+          surface,
+          done: () {
+            if (!holding) {
+              return Future.value();
+            }
+            gates.add(Completer<GpuWaited?>());
+            return gates.last.future;
+          },
+        );
+      };
+    });
+
+    /// A box 100 × 100, 20 in from the view's left, whose rows — [rows],
+    /// 60 × 10 each, 10 in, at [tops] — scroll inside it by [scroll]: the
+    /// timeline's rows' list is the box's child, so a scroll moves the rows
+    /// over a box that stands still.
+    Widget rowsScrollingInABox(
+      List<_Row> rows,
+      ScrollController scroll, {
+      required List<double> tops,
+    }) => Directionality(
+      textDirection: TextDirection.ltr,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 20),
+          child: SizedBox.square(
+            dimension: 100,
+            child: TimelineGridScreenHost(
+              child: SingleChildScrollView(
+                controller: scroll,
+                child: SizedBox(
+                  height: 400,
+                  child: Stack(
+                    children: [
+                      for (final (index, row) in rows.indexed)
+                        Positioned(
+                          key: ValueKey(index),
+                          left: 10,
+                          top: tops[index],
+                          width: 60,
+                          height: 10,
+                          child: TimelineGridScreenSlot(
+                            child: CustomPaint(painter: row),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Rect shown(WidgetTester tester) =>
+        tester.layers.whereType<TextureLayer>().single.rect;
+
+    testWidgets('the frame up while the one laid where they went is on the '
+        'GPU stands where its rows went — under the words Flutter draws '
+        'there', (tester) async {
+      aSmallView(tester);
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(
+        rowsScrollingInABox([_Row(() => tile)], scroll, tops: const [20]),
+      );
+      await tester.pump();
+      // Up once the GPU has finished it: shown by the frame after.
+      await tester.pump();
+      final atFirst = shown(tester);
+      holding = true;
+
+      scroll.jumpTo(15);
+      await tester.pump();
+      expect(gates, hasLength(1), reason: '⛔전제: laid where the row went');
+      expect(
+        shown(tester),
+        atFirst.shift(const Offset(0, -15)),
+        reason: 'the frame up, fifteen up with its row',
+      );
+
+      scroll.jumpTo(30);
+      await tester.pump();
+      expect(gates, hasLength(1), reason: '⛔전제: one frame on the GPU');
+      expect(
+        shown(tester),
+        atFirst.shift(const Offset(0, -30)),
+        reason: 'from where its row stood as IT was laid, not as the frame '
+            'on the GPU was',
+      );
+
+      gates.last.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(gates, hasLength(2), reason: '⛔전제: laid again where it went');
+      // The box stands still: every frame is laid at the same place of it,
+      // its rows wherever they stood.
+      expect(
+        shown(tester),
+        atFirst.shift(const Offset(0, -15)),
+        reason: 'the frame laid at fifteen, up with its row at thirty',
+      );
+      gates.last.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(
+        shown(tester),
+        atFirst,
+        reason: 'the frame laid at thirty, where it was laid',
+      );
+      // Thirty logical pixels up: sixty of the screen's.
+      expect(
+        surface.fingerprint(),
+        fingerprintBytes(screenOf(laidWhole, top: 136, bottom: 156)),
+      );
+    });
+
+    testWidgets('rows that moved apart leave the frame up where it was laid '
+        '— till the one laid where they went is up (F-602)', (tester) async {
+      aSmallView(tester);
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      final rows = [_Row(() => tile), _Row(() => tile)];
+      await tester.pumpWidget(
+        rowsScrollingInABox(rows, scroll, tops: const [20, 40]),
+      );
+      await tester.pump();
+      await tester.pump();
+      final atFirst = shown(tester);
+      holding = true;
+
+      await tester.pumpWidget(
+        rowsScrollingInABox(rows, scroll, tops: const [40, 20]),
+      );
+      await tester.pump();
+      expect(gates, hasLength(1), reason: '⛔전제: laid where the rows went');
+      expect(shown(tester), atFirst, reason: 'no one shift moved them');
+    });
+  });
+
   testWidgets('a scroll down past what the screen holds lays it again, and '
       'back up', (tester) async {
     aSmallView(tester);
