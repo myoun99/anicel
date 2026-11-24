@@ -286,6 +286,61 @@ fn divisions_are_the_machines() {
     check(&cases, |n, d, _| i128::from(n / d));
 }
 
+/// 🚨A quotient under 2^16 is guessed in f32 and checked (wide.wgsl's
+/// `wide128_div`): at every edge of a quotient, where a guess a part out
+/// would land on its neighbour — n at q · d, one under it, the last
+/// before (q + 1) · d, and either side of the half divr rounds at —, for
+/// divisors of one word to sixty-two bits (a dividend past 2^64 there)
+/// and quotients up to 2^16 − 1, the floor and divr are the long
+/// division's, asked for sixteen bits and for the fewest that hold the
+/// quotient. ⚠️A divisor a few off a power of two only ever has its guess
+/// one over: 2^24 + 3 and the two of scattered bits are where f32 rounds d
+/// up and n down — a guess one under. And d · q carries out of its
+/// middle word only where d's high word times q leaves that word at
+/// 2^32 − 1: 0x0101_0101 · 255 and 0x0001_0001 · 65 535 do.
+#[test]
+fn a_guessed_quotient_is_the_long_division_s_at_its_edges() {
+    let least = |quotient: u128| (128 - quotient.leading_zeros()).max(1);
+    let mut cases = Vec::new();
+    let divisors = [
+        1u64,
+        3,
+        255,
+        65_535,
+        (1 << 24) + 3,
+        (1 << 31) + 1,
+        (1 << 46) - 3,
+        0x0001_0001_ffff_ffff,
+        0x0123_4567_89ab_cdef,
+        0x0101_0101_ffff_ffff,
+        (1 << 55) + 7,
+        0x1234_5678_9abc_def0,
+        (1 << 62) - 1,
+    ];
+    for d in divisors {
+        let wide = u128::from(d);
+        for q in [0u128, 1, 2, 255, 256, 65_534, 65_535] {
+            let at = q * wide;
+            let half = wide / 2;
+            let near = [at.checked_sub(1), Some(at), Some(at + wide - 1), Some(at + half), Some(at + half + 1)];
+            for n in near.into_iter().flatten() {
+                for (rounded, quotient) in [(false, n / wide), (true, (2 * n + wide) / (2 * wide))] {
+                    if quotient < 1 << 16 {
+                        for bits in [16, least(quotient)] {
+                            cases.push((n, d, bits, rounded));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (&(n, d, bits, rounded), got) in cases.iter().zip(divide(&cases)) {
+        let d = u128::from(d);
+        let want = if rounded { (2 * n + d) / (2 * d) } else { n / d };
+        assert_eq!(u128::from(got), want, "n {n} d {d} bits {bits} rounded {rounded}");
+    }
+}
+
 /// Runs each `(n, d, bits, rounded)` through wide128_div — wide128_divr
 /// where it rounds — and returns the quotients.
 fn divide(cases: &[(u128, u64, u32, bool)]) -> Vec<u64> {
