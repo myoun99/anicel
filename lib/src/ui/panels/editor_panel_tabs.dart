@@ -600,6 +600,14 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                           );
                         },
                       ),
+                      // The sill paints its looks in place: what stands on it
+                      // (the floating region's collapse button) fades out under
+                      // an opacity while a tab is dragged
+                      // ([_buildSillTrailing]), and a look laid on the sheet
+                      // would not fade with it. ↩️fca37e020 put it in place
+                      // because the ground lay over the sheet's under layer;
+                      // the sheet lies on the ground now (ebad5ece3), and the
+                      // fade is the reason left.
                       tail: SizedBox(
                         height: height,
                         child: LiveSheet.inPlace(child: _buildSillTrailing()),
