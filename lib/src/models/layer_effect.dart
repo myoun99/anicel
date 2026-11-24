@@ -1390,6 +1390,22 @@ typedef EffectWorn = ({StringId owner, StringId wearer});
 /// (`FxPluginOutcomes`), and where its header asks.
 typedef FxPluginWorn = ({StringId owner, EffectId effect, StringId wearer});
 
+/// What a picture's plug-in steps told as they ran or were kept — the last
+/// of each place it is worn at, its sample and whether it failed: told
+/// again, as the frame it is shown for, each time the picture is shown
+/// (`EngineFramePicture.tellAs`).
+///
+/// 🚨BY WHERE IT IS WORN, NOT BY WHO HEARD (card the-first-stroke-on-a-frame-
+/// come-to-runs-its-plugins-once ③, 2026-11-25): one picture is the frame
+/// of every frame whose key is its — a plug-in that reads no moment draws
+/// a cel alike at each frame it is held ([ResolvedLayerEffect.frame]) —
+/// and who hears a run is its frame's ([FxPluginRun.told]). ↩️Kept by who
+/// heard the run that made it and told again to that one, a picture shown
+/// at another frame of its key told the frame it was made at, and the
+/// other's header never greyed.
+typedef FxPluginRunsTold =
+    Map<FxPluginWorn, ({ResolvedLayerEffect sample, bool failed})>;
+
 /// An effect with its parameters SAMPLED at one frame — what the composite
 /// carries and what the caches compare. Values are in [specs]' order, which
 /// is the only order anything builds them in.
@@ -1441,8 +1457,21 @@ class ResolvedLayerEffect {
   /// the one kind whose sample is not its values alone. Every reader that
   /// asks whether two frames show the same picture (the signature a run of
   /// frames shares, `computeCutFrameCompositeSignature`) compares samples,
-  /// so a plugin's frames are never taken for one another, bound to a run
-  /// or not.
+  /// so a plugin's frames are never taken for one another unbound.
+  ///
+  /// 🚨★BOUND, ITS RUN SAYS IT ([==]; card the-first-stroke-on-a-frame-
+  /// come-to-runs-its-plugins-once ③, 2026-11-25): the run is told this
+  /// frame (`deviceFxPluginBinding`) and is signed by it only where its
+  /// plugin reads the moment (`FxPluginRunner.readsTheMoment` — card
+  /// a-plugin-step-is-keyed-by-a-moment-it-may-not-read, 11-16). ↩️This
+  /// was compared beside the run, so a plug-in that reads no moment was
+  /// another sample at every frame all the same: a frame made ahead never
+  /// read the step the pen's frame kept, ran its own, and no two frames of
+  /// one cel shared a picture — 🔬main PC, S5_BA cut 354 copy, an invert on
+  /// the pen's row, seven strokes back and forth over frames 1 and 40:
+  /// 33–95 plug-in runs before a stroke's first ink, the frames' pictures
+  /// 1.1–2.2 GB (64 MiB with it off) — 1–18 and 128–160 MiB since. The
+  /// tests built their samples with no frame, so none saw it.
   final int? frame;
 
   /// Where a PLUGIN's sample is worn — null for every other kind's, and on
@@ -1557,8 +1586,8 @@ class ResolvedLayerEffect {
           other.stand == stand &&
           mapEquals(other.points, points) &&
           mapEquals(other.layers, layers) &&
-          other.frame == frame &&
-          other.run == run;
+          other.run == run &&
+          (run != null || other.frame == frame);
 
   @override
   int get hashCode => Object.hash(
@@ -1572,7 +1601,7 @@ class ResolvedLayerEffect {
     Object.hashAll([
       for (final entry in layers.entries) Object.hash(entry.key, entry.value),
     ]),
-    frame,
+    run == null ? frame : null,
     run,
   );
 

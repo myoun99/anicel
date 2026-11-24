@@ -14,9 +14,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/string_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
+import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId, effectPropertyLanes;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -46,18 +48,19 @@ void main() {
   const effectId = EffectId('shift');
   const textToolTrack = TrackId('text-tool-track');
 
-  /// Whether [owner]'s header of [effect] marks the first frame failed,
-  /// asked as the rails ask it ([effectPropertyLanes]).
+  /// Whether [owner]'s header of [effect] marks frame [at] failed — the
+  /// first by default —, asked as the rails ask it ([effectPropertyLanes]).
   bool headerFailed(
     InstalledFxPlugins plugins,
     LayerEffect effect,
-    StringId owner,
-  ) => effectPropertyLanes(
+    StringId owner, {
+    int at = 0,
+  }) => effectPropertyLanes(
     [effect],
     isExpanded: (_) => false,
     hasPlugin: plugins.has,
     pluginOutcomes: (outcomes: plugins.outcomes, owner: owner),
-  ).first.pluginFailures!.failedAt(0);
+  ).first.pluginFailures!.failedAt(at);
 
   /// The plugin's effect as the project holds it, on the row [on].
   LayerEffect effectNow(
@@ -101,6 +104,40 @@ void main() {
     );
   }
 
+  /// [project] with its row's first cel held [frames] frames.
+  Project held(Project project, int frames) {
+    if (frames == 1) {
+      return project;
+    }
+    final track = project.tracks.single;
+    final cut = track.cuts.single;
+    return project.copyWith(
+      tracks: [
+        track.copyWith(
+          cuts: [
+            cut.copyWith(
+              layers: [
+                for (final layer in cut.layers)
+                  if (layer.id == textToolLayerId)
+                    layer.copyWith(
+                      timeline: {
+                        ...layer.timeline,
+                        0: TimelineExposure.drawing(
+                          textToolFrameId,
+                          length: frames,
+                        ),
+                      },
+                    )
+                  else
+                    layer,
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   /// A contrast raised: black stays black, the paper does not stay paper.
   LayerEffect raisedContrast() => LayerEffect(
     id: const EffectId('contrast'),
@@ -129,9 +166,9 @@ void main() {
   /// row is in, [wornByAFolder] — over a cel of [paper] alone at the first
   /// frame, the brush in hand — and with [drawings] two, a cel of paper and
   /// ink at the second — and [onAnotherRow], another row in hand, the
-  /// plugin's drawn from what the canvas keeps of it: where on the screen
-  /// the paper is, and whether the effect the project holds failed at the
-  /// first frame.
+  /// plugin's drawn from what the canvas keeps of it — its first cel held
+  /// [heldFor] frames: where on the screen the paper is, and whether the
+  /// effect the project holds failed at the first frame.
   Future<({Offset paper, bool Function() failed})> onPaper(
     WidgetTester tester,
     _DrawsOnlyOverInk plugin, {
@@ -140,6 +177,7 @@ void main() {
     bool onAnotherRow = false,
     List<LayerEffect> before = const [],
     bool wornByAFolder = false,
+    int heldFor = 1,
   }) async {
     final plugins = await installedShiftingFxPlugin(
       tester,
@@ -151,10 +189,13 @@ void main() {
       kind: EffectKind.plugin,
       plugin: as ?? shiftingFxPluginDescription,
     );
-    final project = textToolProject(
-      drawings: drawings,
-      emptyLayer: onAnotherRow,
-      effects: [...before, if (!wornByAFolder) effect],
+    final project = held(
+      textToolProject(
+        drawings: drawings,
+        emptyLayer: onAnotherRow,
+        effects: [...before, if (!wornByAFolder) effect],
+      ),
+      heldFor,
     );
     await pumpTextToolApp(
       tester,
@@ -355,6 +396,39 @@ void main() {
       reason: 'the inked cel is shown again',
     );
   });
+
+  // 🚨ONE PICTURE AT TWO FRAMES IS TOLD AT BOTH (card the-first-stroke-on-
+  // a-frame-come-to-runs-its-plugins-once ③): a plugin that reads no
+  // moment draws its cel alike at every frame it is held, so the frames
+  // share one picture (`ResolvedLayerEffect.frame`) — and the header of
+  // the second asks of the second.
+  for (final onAnotherRow in [false, true]) {
+    testWidgets('🚨a plugin that reads no moment, failed on a cel held two '
+        'frames, is marked failed at the second as at the first — its '
+        'plugin not run again — another row in hand $onAnotherRow', (
+      tester,
+    ) async {
+      final plugin = _DrawsOnlyOverInk(paper, readsTheMoment: false);
+      await onPaper(tester, plugin, heldFor: 2, onAnotherRow: onAnotherRow);
+      final plugins = tester
+          .widget<HomePage>(find.byType(HomePage))
+          .fxPlugins!;
+      bool failedAt(int frame) => headerFailed(
+        plugins,
+        effectNow(tester),
+        textToolLayerId,
+        at: frame,
+      );
+      await lendBothClocks(tester, rounds: 20);
+      final runs = plugin.renders;
+
+      sessionOf(tester).selectFrameIndex(1);
+      await pumpFrames(tester, 12);
+
+      expect(await settleAsync(tester, () => failedAt(1)), isTrue);
+      expect(plugin.renders, runs, reason: 'one picture: not run again');
+    });
+  }
 
   for (final onAnotherRow in [false, true]) {
     testWidgets('🚨a plugin that failed is still marked failed once a key is '
@@ -586,11 +660,11 @@ void main() {
 /// any picture, where it is told no paper; draws it as it is over anything
 /// else, or at [draws] and over.
 final class _DrawsOnlyOverInk implements FxPluginRunner {
-  _DrawsOnlyOverInk(this.paper) : black = false;
+  _DrawsOnlyOverInk(this.paper, {this.readsTheMoment = true}) : black = false;
 
   /// Draws only over a pixel of black ink — whatever else the picture
   /// holds: what a chain before it made of the paper, or a page.
-  _DrawsOnlyOverInk.black() : paper = null, black = true;
+  _DrawsOnlyOverInk.black() : paper = null, black = true, readsTheMoment = true;
 
   /// Whether it is ink only where it is black.
   final bool black;
@@ -604,8 +678,9 @@ final class _DrawsOnlyOverInk implements FxPluginRunner {
   @override
   Future<void>? get toCome => null;
 
+  /// Whether it is told the frame: by default, as a plugin may be.
   @override
-  bool get readsTheMoment => true;
+  final bool readsTheMoment;
 
   @override
   int? reach(Float64List values, FxPluginMoment moment) => 0;

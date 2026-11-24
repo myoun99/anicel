@@ -965,7 +965,7 @@ class FramePictures implements PlaybackPictures {
       // Asked once it is made: a cel it was made without is noted then.
       key = keyOfStack(nodes, picture, page: page);
     }
-    return store.peek(key)?.hold();
+    return store.peek(key)?.hold()?..tellAs(pluginStepsOf(nodes));
   }
 
   /// What [heldNodes] weighed when the frames' pictures last gave way to

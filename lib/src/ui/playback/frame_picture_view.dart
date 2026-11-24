@@ -31,6 +31,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         LiveRows,
         LiveSurfaceTokens,
         StackedFrame,
+        pluginStepsOf,
         waitsForItsPlugins;
 import '../canvas/picture_up_view.dart';
 import '../canvas/shown_cels.dart' show ShownCels;
@@ -701,6 +702,8 @@ class _FramePictureViewState extends State<FramePictureView>
   void _look() {
     final key = _pictures.keyOfStack(widget.nodes, widget.picture);
     if (key == _showing && _shown != null) {
+      // Shown for the frame handed now, which may be another of its key's.
+      _shown!.tellAs(pluginStepsOf(widget.nodes));
       return;
     }
     // ⛔Not peeked under this view's own key ([_keptUnder]) where a landing
@@ -710,6 +713,7 @@ class _FramePictureViewState extends State<FramePictureView>
     final there = _store.peek(key);
     if (there != null) {
       _take(key, there);
+      there.tellAs(pluginStepsOf(widget.nodes));
       return;
     }
     if (key == _showing) {
@@ -1094,7 +1098,7 @@ class _FramePictureViewState extends State<FramePictureView>
       shown
         ..removeListener(_written)
         ..release();
-      _shown = there.hold();
+      _shown = there.hold()..tellAs(pluginStepsOf(widget.nodes));
       there.addListener(_written);
     }
   }

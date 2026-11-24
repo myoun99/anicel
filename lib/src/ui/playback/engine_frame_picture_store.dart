@@ -9,7 +9,8 @@ import '../../core/one_pass_at_a_time.dart';
 import '../../core/pin_counts.dart';
 import '../../core/telling.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
+import '../../models/layer_effect.dart'
+    show FxPluginRunsTold, ResolvedLayerEffect;
 import '../../native/app_gpu_engine.dart' show EnginePictures;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
@@ -63,9 +64,9 @@ class EngineFramePicture extends ChangeNotifier {
   );
 
   /// 🚨WHAT ITS PLUG-INS' STEPS TOLD as it was made and as each was composed
-  /// in since — told again each time it is held to be shown ([hold]): a
-  /// picture handed back with no run tells how its steps went, as a step
-  /// kept past its recording does (`_Stage.takeKept`), card
+  /// in since — told again each time it is shown, as the frame it is shown
+  /// for ([tellAs]): a picture handed back with no run tells how its steps
+  /// went, as a step kept past its recording does (`_Stage.takeKept`), card
   /// a-cached-failed-picture-loses-its-mark's law (`FxPluginOutcomes`).
   /// ↩️Only its making told until 2026-11-12: a frame given back by an
   /// undo — a cel joined onto another and split again, an earlier
@@ -77,10 +78,27 @@ class EngineFramePicture extends ChangeNotifier {
   /// A hold on the picture by one that shows it; balanced by [release].
   EngineFramePicture hold() {
     _holds += 1;
-    for (final (:run, :failed) in _told.values) {
-      run.tell(failed: failed);
-    }
     return this;
+  }
+
+  /// Tells each of [steps] — the plug-in steps of the frame it is shown for
+  /// (`pluginStepsOf`) — how the same step went here, where one did: its
+  /// run, the frame's, is who hears ([FxPluginRunsTold]).
+  ///
+  /// 🚨THE ONE IT IS SHOWN FOR, NOT THE ONE IT WAS MADE FOR (card the-first-
+  /// stroke-on-a-frame-come-to-runs-its-plugins-once ③, 2026-11-25): a run
+  /// equal to another makes one picture and fails alike, so a picture kept
+  /// from either is told to the one that asks ([FxPluginRun.==]). ↩️Told by
+  /// the runs that made it as it was held ([hold]), a picture of two frames
+  /// told the frame it was made at, and the header of the other never
+  /// greyed.
+  void tellAs(List<ResolvedLayerEffect> steps) {
+    for (final step in steps) {
+      if (_told[step.worn] case (:final sample, :final failed)
+          when sample == step) {
+        step.run?.tell(failed: failed);
+      }
+    }
   }
 
   void release() {

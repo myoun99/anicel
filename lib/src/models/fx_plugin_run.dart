@@ -91,12 +91,6 @@ abstract interface class FxPluginRunner {
 /// Who hears how a plugin's run went — failed or drew ([FxPluginRun.told]).
 typedef FxPluginTold = void Function({required bool failed});
 
-/// What the runs a picture's plug-in steps were told — the last run of each
-/// teller, and whether it failed — kept to be told again, by that run
-/// ([FxPluginRun.tell]), each time the picture is shown
-/// (`EngineFramePicture.hold`).
-typedef FxPluginRunsTold = Map<FxPluginTold, ({FxPluginRun run, bool failed})>;
-
 /// What a plugin's effect is RUN WITH at one frame of one cut: this
 /// device's build of it, the moment, and the picture of each row its layer
 /// parameters name — that row's own, as its cel holds it at that frame

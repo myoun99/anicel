@@ -492,9 +492,18 @@ bool waitsForItsPlugins(List<CompositeNode<CanvasStackRow>> nodes) =>
 /// the order the tree is walked — what a frame's key signs of its plug-ins
 /// (`FramePictures._standing`).
 List<FxPluginRun> pluginRunsOf(List<CompositeNode<CanvasStackRow>> nodes) => [
+  for (final step in pluginStepsOf(nodes)) ?step.run,
+];
+
+/// Each plugin's step [nodes] hold, its sample as bound to its run, in the
+/// order the tree is walked ([pluginRunsOf]) — what a picture shown for
+/// the frame tells as it (`EngineFramePicture.tellAs`).
+List<ResolvedLayerEffect> pluginStepsOf(
+  List<CompositeNode<CanvasStackRow>> nodes,
+) => [
   for (final node in preorderNodes(nodes))
     for (final effect in _chainOf(node))
-      if (effect.kind == EffectKind.plugin) ?effect.run,
+      if (effect.kind == EffectKind.plugin && effect.run != null) effect,
 ];
 
 List<ResolvedLayerEffect> _chainOf(CompositeNode<CanvasStackRow> node) =>
