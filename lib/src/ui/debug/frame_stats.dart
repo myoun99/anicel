@@ -14,6 +14,7 @@ import 'measurement_mode.dart';
 import 'pointer_clock.dart';
 import 'screen_asked.dart';
 import 'stroke_steps.dart';
+import 'warm_steps.dart';
 
 /// What a screen's finish went to (`ScreenFinish`), each part's p50 and
 /// p95 in milliseconds.
@@ -98,6 +99,9 @@ class FrameStatsSnapshot {
     required this.firstUpP50,
     required this.firstUpWorst,
     required this.landing,
+    required this.warmsPerSecond,
+    required this.warmP50,
+    required this.warmP95,
     required this.gpuBehind,
     required this.gpuBehindWorst,
     required this.gpuClocked,
@@ -312,6 +316,19 @@ class FrameStatsSnapshot {
   final double firstUpWorst;
   final Landing? landing;
 
+  /// The playback warmer's pictures made a second, and how long each of
+  /// the newest took from the ask to its landing ([WarmSteps]) — a frame's
+  /// picture made slower than the frame lasts leaves a run behind it.
+  ///
+  /// 🗣️H74 (card cut-346-plays-with-frames-missing-on-the-galaxy-tab): a
+  /// Galaxy Tab played a cut with frames missing once a transformed row
+  /// was shown, and no line here said whether for room or for pace.
+  /// ⚠️Over the newest pictures, not this window's frames: with nothing
+  /// warmed they are the last ones'.
+  final double warmsPerSecond;
+  final double warmP50;
+  final double warmP95;
+
   /// The submits of the app's engine the GPU had not said it finished, as
   /// of the device's last poll (`GpuEngine.submitsBehind`): as this window
   /// was published, and the most read at a frame built since the last
@@ -494,6 +511,7 @@ abstract final class FrameStats {
     int points,
     int pointerMicros,
     int steps,
+    int pictures,
   })?
   _lastCounted;
 
@@ -597,6 +615,7 @@ abstract final class FrameStats {
     _behindWorst = null;
     PointerClock.forget();
     StrokeSteps.forget();
+    WarmSteps.forget();
     latest.value = null;
   }
 
@@ -708,6 +727,7 @@ abstract final class FrameStats {
     final dabs = [...StrokeSteps.dabsKept]..sort();
     final held = [...StrokeSteps.heldMicros]..sort();
     final strokeUps = [...StrokeSteps.upMicros]..sort();
+    final warms = [...WarmSteps.madeMicros]..sort();
     final firstUps = [...StrokeSteps.firstUpMicros]..sort();
     final behind = _readBehind();
     final behindWorst = _behindWorst;
@@ -722,6 +742,7 @@ abstract final class FrameStats {
       points: PointerClock.pointsCounted,
       pointerMicros: PointerClock.microsCounted,
       steps: StrokeSteps.stepsCounted,
+      pictures: WarmSteps.picturesCounted,
     );
     final before = _lastCounted;
     _lastCounted = counted;
@@ -817,6 +838,9 @@ abstract final class FrameStats {
       firstUpP50: _percentileMillis(firstUps, 0.50),
       firstUpWorst: _percentileMillis(firstUps, 1.0),
       landing: StrokeSteps.landing,
+      warmsPerSecond: aSecond(counted.pictures, before?.pictures),
+      warmP50: _percentileMillis(warms, 0.50),
+      warmP95: _percentileMillis(warms, 0.95),
       gpuBehind: behind,
       gpuBehindWorst: behindWorst,
       gpuClocked: engine?.clocked,

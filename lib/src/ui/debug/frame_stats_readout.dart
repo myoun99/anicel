@@ -227,6 +227,14 @@ abstract final class FrameStatsLines {
     'COMPILE ${_compileWords(stats.compiles)}',
   ];
 
+  /// The playback warmer's pace (H74, [FrameStatsSnapshot.warmsPerSecond]):
+  /// the frame pictures it lands a second, and how long the newest took to
+  /// make — beside a frame's time, whether it can keep up with a run.
+  static List<String> warm(FrameStatsSnapshot stats) => <String>[
+    'WARM    ${stats.warmsPerSecond.toStringAsFixed(1)} pics/s  '
+        'p50${_ms(stats.warmP50)}  p95${_ms(stats.warmP95)}',
+  ];
+
   /// The retained raster: the layer and picture caches and the bakes.
   static List<String> caches(FrameStatsSnapshot stats) => <String>[
     'layer   cache ${stats.layerCacheCount}  '

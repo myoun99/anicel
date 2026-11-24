@@ -32,6 +32,8 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show CanvasLayerImageRequest, CanvasStackRow, EngineStackScreen, StackedFrame;
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/warm_steps.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -1255,6 +1257,58 @@ void main() {
         );
         scheduler.dispose();
         f.layerImages.dispose();
+      });
+    });
+
+    testWidgets('each picture it lands is told the frame statistics, with '
+        'how long it took — and none while they are off (H74)', (
+      tester,
+    ) async {
+      addTearDown(MeasurementMode.reset);
+      addTearDown(WarmSteps.forget);
+      await tester.runAsync(() async {
+        const slow = Duration(milliseconds: 40);
+        Future<void> warmOnce() async {
+          final f = inked();
+          final scheduler = PlaybackPrerenderScheduler(
+            pictures: f.pictures,
+            resolveCut: (_) => four(),
+            idleDelay: Duration.zero,
+            beforeCompose: (_, _) => Future<void>.delayed(slow),
+          );
+          scheduler.follow(
+            PlayingDemand(
+              totalFrames: 1,
+              loops: () => true,
+              playhead: () => 0,
+              picturesOf: (frame) => [(
+                cut: four(),
+                frameIndex: frame,
+                paintPaper: true,
+                ghosts: FrameGhosts.none,
+              )],
+              playlistFrameOf: (_, frameIndex) => frameIndex,
+            ),
+          );
+          await patiently(scheduler.idle);
+          scheduler.dispose();
+          f.layerImages.dispose();
+        }
+
+        MeasurementMode.frameStats.value = false;
+        WarmSteps.forget();
+        await warmOnce();
+        expect(WarmSteps.picturesCounted, 0, reason: 'the statistics are off');
+
+        MeasurementMode.frameStats.value = true;
+        await warmOnce();
+        expect(WarmSteps.picturesCounted, 1);
+        expect(
+          WarmSteps.madeMicros.single,
+          greaterThanOrEqualTo(slow.inMicroseconds),
+          reason: 'from the ask to the landing — what a frame read from '
+              'outside the cel store is part of it',
+        );
       });
     });
 

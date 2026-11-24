@@ -545,7 +545,7 @@ List<String> everyLine(DebugReading reading) => [
 ];
 
 /// The time column's lines: the frame clock's, the screens', the GPU's,
-/// the engine's places, then the engine's own.
+/// the playback warmer's, the engine's places, then the engine's own.
 List<String> timeLines(DebugReading reading) {
   final stats = reading.stats;
   return [
@@ -554,6 +554,7 @@ List<String> timeLines(DebugReading reading) {
       ...FrameStatsLines.frame(stats),
       ...FrameStatsLines.screen(stats),
       ...FrameStatsLines.gpu(stats),
+      ...FrameStatsLines.warm(stats),
     ],
     ...EngineStages.lines(reading.stages, clocked: reading.clocked),
     ...reading.engine,
