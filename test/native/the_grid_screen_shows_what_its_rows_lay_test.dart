@@ -1361,6 +1361,85 @@ void main() {
 
   // 타임라인/콘티 리뷰 2026-11-09 H: it let go of what it laid as it went,
   // and was not laid out again to paint it anew.
+  testWidgets('a row moved onto another grid\'s screen lays anew there: '
+      'what the frame up of the screen it left showed is not shown by this '
+      'one', (tester) async {
+    aSmallView(tester);
+    var holding = false;
+    final gates = <Completer<GpuWaited?>>[];
+    debugOpenEngineScreen = (_, width, height) async {
+      final opened = shownSurfaceOf(width, height);
+      surfaces.add(opened);
+      return ScreenTexture.debugOnSurface(
+        opened,
+        done: () {
+          if (!holding) {
+            return Future.value();
+          }
+          gates.add(Completer<GpuWaited?>());
+          return gates.last.future;
+        },
+      );
+    };
+    final slot = GlobalKey();
+    final moved = _Row(() => tile);
+    final stays = _Row(() => tile);
+    // Two grids: [moved] on the first or the second, [stays] on the
+    // second all along.
+    Widget grids({required bool onTheSecond}) {
+      Widget aRow(_Row row, {Key? key}) => SizedBox(
+        width: 60,
+        height: 10,
+        child: TimelineGridScreenSlot(
+          key: key,
+          child: CustomPaint(painter: row),
+        ),
+      );
+      Widget aHost(List<Widget> rows) => SizedBox(
+        width: 70,
+        height: 40,
+        child: TimelineGridScreenHost(child: Column(children: rows)),
+      );
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Row(
+            children: [
+              aHost([if (!onTheSecond) aRow(moved, key: slot)]),
+              aHost([
+                aRow(stays),
+                if (onTheSecond) aRow(moved, key: slot),
+              ]),
+            ],
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(grids(onTheSecond: false));
+    for (var paint = 0; paint < 4; paint += 1) {
+      // Laid again and again on the second, so its lays outnumber the
+      // first's.
+      stays.layFrom(const Rect.fromLTWH(0, 0, 120, 20));
+      await tester.pump();
+      await tester.pump();
+    }
+    expect(moved.answers.last, isTrue, reason: '⛔premise: up on the first');
+    holding = true;
+
+    await tester.pumpWidget(grids(onTheSecond: true));
+    expect(moved.laidLast, isTrue, reason: '⛔premise: it lays on the second');
+    expect(
+      moved.answers.last,
+      isFalse,
+      reason: 'the second\'s frame up was laid before the row came',
+    );
+    for (final gate in gates) {
+      gate.complete();
+    }
+  });
+
   testWidgets('a row moved to another parent lays its tile again', (
     tester,
   ) async {
