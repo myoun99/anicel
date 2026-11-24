@@ -223,6 +223,35 @@ fn a_compile_leaves_no_turn_behind() {
     assert_eq!(kept_files(&folder, "turn"), [], "no turn left");
 }
 
+// What a Vulkan pipeline is kept by begins with the adapter as its driver
+// names it — the vendor, the device, the driver's build and the identity
+// it gives what its pipeline caches hold, which a build that makes them
+// otherwise changes (vendor/wgpu-hal, vulkan/adapter.rs `adapter_named`):
+// a folder kept before a driver update is the next launch's, and what it
+// holds is another driver's.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_vulkan_pipeline_is_kept_by_its_adapter_its_driver_and_its_caches_identity() {
+    let turn = a_device_of_its_own();
+    let kept = kept_in("pso_named");
+    let file = std::fs::read(seven_kept(&turn, &kept.path())).expect("the file");
+    let engine = turn.engine();
+    // SAFETY: only reads the adapter's properties.
+    let properties = unsafe {
+        let hal = engine.device().as_hal::<wgpu::hal::api::Vulkan>().expect("a Vulkan device");
+        hal.shared_instance().raw_instance().get_physical_device_properties(hal.raw_physical_device())
+    };
+    let mut named = Vec::new();
+    for word in [properties.vendor_id, properties.device_id, properties.driver_version] {
+        named.extend_from_slice(&word.to_le_bytes());
+    }
+    named.extend_from_slice(&properties.pipeline_cache_uuid);
+    // A kept file (compile_cache.rs): its head, then what was asked — each
+    // part after its own length, the adapter's first.
+    assert_eq!(file[32..40], (named.len() as u64).to_le_bytes(), "the adapter's name's length");
+    assert_eq!(file[40..40 + named.len()], named, "the adapter, its driver and its caches' identity");
+}
+
 // A turn whose holder ended — the app killed as it compiled, its next
 // launch a new process — is not waited for: the compile takes it past at
 // its first look, not after `TURN_STANDS`.
