@@ -14,7 +14,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// files that left a lay left none — 124 files, 14 of them leaving a lay.
 /// ↩️Counted once more on master 7f1974785, the same day: the eraser's
 /// file leaves none, and the brush switch's file leaves a live cel's — 125
-/// files. A file here declares which it leaves
+/// files. ↩️That live cel's screen was a red test's (2026-11-25): the
+/// envelope's switch was 954 pixels off on Impeller then, and a test that
+/// fails keeps its widget tree up — flutter_test takes the tree down only
+/// after a pass (its binding's `_runTestBody`) — so what its widgets free
+/// as they go is asked unfreed. Green since fde9a96ef, the file leaves
+/// none — 124 (forced red again, it lists that screen once more).
+/// ⚠️A file whose tests are red is not counted here: its red is the reason.
+/// A file here declares which it leaves
 /// ([itsTestsLeaveScreensOfTheEngine]); a screen of another kind is red
 /// in it as anywhere. The total is pinned
 /// (test/architecture/a_file_leaves_screens_only_by_the_ledger_test.dart):
@@ -34,15 +41,7 @@ enum ScreensLeft {
   /// `_lay`): kept by a store whose session the test never ends. ↩️Or its
   /// lay was still on the GPU when the test was asked — till each test
   /// waited for the GPU first, which a lay hears in no one's zone.
-  ofALay('EngineFramePictureStore._lay'),
-
-  /// A sheet's live cel's screen (live_cel_screen.dart, `_show`, laid by
-  /// `EngineStackScreen.compose`): the brush switch's file ends with it
-  /// held. Why the view's dispose does not free it is not read yet — the
-  /// brush's to fix (🗣️관제 2026-11-24: in the ledger with who takes it
-  /// out): the commit that frees it takes the file's line out, lowers the
-  /// total, and this kind with it where no file declares it.
-  ofALiveCel('_LiveCelScreenState._show');
+  ofALay('EngineFramePictureStore._lay');
 
   const ScreensLeft(this.madeIn);
 

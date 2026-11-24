@@ -58,7 +58,6 @@ import 'package:anicel/src/ui/widgets/still_raster.dart' show StillRaster;
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/raster_parity.dart' show parityRoundingTolerance;
-import '../../helpers/screens_left_of_the_engine.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🗣️F-215 (유저 2026-09-28): 「콘티 프리뷰패널에서 브러시 허용 on시 그림들이
@@ -96,7 +95,6 @@ import '../../helpers/settle_async.dart';
 /// the tiles were drawn nearest between 50% and 100%, whole texels that
 /// round alike whatever composes them.
 void main() {
-  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALiveCel});
   opensTheEnginesScreens();
   const screen = ValueKey<String>('screen');
   late EditorSessionManager session;
