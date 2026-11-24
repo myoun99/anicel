@@ -214,7 +214,13 @@ fn a_pipeline_the_driver_does_not_take_is_made_again_and_kept_over() {
         &eight_file[made_from(&eight_file)..],
     ]
     .concat();
-    assert_ne!(forged, seven_file, "the premise: eight's pipeline is not what seven's was made of");
+    // Where the driver takes nothing from a cache (`taken`), what it keeps
+    // of one pipeline is what it keeps of another, so nothing tells a file
+    // kept over from one left — 🔬lavapipe's holds no pipeline (WSL
+    // 2026-11-24, .claude/lane-logs/k2298.txt: eight's was seven's byte for
+    // byte). Elsewhere each holds its own.
+    let holds_its_pipeline = taken(&first) == 1;
+    assert_eq!(forged != seven_file, holds_its_pipeline, "the premise: what eight's is kept as");
     std::fs::write(&seven, &forged).expect("eight's pipeline under seven's asking");
     let next = keeping(&turn, &folder);
     let made = pipeline(&next, &[WRITES_SEVEN], "main");
@@ -222,7 +228,9 @@ fn a_pipeline_the_driver_does_not_take_is_made_again_and_kept_over() {
     assert_eq!(first_word(&next, &made), 7, "and it is seven's");
     // ⛔Not by the file's time: a file handed back is touched, the oldest
     // let go first (compile_cache.rs, `CompileCache::read`).
-    assert_ne!(std::fs::read(&seven).expect("seven's"), forged, "what was made then is kept over it");
+    if holds_its_pipeline {
+        assert_ne!(std::fs::read(&seven).expect("seven's"), forged, "what was made then is kept over it");
+    }
     let last = keeping(&turn, &folder);
     let handed = pipeline(&last, &[WRITES_SEVEN], "main");
     assert_eq!(pipelines_found(&last), taken(&last), "taken, where the driver takes what it is handed");
