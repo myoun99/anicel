@@ -103,6 +103,7 @@ class FrameStatsSnapshot {
     required this.screensMegabytes,
     required this.picturesMegabytes,
     required this.videoMegabytes,
+    required this.mappings,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
@@ -306,6 +307,11 @@ class FrameStatsSnapshot {
   final double screensMegabytes;
   final double? picturesMegabytes;
   final ({double used, double? budget})? videoMegabytes;
+
+  /// The mappings that hold the most of the process's memory, as the OS
+  /// accounts them (`QaMemory.mappings`) — null where it keeps no such
+  /// account, or before its first read.
+  final String? mappings;
 
   /// The engine's retained-raster accounting, and the reason this class
   /// exists.
@@ -783,6 +789,7 @@ abstract final class FrameStats {
         ),
         null => null,
       },
+      mappings: QaMemory.mappings,
       layerCacheCount: last.layerCacheCount,
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,

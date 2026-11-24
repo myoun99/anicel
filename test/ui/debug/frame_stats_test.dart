@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, SharedTexture;
 
 import 'package:anicel/main.dart';
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/engine_behind.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
@@ -978,6 +979,33 @@ void main() {
           reason: '$line … $figure',
         );
       }
+    });
+
+    testWidgets('keeps the mappings\' row under the memory, saying none '
+        'till the OS says whose the memory is', (tester) async {
+      MeasurementMode.frameStats.value = true;
+      String? said;
+      QaMemory.debugMappings = () => said;
+      addTearDown(() => QaMemory.debugMappings = null);
+      Future<void> shown() async {
+        FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+        FrameStats.publish();
+        await tester.pumpWidget(
+          const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        );
+        await tester.pump();
+      }
+
+      await shown();
+      expect(find.text(' maps   —'), findsOneWidget);
+
+      said = 'kgsl-3d0 412.3  [anon:scudo:primary] 210.0  read 23 ms';
+      await shown();
+      expect(
+        find.text(' maps   kgsl-3d0 412.3  [anon:scudo:primary] 210.0  '
+            'read 23 ms'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('prints a stroke\'s first step and its landing apart — none '

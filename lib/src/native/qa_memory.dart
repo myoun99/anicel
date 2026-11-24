@@ -7,6 +7,7 @@ library;
 import 'dart:ffi';
 import 'dart:io' show ProcessInfo;
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'gpu_engine_asset.dart';
@@ -22,6 +23,9 @@ external int _available();
 
 @Native<Int64 Function()>(symbol: 'qa_app_memory_limit_bytes')
 external int _appLimit();
+
+@Native<Int64 Function(Pointer<Uint8>, Size)>(symbol: 'qa_process_mappings')
+external int _mappings(Pointer<Uint8> out, int room);
 
 /// What the OS says of memory, in the engine (native/memory). Each answer
 /// is null where the platform will not say — the engine answers 0 there.
@@ -78,6 +82,30 @@ abstract final class QaMemory {
   /// iOS answers here, and there it is the ceiling a jetsam decision is
   /// made against — the number the automatic allowance halves.
   static int? get appMemoryLimitBytes => _said(_appLimit());
+
+  /// The mappings that hold the most of [processFootprintBytes], each
+  /// name with its MiB, and how long the engine's read took — null where
+  /// the platform keeps no per-mapping account, and till the first read
+  /// lands. The engine reads on a thread of its own, every few seconds
+  /// (`memory::mappings`); this only takes its last line.
+  static String? get mappings {
+    final said = debugMappings;
+    if (said != null) return said();
+    final out = calloc<Uint8>(_mappingsRoom);
+    try {
+      final length = _mappings(out, _mappingsRoom);
+      return length > 0 ? out.cast<Utf8>().toDartString(length: length) : null;
+    } finally {
+      calloc.free(out);
+    }
+  }
+
+  /// Test seam: the line a test says the engine read, or null — the
+  /// engine's own.
+  @visibleForTesting
+  static String? Function()? debugMappings;
+
+  static const int _mappingsRoom = 512;
 
   static int? _said(int bytes) => bytes <= 0 ? null : bytes;
 }

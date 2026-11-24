@@ -293,6 +293,9 @@ class FrameStatsReadout extends StatelessWidget {
                       (:final used, budget: final budget?) =>
                         '${used.toStringAsFixed(1)} / ${_mb(budget)}',
                     }}',
+                // Whose the process's memory is, mapping by mapping, where
+                // the OS keeps that account (`QaMemory.mappings`).
+                ' maps   ${stats.mappings ?? '—'}',
                 'layer   cache ${stats.layerCacheCount}  '
                     '${stats.layerCacheMegabytes.toStringAsFixed(1)} MB',
                 // 🚨 Per-entry, against a window's worth of pixels — the
