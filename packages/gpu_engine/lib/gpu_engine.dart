@@ -1012,7 +1012,8 @@ class GpuPool implements _OfAnEngine {
       ..keepToInsteadOfTheOs(debugBudgetTillOneIsSet);
   }
 
-  GpuPool._(this._engine, Pointer<rust.Pool> pool) : _livePool = pool;
+  GpuPool._(this._engine, Pointer<rust.Pool> pool)
+    : _given = _Held(pool, 'a pool', asked: () => debugAsked);
 
   /// Test seam: the budget each pool made keeps to in place of the OS's
   /// till one is set ([keepToInsteadOfTheOs]) — the OS's where null, as in
@@ -1039,31 +1040,20 @@ class GpuPool implements _OfAnEngine {
   final GpuEngine _engine;
 
   /// The engine's pool, for each ask of it — here, and of a job that names
-  /// it ([GpuEngine._its]) —; refused by name once it is [free]d.
+  /// it ([GpuEngine._its]) —; refused by name once it is [free]d
+  /// ([_Held]). [release] answers a freed pool as it answers a slot none
+  /// holds.
   ///
-  /// 🚨A FREED POOL ASKS THE ENGINE NOTHING (관제 2026-11-24, card
-  /// a-pool-release-aborts-on-an-empty-book): its books go with [free], and
-  /// what asked after read freed memory — a tile a ledger stored, collected
-  /// once a test had freed that ledger's pool, let its slot go
-  /// (EngineTileLedger `_letGoWithKey`), the engine read a slot of no book
-  /// and panicked past the ABI, and the process ended with it. Every ask
-  /// comes through here, so none reaches the engine with a pointer that
-  /// names nothing: the pointer goes with [free] ([_livePool]). [release]
-  /// answers a freed pool as it answers a slot none holds.
-  Pointer<rust.Pool> get _pool {
-    final pool = _livePool;
-    if (pool == null) {
-      throw GpuRefused('a pool was asked after it was freed');
-    }
-    debugAsked?.call();
-    return pool;
-  }
-
-  /// The pool while it is not freed; null once it is ([free]).
-  Pointer<rust.Pool>? _livePool;
+  /// 🗣️관제 2026-11-24 (card a-pool-release-aborts-on-an-empty-book): a tile
+  /// a ledger stored, collected once a test had freed that ledger's pool,
+  /// let its slot go (EngineTileLedger `_letGoWithKey`), the engine read a
+  /// slot of no book and panicked past the ABI, and the process ended with
+  /// it.
+  Pointer<rust.Pool> get _pool => _given.ofIt;
+  final _Held<rust.Pool> _given;
 
   /// Whether it was [free]d: what is told of it after asks it nothing.
-  bool get _isFreed => _livePool == null;
+  bool get _isFreed => _given.freed;
 
   /// Test seam: called as each ask reaches the engine ([_pool]) — how a
   /// test tells an ask of a freed pool refused from one that went through.
@@ -1271,10 +1261,54 @@ class GpuPool implements _OfAnEngine {
 
   /// Frees the pool's pages; before its engine is closed. Asked again, it
   /// is refused as any ask of a freed pool is ([_pool]).
-  void free() {
-    final pool = _pool;
-    _livePool = null;
-    rust.poolFree(pool);
+  void free() => rust.poolFree(_given.letGo());
+}
+
+/// What the engine handed an object, held by it till it frees it: every
+/// ask of it comes through [ofIt], which refuses one freed by name — the
+/// pointer goes with the free ([letGo]).
+///
+/// 🚨★A FREED HANDLE ASKS THE ENGINE NOTHING (관제 2026-11-24): what is
+/// asked after a free reads freed memory, and need not crash where it does
+/// — 🔬a screen's bytes asked after it was freed (the crate's
+/// `screens_composed_of_the_same_hold_one_tile_weighed_once`) read on on
+/// Windows and faulted on Linux (card release-2026-11-24), as a pool's let-go
+/// had ended a process (card a-pool-release-aborts-on-an-empty-book). The
+/// pool's law till then, the screen's with it ([GpuPool], [GpuScreen]).
+final class _Held<T extends NativeType> {
+  _Held(Pointer<T> pointer, this._what, {void Function()? Function()? asked})
+    : _live = pointer,
+      _asked = asked;
+
+  /// What it is, as a refusal names it.
+  final String _what;
+
+  /// The holder's test seam, told of each ask that reaches the engine — how
+  /// a test tells an ask refused from one that went through.
+  final void Function()? Function()? _asked;
+
+  /// The pointer while it is not freed; null once it is ([letGo]).
+  Pointer<T>? _live;
+
+  /// Whether it was freed ([letGo]).
+  bool get freed => _live == null;
+
+  /// The pointer, for an ask of it; refused by name once it is freed.
+  Pointer<T> get ofIt {
+    final live = _live;
+    if (live == null) {
+      throw GpuRefused('$_what was asked after it was freed');
+    }
+    _asked?.call()?.call();
+    return live;
+  }
+
+  /// The pointer for the free that lets it go, refused as any ask is once
+  /// it is freed: asked from here on, it names nothing.
+  Pointer<T> letGo() {
+    final live = ofIt;
+    _live = null;
+    return live;
   }
 }
 
@@ -3635,10 +3669,16 @@ class GpuScreen implements _OfAnEngine {
     return GpuScreen._(composite, screen);
   }
 
-  GpuScreen._(this._composite, this._screen);
+  GpuScreen._(this._composite, Pointer<rust.Screen> screen)
+    : _given = _Held(screen, 'a screen');
 
   final GpuComposite _composite;
-  final Pointer<rust.Screen> _screen;
+
+  /// The engine's screen, for each ask of it — here, and of a job that
+  /// names it as its film ([composeOver]) —; refused by name once it is
+  /// [free]d ([_Held]).
+  Pointer<rust.Screen> get _screen => _given.ofIt;
+  final _Held<rust.Screen> _given;
 
   @override
   GpuEngine get _engine => _composite._engine;
@@ -3766,7 +3806,7 @@ class GpuScreen implements _OfAnEngine {
   /// engine lets go of it behind them, and its pictures' slots go back to
   /// the pool there — [GpuEngine.idlePictureBytes] counts them by a
   /// [GpuEngine.done] asked after this.
-  void free() => rust.screenFree(_screen);
+  void free() => rust.screenFree(_given.letGo());
 }
 
 /// What a run put: its output tiles' pixels, on the GPU.

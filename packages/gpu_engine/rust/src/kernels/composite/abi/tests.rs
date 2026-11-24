@@ -1014,7 +1014,15 @@ fn screens_composed_of_the_same_hold_one_tile_weighed_once() {
         gpu_engine_screen_free(over);
         gpu_engine_screen_free(screens[0]);
         done_here(&engine).expect("let go");
-        assert_eq!(weighed()[1..], [0, 2], "the first let go: its two are nobody's own, held still");
+        // ⚠️The second alone, and not [weighed]: that asks the first too,
+        // freed — a read of freed memory, which Windows read on and Linux
+        // faulted on (card release-2026-11-24).
+        let held = (gpu_engine_screen_bytes(screens[1]), gpu_engine_pictures_unowned_bytes(&engine));
+        assert_eq!(
+            (held.0 / TILE_BYTES, held.1 / TILE_BYTES),
+            (0, 2),
+            "the first let go: its two are nobody's own, held still"
+        );
         gpu_engine_screen_free(screens[1]);
         done_here(&engine).expect("let go");
         assert_eq!(gpu_engine_pictures_unowned_bytes(&engine), 0, "nobody holds them");
