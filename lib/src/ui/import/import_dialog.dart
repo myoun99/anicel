@@ -761,39 +761,83 @@ class _ImportDialogState extends State<ImportDialog> {
   final Map<String, List<String>?> _folderNames = {};
 
   /// Each listed picture's run by its names alone ([pictureRunOf]), by its
-  /// pool key — before a size has been asked of it.
-  final Map<String, PictureRun?> _namedRuns = {};
+  /// pool key — before a size has been asked of it — with where each
+  /// picture beside it stands, by name ([_besideOf]). One cache for both:
+  /// a run's pictures are read at the paths its names were found at.
+  final Map<String, ({PictureRun? run, Map<String, String> at})> _namedRuns =
+      {};
 
   /// Each listed picture's run once every picture of it is measured — by
-  /// its pool key, as [_namedRuns] — which nothing changes after.
+  /// its pool key, as [_namedRuns] — which nothing changes after but a
+  /// file handed in ([_handIn]).
   final Map<String, PictureRun?> _measuredRuns = {};
 
-  /// [path]'s run as its folder names it ([pictureRunOf]) — null for a file
-  /// that is no picture, or runs with none.
-  PictureRun? _namedRunOf(String path) {
+  /// [path]'s run as the pictures beside it name it ([pictureRunOf]) —
+  /// null for a file that is no picture, or runs with none.
+  PictureRun? _namedRunOf(String path) => _named(path).run;
+
+  /// Where [picture] of [path]'s run stands.
+  String _runPicturePath(String path, RunPicture picture) =>
+      _named(path).at[picture.file]!;
+
+  ({PictureRun? run, Map<String, String> at}) _named(String path) {
     if (mediaAssetKindForPath(path) != MediaAssetKind.image) {
-      return null;
+      return (run: null, at: const {});
     }
     return _namedRuns.putIfAbsent(normalizedMediaPath(path), () {
-      final folder = File(path).parent.path;
-      final names = _folderNames.putIfAbsent(folder, () {
-        try {
-          return [
-            for (final entry in Directory(folder).listSync())
-              if (entry is File) mediaFileName(entry.path),
-          ];
-        } on FileSystemException {
-          return null;
-        }
-      });
-      return names == null
-          ? null
-          : pictureRunOf(
-              mediaFileName(path),
-              names,
-              folderName: mediaParentFolderName(path),
-            );
+      final at = _besideOf(path);
+      return (
+        run: pictureRunOf(
+          mediaFileName(path),
+          at.keys,
+          folderName: mediaParentFolderName(path),
+        ),
+        at: at,
+      );
     });
+  }
+
+  /// The pictures [path] can run with, each at its path by its name: the
+  /// files of its folder, and the files handed in with it whose name its
+  /// folder has none of.
+  ///
+  /// 🗣️H71 (유저 2026-11-24): 「안드 파일임포트시 a1만열리고 그 뒤
+  /// a2부터 a18까지 연결임포트가 안됨 … 이는 전플랫폼 통일」 — a document
+  /// a provider hands over (Drive on Android) is read through a copy of
+  /// its own, each in a folder of its own ([ProviderDocuments.copyIn]), so
+  /// its folder lists it alone: the pictures picked with it are its run's
+  /// as a folder's are. The files a folder's walk lists are not handed in.
+  Map<String, String> _besideOf(String path) {
+    final folder = File(path).parent.path;
+    final names = _folderNames.putIfAbsent(folder, () {
+      try {
+        return [
+          for (final entry in Directory(folder).listSync())
+            if (entry is File) mediaFileName(entry.path),
+        ];
+      } on FileSystemException {
+        return null;
+      }
+    });
+    final at = {
+      for (final name in names ?? const <String>[]) name: '$folder/$name',
+    };
+    if (_folder == null) {
+      for (final handed in _files) {
+        at.putIfAbsent(mediaFileName(handed), () => handed);
+      }
+    }
+    return at;
+  }
+
+  /// [paths] listed as files handed in, each asked of ([_probe]) once all
+  /// of them are: a picture runs with the ones handed in beside it
+  /// ([_besideOf]), so the runs read before them are read again.
+  void _handIn(Iterable<String> paths) {
+    _files.addAll(paths);
+    _namedRuns.clear();
+    _measuredRuns.clear();
+    paths.forEach(_probe);
   }
 
   /// The numbered run [path] is part of, when its row is placed — null for
@@ -815,10 +859,9 @@ class _ImportDialogState extends State<ImportDialog> {
     if (named == null) {
       return null;
     }
-    final folder = File(path).parent.path;
     final sizeKeys = {
       for (final picture in named.pictures)
-        picture.file: normalizedMediaPath('$folder/${picture.file}'),
+        picture.file: normalizedMediaPath(_runPicturePath(path, picture)),
     };
     if (!sizeKeys.values.every(_facts.containsKey)) {
       return null;
@@ -851,10 +894,12 @@ class _ImportDialogState extends State<ImportDialog> {
   /// through — or null for a file in none.
   List<String>? _runFilesOf(String path) {
     final run = _runOf(path);
-    final folder = File(path).parent.path;
     return run == null
         ? null
-        : [for (final picture in run.pictures) '$folder/${picture.file}'];
+        : [
+            for (final picture in run.pictures)
+              _runPicturePath(path, picture),
+          ];
   }
 
   /// What the window asks of a file the moment it is listed: whether its
@@ -871,10 +916,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// asked in the one line of reads — its run stops where the size changes
   /// ([_runOf]), and a press of Import waits for them ([_placeFiles]).
   void _probeRun(String path) {
-    final folder = File(path).parent.path;
     for (final picture in _namedRunOf(path)?.pictures ?? const <RunPicture>[]) {
       _readFacts(
-        '$folder/${picture.file}',
+        _runPicturePath(path, picture),
         wanted: () => _files.contains(path),
       );
     }
@@ -1041,11 +1085,10 @@ class _ImportDialogState extends State<ImportDialog> {
         continue;
       }
       rows[path] = [];
-      final folder = File(path).parent.path;
       for (final picture
           in _broughtRunOf(path)?.pictures ?? const <RunPicture>[]) {
         bringer.putIfAbsent(
-          normalizedMediaPath('$folder/${picture.file}'),
+          normalizedMediaPath(_runPicturePath(path, picture)),
           () => path,
         );
       }
@@ -1102,6 +1145,7 @@ class _ImportDialogState extends State<ImportDialog> {
       unawaited(Future<void>.microtask(() => _takeDocuments(documents)));
     }
     final settingsFiles = <String>[];
+    final handed = <String>[];
     for (final path in [...widget.initialPaths, ...grantedPaths]) {
       if (Directory(path).existsSync()) {
         if (_folder == null) {
@@ -1112,10 +1156,10 @@ class _ImportDialogState extends State<ImportDialog> {
       } else if (_isSettingsFile(path)) {
         settingsFiles.add(path);
       } else {
-        _files.add(path);
-        _probe(path);
+        handed.add(path);
       }
     }
+    _handIn(handed);
     _takeSettingsFiles(settingsFiles);
     final dropped = _folder;
     if (dropped != null) {
@@ -1163,18 +1207,21 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final path in paths)
         if (!_isSettingsFile(path)) path,
     ];
+    final beside = _folder != null;
     setState(() {
       _takeSettingsFiles(paths.where(_isSettingsFile));
-      if (_folder != null) {
+      if (beside) {
         _ignoredSources.addAll(files);
         if (_parsed case final parsed?) {
           _leftOut = _leftOutOf(parsed);
         }
-      } else {
-        _files.addAll(files);
       }
     });
-    files.forEach(_probe);
+    if (beside) {
+      files.forEach(_probe);
+    } else {
+      _handIn(files);
+    }
   }
 
   /// Whether [path] is a settings file, which comes in as its rows
@@ -2363,10 +2410,9 @@ class _ImportDialogState extends State<ImportDialog> {
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
-    final folder = File(path).parent.path;
     final files = <({String path, String label})>[];
     for (final picture in _runKeptOf(path)!) {
-      final file = '$folder/${picture.file}';
+      final file = _runPicturePath(path, picture);
       // Every picture of the run reads before it is placed, the law the
       // picked one already went through ([_readsForPlacement]).
       if (!mounted) {
