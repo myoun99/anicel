@@ -232,8 +232,9 @@ class ImportedFonts extends ChangeNotifier {
     _tell();
   }
 
-  /// Picks a file and brings it as a font ([importBytes]).
-  Future<FontImportOutcome> importFromFile() async {
+  /// Picks a file and brings it as a font ([importBytes]), [behind] what
+  /// the door stands it behind.
+  Future<FontImportOutcome> importFromFile({required BringIn behind}) async {
     String? family;
     final refusal = await importPickedFile(
       pick: _picker,
@@ -243,6 +244,7 @@ class ImportedFonts extends ChangeNotifier {
         family = outcome.family;
         return outcome.refusal;
       },
+      behind: behind,
     );
     return (family: family, refusal: refusal);
   }

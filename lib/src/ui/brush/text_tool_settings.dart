@@ -6,6 +6,7 @@ import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../canvas/text/cel_text_tool.dart';
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
+import '../dialogs/behind_the_wait_window.dart' show bringBehindTheWaitWindow;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
@@ -786,7 +787,9 @@ class _FaceRow extends StatelessWidget {
   /// ([ImportedFonts.noticeOf]) — and its row in the list says it from then
   /// on.
   Future<void> _bring(BuildContext context, ImportedFonts fonts) async {
-    final outcome = await fonts.importFromFile();
+    final outcome = await fonts.importFromFile(
+      behind: <T>(bring) => bringBehindTheWaitWindow(context, bring),
+    );
     final family = outcome.family;
     if (family != null) {
       _pick(family);

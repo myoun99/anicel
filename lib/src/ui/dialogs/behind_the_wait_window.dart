@@ -78,6 +78,18 @@ Future<void> _standBehind(
   await WidgetsBinding.instance.endOfFrame;
 });
 
+/// What [bring] brings in — files picked, opened or dropped, read and
+/// made into what they hold — behind the app's one wait window, the import
+/// window's ([AppWaitWindow.importing]), whatever they are and however few:
+/// a wait that says nothing cannot be told from nothing (F-53), and a file
+/// brought in is one (H82 🗣️유저 2026-11-24: 「뭐든 임포트면 통일해서
+/// 뜨게」). ⛔Not [takeBehindTheWaitWindow]'s 「one block takes it at once」
+/// (F-566): that is an edit step's law, of the blocks it lands on.
+Future<T> bringBehindTheWaitWindow<T>(
+  BuildContext context,
+  Future<T> Function() bring,
+) => AppWaitWindow.importing().standBehind<T>(context, (_) => bring());
+
 /// A move of the canvas's walls — its size, or how far its pasteboard
 /// reaches past it ([workAheadBehindTheWaitWindow]). Each cuts every
 /// picture past the new wall, so each takes as long as the pictures do.

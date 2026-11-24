@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/font_file_fixture.dart';
 import '../../helpers/font_library_in_memory.dart';
+import '../../helpers/brought_at_once.dart';
 import '../../helpers/temp_dir.dart';
 
 /// R9-rest (the text tool's faces): THE FONTS A PERSON BROUGHT TO THIS
@@ -163,7 +164,7 @@ void main() {
         picker: () async => (name: 'whatever.bin', bytes: bytes),
       );
 
-      expect(await fonts.importFromFile(), (
+      expect(await fonts.importFromFile(behind: broughtAtOnce), (
         family: 'Picked Sans',
         refusal: null,
       ));
@@ -177,7 +178,7 @@ void main() {
             (name: 'notes.txt', bytes: Uint8List.fromList(List.filled(64, 7))),
       );
 
-      expect(await fonts.importFromFile(), (
+      expect(await fonts.importFromFile(behind: broughtAtOnce), (
         family: null,
         refusal: AppText.strings.textToolFontUnreadable,
       ));
@@ -187,14 +188,17 @@ void main() {
     test('a dialog closed without a file brings nothing and says nothing', () async {
       final fonts = fontsOf(picker: () async => null);
 
-      expect(await fonts.importFromFile(), (family: null, refusal: null));
+      expect(
+        await fonts.importFromFile(behind: broughtAtOnce),
+        (family: null, refusal: null),
+      );
       expect(fonts.families, isEmpty);
     });
 
     test('a dialog that would not open says so', () async {
       final fonts = fontsOf(picker: () async => throw StateError('no dialog'));
 
-      final outcome = await fonts.importFromFile();
+      final outcome = await fonts.importFromFile(behind: broughtAtOnce);
 
       expect(outcome.family, isNull);
       expect(outcome.refusal, contains('no dialog'));

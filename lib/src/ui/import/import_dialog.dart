@@ -1601,18 +1601,20 @@ class _ImportDialogState extends State<ImportDialog> {
   /// status line, and its Cancel gives that file up. ↩️Only a movie that
   /// baked stood behind one — a window of its own for every movie — and
   /// the rest said 「임포트하는 중…」 on this window's status line.
-  Future<bool> _importBehindTheWaitWindow(_ImportTally tally) =>
-      runWithAppProgress<bool>(
-        context: context,
-        title: AppText.strings.imImport,
-        titleIcon: Icons.download_outlined,
-        runningLabel: AppText.strings.imStatusImporting,
-        windowKey: const ValueKey<String>('import-progress-dialog'),
-        runningStatus: _RunningLine(_wait.status, _step),
-        onCancel: _wait.cancel,
-        cancelLive: _wait.waiting,
-        task: (report) => _importAll(tally, report),
-      );
+  Future<bool> _importBehindTheWaitWindow(_ImportTally tally) {
+    final window = AppWaitWindow.importing();
+    return runWithAppProgress<bool>(
+      context: context,
+      title: window.title,
+      titleIcon: window.titleIcon,
+      runningLabel: window.runningLabel,
+      windowKey: window.windowKey,
+      runningStatus: _RunningLine(_wait.status, _step),
+      onCancel: _wait.cancel,
+      cancelLive: _wait.waiting,
+      task: (report) => _importAll(tally, report),
+    );
+  }
 
   /// 🗣️import-movie-fps-mismatch-notice (유저 10-06: 「알리는게 좋겠어」 ·
   /// 「셋다 맞고」, 10-10 「1번」 — asked when Import is pressed): a movie

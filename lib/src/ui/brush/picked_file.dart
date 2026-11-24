@@ -13,6 +13,10 @@ typedef PickedFile = ({String name, Uint8List bytes});
 /// Opens a file picker; `null` when the user cancels.
 typedef FilePicker = Future<PickedFile?> Function();
 
+/// Brings in what [bring] makes of a file, behind what its door stands it
+/// behind — the app's one wait window (`bringBehindTheWaitWindow`).
+typedef BringIn = Future<T> Function<T>(Future<T> Function() bring);
+
 /// The production picker of every import that reads a file itself: the
 /// platform's open-file dialog, showing EVERY file.
 ///
@@ -45,13 +49,15 @@ extension PickedFileStem on PickedFile {
 /// throwing picker into the one user-facing message, bail quietly on a
 /// cancel or on a library disposed while the dialog was open, then hand
 /// the file to [import] — the decode-and-merge step that is all that
-/// differs between the libraries.
+/// differs between the libraries — [behind] what its door stands it behind
+/// (H82: the wait window; the picker's own dialog is not a wait).
 ///
 /// Returns [import]'s message (`null` for success) or `null` for a cancel.
 Future<String?> importPickedFile({
   required FilePicker pick,
   required bool Function() disposed,
   required Future<String?> Function(PickedFile pick) import,
+  required BringIn behind,
 }) async {
   final PickedFile? picked;
   try {
@@ -62,5 +68,6 @@ Future<String?> importPickedFile({
   if (picked == null || disposed()) {
     return null;
   }
-  return import(picked);
+  final file = picked;
+  return behind(() => import(file));
 }

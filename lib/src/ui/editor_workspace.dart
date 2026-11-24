@@ -60,6 +60,7 @@ import 'brush/brush_hand_settings_store.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
+import 'brush/picked_file.dart' show BringIn;
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_traces.dart';

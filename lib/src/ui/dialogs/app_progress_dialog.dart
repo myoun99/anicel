@@ -260,6 +260,19 @@ final class AppWaitWindow implements WaitWindow {
         windowKey: const ValueKey<String>('paste-progress-dialog'),
       );
 
+  /// The window over files brought in, whatever they are — the import
+  /// window's own (F-282-Q1): a brush, a font, a palette as an image or a
+  /// project (H82 🗣️유저 2026-11-24: 「갤탭에서 tvp브러시 임포트해봣는데
+  /// 진행창이 안뜨고 갑자기 가져왔다고만 뜸. 다른거도 확인해서 뭐든
+  /// 임포트면 통일해서 뜨게」).
+  AppWaitWindow.importing()
+    : this(
+        title: AppText.strings.imImport,
+        titleIcon: Icons.download_outlined,
+        runningLabel: AppText.strings.imStatusImporting,
+        windowKey: const ValueKey<String>('import-progress-dialog'),
+      );
+
   /// [title]'s window over a duplicate.
   AppWaitWindow.duplicating(String title)
     : this(
