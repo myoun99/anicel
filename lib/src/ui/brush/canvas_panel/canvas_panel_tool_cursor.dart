@@ -439,6 +439,7 @@ class _CanvasPanelToolCursor {
             position: _crosshairAim,
             look: crosshairCursorLook(),
           ),
+          DrawingCursor.none => const SizedBox.shrink(),
         },
       );
 

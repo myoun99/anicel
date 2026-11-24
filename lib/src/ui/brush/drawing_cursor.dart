@@ -31,16 +31,20 @@ MouseCursor drawingSystemCursor(
   ),
   DrawingCursor.crosshair =>
     _systemShowsCursors ? SystemMouseCursors.precise : SystemMouseCursors.none,
+  DrawingCursor.none => SystemMouseCursors.none,
 };
 
 /// Whether the app draws [cursor] itself for the pointer aiming, a [kind]:
 /// exactly where the system is asked to show none ([drawingSystemCursor]),
 /// or shows that pointer none at all ([systemShowsCursorFor]) — one answer,
-/// so the two can never both show or both be missing.
+/// so the two can never both show — and never for [DrawingCursor.none],
+/// the one choice where both are missing on purpose (H80, 유저 2026-11-24
+/// 「커서 설정 없음도 가능하게」), on every platform and for every pointer.
 bool appDrawsDrawingCursor(DrawingCursor cursor, PointerDeviceKind kind) =>
-    !systemShowsCursorFor(kind) ||
-    drawingSystemCursor(cursor, devicePixelRatio: 1) ==
-        SystemMouseCursors.none;
+    cursor != DrawingCursor.none &&
+    (!systemShowsCursorFor(kind) ||
+        drawingSystemCursor(cursor, devicePixelRatio: 1) ==
+            SystemMouseCursors.none);
 
 /// A cursor of one size as the system's — the pen (I-54), the fill's bucket
 /// and the eyedropper (F-441) — wherever the system takes a picture for its

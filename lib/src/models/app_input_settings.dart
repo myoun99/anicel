@@ -583,6 +583,11 @@ enum DrawingCursor {
 
   /// A crosshair of one size, the system's own.
   crosshair,
+
+  /// No cursor at all: the system shows none over the canvas, and the app
+  /// draws none. 🗣️H80 (유저 2026-11-24): 「커서 설정 없음도 가능하게」 —
+  /// after the three, in the row the three are in.
+  none,
 }
 
 /// What a STANDARD secondary input does on the CANVAS (PEN-7a) — the

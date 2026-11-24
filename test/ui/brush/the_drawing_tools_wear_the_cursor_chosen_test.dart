@@ -411,6 +411,13 @@ void main() {
     await tester.pump();
     await mouse.moveTo(canvasGlobalOffset(tester, const Offset(80, 70)));
     expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pump();
+
+    // None: nothing to move at all (H80).
+    choose(DrawingCursor.none);
+    await tester.pump();
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(100, 90)));
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: 'none');
   });
 
   testWidgets('and a move under a cursor the system wears is not named as '
@@ -556,6 +563,22 @@ void main() {
     );
     return calls;
   }
+
+  // 🗣️H80 (유저 2026-11-24): 「커서 설정 없음도 가능하게」.
+  testWidgets('🚨with none chosen nothing is shown over the canvas — not '
+      'the system\'s cursor, not the app\'s — to a mouse and a pen alike', (
+    tester,
+  ) async {
+    answerTheRunner(tester);
+    choose(DrawingCursor.none);
+    await pumpPanel(tester);
+    await hover(tester, const Offset(40, 40));
+    expect(shown(), SystemMouseCursors.none);
+    await hoverPen(tester, const Offset(60, 50));
+    for (final sprite in [outline, pen, crosshair]) {
+      expect(drawn(tester, sprite), isFalse, reason: '$sprite');
+    }
+  }, variant: TargetPlatformVariant.all());
 
   group('🚨on Android a mouse is shown the system\'s cursor, and a pen '
       'hovering — which the system shows none of it — is drawn the '

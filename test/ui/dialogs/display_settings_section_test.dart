@@ -195,7 +195,8 @@ void main() {
       () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
     );
 
-    testWidgets('is a list of three, in the order the user named them', (
+    // 🗣️H80 (유저 2026-11-24): 「커서 설정 없음도 가능하게」 — after them.
+    testWidgets('is the three in the order the user named them, and none', (
       tester,
     ) async {
       await pump(tester);
@@ -209,6 +210,7 @@ void main() {
           (row(DrawingCursor.brush), strings.drawingCursorBrush),
           (row(DrawingCursor.pen), strings.drawingCursorPen),
           (row(DrawingCursor.crosshair), strings.drawingCursorCrosshair),
+          (row(DrawingCursor.none), strings.commonNone),
         ],
       );
     });
@@ -232,6 +234,10 @@ void main() {
       await pick(tester, picker, row(DrawingCursor.brush));
       expect(AppInput.settings.value.drawingCursor, DrawingCursor.brush);
       expect(pickedIn(tester, picker), [row(DrawingCursor.brush)]);
+
+      await pick(tester, picker, row(DrawingCursor.none));
+      expect(AppInput.settings.value.drawingCursor, DrawingCursor.none);
+      expect(said(tester, picker), AppText.strings.commonNone);
     });
 
     testWidgets('it touches nothing else the input settings hold', (
