@@ -1,4 +1,3 @@
-import '../widgets/app_tooltip.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -12,12 +11,12 @@ import '../widgets/kept_tail_row.dart';
 import '../widgets/live_sheet.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/rail_glyph_button.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/tick_layer.dart';
 import 'panel_collapsed_scope.dart';
 import 'open_tab_content.dart';
 import 'panel_flash.dart';
-import '../input/control_press_claim.dart';
 
 /// One tab in an [EditorPanelTabs] group.
 class EditorPanelTab {
@@ -469,18 +468,19 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
             // 🔬a hover in and out took the bottom region's image three
             // times without the layer, once with it (10-24, test app).
             //
-            // 🚨A SHEET LIES OVER IT ([LiveSheet]): the band a hovered panel
-            // lights on its tabs ([LiftingGripBand.nearby]) is laid on the
-            // sheet, over the strip, and the strip's tick is left as it was
-            // — the region keeps its image (card a-hover-in-a-capsule-or-a-
-            // dock-takes-the-regions-image-again, 2026-11-24). ↩️The band was
-            // painted in the tick, which a pointer coming onto any panel
-            // changed: the dock's image was taken again at each, the
-            // header's controls on the way among them. The sill's controls
-            // paint in place ([LiveSheet.inPlace]): the strip's ground is
-            // painted in the tick, over the sheet's under layer, and a hover
-            // laid there would lie under it.
-            child: LiveSheet(child: TickLayer(
+            // 🚨A SHEET LIES OVER ITS GROUND, IN THE TICK ([LiveSheet]): the
+            // band a hovered panel lights on its tabs
+            // ([LiftingGripBand.nearby]) and the hover of a tab behind
+            // another are laid on it, and the strip's tick is left as it was
+            // — the tick counts a sheet by itself and its place, not by what
+            // is laid on it — so the region keeps its image (card a-hover-in-
+            // a-capsule-or-a-dock-takes-the-regions-image-again, 2026-11-24).
+            // ↩️The band was painted in the tick, which a pointer coming onto
+            // any panel changed: the dock's image was taken again at each,
+            // the header's controls on the way among them. ↩️Then the sheet
+            // lay around the tick, under the strip's ground, and a tab's
+            // hover laid on it was hidden by that ground.
+            child: TickLayer(
               child: Stack(
                 children: [
                   // 🚨The strip's ground is painted INSIDE the layer (10-27,
@@ -570,43 +570,45 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                   // room's edge (09-25) — 10px over at 340 (2026-10-15),
                   // while the frame panels' transport stood on the sill and
                   // took nearly a rail's whole width.
-                  KeptTailRow(
-                    headKeeps: EditorPanelTabs._tabExtent,
-                    head: LayoutBuilder(
-                      builder: (context, constraints) {
-                        // How many fit. The overflow button costs one slot,
-                        // so it only appears when it actually buys room.
-                        final fits =
-                            (constraints.maxWidth / EditorPanelTabs._tabExtent)
-                                .floor();
-                        final overflowing = fits < tabs.length;
-                        final shown = overflowing
-                            ? math.max(0, fits - 1)
-                            : tabs.length;
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (var index = 0; index < shown; index += 1)
-                              _buildTabButton(index),
-                            if (overflowing)
-                              _TabOverflowButton(
-                                groupId: widget.groupId,
-                                hidden: tabs.sublist(shown),
-                                activeTabId: widget.activeTabId,
-                                onTabSelected: widget.onTabSelected,
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                    tail: SizedBox(
-                      height: height,
-                      child: LiveSheet.inPlace(child: _buildSillTrailing()),
+                  LiveSheet(
+                    child: KeptTailRow(
+                      headKeeps: EditorPanelTabs._tabExtent,
+                      head: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // How many fit. The overflow button costs one slot,
+                          // so it only appears when it actually buys room.
+                          final fits =
+                              (constraints.maxWidth / EditorPanelTabs._tabExtent)
+                                  .floor();
+                          final overflowing = fits < tabs.length;
+                          final shown = overflowing
+                              ? math.max(0, fits - 1)
+                              : tabs.length;
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var index = 0; index < shown; index += 1)
+                                _buildTabButton(index),
+                              if (overflowing)
+                                _TabOverflowButton(
+                                  groupId: widget.groupId,
+                                  hidden: tabs.sublist(shown),
+                                  activeTabId: widget.activeTabId,
+                                  onTabSelected: widget.onTabSelected,
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                      tail: SizedBox(
+                        height: height,
+                        child: LiveSheet.inPlace(child: _buildSillTrailing()),
+                      ),
                     ),
                   ),
                 ],
               ),
-            )),
+            ),
           );
   }
 
@@ -983,65 +985,74 @@ class _PanelTabButton extends StatelessWidget {
       onLifted: onTabDragChanged,
     );
 
-    return AppTooltip(
-      message: label,
-      // Manual trigger: hover tooltips still work, but no long-press
-      // recognizer competes with drag lifts.
-      triggerMode: TooltipTriggerMode.manual,
-      // ⛔No MouseRegion of its own any more: the band's first rung is the
-      // PANEL being hovered, not this button, and the InkWell already
-      // paints its own hover for the button itself.
-      child: ControlPressClaim(
+    // A CLEAR PLATE (card a-hover-in-a-capsule-or-a-dock-takes-the-regions-
+    // image-again, 2026-11-24): its hover is laid on the strip's sheet, so a
+    // pointer going onto a tab behind another takes no image of its dock.
+    // The selected tab's fill is a ground of its own, over the sheet, and
+    // its hover lights in place on it ([LiveSheet.overAGroundOfItsOwn] —
+    // its band still on the sheet) — the foot of the panel, and the one tab
+    // a hover still costs an image. ↩️An InkWell
+    // under a press claim, which repainted the strip's picture for every
+    // tab's hover. Manual trigger: hover tooltips still work, but no
+    // long-press recognizer competes with drag lifts.
+    //
+    // ⛔No MouseRegion of its own any more: the band's first rung is the
+    // PANEL being hovered, not this button, and the plate lights its own
+    // hover for the button itself.
+    final plate = TooltipTheme(
+      data: TooltipTheme.of(
+        context,
+      ).copyWith(triggerMode: TooltipTriggerMode.manual),
+      child: RailPlateButton(
+        tooltip: label,
         onPressed: onPressed,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
-          onTap: silentPress(onPressed),
-          // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
-          // sill. It wears the body's own fill and rounds only the corners
-          // AWAY from the body, so the seam between them disappears and the
-          // panel reads as one shape that grows out of its buttons — which
-          // is what the sill was for. Its neighbours are bare, so the fill
-          // still says which one is on, alongside the accent glyph and the
-          // band on the edge facing the WINDOW rather than along the seam
-          // the panel wants invisible.
-          //
-          // The band is CUT by that shape, the way every other grip in the
-          // app is cut by the panel it belongs to: the tab's rounded corners
-          // cut it, so it reads as the tab's own edge.
-          //
-          // PASSTHROUGH, not the default loose fit. A loose Stack hands its
-          // non-positioned child the incoming constraints LOOSENED, so the
-          // tab's body shrank to its 16px glyph and sat at the top of a 30px
-          // strip: the selected fill stopped reaching the panel body it is
-          // supposed to merge into, and every glyph rode 7px high.
-          // Passthrough keeps the strip's tight height and the loose width,
-          // which is exactly what a tab wants — as tall as the strip, as wide
-          // as what it holds.
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: ShapeDecoration(
-                  color: selected ? colorScheme.surface : Colors.transparent,
-                  shape: _shape(),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 16, color: foreground),
-                    if (locked) ...[
-                      const SizedBox(width: 3),
-                      Icon(Icons.lock, size: 9, color: colorScheme.primary),
-                    ],
+        shape: _shape(),
+        // The band is CUT by the tab's shape, the way every other grip in
+        // the app is cut by the panel it belongs to: the tab's rounded
+        // corners cut it, so it reads as the tab's own edge.
+        //
+        // PASSTHROUGH, not the default loose fit. A loose Stack hands its
+        // non-positioned child the incoming constraints LOOSENED, so the
+        // tab's body shrank to its 16px glyph and sat at the top of a 30px
+        // strip: the selected fill stopped reaching the panel body it is
+        // supposed to merge into, and every glyph rode 7px high.
+        // Passthrough keeps the strip's tight height and the loose width,
+        // which is exactly what a tab wants — as tall as the strip, as wide
+        // as what it holds.
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16, color: foreground),
+                  if (locked) ...[
+                    const SizedBox(width: 3),
+                    Icon(Icons.lock, size: 9, color: colorScheme.primary),
                   ],
-                ),
+                ],
               ),
-              Positioned.fill(child: grip),
-            ],
-          ),
+            ),
+            Positioned.fill(child: grip),
+          ],
         ),
       ),
+    );
+    if (!selected) {
+      return plate;
+    }
+    // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the sill.
+    // It wears the body's own fill and rounds only the corners AWAY from
+    // the body, so the seam between them disappears and the panel reads as
+    // one shape that grows out of its buttons — which is what the sill was
+    // for. Its neighbours are bare, so the fill still says which one is on,
+    // alongside the accent glyph and the band on the edge facing the WINDOW
+    // rather than along the seam the panel wants invisible.
+    return DecoratedBox(
+      decoration: ShapeDecoration(color: colorScheme.surface, shape: _shape()),
+      child: LiveSheet.overAGroundOfItsOwn(child: plate),
     );
   }
 }

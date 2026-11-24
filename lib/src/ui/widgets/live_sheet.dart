@@ -57,6 +57,17 @@ class LiveSheet extends StatefulWidget {
   static Widget inPlace({required Widget child}) =>
       _LiveSheetScope(under: null, over: null, child: child);
 
+  /// [child] on a ground of its own painted over the sheet: what it lays
+  /// under paints in place, on that ground — the sheet's under layer lies
+  /// beneath the ground — and what it lays over still lies on the sheet,
+  /// over the ground too. The selected panel tab's (`EditorPanelTabs`): its
+  /// hover lights on its fill, and the band a hovered panel lights on it
+  /// stays off the strip's picture.
+  static Widget overAGroundOfItsOwn({required Widget child}) => Builder(
+    builder: (context) =>
+        _LiveSheetScope(under: null, over: overOf(context), child: child),
+  );
+
   /// The looks laid under what the sheet [context] is built over holds, or
   /// null where it is built over none.
   static LiveLooks? underOf(BuildContext context) =>
