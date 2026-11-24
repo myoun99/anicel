@@ -189,7 +189,7 @@ class ProjectFileDoor {
   final TimelineZoomMemory _timelineZoom;
 
   /// Whose conte zoom, panel scrolls and frames display a save keeps and an
-  /// open puts back ([ProjectResume.storyboardZoom],
+  /// open puts back ([ProjectResume.conteZooms],
   /// [ProjectResume.frameAxisOffsets], [ProjectResume.rulerView]).
   final PanelViewMemory _panelViews;
 
@@ -934,16 +934,9 @@ class ProjectFileDoor {
     tools: toolChoice?.read() ?? const {},
     playbackMode: _playback.playbackMode,
     timelineZoom: _timelineZoom.byCut,
-    storyboardZoom: switch (_panelViews.storyboardPixelsPerFrame.value) {
-      PanelViewMemory.defaultStoryboardPixelsPerFrame => null,
-      final zoom => zoom,
-    },
-    frameAxisOffsets: PanelViewMemory.awayFromTheStart(
-      _panelViews.frameAxisOffsets,
-    ),
-    layerAxisOffsets: PanelViewMemory.awayFromTheStart(
-      _panelViews.layerAxisOffsets,
-    ),
+    conteZooms: _panelViews.conteZooms,
+    frameAxisOffsets: _panelViews.frameAxisOffsets.awayFromTheStart,
+    layerAxisOffsets: _panelViews.layerAxisOffsets.awayFromTheStart,
     rulerView: _panelViews.rulerView.value,
     laneGraphs: _laneGraphs.value,
     hiddenSections: _hiddenSections.value,
@@ -1238,20 +1231,13 @@ class ProjectFileDoor {
         _timelineZoom.remember(cut, zoom);
       }
     }
-    // The conte at the zoom it was left at, and each panel scrolled where it
-    // was along both axes (F-267) and writing frames as it was (F-354) — set
-    // before any panel is built, so each is born there.
-    if (resume.storyboardZoom case final zoom?) {
-      _panelViews.storyboardPixelsPerFrame.value = zoom;
-    }
-    PanelViewMemory.standAt(
-      _panelViews.frameAxisOffsets,
-      resume.frameAxisOffsets,
-    );
-    PanelViewMemory.standAt(
-      _panelViews.layerAxisOffsets,
-      resume.layerAxisOffsets,
-    );
+    // The conte at the zoom each timeline was left at, and each panel
+    // scrolled where it was along both axes (F-267) — for each cut and each
+    // timeline (H78) — and writing frames as it was (F-354) — set before any
+    // panel is built, so each is born there.
+    _panelViews.standAtConteZooms(resume.conteZooms);
+    _panelViews.frameAxisOffsets.standAt(resume.frameAxisOffsets);
+    _panelViews.layerAxisOffsets.standAt(resume.layerAxisOffsets);
     _panelViews.rulerView.value = resume.rulerView;
     // The header graphs and their pins as they stood (F-360-Q1) — each on a
     // row the project still has: a new row's id is minted afresh every

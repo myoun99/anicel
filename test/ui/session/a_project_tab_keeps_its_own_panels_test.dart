@@ -2,10 +2,12 @@ import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/default_layer_helpers.dart';
 import 'package:anicel/src/services/editing/run_id_mint.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -17,6 +19,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart'
     show TimelineRulerViewCorner;
 import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart'
+    show TimelineZoomLimits;
 
 import '../../helpers/scrollable_of.dart';
 import '../timeline/timeline_ruler_probe.dart' show timelineRulerPainter;
@@ -219,4 +223,148 @@ void main() {
       );
     });
   }
+
+  /// Two cuts, each with drawing rows enough for the rows to scroll and
+  /// frames enough for the frames to.
+  Project twoCutsOfManyRows() {
+    final project = manyRows();
+    final track = project.tracks.first;
+    final second = createDefaultCut(
+      cutId: const CutId('c2'),
+      name: '2',
+      layerId: const LayerId('c2-drawing'),
+    );
+    return project.copyWith(
+      tracks: [
+        track.copyWith(
+          cuts: [
+            for (final cut in track.cuts) cut.copyWith(duration: 480),
+            second.copyWith(
+              duration: 480,
+              layers: [
+                for (var i = 0; i < 30; i += 1)
+                  bornRowOfKind(
+                    LayerKind.animation,
+                    layerId: LayerId('c2-row-$i'),
+                    coveringFrameId: () => mintFrameId(LayerId('c2-row-$i')),
+                    cut: second,
+                  ),
+                ...second.layers,
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  testWidgets('🚨each cut shows the timeline where IT was left — its rows '
+      'and its frames, at its own zoom — not where the last cut was (H78, '
+      '유저 2026-11-24: 「타임라인별로 스크롤상태, 줌상태 별도기억, 내부컷도 '
+      '마찬가지」)', (tester) async {
+    final projects = await openWindow(tester, twoCutsOfManyRows());
+    final session = projects.active;
+    final firstCut = session.activeCutId!;
+    const secondCut = CutId('c2');
+    session.timelineZoom.remember(
+      secondCut,
+      TimelineZoomLimits.referencePixelsPerFrame * 2,
+    );
+    ScrollController along(String key) =>
+        scrollableOf(tester, find.byKey(ValueKey<String>(key))).controller!;
+    ScrollController rows() => along('timeline-vertical-scroll-viewport');
+    ScrollController frames() => along('timeline-frame-scroll-viewport');
+    final down = (rows().position.maxScrollExtent / 2).roundToDouble();
+    final across = (frames().position.maxScrollExtent / 2).roundToDouble();
+    expect(
+      [down, across],
+      everyElement(greaterThan(10)),
+      reason: '⛔전제: the rows and the frames overflow',
+    );
+    rows().jumpTo(down);
+    frames().jumpTo(across);
+    await tester.pumpAndSettle();
+
+    session.selectCut(secondCut);
+    await tester.pumpAndSettle();
+    expect(
+      [rows().offset, frames().offset],
+      [0, 0],
+      reason: 'a cut never scrolled opens at its start',
+    );
+    frames().jumpTo(64);
+    await tester.pumpAndSettle();
+
+    session.selectCut(firstCut);
+    await tester.pump();
+    expect(
+      [rows().offset, frames().offset],
+      [down, across],
+      reason: '🚨the first comes back where it was, from its first frame — '
+          'not bent by the zoom of the cut it came from',
+    );
+    await tester.pumpAndSettle();
+    session.selectCut(secondCut);
+    await tester.pumpAndSettle();
+    expect(frames().offset, 64);
+  });
+
+  testWidgets('🚨each timeline shows the conte where IT was left — its '
+      'frames at its own zoom — and one never opened at the default (H78)', (
+    tester,
+  ) async {
+    final project = createDefaultProject();
+    final track = project.tracks.first;
+    final projects = await openWindow(
+      tester,
+      project.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [track.cuts.first.copyWith(duration: 480)],
+          ),
+        ],
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final session = projects.active;
+    final first = session.timelineVerbs.currentTimelineId;
+    double conteZoom() => tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .pixelsPerFrame;
+    ScrollController frames() => scrollableOf(
+      tester,
+      find.byKey(
+        const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+      ),
+    ).controller!;
+    session.panelViews.storyboardPixelsPerFrame.value = 8;
+    await tester.pumpAndSettle();
+    final across = (frames().position.maxScrollExtent / 2).roundToDouble();
+    expect(across, greaterThan(10), reason: '⛔전제: the frames overflow');
+    frames().jumpTo(across);
+    await tester.pumpAndSettle();
+
+    session.timelineVerbs.addTimeline();
+    await tester.pumpAndSettle();
+    expect(session.timelineVerbs.currentTimelineId, isNot(first));
+    expect(
+      [conteZoom(), frames().offset],
+      [PanelViewMemory.defaultStoryboardPixelsPerFrame, 0],
+      reason: 'a timeline never opened shows the conte at the default zoom, '
+          'at its start',
+    );
+
+    session.timelineVerbs.openTimeline(first);
+    await tester.pump();
+    expect(
+      [conteZoom(), frames().offset],
+      [8, across],
+      reason: '🚨the first comes back where it was, from its first frame — '
+          'not bent by the zoom of the timeline it came from',
+    );
+    await tester.pumpAndSettle();
+  });
 }

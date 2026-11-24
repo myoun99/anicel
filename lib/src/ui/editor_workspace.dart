@@ -80,6 +80,7 @@ import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'session/panel_view_memory.dart' show PanelAxes;
 import 'session/tab_rail_wiring.dart';
 import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
@@ -1175,7 +1176,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   ///
   /// One per rail, like [_railExtents]: the timeline, the sheet and the
   /// storyboard each fold, and each had its own offset die with it.
-  Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
+  PanelAxes get _frameAxisOffsets =>
       widget.session.panelViews.frameAxisOffsets;
 
   // The hidden sections, the row filter, the folded attach groups and the

@@ -455,6 +455,71 @@ void main() {
     reopened.dispose();
   });
 
+  test('🚨each cut keeps its own scroll and each timeline the conte\'s '
+      'scroll and zoom — through a save and an open (H78, 유저 2026-11-24: '
+      '「타임라인별로 스크롤상태, 줌상태 별도기억, 내부컷도 마찬가지」)',
+      () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final views = s.panelViews;
+    final first = s.timelineVerbs.currentTimelineId;
+    final firstCut = s.activeCutId!;
+    views.frameAxisOffsets['timeline']!.value = 480;
+    views.layerAxisOffsets['timeline']!.value = 150;
+    views.frameAxisOffsets['storyboard']!.value = 96;
+    views.storyboardPixelsPerFrame.value = 3.5;
+
+    s.selectCut(const CutId('c2'));
+    expect(
+      [
+        views.frameAxisOffsets['timeline']!.value,
+        views.layerAxisOffsets['timeline']!.value,
+      ],
+      [0, 0],
+      reason: 'a cut never scrolled opens at its start — not where the last '
+          'one was left',
+    );
+    views.frameAxisOffsets['timeline']!.value = 64;
+    expect(
+      views.frameAxisOffsets['storyboard']!.value,
+      96,
+      reason: 'the conte shows the timeline, not the cut',
+    );
+
+    s.timelineVerbs.addTimeline();
+    expect(s.timelineVerbs.currentTimelineId, isNot(first));
+    expect(
+      views.storyboardPixelsPerFrame.value,
+      PanelViewMemory.defaultStoryboardPixelsPerFrame,
+      reason: 'a timeline never zoomed opens at the default',
+    );
+    expect(views.frameAxisOffsets['storyboard']!.value, 0);
+    views.storyboardPixelsPerFrame.value = 9;
+    views.layerAxisOffsets['storyboard']!.value = 30;
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    final back = reopened.panelViews;
+    expect(back.storyboardPixelsPerFrame.value, 9, reason: 'the open one');
+    expect(back.layerAxisOffsets['storyboard']!.value, 30);
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+
+    reopened.timelineVerbs.openTimeline(first);
+    expect(back.storyboardPixelsPerFrame.value, 3.5);
+    expect(back.frameAxisOffsets['storyboard']!.value, 96);
+    expect(back.layerAxisOffsets['storyboard']!.value, 0);
+
+    reopened.selectCut(firstCut);
+    expect(back.frameAxisOffsets['timeline']!.value, 480);
+    expect(back.layerAxisOffsets['timeline']!.value, 150);
+    reopened.selectCut(const CutId('c2'));
+    expect(back.frameAxisOffsets['timeline']!.value, 64);
+    reopened.dispose();
+  });
+
   test('a file that says nothing of the panels opens them as a new project '
       'does — the conte at its default zoom, each panel at its start',
       () async {

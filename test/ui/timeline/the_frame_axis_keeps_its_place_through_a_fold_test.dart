@@ -362,4 +362,63 @@ void main() {
       reason: 'and it sits five cells in, where frame $current is',
     );
   });
+
+  testWidgets('🚨a folded row handed another place\'s axis leaves it where '
+      'that place was left — the zoom it comes with is no zoom step (H78)', (
+    tester,
+  ) async {
+    final first = ValueNotifier<double>(2400);
+    final second = ValueNotifier<double>(900);
+    addTearDown(first.dispose);
+    addTearDown(second.dispose);
+    Future<void> show(ValueNotifier<double> axis, double cell) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 600,
+                  height: CollapsedRowOverlay.defaultHeight,
+                  child: CollapsedRowOverlay(
+                    snapshot: const FlipHudSnapshot(
+                      rows: [
+                        FlipHudRow(
+                          name: 'a',
+                          kind: LayerKind.animation,
+                          runs: [],
+                        ),
+                      ],
+                      rowIndex: 0,
+                      frameIndex: 0,
+                      frameCount: 480,
+                    ),
+                    rail: null,
+                    naturalRailWidth: 100,
+                    pixelsPerFrame: cell,
+                    framesPerSecond: 24,
+                    frameAxisOffset: axis,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+    await show(first, 24);
+    await show(first, 12);
+    expect(
+      first.value,
+      isNot(2400),
+      reason: '⛔전제: a zoom step on the same axis re-anchors it',
+    );
+    final firstWasLeft = first.value;
+
+    await show(second, 48);
+    expect(
+      second.value,
+      900,
+      reason: '🚨the cut opened stands where it was left',
+    );
+    expect(first.value, firstWasLeft, reason: 'and the one left is not moved');
+  });
 }

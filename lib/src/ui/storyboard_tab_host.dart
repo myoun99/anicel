@@ -734,6 +734,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 builder: (context, _) {
                   final rail = _railInputs(widget.rail);
                   return StoryboardPanel(
+                    // 🗣️H78 (유저 2026-11-24 「타임라인별로 스크롤상태,
+                    // 줌상태 별도기억」): a panel is born for each timeline,
+                    // on that timeline's axes and zoom (PanelAxes,
+                    // PanelViewMemory.followTimeline) — no zoom of another
+                    // timeline's re-anchors its scroll.
+                    key: ValueKey(rail.project.currentTimelineId),
                     project: rail.project,
                     rowFilter: rail.rowFilter,
                     hiddenSections: rail.hiddenSections,

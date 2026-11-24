@@ -41,7 +41,7 @@ class ProjectResume {
     this.tools = const {},
     this.playbackMode,
     this.timelineZoom = const {},
-    this.storyboardZoom,
+    this.conteZooms = const {},
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
     this.rulerView = FrameRulerView.frames,
@@ -74,17 +74,20 @@ class ProjectResume {
   /// 「프로젝트와 같이 저장되도록」) — a cut nobody zoomed is not here.
   final Map<CutId, double> timelineZoom;
 
-  /// The conte's zoom (F-267) — null when it was left at its default.
-  final double? storyboardZoom;
+  /// The conte's zoom each timeline was left at, by its id (F-267 → H78) —
+  /// one left at the default is not here.
+  final Map<String, double> conteZooms;
 
-  /// How far each frame panel was scrolled along its frames, by rail, in
-  /// pixels at that panel's zoom (F-267) — a rail left at its start is not
-  /// here.
+  /// How far each frame panel was scrolled along its frames, by rail and
+  /// the place it shows — the cut, for the timeline panel and the sheet,
+  /// the timeline, for the conte (`PanelAxes`, H78) — in pixels at that
+  /// panel's zoom (F-267); one left at its start is not here.
   final Map<String, double> frameAxisOffsets;
 
   /// How far each frame panel was scrolled along its layers — the
-  /// timeline's rows, the sheet's columns, the conte's rows — by rail, in
-  /// pixels (F-267); a rail left at its start is not here.
+  /// timeline's rows, the sheet's columns, the conte's rows — by rail and
+  /// place as [frameAxisOffsets], in pixels (F-267); one left at its start
+  /// is not here.
   final Map<String, double> layerAxisOffsets;
 
   /// How the frame panels count a frame (초+코마 표시 · 페이지, F-354 · I-81 —
@@ -125,7 +128,7 @@ class ProjectResume {
       'timelineZoom': {
         for (final entry in timelineZoom.entries) entry.key.value: entry.value,
       },
-    if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
+    if (conteZooms.isNotEmpty) 'conteZooms': conteZooms,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
     if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
     if (rulerView != FrameRulerView.frames)
@@ -173,7 +176,7 @@ class ProjectResume {
             in _positiveByName(json['timelineZoom']).entries)
           CutId(key): value,
       },
-      storyboardZoom: _positive(json['storyboardZoom']),
+      conteZooms: _positiveByName(json['conteZooms']),
       frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
       layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
       rulerView: FrameRulerView.fromJson(json['frameRuler']),

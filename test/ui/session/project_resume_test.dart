@@ -73,22 +73,31 @@ void main() {
     });
   });
 
-  group('the conte\'s zoom and each panel\'s scroll (F-267)', () {
+  group('the conte\'s zoom and each panel\'s scroll, each timeline\'s and '
+      'each cut\'s (F-267 · H78)', () {
     test('round-trip through the JSON', () {
       const resume = ProjectResume(
-        storyboardZoom: 3.5,
-        frameAxisOffsets: {'timeline': 480, 'storyboard': 96.5},
-        layerAxisOffsets: {'timeline': 120, 'xsheet': 64.5},
+        conteZooms: {'timeline-1': 3.5, 'timeline-2': 9},
+        frameAxisOffsets: {
+          'timeline@c1': 480,
+          'timeline@c2': 12,
+          'storyboard@timeline-1': 96.5,
+        },
+        layerAxisOffsets: {'timeline@c1': 120, 'xsheet@c2': 64.5},
       );
       final back = ProjectResume.fromJson(resume.toJson());
-      expect(back.storyboardZoom, 3.5);
-      expect(back.frameAxisOffsets, {'timeline': 480.0, 'storyboard': 96.5});
-      expect(back.layerAxisOffsets, {'timeline': 120.0, 'xsheet': 64.5});
+      expect(back.conteZooms, {'timeline-1': 3.5, 'timeline-2': 9.0});
+      expect(back.frameAxisOffsets, {
+        'timeline@c1': 480.0,
+        'timeline@c2': 12.0,
+        'storyboard@timeline-1': 96.5,
+      });
+      expect(back.layerAxisOffsets, {'timeline@c1': 120.0, 'xsheet@c2': 64.5});
     });
 
     test('🚨a part that cannot be read is dropped ALONE', () {
       final back = ProjectResume.fromJson({
-        'storyboardZoom': 'wide',
+        'conteZooms': {'timeline-1': 'wide', 'timeline-2': 0, 'timeline-3': 4},
         'frameAxisOffsets': {
           'timeline': -4,
           'xsheet': double.nan,
@@ -101,13 +110,13 @@ void main() {
           'storyboard': 40,
         },
       });
-      expect(back.storyboardZoom, isNull);
+      expect(back.conteZooms, {'timeline-3': 4.0});
       expect(back.frameAxisOffsets, {'storyboard': 12.0});
       expect(back.layerAxisOffsets, {'storyboard': 40.0});
       expect(
-        ProjectResume.fromJson({'storyboardZoom': 0}).storyboardZoom,
-        isNull,
-        reason: 'a zoom of nothing is no zoom',
+        ProjectResume.fromJson({'conteZooms': 3.5}).conteZooms,
+        isEmpty,
+        reason: 'not a map: no zoom was saved',
       );
     });
   });
