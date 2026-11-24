@@ -8,16 +8,20 @@ import 'package:gpu_engine/gpu_engine.dart'
 import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import '../../native/engine_tile_ledger.dart';
 import '../../native/qa_memory.dart';
+import '../../services/memory_allowance.dart';
 import '../../services/runtime_path_report.dart';
 import '../diagnostics/memory_census.dart';
+import '../canvas/tile_picture_budget.dart';
 import '../editor_session_manager.dart';
 import '../layout/device_grid_audit.dart';
 import '../raster_watch.dart';
 import '../screen_canary.dart';
 import '../widgets/app_icon_button.dart';
+import 'debug_type.dart';
 import 'engine_stages.dart';
 import 'frame_stats.dart';
 import 'frame_stats_readout.dart';
+import 'input_inspector.dart';
 import 'measurement_mode.dart';
 import 'repaint_cause.dart';
 import 'screen_asked.dart';
@@ -91,6 +95,11 @@ class DebugWindow extends StatefulWidget {
   /// every route, where no project is in reach. None before it does.
   static Iterable<EditorSessionManager> Function()? openSessions;
 
+  /// The key every column's lines stand under — what a test reads them by,
+  /// apart from the head's and the bars' words, which say figures of
+  /// theirs again.
+  static const Key linesKey = ValueKey<String>('debug-window-lines');
+
   @override
   State<DebugWindow> createState() => _DebugWindowState();
 }
@@ -99,16 +108,19 @@ class _DebugWindowState extends State<DebugWindow> {
   /// What the window shows while paused — null while it follows.
   DebugReading? _held;
 
-  DebugReading _read(FrameStatsSnapshot? stats) => (
-    stats: stats,
-    census: collectMemoryCensus(
-      DebugWindow.openSessions?.call() ?? const <EditorSessionManager>[],
-    ),
-    stages: EngineStages.summary,
-    clocked: appGpuEngineOpen.value?.clocked ?? false,
-    paths: collectRuntimePathReport(),
-    engine: [...engineLines(), RepaintCause.bakeLine()],
-  );
+  DebugReading _read(FrameStatsSnapshot? stats) {
+    final sessions =
+        DebugWindow.openSessions?.call() ?? const <EditorSessionManager>[];
+    return (
+      stats: stats,
+      census: collectMemoryCensus(sessions),
+      budgets: budgetLines(sessions),
+      stages: EngineStages.summary,
+      clocked: appGpuEngineOpen.value?.clocked ?? false,
+      paths: collectRuntimePathReport(),
+      engine: [...engineLines(), RepaintCause.bakeLine()],
+    );
+  }
 
   void _pause(DebugReading now) =>
       setState(() => _held = _held == null ? now : null);
@@ -138,18 +150,40 @@ class _DebugWindowState extends State<DebugWindow> {
                 onPause: () => _pause(reading),
                 onReset: _reset,
               ),
+              // ⛔No line is cut, on any screen: the columns are laid at
+              // their own height, at the least the Galaxy Tab's width, and a
+              // window too small for them shows them made smaller. The
+              // pointer passes through to the canvas everywhere but the
+              // inspector's panel, which takes it, as its card did, for
+              // its own buttons.
               Expanded(
-                child: IgnorePointer(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _TimeColumn(reading: reading)),
-                      Expanded(child: _MemoryColumn(reading: reading)),
-                      SizedBox(
-                        width: _DebugText.inputWidth,
-                        child: _SystemColumn(reading: reading),
+                child: LayoutBuilder(
+                  builder: (context, room) => FittedBox(
+                    key: const ValueKey<String>('debug-window-body'),
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: math.max(room.maxWidth, _DebugText.leastWidth),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: IgnorePointer(
+                              child: _TimeColumn(reading: reading),
+                            ),
+                          ),
+                          Expanded(
+                            child: IgnorePointer(
+                              child: _MemoryColumn(reading: reading),
+                            ),
+                          ),
+                          SizedBox(
+                            width: _DebugText.inputWidth,
+                            child: _SystemColumn(reading: reading),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -169,19 +203,16 @@ typedef DebugReading = ({
   bool clocked,
   List<RuntimePathEntry> paths,
   List<String> engine,
+  List<String> budgets,
 });
 
 /// The window's type and colours: white on near-black, theme-independent,
 /// because it has to stay legible over the canvas, over a panel, and in a
-/// photo someone reads numbers off. Tabular figures so the columns do not
-/// dance between republishes.
+/// photo someone reads numbers off — in the window's one type
+/// ([DebugType.line]).
 abstract final class _DebugText {
-  static const TextStyle style = TextStyle(
-    color: Color(0xFFFFFFFF),
-    fontSize: 11,
-    height: 1.3,
-    fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
-  );
+  static TextStyle get style =>
+      DebugType.line.copyWith(color: const Color(0xFFFFFFFF));
   static const TextStyle heading = TextStyle(
     color: Color(0xFF80D8FF),
     fontWeight: FontWeight.w600,
@@ -201,8 +232,13 @@ abstract final class _DebugText {
   ];
 
   /// The input column's width: the inspector's panel, whose width is its
-  /// own (`InputInspectorPanel`).
-  static const double inputWidth = 560;
+  /// own ([InputInspectorPanel.width]), in the column's margins.
+  static const double inputWidth = InputInspectorPanel.width + 20;
+
+  /// The narrowest the window lays its columns in: the Galaxy Tab's
+  /// screen, 1579 logical pixels (관제 2026-11-24: 「갤탭 한 화면에 잘림
+  /// 없이」). A narrower or shorter window shows the same, made smaller.
+  static const double leastWidth = 1579;
 
   static String ms(double millis) => millis.toStringAsFixed(1);
   static String mb(int bytes) => (bytes / (1 << 20)).toStringAsFixed(1);
@@ -343,7 +379,7 @@ List<DebugPart> finishPartsOf(FrameStatsSnapshot stats) {
 /// frame's way up, the finish by its own parts where they were said.
 String bottleneckWords(FrameStatsSnapshot? stats) {
   if (stats == null) {
-    return 'BOTTLENECK  — no frames yet';
+    return 'BOTTLENECK  —';
   }
   final finish = finishPartsOf(stats);
   final parts = [
@@ -398,6 +434,29 @@ List<String> itemLines(MemoryCensusItem item) => [
 /// How many of a holder's parts a line of [itemLines] says.
 const int partsALine = 3;
 
+/// The ceilings the census's holders are kept under, as the memory tab's
+/// allowance set them (`EditorSessionManager._applyCacheBudgets`): the
+/// frames played ahead — every open project's own share, in all —, the
+/// canvas's tile pictures and the engine's slots of them, the undo, and
+/// the factor the allowance scales the device's laws by. 🗣️관제 2026-11-24
+/// (H74, a cut on the Galaxy Tab played with frames missing): whether a
+/// budget or a cost is short is read beside what the holders hold.
+List<String> budgetLines(Iterable<EditorSessionManager> sessions) {
+  String mb(int bytes) => _DebugText.mb(bytes);
+  final playback = sessions.fold(
+    0,
+    (sum, session) =>
+        sum + session.playbackRig.playbackCache.playbackCacheByteBudget,
+  );
+  final undo = sessions.firstOrNull?.historyManager.byteBudget;
+  return [
+    'BUDGET  playback ${sessions.isEmpty ? '—' : mb(playback)}  '
+        'tiles ${mb(TilePictureBudget.instance.byteBudget)}  '
+        'undo ${undo == null ? '—' : mb(undo)} MB  '
+        'allowance ×${MemoryAllowance.factor.value.toStringAsFixed(2)}',
+  ];
+}
+
 /// What the engine says of itself and keeps count of that no other line
 /// shows: its adapter, whether its device went and why, the waits past
 /// their limit, the submits not finished; what it says the frames'
@@ -437,11 +496,22 @@ List<String> engineLines() {
   ];
 }
 
-/// Every line the window shows, as text — what its copy button takes.
-List<String> everyLine(DebugReading reading) {
+/// Every line the window shows, as text — what its copy button takes:
+/// the head's, then each column's as the column says it, the inspector's
+/// panel's as it writes them ([InputInspectorPanel.textLines]).
+List<String> everyLine(DebugReading reading) => [
+  bottleneckWords(reading.stats),
+  ...timeLines(reading),
+  ...memoryColumnLines(reading),
+  ...systemLines(reading.paths),
+  ...InputInspectorPanel.textLines(),
+];
+
+/// The time column's lines: the frame clock's, the screens', the GPU's,
+/// the engine's places, then the engine's own.
+List<String> timeLines(DebugReading reading) {
   final stats = reading.stats;
   return [
-    bottleneckWords(stats),
     if (stats == null) ...FrameStatsLines.none,
     if (stats != null) ...[
       ...FrameStatsLines.frame(stats),
@@ -450,12 +520,20 @@ List<String> everyLine(DebugReading reading) {
     ],
     ...EngineStages.lines(reading.stages, clocked: reading.clocked),
     ...reading.engine,
+  ];
+}
+
+/// The memory column's lines: the census's, then the pointer, the strokes
+/// and the caches.
+List<String> memoryColumnLines(DebugReading reading) {
+  final stats = reading.stats;
+  return [
     ...memoryLines(reading.census),
+    ...reading.budgets,
     if (stats != null) ...[
       ...FrameStatsLines.stroke(stats),
       ...FrameStatsLines.caches(stats),
     ],
-    ...systemLines(reading.paths),
   ];
 }
 
@@ -476,39 +554,60 @@ class _Column extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The backdrop takes no pointer: a column's ground is not a control,
+    // and what passes it reaches the canvas under the window.
     return Padding(
       padding: const EdgeInsets.all(4),
-      child: ColoredBox(
-        color: _DebugText.panel,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: children,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: IgnorePointer(child: ColoredBox(color: _DebugText.panel)),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Lines of text, each its own row.
+/// Lines of text, each its own row — one line each where they are figures
+/// laid to fit ([wraps] false), each wrapped where they are words a report
+/// says as they come.
 class _Lines extends StatelessWidget {
-  const _Lines(this.lines);
+  const _Lines(this.lines, {this.wraps = false});
 
   final List<String> lines;
+  final bool wraps;
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      key: DebugWindow.linesKey,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final line in lines)
-          Text(line, maxLines: 1, overflow: TextOverflow.clip, softWrap: false),
+          if (wraps)
+            Text(line)
+          else
+            Text(
+              line,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              softWrap: false,
+            ),
       ],
     );
   }
 }
+
+/// A sum's parts in a reading of the frame statistics.
+typedef _PartsOf = List<DebugPart> Function(FrameStatsSnapshot stats);
 
 /// The frame's time: the graph of the window's frames, a frame's parts as
 /// bars that add up, the frame clock's and the screens' lines, the GPU and
@@ -535,19 +634,17 @@ class _TimeColumn extends StatelessWidget {
             ),
           ),
         ),
-        _SumBar(title: 'FRAME', parts: stats == null ? const [] : framePartsOf(stats), budget: budget),
-        _SumBar(title: 'SCREEN', parts: stats == null ? const [] : screenPartsOf(stats), budget: budget),
-        _SumBar(title: 'FINISH', parts: stats == null ? const [] : finishPartsOf(stats), budget: budget),
-        _Lines([
-          if (stats == null) ...FrameStatsLines.none,
-          if (stats != null) ...[
-            ...FrameStatsLines.frame(stats),
-            ...FrameStatsLines.screen(stats),
-            ...FrameStatsLines.gpu(stats),
-          ],
-          ...EngineStages.lines(reading.stages, clocked: reading.clocked),
-          ...reading.engine,
-        ]),
+        for (final (title, partsOf) in const <(String, _PartsOf)>[
+          ('FRAME', framePartsOf),
+          ('SCREEN', screenPartsOf),
+          ('FINISH', finishPartsOf),
+        ])
+          _SumBar(
+            title: title,
+            parts: stats == null ? const [] : partsOf(stats),
+            budget: budget,
+          ),
+        _Lines(timeLines(reading)),
       ],
     );
   }
@@ -563,27 +660,22 @@ class _MemoryColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final census = reading.census;
-    final stats = reading.stats;
     return _Column(
       children: [
         _BytesBar(
           items: census.items,
           whole: census.footprintBytes,
         ),
-        _Lines([
-          ...memoryLines(census),
-          if (stats != null) ...[
-            ...FrameStatsLines.stroke(stats),
-            ...FrameStatsLines.caches(stats),
-          ],
-        ]),
+        _Lines(memoryColumnLines(reading)),
       ],
     );
   }
 }
 
-/// What the platform delivered, and what the app runs on — with the probe
-/// of whether Flutter shows the bytes the engine wrote.
+/// What the app runs on and what the platform delivers: the runtime path
+/// report, the probe of whether Flutter shows the bytes the engine wrote,
+/// and the input inspector's panel — its size its own (canvas base,
+/// 2026-11-24: 「바깥 틀 없음 · 폭 560 × 26줄」).
 class _SystemColumn extends StatelessWidget {
   const _SystemColumn({required this.reading});
 
@@ -593,8 +685,16 @@ class _SystemColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Column(
       children: [
-        _Lines(systemLines(reading.paths)),
-        const ScreenCheck(),
+        IgnorePointer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Lines(systemLines(reading.paths), wraps: true),
+              const ScreenCheck(),
+            ],
+          ),
+        ),
+        const InputInspectorPanel(),
       ],
     );
   }

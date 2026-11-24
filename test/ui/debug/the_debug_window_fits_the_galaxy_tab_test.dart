@@ -10,9 +10,9 @@ import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/engine_stages.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🔬The debug window on the Galaxy Tab's screen, 1579x986 logical
 /// (🗣️관제 2026-11-24, card one-debug-window-shows-everything: 「갤탭 한
@@ -46,13 +46,9 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(
-          fontFamily: AppTypography.bundledFamily,
-          fontFamilyFallback: AppTypography.bundledFallback,
-        ),
-        home: const DebugWindowHost(child: SizedBox()),
-      ),
+      // No theme: the window sets its own face (DebugType), whatever the
+      // app's theme says.
+      const MaterialApp(home: DebugWindowHost(child: SizedBox())),
     );
     MeasurementMode.debugWindow.value = true;
     await tester.pump();
@@ -93,10 +89,29 @@ void main() {
     final window = find.byKey(const ValueKey<String>('debug-window'));
     expect(window, findsOneWidget);
 
+    // Laid as they are, not made smaller to fit: on this screen the
+    // columns are as tall as the window lets them be.
+    final body = tester.renderObject<RenderFittedBox>(
+      find.byKey(const ValueKey<String>('debug-window-body')),
+    );
+    final laid = body.child!.size;
+    expect(
+      laid.height,
+      lessThanOrEqualTo(body.size.height + 0.5),
+      reason: 'the columns are ${laid.height.round()} tall in '
+          '${body.size.height.round()} — made smaller to fit',
+    );
+    expect(laid.width, lessThanOrEqualTo(body.size.width + 0.5));
+
+    // A line laid to one row is cut where it is wider than its row; a
+    // line that wraps is not.
     final clipped = <String>[];
     for (final paragraph in tester.renderObjectList<RenderParagraph>(
-      find.descendant(of: window, matching: find.byType(RichText)),
+      find.descendant(of: window, matching: find.anyRichText()),
     )) {
+      if (paragraph.softWrap && paragraph.maxLines != 1) {
+        continue;
+      }
       final wants = paragraph.getMaxIntrinsicWidth(double.infinity);
       if (wants > paragraph.size.width + 0.5) {
         clipped.add(

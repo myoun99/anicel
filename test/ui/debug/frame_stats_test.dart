@@ -38,6 +38,13 @@ class _TickPainter extends CustomPainter {
 /// One synthetic frame. Every duration is expressed in milliseconds so
 /// the expectations below read as the numbers a person would see on
 /// screen.
+/// A line the debug window's columns say containing [pattern] — of its
+/// lines alone: the head and the bars say a figure of theirs again.
+Finder _said(Pattern pattern) => find.descendant(
+  of: find.byKey(DebugWindow.linesKey),
+  matching: find.textContaining(pattern),
+);
+
 FrameTiming _frame({
   required double uiMs,
   required double rasterMs,
@@ -794,7 +801,7 @@ void main() {
       // head's own buttons.
       final ignoring = tester.widgetList<IgnorePointer>(
         find.ancestor(
-          of: find.textContaining('MEMORY  app'),
+          of: _said('MEMORY  app'),
           matching: find.byType(IgnorePointer),
         ),
       );
@@ -807,7 +814,7 @@ void main() {
         const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
-      expect(find.textContaining('no frames yet'), findsOneWidget);
+      expect(_said('no frames yet'), findsOneWidget);
     });
 
     testWidgets('prints raster, UI, latency and both cache lines', (
@@ -830,12 +837,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.textContaining('RASTER'), findsOneWidget);
-      expect(find.textContaining('12.3'), findsOneWidget);
-      expect(find.textContaining('LATENCY'), findsOneWidget);
-      expect(find.textContaining('SCREEN'), findsOneWidget);
-      expect(find.textContaining('layer   cache 3'), findsOneWidget);
-      expect(find.textContaining('picture cache 0'), findsOneWidget);
+      expect(_said('RASTER'), findsOneWidget);
+      expect(_said('12.3'), findsOneWidget);
+      expect(_said('LATENCY'), findsOneWidget);
+      expect(_said('SCREEN'), findsOneWidget);
+      expect(_said('layer   cache 3'), findsOneWidget);
+      expect(_said('picture cache 0'), findsOneWidget);
     });
 
     testWidgets('prints the screens\' waits for a buffer Flutter can no '
@@ -887,7 +894,7 @@ void main() {
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       FrameStats.publish();
       await tester.pump();
-      expect(find.textContaining('cut 1  신호'), findsOneWidget);
+      expect(_said('cut 1  신호'), findsOneWidget);
     });
 
     testWidgets('prints what a frame waited for, a screen\'s frame part by '
@@ -932,7 +939,7 @@ void main() {
         ('POINTER', 'pts/s'),
       ]) {
         expect(
-          find.textContaining(RegExp('^${RegExp.escape(line)}.*$figure')),
+          _said(RegExp('^${RegExp.escape(line)}.*$figure')),
           findsOneWidget,
           reason: '$line … $figure',
         );
@@ -977,7 +984,7 @@ void main() {
         ('COMPILE', r'—$'),
       ]) {
         expect(
-          find.textContaining(RegExp('^${RegExp.escape(line)}.*$figure')),
+          _said(RegExp('^${RegExp.escape(line)}.*$figure')),
           findsOneWidget,
           reason: '$line … $figure',
         );
@@ -1131,7 +1138,7 @@ void main() {
       FrameStats.publish();
       await tester.pump();
       expect(
-        find.textContaining(RegExp(r'^ draw .*\d\s*$')),
+        _said(RegExp(r'^ draw .*\d\s*$')),
         findsOneWidget,
         reason: 'no screen was shown: the line ends on its figures',
       );
@@ -1189,7 +1196,7 @@ void main() {
         await tester.pump();
 
         expect(
-          find.textContaining(RegExp('^ draw .*  ${RegExp.escape(said)}\$')),
+          _said(RegExp('^ draw .*  ${RegExp.escape(said)}\$')),
           findsOneWidget,
           reason: said,
         );

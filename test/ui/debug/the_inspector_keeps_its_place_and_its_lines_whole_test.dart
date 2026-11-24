@@ -2,13 +2,19 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
+
+/// The app's own: the debug window over the app (`MaterialApp.builder`,
+/// as main.dart lays it), where the inspector's panel is shown.
+Widget _windowed(BuildContext context, Widget? child) =>
+    DebugWindowHost(child: child!);
 
 /// Card the-input-inspector-climbs-and-cuts-its-lines (유저 2026-11-24
 /// 「입력인스펙터는 게다가 줄이 매번올라가서 보이지도않고 오른쪽부분 잘리고」), in
 /// the narrowest window it is read on: a Galaxy Tab, 1579 logical pixels
 /// wide.
-const _card = ValueKey<String>('input-inspector-card');
+const _card = ValueKey<String>('input-inspector-panel');
 const _panel = ValueKey<String>('input-inspector-panel');
 
 void main() {
@@ -20,6 +26,7 @@ void main() {
     InputInspector.visible.value = true;
     await tester.pumpWidget(
       const MaterialApp(
+        builder: _windowed,
         home: Scaffold(body: InputInspectorHost(child: SizedBox.expand())),
       ),
     );

@@ -12,9 +12,10 @@ import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/content_scrollbar.dart';
 import 'key_trace.dart';
+import 'debug_type.dart';
 import 'measurement_mode.dart';
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
@@ -355,7 +356,8 @@ class InputInspectorSample {
 
 /// Wraps the editor body: invisible until [InputInspector.visible] — then
 /// a translucent listener records every pointer event passing anywhere
-/// through the app and the card renders bottom-right. The listener never
+/// through the app, for the panel the debug window shows
+/// ([InputInspectorPanel]). The listener never
 /// competes in any gesture arena (raw observation only), so recording
 /// changes NOTHING about input behavior.
 class InputInspectorHost extends StatelessWidget {
@@ -386,38 +388,24 @@ class InputInspectorHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // R26 #33: the tree SHAPE is constant — the listener and the card
-    // slot are always mounted, and visibility only decides whether the
-    // listener's events record and whether the card paints. The old
-    // build swapped `child` between wrapped and bare, remounting the
+    // R26 #33: the tree SHAPE is constant — the listener is always
+    // mounted, and visibility only decides whether its events record.
+    // The old build swapped `child` between wrapped and bare, remounting the
     // ENTIRE editor under it on every toggle — that remount's relayout
     // was the visible "layout jumps, then comes back". The gate lives in
     // the HOST's handlers (not in [InputInspector.record]) so the pen
     // sidecar services keep their direct-record contract.
-    return Stack(
-      children: [
-        Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: _observePointer,
-          onPointerMove: _observePointer,
-          onPointerUp: _observePointer,
-          onPointerCancel: _observePointer,
-          onPointerHover: _observePointer,
-          onPointerSignal: _observePointer,
-          onPointerPanZoomStart: _observePointer,
-          onPointerPanZoomUpdate: _observePointer,
-          child: child,
-        ),
-        Positioned(
-          right: 12,
-          bottom: 12,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: InputInspector.visible,
-            builder: (context, visible, _) =>
-                visible ? const _InspectorCard() : const SizedBox.shrink(),
-          ),
-        ),
-      ],
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _observePointer,
+      onPointerMove: _observePointer,
+      onPointerUp: _observePointer,
+      onPointerCancel: _observePointer,
+      onPointerHover: _observePointer,
+      onPointerSignal: _observePointer,
+      onPointerPanZoomStart: _observePointer,
+      onPointerPanZoomUpdate: _observePointer,
+      child: child,
     );
   }
 }
@@ -429,26 +417,6 @@ class InputInspectorHost extends StatelessWidget {
 /// accent it used to borrow was deleted for having exactly one production
 /// consumer. A debug-only distinction does not earn a palette token.
 const Color _inspectorSecondInk = Color(0xFFD972A8);
-
-/// The card the host lays bottom-right: the inspector's panel
-/// ([InputInspectorPanel]) on the card's ground.
-class _InspectorCard extends StatelessWidget {
-  const _InspectorCard();
-
-  @override
-  Widget build(BuildContext context) => Material(
-    key: const ValueKey<String>('input-inspector-card'),
-    elevation: 6,
-    shape: AppShapes.container(AppShapes.windowRadius),
-    color: Theme.of(
-      context,
-    ).colorScheme.surfaceContainerHigh.withValues(alpha: 0.92),
-    child: const Padding(
-      padding: EdgeInsets.fromLTRB(10, 4, 4, 8),
-      child: InputInspectorPanel(),
-    ),
-  );
-}
 
 /// What the inspector shows — its lines, with no card around them: what a
 /// window holding it lays where it likes (card one-debug-window-shows-
@@ -476,11 +444,7 @@ class InputInspectorPanel extends StatelessWidget {
   /// Its height, in lines.
   static const int lines = 26;
 
-  static const TextStyle _line = TextStyle(
-    fontSize: 10,
-    height: 1.3,
-    fontFamily: 'monospace',
-  );
+  static TextStyle get _line => DebugType.line;
 
   /// The height of one line it writes.
   static double get lineHeight => _line.fontSize! * _line.height!;
@@ -497,7 +461,7 @@ class InputInspectorPanel extends StatelessWidget {
     return parts.isEmpty ? '-' : parts.join('+');
   }
 
-  Color _kindColor(ColorScheme colorScheme, PointerDeviceKind kind) =>
+  static Color _kindColor(ColorScheme colorScheme, PointerDeviceKind kind) =>
       switch (kind) {
         PointerDeviceKind.stylus ||
         PointerDeviceKind.invertedStylus => AppColors.accent,
@@ -539,11 +503,13 @@ class InputInspectorPanel extends StatelessWidget {
     );
   }
 
+  static const String _titleSaid = 'INPUT INSPECTOR';
+
   Widget _title(ColorScheme colorScheme) => Row(
     children: [
       Expanded(
         child: Text(
-          'INPUT INSPECTOR',
+          _titleSaid,
           maxLines: 1,
           style: TextStyle(
             fontSize: 10,
@@ -588,14 +554,14 @@ class InputInspectorPanel extends StatelessWidget {
     spacing: 6,
     children: [
       Text(
-        'peak p=${InputInspector.peakPressure.toStringAsFixed(2)}',
+        _peakSaid(),
         key: const ValueKey<String>('input-inspector-peak'),
         style: _line.copyWith(color: AppColors.accent),
       ),
       ValueListenableBuilder<QaTabletPacket?>(
         valueListenable: WintabPenService.instance.latest,
         builder: (context, packet, _) => Text(
-          'wt p=${packet?.pressure.toStringAsFixed(2) ?? '-'}',
+          _wintabSaid(packet),
           key: const ValueKey<String>('input-inspector-wintab'),
           style: _line.copyWith(color: _inspectorSecondInk),
         ),
@@ -603,7 +569,7 @@ class InputInspectorPanel extends StatelessWidget {
       ValueListenableBuilder<QaPenRawState?>(
         valueListenable: RawPenInputService.instance.latest,
         builder: (context, state, _) => Text(
-          'hid ${state == null ? '-' : _rawPenLabel(state)}',
+          _rawPenSaid(state),
           key: const ValueKey<String>('input-inspector-rawpen'),
           style: _line.copyWith(color: _inspectorSecondInk),
         ),
@@ -612,8 +578,7 @@ class InputInspectorPanel extends StatelessWidget {
         ValueListenableBuilder<PenChannelSample?>(
           valueListenable: service.latest,
           builder: (context, sample, _) => Text(
-            '${service.label} p='
-            '${sample?.pressure.toStringAsFixed(2) ?? '-'}',
+            _sidecarSaid(service.label, sample),
             key: ValueKey<String>('input-inspector-${service.label}'),
             style: _line.copyWith(color: _inspectorSecondInk),
           ),
@@ -621,45 +586,55 @@ class InputInspectorPanel extends StatelessWidget {
     ],
   );
 
-  /// The events, a row per kind and phase.
-  List<Widget> _events(ColorScheme colorScheme) => [
-    if (InputInspector.events.isEmpty)
-      Text(
-        'waiting for input…',
-        style: _line.copyWith(color: colorScheme.onSurfaceVariant),
-      ),
-    for (final MapEntry(:key, value: sample) in InputInspector.events.entries)
-      Text(
-        sample.describe(),
-        key: ValueKey<String>('input-inspector-event-$key'),
-        style: _line.copyWith(color: _kindColor(colorScheme, sample.kind)),
-      ),
+  static String _peakSaid() =>
+      'peak p=${InputInspector.peakPressure.toStringAsFixed(2)}';
+
+  static String _wintabSaid(QaTabletPacket? packet) =>
+      'wt p=${packet?.pressure.toStringAsFixed(2) ?? '-'}';
+
+  static String _rawPenSaid(QaPenRawState? state) =>
+      'hid ${state == null ? '-' : _rawPenLabel(state)}';
+
+  static String _sidecarSaid(String label, PenChannelSample? sample) =>
+      '$label p=${sample?.pressure.toStringAsFixed(2) ?? '-'}';
+
+  /// The readouts as [_readouts] writes them, each of what its source says
+  /// now.
+  static List<String> _readoutsSaid() => [
+    _peakSaid(),
+    _wintabSaid(WintabPenService.instance.latest.value),
+    _rawPenSaid(RawPenInputService.instance.latest.value),
+    for (final service in PenSidecars.channelServices)
+      _sidecarSaid(service.label, service.latest.value),
   ];
 
   /// PEN-10 diagnosis strip: the touch-down counter (the pen-hover
   /// palm-rejection check) and what the pointer stream lost on its way.
   Widget _strip() => Text(
-    'touch downs=${InputInspector.touchDownCount}'
-    // 🚨H21: `seen` is counted at the observer, ahead of every gate. If it
-    // climbs while the rows above stand still, the recorder is dropping
-    // events; if it stands still too, delivery to this host has stopped.
-    // That one distinction is what the card could not make while it was
-    // the thing being diagnosed.
-    ' seen=${InputInspector.arrivals}'
-    // F-400: and what the binding kept out ahead of it.
-    ' echo=${InputInspector.echoes}'
-    // H56: and the messages whose points the OS saw no datum took — each
-    // a stretch of a line lost.
-    ' passed=${QaPenPoints.passed}'
-    // H59 법 A: and those whose points did not all reach the book, by why.
-    ' lost=${_lostSaid(QaPenPoints.lost)}'
-    // And while the tablet driver's stream is open, how far its newest
-    // packet ran behind the mouse message and the overflows its queue
-    // said: a pkTime on another clock pairs no mouse point with the driver.
-    '${_wintabHeard()}',
+    _stripSaid(),
     key: const ValueKey<String>('input-inspector-touch-count'),
     style: _line.copyWith(color: _inspectorSecondInk),
   );
+
+  static String _stripSaid() =>
+      'touch downs=${InputInspector.touchDownCount}'
+      // 🚨H21: `seen` is counted at the observer, ahead of every gate. If it
+      // climbs while the rows above stand still, the recorder is dropping
+      // events; if it stands still too, delivery to this host has stopped.
+      // That one distinction is what the card could not make while it was
+      // the thing being diagnosed.
+      ' seen=${InputInspector.arrivals}'
+      // F-400: and what the binding kept out ahead of it.
+      ' echo=${InputInspector.echoes}'
+      // H56: and the messages whose points the OS saw no datum took — each
+      // a stretch of a line lost.
+      ' passed=${QaPenPoints.passed}'
+      // H59 법 A: and those whose points did not all reach the book, by why.
+      ' lost=${_lostSaid(QaPenPoints.lost)}'
+      // And while the tablet driver's stream is open, how far its newest
+      // packet ran behind the mouse message and the overflows its queue
+      // said: a pkTime on another clock pairs no mouse point with the driver.
+      '${_wintabHeard()}';
 
   /// What comes in numbers the panel cannot know: the pins, how the
   /// tablet driver's stream started (h61-wintab-sometimes-not-engaged-at-
@@ -667,23 +642,67 @@ class InputInspectorPanel extends StatelessWidget {
   /// and ⟲ does not clear it), the events and the probes' notes, a line
   /// each — what changes least first.
   List<Widget> _comeAndGo(ColorScheme colorScheme) => [
-    for (final entry in InputInspector.pinned.entries)
+    for (final said in _comeAndGoSaid())
       Text(
-        entry.value,
-        key: ValueKey<String>('input-inspector-pin-${entry.key}'),
-        style: _line.copyWith(color: AppColors.accent),
+        said.text,
+        key: said.key == null ? null : ValueKey<String>(said.key!),
+        style: _line.copyWith(color: said.ink(colorScheme)),
+      ),
+  ];
+
+  /// [_comeAndGo]'s lines, in its order: each one's words, its key and its
+  /// ink — and none of the events' while none came.
+  static List<_Said> _comeAndGoSaid() => [
+    for (final entry in InputInspector.pinned.entries)
+      (
+        text: entry.value,
+        key: 'input-inspector-pin-${entry.key}',
+        ink: (_) => AppColors.accent,
       ),
     for (final (i, step) in WintabPenService.instance.startRecord.indexed)
-      Text(
-        'wt $step',
-        key: ValueKey<String>('input-inspector-wintab-start-$i'),
-        style: _line.copyWith(color: _inspectorSecondInk),
+      (
+        text: 'wt $step',
+        key: 'input-inspector-wintab-start-$i',
+        ink: (_) => _inspectorSecondInk,
       ),
-    ..._events(colorScheme),
+    if (InputInspector.events.isEmpty)
+      (
+        text: 'waiting for input…',
+        key: null,
+        ink: (colorScheme) => colorScheme.onSurfaceVariant,
+      ),
+    for (final MapEntry(:key, value: sample) in InputInspector.events.entries)
+      (
+        text: sample.describe(),
+        key: 'input-inspector-event-$key',
+        ink: (colorScheme) => _kindColor(colorScheme, sample.kind),
+      ),
     for (final line in InputInspector.notes.values)
-      Text(line, style: _line.copyWith(color: colorScheme.onSurfaceVariant)),
+      (
+        text: line,
+        key: null,
+        ink: (colorScheme) => colorScheme.onSurfaceVariant,
+      ),
+  ];
+
+  /// What the panel writes, as text, in its order — the title, the
+  /// readouts, the strip, and what comes and goes: what the debug window's
+  /// copy takes. Its widgets take their words from the same functions.
+  static List<String> textLines() => [
+    _titleSaid,
+    ..._readoutsSaid(),
+    _stripSaid(),
+    for (final said in _comeAndGoSaid()) said.text,
   ];
 }
+
+/// One line [InputInspectorPanel] writes in what comes and goes: its words,
+/// its key, and its ink on the panel's colours.
+typedef _Said = ({
+  String text,
+  String? key,
+  Color Function(ColorScheme colorScheme) ink,
+});
 
 /// What the tablet driver's queue said ([WintabPenService.heard]) — or,
 /// while its context is still being opened, the tries and why the last

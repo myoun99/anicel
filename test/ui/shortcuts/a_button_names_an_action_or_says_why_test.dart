@@ -170,6 +170,12 @@ const ledger = <String, Why>{
   // A palette colour's delete, in that colour's double-click window
   // (I-131, 10-28).
   "color/color_palettes.dart | 'palette-place-delete'": Why.inAWindow,
+  // The debug window's head (one-debug-window-shows-everything, 11-24).
+  "debug/debug_window.dart | 'debug-window-pause'": Why.inAWindow,
+  "debug/debug_window.dart | 'debug-window-reset'": Why.inAWindow,
+  "debug/debug_window.dart | 'debug-window-copy'": Why.inAWindow,
+  "debug/debug_window.dart | 'debug-window-repaints'": Why.inAWindow,
+  "debug/debug_window.dart | 'debug-window-close'": Why.inAWindow,
   "debug/input_inspector.dart | 'input-inspector-clear'": Why.inAWindow,
   "debug/input_inspector.dart | 'input-inspector-close'": Why.inAWindow,
   "dialogs/audio_settings_section.dart | 'settings-audio-report-refresh'":

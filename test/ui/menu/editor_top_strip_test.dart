@@ -6,6 +6,7 @@ import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -420,17 +421,26 @@ void main() {
     tester,
   ) async {
     addTearDown(MeasurementMode.reset);
-    await pumpHome(tester);
+    // The window over the app, as main.dart lays it (MaterialApp.builder).
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => DebugWindowHost(child: child!),
+        home: const HomePage(),
+      ),
+    );
+    await tester.pumpAndSettle();
 
     await openStrip(tester, 'top-strip-settings-button');
     await hoverEntry(tester, 'menu-edit-debug');
     await tapEntry(tester, 'menu-edit-debug-window');
     expect(find.byKey(const ValueKey<String>('debug-window')), findsOneWidget);
+    expect(MeasurementMode.debugWindow.value, isTrue);
 
-    await openStrip(tester, 'top-strip-settings-button');
-    await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-debug-window');
+    // Its head's close, which no menu under the window can cover.
+    await tester.tap(find.byKey(const ValueKey<String>('debug-window-close')));
+    await tester.pump();
     expect(find.byKey(const ValueKey<String>('debug-window')), findsNothing);
+    expect(MeasurementMode.debugWindow.value, isFalse);
   });
 
   testWidgets('the size and opacity bars ride the right end', (tester) async {
