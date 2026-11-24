@@ -432,6 +432,33 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🚨a bake its file refuses leaves the row the reference it is, '
+      'and says so, naming it (🗣️F-374-Q11 「막고 경고」 — ↩️it said nothing, '
+      'card a-linked-still-reference-bake-does-nothing-when-its-cuts-show-'
+      'it-apart)', (tester) async {
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    sheared(
+      s,
+      street,
+      PropertyTrack<double>().withKey(0, 30).withKey(12, 60),
+    );
+    final before = current(s, street);
+    await tester.runAsync(
+      () => File(before.mediaReference!.assetPath).delete(),
+    );
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, [before]));
+    await settle(tester, () => leftNotice.evaluate().isNotEmpty);
+    expect(current(s, street), before, reason: 'left as it was');
+    expect(
+      find.descendant(of: leftNotice, matching: find.text(before.name)),
+      findsOneWidget,
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('🎯a 겸용 copy no key carries the move of, showing the picture '
       'elsewhere, goes behind the window with its row — each use its own '
       'cel, still an image layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
@@ -546,6 +573,11 @@ void main() {
 }
 
 final popover = find.byKey(const ValueKey<String>('layer-reference-popover'));
+
+/// The notice over a rasterize that left rows the references they are.
+final leftNotice = find.byKey(
+  const ValueKey<String>('reference-rasterize-left'),
+);
 
 /// The one window heavy work waits behind, as a rasterize puts it up.
 final waitWindow = find.byKey(

@@ -1152,6 +1152,7 @@ void main() {
     'tlRepeat': (s) => s.tlRepeat,
     'tlRepeatSelection': (s) => s.tlRepeatSelection,
     'tlNoLayers': (s) => s.tlNoLayers,
+    'rasterizeLeftReferences': (s) => s.rasterizeLeftReferences,
     'tlLegendLayer': (s) => s.tlLegendLayer,
     'tlAllDisplayedOpacity': (s) => s.tlAllDisplayedOpacity,
     'tlLinkedWith': (s) => s.tlLinkedWith,

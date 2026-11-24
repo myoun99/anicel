@@ -1720,6 +1720,51 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
     });
 
+    testWidgets('🎯a 겸용 CUT whose use shows the still apart from the row '
+        'its cut was made of: each cut takes the picture where IT shows it, '
+        'the one bank a cel apiece — though the cut pressed in is not the '
+        'one the other use stands in (card a-linked-still-reference-bake-'
+        'does-nothing-when-its-cuts-show-it-apart, 2026-11-25 — ↩️the door '
+        'looked each use up in the active cut, found the other cut\'s use '
+        'changed, and did nothing)', (tester) async {
+      final (s, row) = await placed(tester);
+      named(s, row, '3');
+      final home = s.requireActiveCut.id;
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      final linked = s.requireActiveCut.id;
+      expect(linked, isNot(home), reason: '⛔premise: the 겸용 cut is shown');
+      final twinId = s.requireActiveCut.layers
+          .firstWhere((layer) => layer.name == row.name)
+          .id;
+      // A 겸용 cut is made with its lanes empty (F-555): the use shows the
+      // row's timing.
+      s.repository.replaceLayer(
+        layer: s.layerById(twinId)!.copyWith(timeline: row.timeline),
+      );
+      final twin = s.layerById(twinId)!;
+      expect(twin.mediaReference, isNotNull, reason: '⛔premise');
+      posed(s, twin, track: squashed, fx: turnedOnce);
+      expect(wayOf(s, twin), framed, reason: 'the two cuts show it apart');
+
+      expect(await rasterizeFrames(tester, s, twin), isTrue);
+
+      Layer inCut(CutId cutId, LayerId layerId) =>
+          s.cutById(cutId)!.layers.byId(layerId)!;
+      final baked = inCut(home, row.id);
+      final bakedTwin = inCut(linked, twinId);
+      expect([baked.mediaReference, bakedTwin.mediaReference], [null, null]);
+      expect(bakedTwin.frames, baked.frames, reason: 'one bank');
+      expect(
+        {
+          exposedFrameIdAt(baked.timeline, 0),
+          exposedFrameIdAt(bakedTwin.timeline, 0),
+        },
+        hasLength(2),
+        reason: 'each cut its own cel',
+      );
+      await tester.pump(const Duration(minutes: 1));
+    });
+
     testWidgets('🎯a 겸용 copy riding a drawing wears none of its own '
         'reference fx: beside a use its transform cannot carry, each use '
         'takes the picture where IT shows it — the rider where its file is '

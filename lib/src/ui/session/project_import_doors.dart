@@ -1233,9 +1233,16 @@ class ProjectImportDoors {
   }
 
   /// Whether a use [way] was asked of has changed since — what a door that
-  /// reads before it lets go owes the uses it found ([referenceLetGo]).
+  /// reads before it lets go owes the uses it found ([referenceLetGo]) —
+  /// each looked up in ITS cut. ↩️Each was looked up in the active cut: a
+  /// 겸용 cut's use, which shows the row apart from the cut pressed in
+  /// (🗣️I-120-Q22), was never the active cut's row, so it read as changed
+  /// and the door did nothing (card a-linked-still-reference-bake-does-
+  /// nothing-when-its-cuts-show-it-apart, 2026-11-25).
   bool _changedSince(ReferenceMoveCarried way) => way.uses.any(
-    (use) => _project.layerById(use.use.layer.id) != use.use.layer,
+    (use) =>
+        _project.cutById(use.use.cut.id)?.layers.byId(use.use.layer.id) !=
+        use.use.layer,
   );
 
   /// RASTERIZE a STILL reference whose move a transform cannot carry

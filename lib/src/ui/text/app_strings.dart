@@ -1017,6 +1017,11 @@ enum AppStrings {
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlNoLayers => _s('tlNoLayers');
+
+  /// The notice over a rasterize that left rows the references they are —
+  /// a file that would not open, a use changed while it was read
+  /// (🗣️F-374-Q11 「막고 경고」).
+  String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
   String get tlLinkedWith => _s('tlLinkedWith');
@@ -3876,6 +3881,7 @@ enum AppStrings {
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
     'tlNoLayers': 'No layers',
+    'rasterizeLeftReferences': 'Some layers were left as references.',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
     'tlLinkedWith': 'Linked with',
@@ -5845,6 +5851,7 @@ enum AppStrings {
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
     'tlNoLayers': 'レイヤーがありません',
+    'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
     'tlLinkedWith': '兼用先',
@@ -7820,6 +7827,7 @@ enum AppStrings {
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
     'tlNoLayers': '레이어 없음',
+    'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
     'tlLinkedWith': '겸용 대상',
@@ -9948,6 +9956,7 @@ enum AppStrings {
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
     'tlNoLayers': 'Aucun calque',
+    'rasterizeLeftReferences': 'Certains calques restent des références.',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
     'tlLinkedWith': 'Lié à',
@@ -11834,6 +11843,7 @@ enum AppStrings {
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',
     'tlNoLayers': '没有图层',
+    'rasterizeLeftReferences': '部分图层仍保留为参照。',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
     'tlLinkedWith': '链接到',
