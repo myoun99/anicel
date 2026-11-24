@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/widgets/live_sheet.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 import '../../helpers/panel_finders.dart';
@@ -248,6 +249,47 @@ void main() {
           're-bake the others; finding one means the census is being '
           'deduplicated somewhere it must not be',
     );
+  });
+
+  testWidgets('a pill baked whole bakes on its sheet, no zone round it', (
+    tester,
+  ) async {
+    // 🚨the-command-group-never-bakes-on-master (2026-11-25): a zone stood
+    // round the layer, cut and Fx pills — round the live layers of the sheet
+    // each lays its verbs' hovers on — so it never baked, and the other
+    // `command-group` zones kept the label's census full around the gap.
+    await _pumpWorkspace(tester);
+    for (final head in [
+      'cut-menu-button',
+      'timeline-layer-menu-button',
+      'timeline-effects-button',
+    ]) {
+      final sheet = find
+          .ancestor(
+            of: find.byKey(ValueKey<String>(head)),
+            matching: find.byType(LiveSheet),
+          )
+          .first;
+      final zones = find.descendant(
+        of: sheet,
+        matching: find.byType(StaticRaster),
+      );
+      expect(zones, findsOneWidget, reason: '$head: one zone on its sheet');
+      final zone = tester.renderObject<RenderStaticRaster>(zones);
+      expect(zone.debugLabel, 'command-group', reason: head);
+      expect(zone.captureCount, greaterThan(0), reason: '$head never baked');
+      expect(
+        find.ancestor(
+          of: sheet,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is StaticRaster && widget.debugLabel == 'command-group',
+          ),
+        ),
+        findsNothing,
+        reason: '$head: a zone round the pill stands round its sheet',
+      );
+    }
   });
 
   testWidgets('a pointer moving over the canvas does not re-bake a panel', (
