@@ -352,6 +352,20 @@ void main() {
       expect(debugWaitsHere, waits);
     });
 
+    // 🔬With how its wait went (`GpuWaited`): what it stood in turn on
+    // the engine's thread behind what was handed there before it — what a
+    // screen's finish says apart from the driver's poll (`ScreenFinish`).
+    test('with how its wait went: the turn it stood behind on the engine's '
+        'thread', () async {
+      engine.debugStandStill(const Duration(milliseconds: 300));
+
+      final waited = await engine.done();
+
+      expect(waited, isNotNull, reason: 'the engine keeps word of its wait');
+      expect(waited!.queuedMicros, greaterThanOrEqualTo(250000));
+      expect(waited.polledMicros, lessThan(waited.queuedMicros));
+    });
+
     test('a device gone is told by name', () async {
       engine.debugLose();
 
