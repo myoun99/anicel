@@ -355,7 +355,7 @@ void main() {
     // 🔬With how its wait went (`GpuWaited`): what it stood in turn on
     // the engine's thread behind what was handed there before it — what a
     // screen's finish says apart from the driver's poll (`ScreenFinish`).
-    test('with how its wait went: the turn it stood behind on the engine's '
+    test("with how its wait went: the turn it stood behind on the engine's "
         'thread', () async {
       engine.debugStandStill(const Duration(milliseconds: 300));
 
