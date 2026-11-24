@@ -1,6 +1,7 @@
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/press_face.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -328,6 +329,17 @@ void main() {
   });
 
   group('TimelineRulerViewCorner', () {
+    // What a press lands on, by what it is rather than by the widget that
+    // lays it — the corner's door was an ink well, and is a plate now.
+    final pressFace = find.descendant(
+      of: find.byKey(
+        const ValueKey<String>('timeline-time-display-toggle-button'),
+      ),
+      matching: find.byElementPredicate(
+        (element) => element.renderObject is PressFace,
+      ),
+    );
+
     // 🗣️I-81-Q2 (유저 2026-10-30 「누르면 셋이 든 목록이 뜬다」).
     testWidgets('a press on the corner lists the three counts, and a pick '
         'turns the frame axis', (tester) async {
@@ -347,14 +359,14 @@ void main() {
         ),
       );
 
-      expect(tester.getSize(find.byType(InkWell)).width, 16);
+      expect(tester.getSize(pressFace.first).width, 16);
       expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
       for (final (pick, icon) in [
         (FrameRulerView.secondsPlusFrames, Icons.timer),
         (FrameRulerView.pages, Icons.description_outlined),
         (FrameRulerView.frames, Icons.timer_outlined),
       ]) {
-        await tester.tap(find.byType(InkWell).first);
+        await tester.tap(pressFace.first);
         await tester.pumpAndSettle();
         for (final each in FrameRulerView.values) {
           expect(
@@ -395,7 +407,7 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(InkWell), findsNothing);
+      expect(pressFace, findsNothing);
     });
 
     testWidgets('I-102: the corner names the count it shows, in the '
