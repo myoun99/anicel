@@ -1295,12 +1295,12 @@ void main() {
           f.layerImages.dispose();
         }
 
-        MeasurementMode.frameStats.value = false;
+        MeasurementMode.debugWindow.value = false;
         WarmSteps.forget();
         await warmOnce();
         expect(WarmSteps.picturesCounted, 0, reason: 'the statistics are off');
 
-        MeasurementMode.frameStats.value = true;
+        MeasurementMode.debugWindow.value = true;
         await warmOnce();
         expect(WarmSteps.picturesCounted, 1);
         expect(

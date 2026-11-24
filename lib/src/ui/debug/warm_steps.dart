@@ -2,8 +2,8 @@ import 'measurement_mode.dart';
 
 /// 🔬THE PLAYBACK WARMER'S PACE: how long each frame's picture took to make,
 /// from the ask to its landing (`PlaybackPrerenderScheduler`), and how many
-/// it made in all. The frame statistics read these (`FrameStats`, Settings ▸
-/// Debug), and nothing is counted while they are off.
+/// it made in all. The frame statistics read these (`FrameStats`, the debug
+/// window), and nothing is counted while the window is shut.
 ///
 /// 🗣️H74, 유저 2026-11-24 on a Galaxy Tab (card
 /// cut-346-plays-with-frames-missing-on-the-galaxy-tab): 「컷 346 재생시
@@ -26,7 +26,7 @@ abstract final class WarmSteps {
 
   /// A picture landed, [micros] after it was asked for.
   static void made(int micros) {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       return;
     }
     _picturesCounted += 1;
