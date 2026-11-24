@@ -448,18 +448,28 @@ LayerDropPlan? resolveLayerDropOnRow({
   }
   // What lands is what stands in the target's place ([selectionLandingIn]):
   // the rest of the selection is no part of the run, nor of what the target
-  // could stand inside.
+  // could stand inside. Asked BEFORE the run is: the run of every row picked
+  // may hold the target, and a drop onto what the run holds is refused.
   final kept = selectionLandingIn(
     stack,
     movingId,
     alsoMoving,
     stack[targetIndex].kind,
   );
-  if (kept == null) {
-    return null;
-  }
-  movingId = kept.movingId;
-  alsoMoving = kept.alsoMoving;
+  return kept == null
+      ? null
+      : _dropOnRowAt(stack, kept.movingId, targetIndex, kept.alsoMoving);
+}
+
+/// [resolveLayerDropOnRow] for the run [movingId] carries with
+/// [alsoMoving], all of it standing in the place of the row at
+/// [targetIndex].
+LayerDropPlan? _dropOnRowAt(
+  List<Layer> stack,
+  LayerId movingId,
+  int targetIndex,
+  Set<LayerId> alsoMoving,
+) {
   final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
   if (run == null) {
     return null;
@@ -477,7 +487,7 @@ LayerDropPlan? resolveLayerDropOnRow({
       stack: stack,
       movingId: movingId,
       insertAt: targetIndex,
-      forceJoinFolderId: targetId,
+      forceJoinFolderId: target.id,
       alsoMoving: alsoMoving,
     );
   }
@@ -501,7 +511,7 @@ LayerDropPlan? resolveLayerDropOnRow({
     stack: stack,
     movingId: movingId,
     insertAt: fromBelow ? targetIndex : targetIndex + 1,
-    forceMountBaseId: targetId,
+    forceMountBaseId: target.id,
     forceMountPlacement: fromBelow
         ? AttachedPlacement.below
         : AttachedPlacement.above,
