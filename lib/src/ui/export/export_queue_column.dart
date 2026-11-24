@@ -167,7 +167,7 @@ class _JobCard extends StatelessWidget {
   static const double _barHeight = 3;
 
   /// The ✕ that takes the job off the queue — in its place, dimmed, while
-  /// the job runs (as a tool's setting it does not take stays, 10-10).
+  /// the queue runs (as a tool's setting it does not take stays, 10-10).
   Widget _removeButton(ThemeData theme, {required bool removable}) =>
       ControlPressClaim(
         onPressed: removable ? () => onRemove!(job) : null,
@@ -234,7 +234,7 @@ class _JobCard extends StatelessWidget {
                     ),
                   ),
                   if (onRemove != null)
-                    _removeButton(theme, removable: enabled && !running),
+                    _removeButton(theme, removable: enabled),
                 ],
               ),
               // Every line the row can say has its place from the first
