@@ -402,12 +402,14 @@ void main() {
         (
           'as another sample',
           height,
+          // Bound, a sample is signed by its run (`ResolvedLayerEffect.
+          // frame`): at another frame of a plugin that reads it, another.
           (ResolvedLayerEffect effect) => ResolvedLayerEffect(
             kind: effect.kind,
             plugin: effect.plugin,
             values: effect.values,
             frame: 1,
-            run: effect.run,
+            run: fxPluginRunOf(effect.run!.runner, frame: 1),
           ),
         ),
       ]) {

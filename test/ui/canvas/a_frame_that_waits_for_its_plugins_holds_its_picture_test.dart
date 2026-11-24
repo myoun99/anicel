@@ -777,21 +777,23 @@ void main() {
     final runner = ShiftingFxPlugin(by: 0, fails: true);
     final store = _WritesWhenLet()..letAllGo();
     addTearDown(store.dispose);
+    final nodes = beside([
+      aBlur,
+      ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        worn: shiftingFxPluginWorn,
+        run: fxPluginRunOf(
+          runner,
+          told: ({required failed}) => tells.add(failed),
+        ),
+      ),
+    ]);
     final (:picture, overlay: _, handAnew: _, store: _) = await standOn(
       tester,
       GlobalKey(),
-      beside([
-        aBlur,
-        ResolvedLayerEffect(
-          kind: EffectKind.plugin,
-          plugin: shiftingFxPluginDescription,
-          values: const [],
-          run: fxPluginRunOf(
-            runner,
-            told: ({required failed}) => tells.add(failed),
-          ),
-        ),
-      ]),
+      nodes,
       laidBy: store,
     );
     expect(
@@ -799,7 +801,9 @@ void main() {
       isTrue,
       reason: 'LIVENESS: the frame\'s picture is made',
     );
-    void shownAgain() => store.peek(picture)!.hold().release();
+    void shownAgain() => (store.peek(picture)!.hold()
+          ..tellAs(pluginStepsOf(nodes)))
+        .release();
     final made = tells.length;
     shownAgain();
     expect(tells.length, made + 1, reason: '⛔premise: told again, shown');
@@ -820,28 +824,30 @@ void main() {
     final tells = <bool>[];
     final store = _WritesWhenLet()..letAllGo();
     addTearDown(store.dispose);
+    final nodes = <CompositeNode<CanvasStackRow>>[
+      CompositeLeaf(
+        CanvasActiveLayerRow(
+          opacity: 1,
+          frameKey: key,
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.plugin,
+              plugin: shiftingFxPluginDescription,
+              values: const [],
+              worn: shiftingFxPluginWorn,
+              run: fxPluginRunOf(
+                _DrawsOverTheStroke(stroke),
+                told: ({required failed}) => tells.add(failed),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
     final (:picture, :overlay, handAnew: _, store: _) = await standOn(
       tester,
       GlobalKey(),
-      [
-        CompositeLeaf(
-          CanvasActiveLayerRow(
-            opacity: 1,
-            frameKey: key,
-            effects: [
-              ResolvedLayerEffect(
-                kind: EffectKind.plugin,
-                plugin: shiftingFxPluginDescription,
-                values: const [],
-                run: fxPluginRunOf(
-                  _DrawsOverTheStroke(stroke),
-                  told: ({required failed}) => tells.add(failed),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      nodes,
       laidBy: store,
     );
     expect(
@@ -857,7 +863,8 @@ void main() {
     expect(tells.last, isFalse, reason: '⛔premise: over the stroke, draws');
 
     tells.clear();
-    store.peek(store.lastTo!)!.hold().release();
+    (store.peek(store.lastTo!)!.hold()..tellAs(pluginStepsOf(nodes)))
+        .release();
 
     expect(tells, [false]);
     await tester.pumpWidget(const SizedBox());

@@ -480,7 +480,8 @@ void main() {
   });
 
   group('🚨what its plug-ins\' steps told, a picture tells again each time '
-      'it is held to be shown (EngineFramePicture.hold)', () {
+      'it is shown, as the frame it is shown for (EngineFramePicture.tellAs)',
+      () {
     const rect = Rect.fromLTRB(-20, 10, 40, 50);
     const far = BrushFrameKey(
       projectId: ProjectId('p'),
@@ -505,6 +506,11 @@ void main() {
             kind: EffectKind.plugin,
             plugin: shiftingFxPluginDescription,
             values: const [],
+            worn: (
+              owner: at.layerId,
+              effect: const EffectId('shift'),
+              wearer: at.layerId,
+            ),
             run: fxPluginRunOf(runner, told: told),
           ),
         ],
@@ -526,9 +532,11 @@ void main() {
     );
 
     test('a patch through steps that drew, into a picture they failed on, '
-        'leaves it telling that they drew', () async {
+        'leaves it telling that they drew — to the frame it is shown for, '
+        'another of its key\'s as well', () async {
       final heard = <bool>[];
       void told({required bool failed}) => heard.add(failed);
+      final drew = ShiftingFxPlugin(by: 1, readsTheMoment: false);
       final store = storeOf();
       final laid = (await store.lay(
         'a',
@@ -544,7 +552,7 @@ void main() {
           to: 'b',
           rect: rect,
           frame: frameOfRows([
-            runOf(key, ShiftingFxPlugin(by: 1), told),
+            runOf(key, drew, told),
           ], (_) => cel(5, marked: (-20, 10, 40, 50))),
           stands: () => true,
         ),
@@ -554,11 +562,16 @@ void main() {
       expect(heard.last, isFalse, reason: '⛔premise: the step drew');
 
       heard.clear();
-      laid.hold();
-      expect(heard, [false], reason: 'held again, it tells what it holds');
-      laid
-        ..release()
-        ..release();
+      final atAnother = <bool>[];
+      laid.tellAs(
+        pluginStepsOf([
+          runOf(key, drew, ({required failed}) => atAnother.add(failed)),
+        ]),
+      );
+      expect(heard, isEmpty, reason: 'not the frame it was made for');
+      expect(atAnother, [false], reason: 'shown again, it tells what it '
+          'holds — to the one it is shown for');
+      laid.release();
     });
 
     test('a step another screen\'s picture is copied for tells, held, what '
@@ -571,14 +584,15 @@ void main() {
       // where the step changes it.
       BitmapSurface surfaceOf(BrushFrameKey at, BitmapSurface nearOne) =>
           at == far ? cel(7, over: const [1]) : nearOne;
+      final rows = [
+        runOf(key, ShiftingFxPlugin(by: 1), near),
+        runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
+      ];
       final store = storeOf();
       final laid = (await store.lay(
         'a',
         frameOfRows(
-          [
-            runOf(key, ShiftingFxPlugin(by: 1), near),
-            runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
-          ],
+          rows,
           (at) => surfaceOf(at, cel(5, over: const [-1, 0])),
         ),
       ))!
@@ -593,10 +607,7 @@ void main() {
           to: 'b',
           rect: rect,
           frame: frameOfRows(
-            [
-              runOf(key, ShiftingFxPlugin(by: 1), near),
-              runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
-            ],
+            rows,
             (at) => surfaceOf(
               at,
               cel(5, marked: (-20, 10, 40, 50), over: const [-1, 0]),
@@ -611,7 +622,9 @@ void main() {
       final metFar = heard.containsKey('far');
 
       heard.clear();
-      copy.hold();
+      copy
+        ..hold()
+        ..tellAs(pluginStepsOf(rows));
       expect(
         heard,
         {'near': false, 'far': true},

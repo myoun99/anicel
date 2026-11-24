@@ -37,6 +37,15 @@ FxPluginRun fxPluginRunOf(
   told: told,
 );
 
+/// Where a stand-in's sample is worn, as a route that names its row binds
+/// it (`ResolvedLayerEffect.worn`): what a picture's steps told is kept by
+/// it, and told again as the frame shown (`EngineFramePicture.tellAs`).
+const FxPluginWorn shiftingFxPluginWorn = (
+  owner: LayerId('worn'),
+  effect: EffectId('shift'),
+  wearer: LayerId('worn'),
+);
+
 /// The stand-in plugin as its file describes it: one with no parameters.
 final FxPluginDescription shiftingFxPluginDescription =
     FxPluginDescription.fromJson({
