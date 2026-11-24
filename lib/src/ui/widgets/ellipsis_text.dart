@@ -23,6 +23,7 @@ class EllipsisText extends Text {
     super.data, {
     super.key,
     super.style,
+    super.strutStyle,
     super.textAlign,
     super.softWrap,
     super.maxLines,
