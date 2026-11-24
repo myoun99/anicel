@@ -352,24 +352,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
   /// translate only; cell crossings re-window the columns; the grid never
   /// rebuilds per pixel.
   ///
-  /// The host's when it keeps one — read ONCE, as on the rail.
-  late final ValueNotifier<double> _frameAxisOffset =
-      widget.frameAxisOffset ?? _ownedFrameAxisOffset;
+  /// The host's when it keeps one — the place's the sheet shows now, as on
+  /// the rail ([TimelineFrameAxisFollower.standOn]).
+  ValueNotifier<double> get _frameAxisOffset => _frameAxis.frameAxisOffset;
   final ValueNotifier<double> _ownedFrameAxisOffset = ValueNotifier<double>(0);
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
 
   /// The host's record of the layer axis ([XSheetTimelineGrid
-  /// .layerAxisOffset]) — read ONCE, as the frame axis's is.
-  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
-
-  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
-  late final VoidCallback _letGoOfKeptColumns;
+  /// .layerAxisOffset]) followed — the place's the sheet shows now, as the
+  /// frame axis's is.
+  late final KeptAxisFollow _keptColumns;
 
   /// The frame axis following its controller — the rail's follower, the
   /// same object, transposed by nothing but which controller it holds.
   late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
     controller: _frameScrollController,
-    frameAxisOffset: _frameAxisOffset,
+    frameAxisOffset: widget.frameAxisOffset ?? _ownedFrameAxisOffset,
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
     baseFrameCount: () => _rangeGestures.frameRangePolicy.visibleFrameCount,
@@ -402,16 +400,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     // switch or an unfold builds this sheet afresh, and a newborn 0 would be
     // recorded as a scroll.
     _frameScrollController = TwoAxisScrollController(
-      bornAt: _frameAxisOffset,
+      bornAt: widget.frameAxisOffset ?? _ownedFrameAxisOffset,
     );
     // The columns too, where the project left them (F-267).
     _layerScrollController = TwoAxisScrollController(
-      bornAt: _keptLayerAxis,
+      bornAt: widget.layerAxisOffset,
     );
     _frameScrollController.addListener(_frameAxis.handleScroll);
-    _letGoOfKeptColumns = followKeptAxis(
+    _keptColumns = KeptAxisFollow(
       _layerScrollController,
-      _keptLayerAxis,
+      widget.layerAxisOffset,
       isMounted: () => mounted,
     );
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
@@ -440,6 +438,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       widget.hooks.frameCursor,
       _reveal.handlePlaybackPage,
     );
+    // 🗣️H78: another cut's axes are another place, as on the rail.
+    _frameAxis.standOn(widget.frameAxisOffset ?? _ownedFrameAxisOffset);
+    _keptColumns.standOn(widget.layerAxisOffset);
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
     // anchors — unless a notch or a pinch held its own point. Same policy
@@ -449,6 +450,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
       newPixelsPerFrame: widget.metrics.frameCellWidth,
       anchorFrame: widget.hooks.frameCursor.value,
+      anotherPlace: !identical(
+        widget.frameAxisOffset,
+        oldWidget.frameAxisOffset,
+      ),
     );
   }
 
@@ -460,7 +465,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     _frameScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
-    _letGoOfKeptColumns();
+    _keptColumns.letGo();
     _layerScrollController.dispose();
     _frameWindowBucket.removeListener(_frameScroll.handleFrameWindowBucket);
     _frameGeometry.dispose();

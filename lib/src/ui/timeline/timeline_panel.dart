@@ -911,15 +911,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
             child: collapsed
                 ? const SizedBox.shrink()
                 : _whereTheSilhouetteStands(
-                    // 🗣️H78 (유저 2026-11-24 「내부컷도 마찬가지」): each cut
-                    // keeps its own scroll — a grid is born for each cut, on
-                    // that cut's axes (PanelAxes), as a project opened is
-                    // born on its file's (F-267). ↩️One grid for every cut:
-                    // the next cut opened where the last was left, and its
-                    // zoom re-anchored that scroll as if it were a step.
                     () => widget.orientation == TimelineOrientation.horizontal
                         ? LayerTimelineGrid(
-                            key: ValueKey(widget.cutId),
                             hooks: hooks,
                             layers: horizontalLayers,
                             railExtent: widget.timelineRailExtent,
@@ -928,7 +921,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                             metrics: horizontalMetrics,
                           )
                         : XSheetTimelineGrid(
-                            key: ValueKey(widget.cutId),
                             hooks: hooks,
                             layers: xsheetLayerDisplayOrder(widget.layers),
                             railExtent: widget.xsheetRailExtent,
