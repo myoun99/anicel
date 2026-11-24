@@ -262,6 +262,20 @@ void main() {
       );
     });
 
+    testWidgets('once the window has closed, what the door brings opens a '
+        'window of its own again', (tester) async {
+      final a1 = await picture(tester, 'A1.png');
+      await openOn(tester, a1);
+      await tapKey(tester, 'import-cancel-button');
+      expect(find.byType(ImportDialog), findsNothing, reason: '⛔premise');
+
+      await tapKey(tester, 'top-strip-project-button');
+      await tapToTheWindow(tester, 'menu-file-open');
+
+      expect(tester.takeException(), isNull);
+      expect(handed(tester), [a1], reason: 'a new window, on the new pick');
+    });
+
     testWidgets('「폴더 추가」 is 「폴더 열기」\'s pick, into the window that '
         'stands', (tester) async {
       final cut = Directory('${folder.path}/upn_02_063_lo')..createSync();
