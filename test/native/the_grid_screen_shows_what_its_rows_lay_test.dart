@@ -431,6 +431,56 @@ void main() {
     expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 
+  testWidgets('🚨what a row comes to lay, and stops drawing, is on the frame '
+      'up — or the row draws it as well, till a frame up shows it (card '
+      'a-fast-vertical-timeline-scroll-paints-row-pictures-a-notch-behind-'
+      'their-labels)', (tester) async {
+    aSmallView(tester);
+    // The GPU finishes at once, till the test holds it.
+    var holding = false;
+    final gates = <Completer<GpuWaited?>>[];
+    debugOpenEngineScreen = (_, width, height) async {
+      surface = shownSurfaceOf(width, height);
+      surfaces.add(surface);
+      return ScreenTexture.debugOnSurface(
+        surface,
+        done: () {
+          if (!holding) {
+            return Future.value();
+          }
+          gates.add(Completer<GpuWaited?>());
+          return gates.last.future;
+        },
+      );
+    };
+    // A row with nothing laid yet — its tile being rastered, its cells
+    // drawn by itself.
+    final row = _Row(() => tile)..layFrom(null);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    await tester.pump();
+    expect(row.laidLast, isTrue, reason: '⛔premise: the row lays here');
+    holding = true;
+
+    row.layFrom(const Rect.fromLTWH(0, 0, 120, 20));
+    await tester.pump();
+    expect(gates, hasLength(1), reason: '⛔premise: its lay is on the GPU');
+    expect(
+      row.answers.last,
+      isFalse,
+      reason: '🚨the frame up was laid before the tile — the row draws it too',
+    );
+
+    gates.last.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      row.answers.last,
+      isTrue,
+      reason: 'the frame up shows it now, and the row was asked again',
+    );
+  });
+
   testWidgets('a scroll down past what the screen holds lays it again, and '
       'back up', (tester) async {
     aSmallView(tester);
@@ -1421,6 +1471,9 @@ class _Row extends CustomPainter {
   /// Whether its last paint could lay its tile.
   bool laidLast = false;
 
+  /// What each lay answered: whether the frame up showed it.
+  final answers = <bool>[];
+
   /// How many times it was painted.
   int paints = 0;
 
@@ -1431,7 +1484,13 @@ class _Row extends CustomPainter {
     laidLast = laying != null;
     if (_from case final from?) {
       for (var laid = 0; laid < times; laid += 1) {
-        laying?.lay((picture: _tile(), from: from, onto: Offset.zero & size));
+        if (laying?.lay(
+              (picture: _tile(), from: from, onto: Offset.zero & size),
+              of: laid,
+            )
+            case final up?) {
+          answers.add(up);
+        }
       }
     }
   }

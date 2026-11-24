@@ -35,8 +35,9 @@ final class EngineWaveBand {
 
   /// Lays [bands] baked into one picture onto [onto] of the painting slot,
   /// [devicePixelRatio] device pixels to a logical one — true where it laid
-  /// them, false where no screen lays there or the engine makes no such
-  /// picture: its painter draws them itself.
+  /// them and the frame up shows them, false where no screen lays there,
+  /// the engine makes no such picture, or the frame up was laid before them
+  /// ([TimelineGridScreenLaying.lay]): its painter draws them itself.
   bool layOn(
     Rect onto,
     List<EngineWaveDrawing> bands,
@@ -66,17 +67,19 @@ final class EngineWaveBand {
       _picture = picture = baked;
       _bakedOf = bakedOf;
     }
-    laying.lay((
-      picture: picture,
-      from: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      onto: Rect.fromLTWH(
-        onto.left,
-        onto.top,
-        width / devicePixelRatio,
-        height / devicePixelRatio,
+    return laying.lay(
+      (
+        picture: picture,
+        from: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        onto: Rect.fromLTWH(
+          onto.left,
+          onto.top,
+          width / devicePixelRatio,
+          height / devicePixelRatio,
+        ),
       ),
-    ));
-    return true;
+      of: this,
+    );
   }
 
   static TimelineGridTilePicture? _baked(

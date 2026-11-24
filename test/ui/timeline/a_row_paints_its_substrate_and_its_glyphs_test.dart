@@ -37,6 +37,7 @@ import 'timeline_frame_geometry_probe.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
+  readTheEnginesFacesFirst();
 
   const cell = 24.0;
   const crossExtent = 28.0;
@@ -60,7 +61,10 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 3)},
   );
 
-  TimelineRowCellsPainter painterFor({TimelineGridTileStore? store}) =>
+  TimelineRowCellsPainter painterFor({
+    TimelineGridTileStore? store,
+    String word = 'A1$aLetterNoBundledFaceHas',
+  }) =>
       TimelineRowCellsPainter(
         layer: layer,
         geometry: testFrameGeometry(
@@ -75,8 +79,7 @@ void main() {
         // read — once a process — a word of theirs is baked in the ask.
         // ↩️'A1' waited only where this file was the first to ask (red in
         // a bundle behind a file that read the faces, 11-20).
-        frameNameForLayer: (_, frameIndex) =>
-            frameIndex == 0 ? 'A1$aLetterNoBundledFaceHas' : null,
+        frameNameForLayer: (_, frameIndex) => frameIndex == 0 ? word : null,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
         tileStore: store,
@@ -218,6 +221,59 @@ void main() {
         reason: 'a cold span keeps the classic paint underneath — with the '
             'fallback gone the strip is the foreground alone (~0.10) and '
             'every zoom step flashes the blocks away for a frame',
+      );
+    });
+  });
+
+  testWidgets('🚨a span laid on a screen whose frame up does not show it yet '
+      'is painted here as well — the cells and their glyphs — and one the '
+      'frame up shows is not (card a-fast-vertical-timeline-scroll-paints-'
+      'row-pictures-a-notch-behind-their-labels)', (tester) async {
+    addTearDown(TimelineGridTileStore.instance.clear);
+    await tester.runAsync(() async {
+      // A word the engine sets, so each span is baked in the ask.
+      Future<(int, double)> painted({required bool shownUp}) async {
+        TimelineGridTileStore.instance.clear();
+        final painter = painterFor(
+          store: TimelineGridTileStore.instance,
+          word: 'A1',
+        );
+        final recorder = ui.PictureRecorder();
+        final laid = tilesLaidBy(
+          () => painter.paint(Canvas(recorder, Offset.zero & size), size),
+          shownUp: shownUp,
+        );
+        final picture = recorder.endRecording();
+        final image = picture.toImageSync(
+          size.width.round(),
+          size.height.round(),
+        );
+        picture.dispose();
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        image.dispose();
+        return (laid.length, paintedFraction(data!.buffer.asUint8List()));
+      }
+
+      final classic = paintedFraction(await paintBytes(painterFor()));
+      final (laidUp, up) = await painted(shownUp: true);
+      final (laidNotUp, notUp) = await painted(shownUp: false);
+      expect(
+        [laidUp, laidNotUp],
+        everyElement(greaterThan(0)),
+        reason: '⛔premise: the row lays its tiles either way',
+      );
+      expect(
+        up,
+        lessThan(classic / 2),
+        reason: 'premise: on the frame up, the cells are the screen\'s',
+      );
+      expect(
+        notUp,
+        closeTo(classic, 0.01),
+        reason: '🚨not on it yet: the row stopped drawing a span the frame '
+            'up does not show, and the span stood nowhere',
       );
     });
   });

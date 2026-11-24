@@ -927,11 +927,16 @@ class TimelineRowCellsPainter extends CustomPainter
               devicePixelRatio: devicePixelRatio,
             );
       if (tiles != null) {
+        var up = true;
         for (final tile in tiles) {
-          _layTile(laying, tile, spanStart, spanEnd);
+          up = _layTile(laying, tile, spanStart, spanEnd) && up;
         }
-        tiledSpans.add((spanStart, spanEnd));
-        continue;
+        if (up) {
+          tiledSpans.add((spanStart, spanEnd));
+          continue;
+        }
+        // Laid, and not on the frame up yet: drawn here as well till it is
+        // ([TimelineGridScreenLaying.lay]) — glyphs and all.
       }
       // ⛔This call was lost once, silently: `a055c51a`(2026-09-04) — a
       // commit about the accessibility sentence and the corner radius —
@@ -963,8 +968,9 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// [tile] laid over the cells of the frames it holds from [from] to [to]
   /// — the whole of it for its own span, or the part of it a span cut
-  /// otherwise stands on ([TimelineGridTileStore.standInFor]).
-  void _layTile(
+  /// otherwise stands on ([TimelineGridTileStore.standInFor]) — answering
+  /// whether the frame up shows it ([TimelineGridScreenLaying.lay]).
+  bool _layTile(
     TimelineGridScreenLaying laying,
     TileStandIn tile,
     int from,
@@ -993,7 +999,10 @@ class TimelineRowCellsPainter extends CustomPainter
       ),
       across: (from: 0, to: crossAxisExtent),
     );
-    laying.lay((picture: tile.picture, from: src, onto: dst));
+    return laying.lay(
+      (picture: tile.picture, from: src, onto: dst),
+      of: (from, to),
+    );
   }
 
   /// The tile grid's spans under [window], in order (`shown`), and the one

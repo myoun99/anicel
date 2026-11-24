@@ -138,6 +138,13 @@ final class _GridScreen {
         _laid = null;
       }
       _box?.markNeedsPaint();
+      // A row that laid what the frame up was not laid with drew it itself
+      // as well ([TimelineGridScreenLaying.lay]): it asks again.
+      for (final slot in _slots) {
+        if (slot._drawsWhatIsNotUp) {
+          slot.markNeedsPaint();
+        }
+      }
     },
   );
 
@@ -147,6 +154,21 @@ final class _GridScreen {
   /// where they are to be laid again. What is shown is the frame the GPU
   /// finished last, where it was laid ([ScreenTexture.shownFor]).
   Rect? _laid;
+
+  /// How many times the rows' tiles have been laid ([_RenderGridScreen
+  /// ._layAt]) — each lay drawn for its count ([_LaidFor]), so the frame up
+  /// tells which lay it shows.
+  int _laysMade = 0;
+
+  /// The lay the frame up shows — null where none is up
+  /// ([ScreenTexture.shownFor]).
+  int? get _layUp => switch (_texture) {
+    final texture? when texture.showsAFrame => switch (texture.shownFor) {
+      final _LaidFor up => up.lay,
+      _ => null,
+    },
+    _ => null,
+  };
 
   /// Whether rows lay their tiles here at all: a box shows the screen, a
   /// texture is open for it, and the grids' passes are compiled
@@ -460,8 +482,8 @@ class _RenderGridScreen extends RenderBox {
       screen._laid = at;
     }
     return switch (texture.shownFor) {
-      final Rect at when texture.showsAFrame => (
-        at: at,
+      final _LaidFor up when texture.showsAFrame => (
+        at: up.at,
         id: texture.textureId.value,
       ),
       _ => null,
@@ -584,7 +606,7 @@ class _RenderGridScreen extends RenderBox {
     }
     texture.present(
       (next) => lay.lay(next, (0, 0, width, height), laid),
-      drawnFor: drawnFor,
+      drawnFor: (at: drawnFor, lay: ++_screen._laysMade),
     );
   }
 
@@ -608,6 +630,10 @@ class _RenderGridScreen extends RenderBox {
     );
   }
 }
+
+/// What a frame of a grid's screen was drawn for: where the box stood, and
+/// which lay of the rows' tiles it shows ([_GridScreen._laysMade]).
+typedef _LaidFor = ({Rect at, int lay});
 
 /// A grid's screen in the frame's layers, asked what it shows
 /// ([_RenderGridScreen._composited]) as every frame's scene is built — once
@@ -678,9 +704,12 @@ class TimelineGridScreenSlot extends SingleChildRenderObjectWidget {
   /// freed it there, where the screen keeps it till the row paints again
   /// (관제 2026-11-15 —
   /// a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles).
+  ///
+  /// Its frame up shows what the row lays where [shownUp] — else, as a
+  /// screen whose GPU has not finished the lay, it shows none of it.
   @visibleForTesting
-  static TimelineGridScreenDebugSlot debugSlot() =>
-      _RenderGridScreenSlot(null, null);
+  static TimelineGridScreenDebugSlot debugSlot({bool shownUp = true}) =>
+      _RenderGridScreenSlot(null, null, debugShownUp: shownUp);
 
   static TimelineGridScreenLaying? _debugLaying;
 
@@ -718,8 +747,20 @@ abstract class TimelineGridScreenClip extends CustomClipper<Path> {
 /// What a row lays its tiles on, while it paints.
 abstract interface class TimelineGridScreenLaying {
   /// Lays [tile] on the screen this paint, and every paint of the screen
-  /// till the row paints again — holding its picture till then.
-  void lay(TimelineGridScreenTile tile);
+  /// till the row paints again — holding its picture till then — and
+  /// answers whether the frame up already shows what of the row it lays
+  /// ([of]: the same from paint to paint, a span, a band). Where it does
+  /// not, the row draws that itself as well, till a frame up does.
+  ///
+  /// 🚨WHAT A ROW STOPS DRAWING IS ON THE FRAME UP, or the row goes on
+  /// drawing it (card a-fast-vertical-timeline-scroll-paints-row-pictures-
+  /// a-notch-behind-their-labels, 관제 2026-11-25 08:1x): the frame up is
+  /// the one the GPU finished last ([ScreenTexture.present]). ↩️A span the
+  /// row drew while its tile was rastered stopped being drawn in the paint
+  /// its tile came in, and stood on no frame till the GPU finished the one
+  /// that laid it: 🧪the dialogue's ground gone under its words · the cell
+  /// bars gone beside their numbers, as a fast scroll came to rest.
+  bool lay(TimelineGridScreenTile tile, {required Object of});
 }
 
 /// A slot on no screen that a test paints a row through by hand
@@ -736,7 +777,12 @@ abstract interface class TimelineGridScreenDebugSlot {
 
 class _RenderGridScreenSlot extends RenderProxyBox
     implements TimelineGridScreenLaying, TimelineGridScreenDebugSlot {
-  _RenderGridScreenSlot(this._screen, this._clip);
+  _RenderGridScreenSlot(this._screen, this._clip, {bool debugShownUp = true})
+    : _debugShownUp = debugShownUp;
+
+  /// What a slot on no screen answers of the frame up
+  /// ([TimelineGridScreenSlot.debugSlot]).
+  final bool _debugShownUp;
 
   /// The slot whose row is painting.
   static _RenderGridScreenSlot? _painting;
@@ -777,6 +823,14 @@ class _RenderGridScreenSlot extends RenderProxyBox
 
   /// What the row laid in its last paint.
   final List<TimelineGridScreenTile> _laid = [];
+
+  /// The lay of the screen each part of the row its last paint laid ([of])
+  /// was first laid with: on the frame up once that lay is ([_layUp]).
+  Map<Object, int> _laidSince = {};
+
+  /// Whether the row's last paint laid what the frame up does not show —
+  /// and so drew it itself as well, till a frame up does.
+  bool _drawsWhatIsNotUp = false;
 
   /// Whether the row's last paint laid its tiles on the screen: the answer
   /// it was given as it painted ([_GridScreen._answers]) — false till it
@@ -822,6 +876,9 @@ class _RenderGridScreenSlot extends RenderProxyBox
   void _leave() {
     final screen = _screen;
     _lays = false;
+    // Laid on that screen, by its count: on another, or back on it, the
+    // row's parts are laid anew.
+    _laidSince = {};
     screen?._unheld.remove(this);
     if (screen != null && screen._slots.remove(this)) {
       screen._rowChanged();
@@ -833,7 +890,8 @@ class _RenderGridScreenSlot extends RenderProxyBox
   List<Rect>? _clipRects;
 
   @override
-  void lay(TimelineGridScreenTile tile) {
+  bool lay(TimelineGridScreenTile tile, {required Object of}) {
+    final up = _isUp(of);
     final rects = _clipRects ??= _clip?.rectsIn(size);
     for (final part in rects == null
         ? [tile]
@@ -841,7 +899,28 @@ class _RenderGridScreenSlot extends RenderProxyBox
       part.picture.hold();
       _laid.add(part);
     }
+    return up;
   }
+
+  /// Whether the frame up shows [of] — laid since a lay it shows. A slot on
+  /// no screen answers as a test made it
+  /// ([TimelineGridScreenSlot.debugSlot]).
+  bool _isUp(Object of) {
+    final screen = _screen;
+    if (screen == null) {
+      return _debugShownUp;
+    }
+    final since = _laidSince[of] ??= _laidBefore[of] ?? screen._laysMade + 1;
+    final up = screen._layUp;
+    final shows = up != null && up >= since;
+    if (!shows) {
+      _drawsWhatIsNotUp = true;
+    }
+    return shows;
+  }
+
+  /// [_laidSince] as the paint before this one left it.
+  Map<Object, int> _laidBefore = const {};
 
   /// What of [tile] lies within [rect] of the row: that part of its
   /// picture onto that part of the row — null where none does.
@@ -879,6 +958,9 @@ class _RenderGridScreenSlot extends RenderProxyBox
   void _paintRow(void Function() paint) {
     _letGo();
     _clipRects = null;
+    _laidBefore = _laidSince;
+    _laidSince = {};
+    _drawsWhatIsNotUp = false;
     final screen = _screen;
     screen?._rowChanged();
     _lays = screen?._answers(this) ?? false;
