@@ -183,4 +183,37 @@ void main() {
       reason: 'a tile whose ink is not known asks its pixels',
     );
   });
+
+  test('a tile told already is not to be told again — nothing waits on it '
+      '— and one whose ink is forgotten shows what its pixels hold, not '
+      "its stroke's word", () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final stroke = GpuStroke(appGpuEngine);
+    addTearDown(stroke.free);
+    final [told] = onItsWay(ledger, [null], 200);
+    await patiently(ledger.toldOf([told], by: stroke.toldOf, erases: false));
+    expect(told.tile.inkWithNoWait, isTrue, reason: '⛔premise: told');
+
+    final again = ledger.toldOf([told], by: stroke.toldOf, erases: true);
+    expect(told.tile.inkTold, isNull, reason: 'known, it waits on nothing');
+    expect(told.tile.showsInkNow, isTrue, reason: 'and shows what it knows');
+    await patiently(again);
+
+    // Painted, with no ink left: its stroke's word is ink till told.
+    final [forgotten] = onItsWay(ledger, [null], 0, from: 1);
+    final pending = ledger.toldOf(
+      [forgotten],
+      by: stroke.toldOf,
+      erases: false,
+    );
+    expect(forgotten.tile.showsInkNow, isTrue, reason: '⛔premise: the word');
+    forgotten.tile.forgetInk();
+    expect(forgotten.tile.inkTold, isNull, reason: 'forgotten with the rest');
+    expect(
+      forgotten.tile.showsInkNow,
+      isFalse,
+      reason: 'what was said of it was said of the pixels that went',
+    );
+    await patiently(pending);
+  });
 }
