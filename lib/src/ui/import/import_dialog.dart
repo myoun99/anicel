@@ -2782,6 +2782,24 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
+  /// 「파일 추가」 and 「폴더 추가」, at the footer's left end as the export
+  /// window's 「큐에 추가」 (F-289): the source line beside a folder's
+  /// landing has no room for two more. A pool row's window has its source
+  /// decided — none.
+  List<AppWindowAction> get _adds => [
+    if (!widget.placeOnly)
+      for (final (key, label, open) in [
+        ('import-add-files', AppText.strings.imAddFiles, widget.openFiles),
+        ('import-add-folder', AppText.strings.imAddFolder, widget.openFolder),
+      ])
+        AppWindowAction(
+          label: label,
+          actionKey: ValueKey<String>(key),
+          emphasis: AppWindowActionEmphasis.quiet,
+          onPressed: _busy ? null : open,
+        ),
+  ];
+
   Widget _window(BuildContext context, Size room) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
@@ -2798,26 +2816,7 @@ class _ImportDialogState extends State<ImportDialog> {
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
       footerNote: _statusLineOf(context),
-      // At the footer's left end, as the export window's 「큐에 추가」
-      // (F-289): the source line beside a folder's landing has no room for
-      // two more. A pool row's window has its source decided — none.
-      leadingActions: [
-        if (!widget.placeOnly)
-          for (final (key, label, open) in [
-            ('import-add-files', AppText.strings.imAddFiles, widget.openFiles),
-            (
-              'import-add-folder',
-              AppText.strings.imAddFolder,
-              widget.openFolder,
-            ),
-          ])
-            AppWindowAction(
-              label: label,
-              actionKey: ValueKey<String>(key),
-              emphasis: AppWindowActionEmphasis.quiet,
-              onPressed: _busy ? null : open,
-            ),
-      ],
+      leadingActions: _adds,
       actions: [
         AppWindowAction(
           label: AppText.strings.commonCancel,
