@@ -458,7 +458,7 @@ void main() {
   group('a numbered run picked from Drive (H71)', () {
     /// The documents A1..A[count] on Drive, the same picture each, picked
     /// together — every one but those [local] names, which are picked as
-    /// files on the device (each alone in a folder of its own).
+    /// files on the device, in one folder.
     Future<List<FolderGrant>> picks(
       WidgetTester tester,
       int count, {
@@ -469,7 +469,7 @@ void main() {
           if (local.contains(at))
             FolderGrant.granted(
               path: await writeSolidPng(
-                await Directory('${temp.path}/local$at').create(),
+                await Directory('${temp.path}/device').create(),
                 'A$at.png',
               ),
               kind: GrantKind.file,
@@ -497,14 +497,10 @@ void main() {
     String pathOf(FolderGrant grant) =>
         grant.path ?? ProviderDocuments.workingCopyOf(grant.document!.uri)!;
 
-    /// Whether [first]'s row says the run A1–A[count] once measured, and no
-    /// other picture of it stands as a row of its own.
-    Future<void> oneRow(
-      WidgetTester tester,
-      List<FolderGrant> grants,
-    ) async {
-      final paths = [for (final grant in grants) pathOf(grant)];
-      String? option(String path) {
+    /// What [path]'s row says of its run, once it says A1–A[count] — or
+    /// what it says when it never does.
+    Future<String?> says(WidgetTester tester, String path, int count) async {
+      String? option() {
         final text = find.descendant(
           of: find.byKey(ValueKey<String>('import-cell-option-$path')),
           matching: find.anyText(),
@@ -514,19 +510,25 @@ void main() {
             : tester.widget<Text>(text.first).data;
       }
 
-      final span = AppText.strings.imRunSpan(
-        'A1',
-        'A${paths.length}',
-        paths.length,
+      final span = AppText.strings.imRunSpan('A1', 'A$count', count);
+      await settleAsync(
+        tester,
+        () => option() == span,
+        step: const Duration(milliseconds: 50),
       );
+      return option();
+    }
+
+    /// Whether the first of [grants]' row says the run of them all once
+    /// measured, and no other picture of it stands as a row of its own.
+    Future<void> oneRow(
+      WidgetTester tester,
+      List<FolderGrant> grants,
+    ) async {
+      final paths = [for (final grant in grants) pathOf(grant)];
       expect(
-        await settleAsync(
-          tester,
-          () => option(paths.first) == span,
-          step: const Duration(milliseconds: 50),
-        ),
-        isTrue,
-        reason: 'A1\'s row brings the run: ${option(paths.first)}',
+        await says(tester, paths.first, paths.length),
+        AppText.strings.imRunSpan('A1', 'A${paths.length}', paths.length),
       );
       for (final brought in paths.skip(1)) {
         expect(
@@ -554,6 +556,31 @@ void main() {
       final grants = await picks(tester, 3, local: {1});
       await drive(tester, grants);
       await openPicked(tester, poolOnly: false);
+
+      await oneRow(tester, grants);
+    });
+
+    testWidgets('A1 and A2 on the device, measured as their run, then A3 '
+        'from Drive: the run they were measured as takes it in', (
+      tester,
+    ) async {
+      final grants = await picks(tester, 3, local: {1, 2});
+      await drive(tester, grants);
+      holdCopy = Completer<bool>();
+      await openPicked(tester, poolOnly: false);
+      expect(
+        await says(tester, grants.first.path!, 2),
+        AppText.strings.imRunSpan('A1', 'A2', 2),
+        reason: 'premise: the device\'s two are measured as a run',
+      );
+
+      holdCopy!.complete(true);
+      final copied = await settleAsync(
+        tester,
+        () =>
+            ProviderDocuments.workingCopyOf(grants.last.document!.uri) != null,
+      );
+      expect(copied, isTrue, reason: 'premise: A3\'s copy came');
 
       await oneRow(tester, grants);
     });
