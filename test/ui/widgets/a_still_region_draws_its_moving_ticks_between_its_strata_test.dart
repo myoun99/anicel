@@ -969,6 +969,89 @@ void main() {
     );
   });
 
+  testWidgets('🚨a band too wide for the room beside the ground goes there '
+      'in two halves, and the region drawn from them is the region as it '
+      'paints (card a-drag-holds-more-than-the-dock-once-on-master, 11-25 — '
+      '↩️it went under the ground\'s part, as wide)', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    // A band over the first tick, the region's whole width, and a column
+    // over the second, wider than half the region and half its height:
+    // the band's halves fit under the column, beside the ground.
+    Widget region(Key key) => StillRaster(
+      key: key,
+      debugLabel: 'test',
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: RepaintBoundary(child: ColoredBox(color: _ground)),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            width: 200,
+            height: 40,
+            child: TickLayer(child: CustomPaint(painter: _Mark(at))),
+          ),
+          const Positioned(
+            left: 0,
+            top: 0,
+            width: _width,
+            height: 20,
+            child: RepaintBoundary(
+              child: ColoredBox(color: Color(0x8043A047)),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 100,
+            width: 200,
+            height: 40,
+            child: TickLayer(child: CustomPaint(painter: _Mark(at))),
+          ),
+          const Positioned(
+            left: 110,
+            top: 100,
+            width: 130,
+            height: 100,
+            child: RepaintBoundary(
+              child: ColoredBox(color: Color(0x80E53935)),
+            ),
+          ),
+        ],
+      ),
+    );
+    await _pump(tester, region(const ValueKey('image')));
+    await _moveUntilStill(tester, at);
+    expect(_region(tester).debugDrawnFromImage, isTrue, reason: '⛔premise');
+    expect(_region(tester).debugLiveTicks, hasLength(2), reason: '⛔premise');
+    expect(
+      _region(tester).rasterBytes,
+      lessThanOrEqualTo(_onceBytes(tester, beside: 130)),
+      reason: 'the band in halves beside the ground, under the column',
+    );
+    at.value = 150;
+    await tester.pump();
+    final fromStrata = await captureBytes(tester);
+
+    StillRaster.debugCachePaysOverride = false;
+    await _pump(tester, region(const ValueKey('painted')));
+    await tester.pumpAndSettle();
+    final painted = await captureBytes(tester);
+    final result = compareRasters(
+      fromStrata,
+      painted,
+      width: (parityCaptureWidth * tester.view.devicePixelRatio).round(),
+      tolerance: parityRoundingTolerance,
+    );
+    expect(
+      result.over,
+      lessThanOrEqualTo(parityTieBudget),
+      reason: '${result.over} beyond the floor, worst ${result.worst}, in '
+          '${result.where}: ${result.samples}',
+    );
+  });
+
   testWidgets('🚨the strata drawn with the tick live are the region as it '
       'paints — a covered tick, at a ratio off the grid', (tester) async {
     tester.view.devicePixelRatio = 1.5;
