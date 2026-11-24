@@ -5,9 +5,10 @@ use std::collections::HashMap;
 
 use super::super::blur::{Blurs, Cover, window_of};
 use super::super::{Dab, Edge, Shape, Turn};
-use super::{Asked, Laid, Stroke, TILES_A_PAGE, ground_of_rubs};
+use super::{Asked, Laid, Landed, Stroke, TILES_A_PAGE, ground_of_rubs};
 use crate::device::Engine;
 use crate::kernels::blend::mode::{ERASE, NORMAL};
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::kernels::composite::{Composite, TILE_BYTES, TileAt};
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::{Cel, Pool};
@@ -19,6 +20,8 @@ const WHOLE: u32 = 65535;
 const SIDE: i32 = 128;
 const RED: [u8; 4] = [200, 100, 50, 255];
 const CEL_PIXEL: [u8; 4] = [10, 20, 30, 255];
+/// The box of a tile inked whole: what a tile over an opaque cel holds.
+const ALL_OF_IT: Option<InkBox> = Some(InkBox { left: 0, top: 0, right: 128, bottom: 128 });
 
 /// A square dab of `colour`, whole, over `region`.
 fn square(region: [i32; 4], colour: [u8; 4]) -> Dab<'static> {
@@ -83,7 +86,7 @@ impl Fixture {
         asked: &[Asked],
         laid: &Laid,
         compared: bool,
-    ) -> Vec<(Change, Option<TileAt>)> {
+    ) -> Vec<Landed> {
         let kit = (&self.composite, &mut self.pool, self.cel);
         self.stroke.land(self.engine, kit, asked, laid, compared).expect("a landing")
     }
@@ -112,8 +115,9 @@ fn a_dab_lands_on_the_cel_under_it_in_a_slot_of_its_own() {
     f.pile(&[square([10, 10, 20, 20], RED)]);
     let landed = f.land(&[asked(0, 0, Some(under))], &NORMAL_WHOLE, true);
     assert_eq!(landed.len(), 1);
-    let (change, at) = landed[0];
+    let (change, at, ink) = landed[0];
     assert_eq!(change, Change::Inked);
+    assert_eq!(ink, ALL_OF_IT, "the cel's ink and its");
     let at = at.expect("a slot");
     assert_ne!(at, under, "a stored tile is never written over");
     let bytes = f.read(at);
@@ -138,7 +142,7 @@ fn a_stroke_that_changes_nothing_takes_no_slot_when_compared() {
     let under = f.stored(CEL_PIXEL);
     f.pile(&[square([10, 10, 20, 20], CEL_PIXEL)]);
     let landed = f.land(&[asked(0, 0, Some(under))], &NORMAL_WHOLE, true);
-    assert_eq!(landed, vec![(Change::Same, None)]);
+    assert_eq!(landed, vec![(Change::Same, None, ALL_OF_IT)]);
 }
 
 #[test]
@@ -148,6 +152,7 @@ fn a_stroke_on_its_way_lands_without_asking() {
     f.pile(&[square([10, 10, 20, 20], CEL_PIXEL)]);
     let landed = f.land(&[asked(0, 0, Some(under))], &NORMAL_WHOLE, false);
     assert_eq!(landed[0].0, Change::Inked);
+    assert_eq!(landed[0].2, None, "not compared, it is told no box");
     assert_eq!(pixel(&f.read(landed[0].1.expect("a slot")), 12, 12), CEL_PIXEL);
 }
 
@@ -158,7 +163,7 @@ fn an_eraser_that_leaves_nothing_takes_no_slot_when_compared() {
     f.pile(&[square(tile_region(0, 0), RED)]);
     let erase = Laid { opacity: WHOLE, mode: ERASE, mask: None };
     let landed = f.land(&[asked(0, 0, Some(under))], &erase, true);
-    assert_eq!(landed, vec![(Change::Cleared, None)]);
+    assert_eq!(landed, vec![(Change::Cleared, None, None)]);
 }
 
 #[test]
@@ -201,7 +206,7 @@ fn a_tile_asked_that_no_dab_reached_is_the_cels() {
     let under = f.stored(CEL_PIXEL);
     f.pile(&[square([10, 10, 20, 20], RED)]);
     let landed = f.land(&[asked(1, 0, Some(under))], &NORMAL_WHOLE, true);
-    assert_eq!(landed, vec![(Change::Same, None)]);
+    assert_eq!(landed, vec![(Change::Same, None, ALL_OF_IT)]);
 }
 
 #[test]
@@ -285,7 +290,7 @@ fn a_second_tip_piles_on_a_plane_that_starts_at_nothing() {
     f.stroke.pile(f.engine, &[dab], None, Some((multiply, 1.0))).expect("a pile");
     assert_eq!(f.stroke.levels.len(), 1);
     let landed = f.land(&[asked(0, 0, None)], &NORMAL_WHOLE, true);
-    assert_eq!(landed, vec![(Change::Same, None)]);
+    assert_eq!(landed, vec![(Change::Same, None, None)]);
 }
 
 #[test]
@@ -347,7 +352,7 @@ impl Fixture {
         asked: &[Asked],
         cover: Cover,
         compared: bool,
-    ) -> Vec<(Change, Option<TileAt>)> {
+    ) -> Vec<Landed> {
         let blurs = self.blurs.as_ref().expect("a rub first");
         let kit = (blurs, &self.composite, &mut self.pool, self.cel);
         self.stroke.land_blur(self.engine, kit, asked, cover, compared).expect("a landing")
@@ -463,7 +468,7 @@ fn a_tile_the_blur_moved_nothing_on_takes_no_slot() {
     let plain = f.stored(CEL_PIXEL);
     f.rub(&[rubbing([60, 60, 68, 68])], |_| Some(plain));
     let landed = f.land_blur(&[asked(0, 0, Some(plain))], WHOLE_COVER, true);
-    assert_eq!(landed, vec![(Change::Same, None)]);
+    assert_eq!(landed, vec![(Change::Same, None, ALL_OF_IT)]);
 }
 
 #[test]

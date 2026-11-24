@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use super::{
     Finished, StampLanding, StampPicture, Stroke, gpu_engine_finished_changes, gpu_engine_finished_free,
+    gpu_engine_finished_inks,
     gpu_engine_finished_land_unwaited, gpu_engine_stamp_finish_mask_unwaited, gpu_engine_stamp_finish_unwaited,
     gpu_engine_stamp_land, gpu_engine_stamp_land_mask, gpu_engine_stamp_landing_free,
     gpu_engine_stamp_landing_new, gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_new,
@@ -130,13 +131,14 @@ fn asked(count: usize) -> (Vec<i32>, [i32; 4]) {
 
 /// `picture` laid from the canvas's top-left, whole and in normal, on the
 /// tiles over `under`, waited for ([`gpu_engine_stamp_land`]): each
-/// tile's place and what it is.
+/// tile's place, what it is, and the four words of its ink's box.
 ///
 /// # Safety
 /// `own` came from [`open`]; `picture` is live on its engine.
-unsafe fn landed(own: &Own, picture: *const StampPicture, under: &[u32]) -> (Vec<u32>, Vec<u8>) {
+unsafe fn landed(own: &Own, picture: *const StampPicture, under: &[u32]) -> (Vec<u32>, Vec<u8>, Vec<i32>) {
     let (asks, within) = asked(under.len());
     let (mut places, mut changes) = (vec![NO_TILE; under.len()], vec![9u8; under.len()]);
+    let mut inks = vec![0i32; 4 * under.len()];
     // SAFETY: see the function's contract; each list holds a tile's each.
     let count = unsafe {
         gpu_engine_stamp_land(
@@ -157,10 +159,11 @@ unsafe fn landed(own: &Own, picture: *const StampPicture, under: &[u32]) -> (Vec
             std::ptr::null(),
             places.as_mut_ptr(),
             changes.as_mut_ptr(),
+            inks.as_mut_ptr(),
         )
     };
     assert_eq!(count, under.len() as isize, "{}", last_error());
-    (places, changes)
+    (places, changes, inks)
 }
 
 /// Where a telling writes what it made: live till it is told, and unlike
@@ -228,6 +231,19 @@ unsafe fn changes_of(finished: *const Finished) -> Vec<u8> {
     changes
 }
 
+/// The four words of the box each tile `finished` was asked fills.
+///
+/// # Safety
+/// `finished` is live.
+unsafe fn inks_of(finished: *const Finished) -> Vec<i32> {
+    // SAFETY: see the function's contract; a null holds none.
+    let count = unsafe { gpu_engine_finished_changes(finished, std::ptr::null_mut()) };
+    let mut inks = vec![9; 4 * count];
+    // SAFETY: see the function's contract; `inks` holds four each.
+    assert_eq!(unsafe { gpu_engine_finished_inks(finished, inks.as_mut_ptr()) }, count);
+    inks
+}
+
 /// The inked of `finished` from its `first` on given their slots
 /// ([`gpu_engine_finished_land_unwaited`]), told by `number`: the places
 /// given — `room` of them at most.
@@ -283,10 +299,13 @@ fn a_finish_says_what_a_waited_landing_says_and_lands_the_bytes_it_lands() {
         // Over the left half of the first tile: that one inked, the second
         // and a third no tile lies on as they were.
         let half = picture(&own, INK, SIDE / 2, SIDE);
-        let (places, changes) = landed(&own, half, &under);
+        let (places, changes, inks) = landed(&own, half, &under);
         assert_eq!(changes, [1, 0, 0], "⛔premise: inked, the same, the same");
+        assert_eq!(inks[..4], [0, 0, 128, 128], "the inked's box: the cel's ink and the picture's");
+        assert_eq!(inks[8..], [0; 4], "none where no tile lies and none lands");
         let told_of = finished(&own, half, &under);
         assert_eq!(changes_of(told_of), changes);
+        assert_eq!(inks_of(told_of), inks, "the boxes a waited landing says");
         let put = numbered();
         let given = land(&own, told_of, 0, under.len(), put);
         assert_eq!(given.len(), 1, "the inked alone takes a slot");
@@ -475,6 +494,7 @@ fn a_mask_s_finish_says_what_its_waited_landing_says() {
         let paint = [0.0, f64::from(u32::from_le_bytes(INK))];
         for (mode, says) in [(ERASE, [2u8, 0]), (NORMAL, [1, 0])] {
             let (mut places, mut changes) = ([NO_TILE; 2], [9u8; 2]);
+            let mut inks = [0i32; 8];
             let count = gpu_engine_stamp_land_mask(
                 own.landing,
                 own.engine,
@@ -492,6 +512,7 @@ fn a_mask_s_finish_says_what_its_waited_landing_says() {
                 std::ptr::null(),
                 places.as_mut_ptr(),
                 changes.as_mut_ptr(),
+                inks.as_mut_ptr(),
             );
             assert_eq!((count, changes), (2, says), "⛔premise, mode {mode}: {}", last_error());
             let (mut out, number) = (out_of::<Finished>(), numbered());

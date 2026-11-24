@@ -13,7 +13,8 @@ use crate::kernels::dab::abi::{
     gpu_engine_stamp_picture_free, gpu_engine_stamp_picture_meshed, gpu_engine_stamp_picture_new,
     gpu_engine_stamp_picture_read,
 };
-use crate::kernels::dab::landing::{Asked, Laid};
+use crate::kernels::cel_pixel::ink::InkBox;
+use crate::kernels::dab::landing::{Asked, Laid, Landed};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::{Cel, Pool};
@@ -530,6 +531,8 @@ fn a_gradient_past_its_reach_is_refused() {
 /// A row's opacity at whole, the executor's 16-bit scale.
 const WHOLE: u32 = 65535;
 const CEL_PIXEL: [u8; 4] = [10, 20, 30, 255];
+/// The box of a tile inked whole: what a tile over an opaque cel holds.
+const ALL_OF_IT: Option<InkBox> = Some(InkBox { left: 0, top: 0, right: 128, bottom: 128 });
 const INK: [u8; 4] = [200, 100, 50, 255];
 const NORMAL_WHOLE: Laid<'static> = Laid { opacity: WHOLE, mode: NORMAL, mask: None };
 
@@ -568,7 +571,7 @@ impl Landing {
         (at, size, pixel): ((i32, i32), (u32, u32), [u8; 4]),
         asked: &[Asked],
         laid: &Laid,
-    ) -> Vec<(Change, Option<TileAt>)> {
+    ) -> Vec<Landed> {
         let words = vec![u32::from_le_bytes(pixel); size.0 as usize * size.1 as usize];
         let pixels = picture(&words);
         let boxed = Boxed { pixels: &pixels, size };
@@ -598,8 +601,9 @@ fn a_picture_lands_on_the_cel_under_it_in_a_slot_of_its_own() {
     let under = f.stored(CEL_PIXEL);
     let landed = f.land(((10, 10), (10, 10), INK), &[asked(0, 0, Some(under))], &NORMAL_WHOLE);
     assert_eq!(landed.len(), 1);
-    let (change, at) = landed[0];
+    let (change, at, ink) = landed[0];
     assert_eq!(change, Change::Inked);
+    assert_eq!(ink, ALL_OF_IT, "the cel's ink and its");
     let at = at.expect("a slot");
     assert_ne!(at, under, "a stored tile is never written over");
     let bytes = f.read(at);
@@ -615,6 +619,7 @@ fn a_tile_where_the_cel_has_none_is_the_picture_alone() {
     let bytes = f.read(landed[0].1.expect("a slot"));
     assert_eq!(pixel(&bytes, 12, 12), INK);
     assert_eq!(pixel(&bytes, 5, 5), [0, 0, 0, 0]);
+    assert_eq!(landed[0].2, Some(InkBox { left: 10, top: 10, right: 20, bottom: 20 }), "the box the picture fills");
 }
 
 #[test]
@@ -636,7 +641,7 @@ fn a_picture_of_nothing_takes_no_slot() {
     let under = f.stored(CEL_PIXEL);
     let landed =
         f.land(((10, 10), (10, 10), [0, 0, 0, 0]), &[asked(0, 0, Some(under))], &NORMAL_WHOLE);
-    assert_eq!(landed, [(Change::Same, None)]);
+    assert_eq!(landed, [(Change::Same, None, ALL_OF_IT)]);
 }
 
 #[test]
@@ -645,7 +650,7 @@ fn an_erase_that_takes_the_whole_tile_takes_no_slot() {
     let under = f.stored(CEL_PIXEL);
     let erase = Laid { opacity: WHOLE, mode: ERASE, mask: None };
     let landed = f.land(((0, 0), (128, 128), INK), &[asked(0, 0, Some(under))], &erase);
-    assert_eq!(landed, [(Change::Cleared, None)]);
+    assert_eq!(landed, [(Change::Cleared, None, None)]);
 }
 
 #[test]

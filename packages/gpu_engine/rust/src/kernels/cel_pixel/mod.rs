@@ -44,7 +44,7 @@ use std::ops::Range;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
-use crate::kernels::dab::landing::placed;
+use crate::kernels::dab::landing::{Landed, placed};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::pool::{Cel, Pool};
@@ -214,7 +214,7 @@ impl Passed {
         engine: &Engine,
         at: (&mut Pool, Cel),
         walked: Range<usize>,
-    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+    ) -> Option<Vec<Landed>> {
         if walked.end > self.tiles.len() {
             return fail(format!(
                 "tiles {walked:?} of a walk of {} landed",

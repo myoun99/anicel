@@ -30,14 +30,14 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use super::blur::{Blurs, Cover, blurs_anything, window_of};
-use super::landing::{self, Asked, Finished, Laid, Over, box_of, under_of};
+use super::landing::{self, Asked, Finished, Laid, Landed, Over, box_of, under_of};
 use super::mix::{Ground, MixRun, Mixes, Mixing, Step};
 use super::{Dab, Dabs, Paper, Second, StrokeTile};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::pool::{Cel, Pool};
-use crate::kernels::write::{Change, Write};
+use crate::kernels::write::Write;
 
 /// The tiles a page of the stroke's holds: its planes' 16 MiB, its view's 8
 /// — well under what any device binds, and a pen stroke's dabs reach a page
@@ -250,7 +250,7 @@ impl Stroke {
         asked: &[Asked],
         cover: Cover,
         compared: bool,
-    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+    ) -> Option<Vec<Landed>> {
         self.unrefused()?;
         if asked.is_empty() {
             return Some(Vec::new());
@@ -307,7 +307,7 @@ impl Stroke {
         asked: &[Asked],
         laid: &Laid,
         compared: bool,
-    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+    ) -> Option<Vec<Landed>> {
         self.unrefused()?;
         if asked.is_empty() {
             return Some(Vec::new());

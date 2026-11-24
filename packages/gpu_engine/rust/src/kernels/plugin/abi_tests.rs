@@ -422,6 +422,7 @@ fn what_it_made_lands_tile_by_tile_where_it_lies() {
     let land = |pool: &mut Pool, asks: &[i32]| {
         let count = asks.len() / 2;
         let (mut places, mut changes) = (vec![0; count], vec![0; count]);
+        let mut inks = vec![0i32; 4 * count];
         // SAFETY: every pointer is live, `asks` holds `2 × count` and the
         // rest `count`.
         let landed = unsafe {
@@ -434,6 +435,7 @@ fn what_it_made_lands_tile_by_tile_where_it_lies() {
                 count,
                 places.as_mut_ptr(),
                 changes.as_mut_ptr(),
+                inks.as_mut_ptr(),
             )
         };
         (landed, places, changes)

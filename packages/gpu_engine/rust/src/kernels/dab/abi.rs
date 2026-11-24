@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
-use super::landing::{self, Asked, Finished, Laid, Over};
+use super::landing::{self, Asked, Finished, Laid, Landed, Over};
 use super::mix::{Ground, Step, ground_of};
 use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::{Stroke, ground_of_rubs};
@@ -751,6 +751,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
     compared: bool,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (stroke, engine, blurs, composite, pool) =
@@ -764,7 +765,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
         let kit = (blurs, composite, pool, Cel(cel));
         let landed = stroke.land_blur(engine, kit, &asked, cover, compared);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -801,6 +802,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur_unwaited(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
     told: extern "C" fn(u64, bool),
     number: u64,
 ) -> isize {
@@ -820,9 +822,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur_unwaited(
     // SAFETY: what `put` holds is let go of on the engine's thread, after
     // it; `told` is one any thread may call (the function's contract).
     let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
-    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at), None)).collect();
     // SAFETY: see the function's contract.
-    unsafe { reported(Some(landed), places, changes) }
+    unsafe { reported(Some(landed), places, changes, inks) }
 }
 
 /// Lays `stroke` on the `count` tiles asked — `asks` their column and row,
@@ -852,6 +854,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
     compared: bool,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (stroke, engine, composite, pool) =
@@ -864,7 +867,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
         let laid = Laid { opacity, mode, mask: mask.as_ref() };
         let landed = stroke.land(engine, (composite, pool, Cel(cel)), &asked, &laid, compared);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -900,6 +903,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
     told: extern "C" fn(u64, bool),
     number: u64,
 ) -> isize {
@@ -919,9 +923,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
     // SAFETY: what `put` holds is let go of on the engine's thread, after
     // it; `told` is one any thread may call (the function's contract).
     let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
-    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at), None)).collect();
     // SAFETY: see the function's contract.
-    unsafe { reported(Some(landed), places, changes) }
+    unsafe { reported(Some(landed), places, changes, inks) }
 }
 
 /// What each of the `count` tiles a stroke's landings put — `tiles`, each
@@ -1022,6 +1026,7 @@ pub unsafe extern "C" fn gpu_engine_tiles_land(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (engine, composite, pool, words) = unsafe {
@@ -1044,7 +1049,7 @@ pub unsafe extern "C" fn gpu_engine_tiles_land(
             landing::land(engine, (composite, pool, Cel(cel)), over, &asked, &laid, None)
         };
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -1067,24 +1072,28 @@ unsafe fn asked_of(asks: *const i32, under: *const u32, count: usize, pool: &Poo
         .collect()
 }
 
-/// Writes each landed tile's `places` and `changes`, and returns how many
-/// landed; -1 where the landing failed.
+/// Writes each landed tile's `places`, `changes` and `inks` — four words
+/// a tile, as [`InkBox::words`] gives them —, and returns how many landed;
+/// -1 where the landing failed.
 ///
 /// # Safety
-/// `places` and `changes` hold as many as were asked, and no more land.
+/// `places` and `changes` hold as many as were asked, `inks` four times
+/// as many, and no more land.
 pub(crate) unsafe fn reported(
-    landed: Option<Vec<(Change, Option<TileAt>)>>,
+    landed: Option<Vec<Landed>>,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     let Some(landed) = landed else {
         return -1;
     };
-    for (at, (change, place)) in landed.iter().enumerate() {
+    for (at, (change, place, ink)) in landed.iter().enumerate() {
         // SAFETY: see the function's contract.
         unsafe {
             *places.add(at) = place.map_or(NO_TILE, TileAt::word);
             *changes.add(at) = byte_of(*change);
+            std::ptr::copy_nonoverlapping(InkBox::words(*ink).as_ptr(), inks.add(4 * at), 4);
         }
     }
     landed.len() as isize
@@ -1350,6 +1359,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (landing, engine, composite, pool, picture, within) = unsafe {
@@ -1365,7 +1375,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
         let source = Source::Picture { picture: &boxed, at: (left, top), within };
         let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -1746,6 +1756,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (landing, engine, composite, pool, coverage) =
@@ -1765,6 +1776,6 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
         let source = Source::Mask { mask: &coverage, paint: &paint, whole };
         let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }

@@ -520,17 +520,8 @@ final GpuEngine _engine;
   /// then nothing but its collection or [retire] lets it go — and till then
   /// it keeps [under], the tile it landed on ([_Slot.under]), and [made],
   /// how its landing is made again ([_Slot.made]).
-  BitmapTile _adopted(
-    GpuTile at, {
-    bool? hasInk,
-    BitmapTile? under,
-    _Made? made,
-  }) {
-    final tile = BitmapTile.onEngine(
-      size: gpuTileSide,
-      on: this,
-      hasInk: hasInk,
-    );
+  BitmapTile _adopted(GpuTile at, {BitmapTile? under, _Made? made}) {
+    final tile = BitmapTile.onEngine(size: gpuTileSide, on: this);
     _give(tile, at)
       ..under = under
       ..made = made;
@@ -584,8 +575,8 @@ final GpuEngine _engine;
 
   /// What [by] makes of the tiles [asks] — `GpuStroke.land`,
   /// `GpuStampLanding.land` —, each result a tile of its own, on the pages
-  /// of what lands ([landedCel]); [compared], [by]'s, says the results' ink
-  /// is known. A full pool has room made as [_store]'s is
+  /// of what lands ([landedCel]); [compared], [by]'s, says it told each
+  /// result the box its ink fills ([GpuLanded]). A full pool has room made as [_store]'s is
   /// ([_shortAsRoomIsMade]): what is on the way to the screen has no
   /// fallback.
   ///
@@ -667,30 +658,40 @@ final GpuEngine _engine;
   }
 
   /// What [landed] made of [asks], in their order: a tile of its own
-  /// where one landed ([_adopted]) — its ink known where the landing
-  /// [compared] —, which keeps the tile it landed on and, where [again]
-  /// says how, the way its landing is made again.
+  /// where one landed ([_adopted]) — the box its ink fills known where the
+  /// landing [compared], as it was told it —, which keeps the tile it
+  /// landed on and, where [again] says how, the way its landing is made
+  /// again.
+  ///
+  /// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  /// places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): what [toldOf]
+  /// is told a stroke's tiles, every landing that compares is told — a
+  /// blur's, a fill's, a stamp's, a plug-in's —, so the move tool's box
+  /// asks no scan of a tile they landed. ↩️Till then such a tile knew it
+  /// held ink, and not where.
   List<LandedTile> _adoptedOf(
     List<TileAsk> asks,
     List<GpuLanded> landed, {
     required bool compared,
     LandsAgain? again,
-  }) => [
-    for (final (at, (:change, :tile)) in landed.indexed)
-      (
-        change: change,
-        tile: tile == null
-            ? null
-            : _adopted(
-                tile,
-                hasInk: compared ? true : null,
-                under: asks[at].under,
-                made: again == null
-                    ? null
-                    : (by: again, column: asks[at].column, row: asks[at].row),
-              ),
-      ),
-  ];
+  }) {
+    final adopted = <LandedTile>[];
+    for (final (at, (:change, :tile, :box)) in landed.indexed) {
+      final ask = asks[at];
+      final made = again == null
+          ? null
+          : (by: again, column: ask.column, row: ask.row);
+      final one = tile == null
+          ? null
+          : _adopted(tile, under: ask.under, made: made);
+      if (compared) {
+        one?.rememberInkBounds(_boundsOf(box));
+      }
+      adopted.add((change: change, tile: one));
+    }
+    return adopted;
+  }
+
 
   /// [land] compared, with no wait for the GPU: [by] —
   /// `GpuStampLanding.finished`, `finishedMask` — is asked what it makes
@@ -743,10 +744,11 @@ final GpuEngine _engine;
       _foldBeforeLong();
       var next = 0;
       return _adoptedOf(asks, [
-        for (final change in finished.changes)
+        for (final (at, change) in finished.changes.indexed)
           (
             change: change,
             tile: change == GpuChange.inked ? places[next++] : null,
+            box: finished.inks[at],
           ),
       ], compared: true);
     } finally {

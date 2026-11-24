@@ -173,6 +173,7 @@ unsafe fn pile(own: &Own, dabs: &[DabSpec]) {
 unsafe fn land(own: &Own, under: u32, opacity: u32, mask: *const MaskPlane, number: Option<u64>) -> (isize, u32) {
     let (asks, under) = ([0, 0], [under]);
     let (mut places, mut changes) = ([NO_TILE], [9u8]);
+    let mut inks = [0i32; 4];
     // SAFETY: see the function's contract; each list holds one.
     let landed = unsafe {
         match number {
@@ -190,6 +191,7 @@ unsafe fn land(own: &Own, under: u32, opacity: u32, mask: *const MaskPlane, numb
                 mask,
                 places.as_mut_ptr(),
                 changes.as_mut_ptr(),
+                inks.as_mut_ptr(),
                 told,
                 number,
             ),
@@ -208,6 +210,7 @@ unsafe fn land(own: &Own, under: u32, opacity: u32, mask: *const MaskPlane, numb
                 false,
                 places.as_mut_ptr(),
                 changes.as_mut_ptr(),
+                inks.as_mut_ptr(),
             ),
         }
     };
@@ -444,6 +447,7 @@ unsafe fn rub(own: &Own, blurs: *mut Blurs, region: [i32; 4], under: u32, told: 
 unsafe fn land_blur(own: &Own, blurs: *mut Blurs, number: Option<u64>) -> (isize, u32) {
     let (asks, under) = ([0, 0], [NO_TILE]);
     let (mut places, mut changes) = ([NO_TILE], [9u8]);
+    let mut inks = [0i32; 4];
     let none = std::ptr::null();
     // SAFETY: see the function's contract; each list holds one.
     let landed = unsafe {
@@ -462,6 +466,7 @@ unsafe fn land_blur(own: &Own, blurs: *mut Blurs, number: Option<u64>) -> (isize
                 none,
                 places.as_mut_ptr(),
                 changes.as_mut_ptr(),
+                inks.as_mut_ptr(),
                 told,
                 number,
             ),
@@ -480,6 +485,7 @@ unsafe fn land_blur(own: &Own, blurs: *mut Blurs, number: Option<u64>) -> (isize
                 false,
                 places.as_mut_ptr(),
                 changes.as_mut_ptr(),
+                inks.as_mut_ptr(),
             ),
         }
     };

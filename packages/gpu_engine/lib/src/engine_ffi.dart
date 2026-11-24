@@ -1920,6 +1920,7 @@ external void celPassedRuns(Pointer<CelPassed> passed, Pointer<Uint32> out);
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_cel_passed_land')
 external int celPassedLand(
@@ -1931,6 +1932,7 @@ external int celPassedLand(
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<Pointer<Floods> Function(Pointer<Engine>)>(
@@ -2217,6 +2219,7 @@ external bool lettersCover(
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
     Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
@@ -2231,6 +2234,7 @@ external int lettersLand(
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
   int number,
 );
@@ -2311,6 +2315,7 @@ external Pointer<PluginMade> pluginRenderRead(
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_plugin_made_land')
 external int pluginMadeLand(
@@ -2322,6 +2327,7 @@ external int pluginMadeLand(
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<Void Function(Pointer<PluginMade>)>(
@@ -2605,6 +2611,7 @@ external bool strokeMixed(
     Bool,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stroke_land')
 external int strokeLand(
@@ -2622,6 +2629,7 @@ external int strokeLand(
   bool compared,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<
@@ -2639,6 +2647,7 @@ external int strokeLand(
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
     Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
@@ -2657,6 +2666,7 @@ external int strokeLandUnwaited(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
   int number,
 );
@@ -2707,6 +2717,7 @@ external void strokeTilesToldUnwaited(
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_tiles_land')
 external int tilesLand(
@@ -2727,6 +2738,7 @@ external int tilesLand(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 final class Blurs extends Opaque {}
@@ -2821,6 +2833,7 @@ external void strokeRub(
     Bool,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stroke_land_blur')
 external int strokeLandBlur(
@@ -2838,6 +2851,7 @@ external int strokeLandBlur(
   bool compared,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<
@@ -2855,6 +2869,7 @@ external int strokeLandBlur(
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
     Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
@@ -2873,6 +2888,7 @@ external int strokeLandBlurUnwaited(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
   int number,
 );
@@ -3001,6 +3017,7 @@ external void stampLandingFree(Pointer<StampLanding> landing);
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stamp_land')
 external int stampLand(
@@ -3021,6 +3038,7 @@ external int stampLand(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<
@@ -3160,6 +3178,7 @@ external void finishedFree(Pointer<Finished> finished);
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stamp_land_mask')
 external int stampLandMask(
@@ -3179,4 +3198,5 @@ external int stampLandMask(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );

@@ -186,10 +186,11 @@ fn passed(pool: &Pool, x0: i32, columns: u32, words: &[u32], spec: &VerbSpec) ->
 /// the call returned, and each tile's place and change.
 fn landed(passed: *mut Passed, pool: &mut Pool, first: usize, count: usize) -> (isize, Vec<u32>, Vec<u8>) {
     let (mut places, mut changes) = (vec![7; count], vec![7; count]);
+    let mut inks = vec![0i32; 4 * count];
     let cel = pool.cel().0;
     // SAFETY: every pointer is live; each of `places` and `changes` holds `count`.
     let returned = unsafe {
-        gpu_engine_cel_passed_land(passed, rig().engine, pool, cel, first, count, places.as_mut_ptr(), changes.as_mut_ptr())
+        gpu_engine_cel_passed_land(passed, rig().engine, pool, cel, first, count, places.as_mut_ptr(), changes.as_mut_ptr(), inks.as_mut_ptr())
     };
     (returned, places, changes)
 }

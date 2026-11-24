@@ -98,6 +98,7 @@ unsafe fn land(
         (0..rows).flat_map(|down| (0..columns).flat_map(move |across| [x0 + across, y0 + down])).collect();
     let count = asks.len() / 2;
     let (mut places, mut changes) = (vec![0; count], vec![0; count]);
+    let mut inks = vec![0i32; 4 * count];
     // SAFETY: see the function's contract; `asks` holds `2 × count` and
     // the rest `count`.
     let landed = unsafe {
@@ -111,6 +112,7 @@ unsafe fn land(
             count,
             places.as_mut_ptr(),
             changes.as_mut_ptr(),
+            inks.as_mut_ptr(),
             put,
             number,
         )

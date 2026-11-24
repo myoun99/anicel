@@ -1554,8 +1554,11 @@ enum GpuChange { same, inked, cleared }
 /// there, if it has one.
 typedef GpuTileAsk = ({int column, int row, GpuTile? under});
 
-/// What a landing made of a tile asked: what it is, and where it landed.
-typedef GpuLanded = ({GpuChange change, GpuTile? tile});
+/// What a landing made of a tile asked: what it is, where it landed, and
+/// the box its ink fills — as a landing that compares is told them
+/// (rust/src/kernels/dab/landing.rs, `Landed`). One that does not compare
+/// is told neither: each tile [GpuChange.inked], and no box.
+typedef GpuLanded = ({GpuChange change, GpuTile? tile, GpuInkBox? box});
 
 /// [asks] as a landing's call takes them, and what it wrote read back.
 List<GpuLanded> _landed(
@@ -1566,6 +1569,7 @@ List<GpuLanded> _landed(
     Pointer<Uint32> under,
     Pointer<Uint32> places,
     Pointer<Uint8> changes,
+    Pointer<Int32> inks,
   )
   call,
 ) => using((arena) {
@@ -1573,7 +1577,8 @@ List<GpuLanded> _landed(
   final (:coordinates, :under) = _asked(arena, asks);
   final places = arena<Uint32>(_held(count));
   final changes = arena<Uint8>(_held(count));
-  final landed = call(arena, coordinates, under, places, changes);
+  final inks = arena<Int32>(_held(count * 4));
+  final landed = call(arena, coordinates, under, places, changes, inks);
   if (landed < 0) {
     throw GpuRefused(_lastError());
   }
@@ -1584,6 +1589,7 @@ List<GpuLanded> _landed(
         tile: places[at] == _noTile
             ? null
             : (page: places[at] >> 16, slot: places[at] & 0xFFFF),
+        box: _inkBoxAt(inks.asTypedList(landed * 4), at * 4),
       ),
   ];
 });
@@ -2094,7 +2100,7 @@ class GpuStroke {
     bool compared = false,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => rust.strokeLandBlur(
+    (_, coordinates, under, places, changes, inks) => rust.strokeLandBlur(
       _stroke,
       _engine._engine,
       _engine._its(blurs)._blurs,
@@ -2109,6 +2115,7 @@ class GpuStroke {
       compared,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -2129,7 +2136,7 @@ class GpuStroke {
     required void Function() unput,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+    (_, coordinates, under, places, changes, inks) => _putsOnTheirWay.handing(
       unput,
       (number) => rust.strokeLandBlurUnwaited(
         _stroke,
@@ -2145,6 +2152,7 @@ class GpuStroke {
         mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
+        inks,
         _putsOnTheirWay.told,
         number,
       ),
@@ -2168,7 +2176,7 @@ class GpuStroke {
     bool compared = false,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => rust.strokeLand(
+    (_, coordinates, under, places, changes, inks) => rust.strokeLand(
       _stroke,
       _engine._engine,
       _engine._its(composite)._composite,
@@ -2183,6 +2191,7 @@ class GpuStroke {
       compared,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -2203,7 +2212,7 @@ class GpuStroke {
     required void Function() unput,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+    (_, coordinates, under, places, changes, inks) => _putsOnTheirWay.handing(
       unput,
       (number) => rust.strokeLandUnwaited(
         _stroke,
@@ -2219,6 +2228,7 @@ class GpuStroke {
         mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
+        inks,
         _putsOnTheirWay.told,
         number,
       ),
@@ -2554,7 +2564,7 @@ class GpuStampLanding {
     GpuMask? mask,
   }) => _landed(
     asks,
-    (arena, coordinates, under, places, changes) {
+    (arena, coordinates, under, places, changes, inks) {
       final (l, t, r, b) = within;
       final box = arena<Int32>(4);
       box[0] = l;
@@ -2579,6 +2589,7 @@ class GpuStampLanding {
         mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
+        inks,
       );
     },
   );
@@ -2601,7 +2612,7 @@ class GpuStampLanding {
     GpuMask? mask,
   }) => _landed(
     asks,
-    (arena, coordinates, under, places, changes) => rust.stampLandMask(
+    (arena, coordinates, under, places, changes, inks) => rust.stampLandMask(
       _landing,
       _engine._engine,
       _engine._its(composite)._composite,
@@ -2618,6 +2629,7 @@ class GpuStampLanding {
       mask == null ? nullptr : _engine._its(mask)._mask,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -3694,7 +3706,7 @@ class GpuComposite implements _OfAnEngine {
     GpuMask? mask,
   }) => _landed(
     asks,
-    (arena, coordinates, under, places, changes) => rust.tilesLand(
+    (arena, coordinates, under, places, changes, inks) => rust.tilesLand(
       _engine._engine,
       _composite,
       _engine._its(pool)._pool,
@@ -3712,6 +3724,7 @@ class GpuComposite implements _OfAnEngine {
       mask == null ? nullptr : _engine._its(mask)._mask,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -4906,7 +4919,7 @@ final class GpuCelPassed {
     List<GpuTileAsk> asks,
   ) => _landed(
     asks,
-    (arena, _, _, places, changes) => rust.celPassedLand(
+    (arena, _, _, places, changes, inks) => rust.celPassedLand(
       _passed,
       _engine._engine,
       _engine._its(pool)._pool,
@@ -4915,6 +4928,7 @@ final class GpuCelPassed {
       asks.length,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -5475,7 +5489,7 @@ class GpuLetters {
     final engine = composite._engine;
     return _landed(
       asks,
-      (_, coordinates, _, places, changes) => _putsOnTheirWay.handing(
+      (_, coordinates, _, places, changes, inks) => _putsOnTheirWay.handing(
         unput,
         (number) => rust.lettersLand(
           _letters,
@@ -5487,6 +5501,7 @@ class GpuLetters {
           asks.length,
           places,
           changes,
+          inks,
           _putsOnTheirWay.told,
           number,
         ),
@@ -6719,7 +6734,7 @@ class GpuPluginMade {
   List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
       _landed(
         asks,
-        (_, coordinates, _, places, changes) => rust.pluginMadeLand(
+        (_, coordinates, _, places, changes, inks) => rust.pluginMadeLand(
           _engine._engine,
           _made,
           _engine._its(pool)._pool,
@@ -6728,6 +6743,7 @@ class GpuPluginMade {
           asks.length,
           places,
           changes,
+          inks,
         ),
       );
 

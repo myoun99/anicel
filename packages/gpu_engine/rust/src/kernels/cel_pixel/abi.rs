@@ -365,13 +365,14 @@ pub unsafe extern "C" fn gpu_engine_cel_passed_land(
     count: usize,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (passed, engine, pool) = unsafe { (&*passed, &*engine, &mut *pool) };
     engine.on_thread(|| {
         let landed = passed.land(engine, (pool, Cel(cel)), first..first + count);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 

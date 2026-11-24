@@ -136,6 +136,49 @@ void main() {
     expect(unput, 0, reason: 'every tile told was put');
   });
 
+  // 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  // places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): a landing
+  // that compares is told the box each tile's ink fills with what it is.
+  test('each tile a landing that compares leaves knows the box its ink '
+      'fills — told or waited for — and its box asks no scan', () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final picture = strip(2, 3);
+    // The strip lies over the tiles' first [tall] rows, whole across.
+    final box = (left: 0, top: 0, rightExclusive: side, bottomExclusive: tall);
+
+    final told = await patiently(
+      ledger.landOnceTold(
+        rowOf(0, 3),
+        by: finishes(picture, 0, 2),
+        unput: () {},
+      ),
+    );
+    final waited = ledger.land(
+      rowOf(1, 3),
+      by: lands(picture, 1, 2),
+      ofTheHand: true,
+      compared: true,
+    );
+    final (reads, scans, waits) = (
+      ledger.debugTileReads,
+      ledger.debugInkScans,
+      debugWaitsHere,
+    );
+
+    for (final landed in [told, waited]) {
+      final inked = [for (final one in landed.take(2)) one.tile!];
+      expect(
+        [for (final tile in inked) tile.inkBoundsKnown],
+        everyElement(isTrue),
+        reason: 'each box is known as it lands',
+      );
+      expect([for (final tile in inked) tile.inkBounds], [box, box]);
+    }
+    expect(ledger.debugTileReads, reads, reason: 'no byte read for any');
+    expect(ledger.debugInkScans, scans, reason: 'no scan asked of the GPU');
+    expect(debugWaitsHere, waits, reason: 'no wait for the GPU here');
+  });
+
   test('🚨told with the pool full at the next slot, it has room made as a '
       'store has and lands the rest from where it stopped', () async {
     final ledger = EngineTileLedger(

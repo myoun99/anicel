@@ -80,15 +80,25 @@ LandedBy tilesOf(int value) => tilesLike(
   ),
 );
 
-/// What lands [tile]'s bytes for each tile asked, as [tilesOf] does.
+/// What lands [tile]'s bytes for each tile asked, as [tilesOf] does — and
+/// tells each the box its ink fills, as a landing that compares is told.
 LandedBy tilesLike(BitmapTile tile) => (pool, cel, asked) {
+  final ink = tile.inkBounds;
+  final box = ink == null
+      ? null
+      : (
+          left: ink.left,
+          top: ink.top,
+          right: ink.rightExclusive,
+          bottom: ink.bottomExclusive,
+        );
   // A tile, not bytes of this call's: the store's copy reads them once it
   // returns, holding what keeps them (GpuPool.store).
   return [
     for (final at in pool.store(cel, [
       for (final _ in asked) tile,
     ], (tile) => tile.readPixels((pointer, _) => pointer)))
-      (change: GpuChange.inked, tile: at),
+      (change: GpuChange.inked, tile: at, box: box),
   ];
 };
 

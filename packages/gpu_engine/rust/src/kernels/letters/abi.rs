@@ -584,6 +584,7 @@ pub unsafe extern "C" fn gpu_engine_letters_land(
     count: usize,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
     told: extern "C" fn(u64, bool),
     number: u64,
 ) -> isize {
@@ -609,7 +610,7 @@ pub unsafe extern "C" fn gpu_engine_letters_land(
     // SAFETY: what `put` holds is let go of on the engine's thread, behind
     // it; `told` is one any thread may call (the function's contract).
     let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
-    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at), None)).collect();
     // SAFETY: see the function's contract.
-    unsafe { reported(Some(landed), places, changes) }
+    unsafe { reported(Some(landed), places, changes, inks) }
 }
