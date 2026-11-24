@@ -85,6 +85,16 @@ class FrameStatsReadout extends StatelessWidget {
   static String _msOf(int? micros) =>
       micros == null ? '—' : (micros / 1000).toStringAsFixed(1);
 
+  /// The newest stroke's steps along it as its line says them
+  /// ([FrameStatsSnapshot.strokeAlong]).
+  static String _alongWords(
+    ({double first, double last, int steps})? along,
+  ) => switch (along) {
+    null => '—',
+    (:final first, :final last, :final steps) =>
+      'first ⅓ p50${_ms(first)}  last ⅓ p50${_ms(last)}  of $steps',
+  };
+
   /// The newest stroke's first step as its line says it, from the press
   /// ([FrameStatsSnapshot.firstStep]).
   static String _firstWords(FirstStep? step) => switch (step) {
@@ -215,6 +225,7 @@ class FrameStatsReadout extends StatelessWidget {
                     'p95${_ms(stats.strokeHeldP95)}',
                 ' pen→up p50${_ms(stats.strokeUpP50)}  '
                     'p95${_ms(stats.strokeUpP95)}',
+                ' along  ${_alongWords(stats.strokeAlong)}',
                 // A stroke's first step and its landing, apart, and what
                 // the frame that showed each did
                 // ([FrameStatsSnapshot.firstStep]).

@@ -64,6 +64,10 @@ abstract final class StrokeSteps {
   /// How many strokes' first steps [firstUpMicros] keeps.
   static const int strokesKept = 24;
 
+  /// How many of the newest stroke's steps [newestStrokeUpMicros] keeps: a
+  /// minute of them, at a step a frame of 60.
+  static const int strokeStepsKept = 3600;
+
   /// The steps counted in all, and the dabs they carried.
   static int get stepsCounted => _stepsCounted;
   static int _stepsCounted = 0;
@@ -86,6 +90,22 @@ abstract final class StrokeSteps {
   /// screen as late as it is.
   static List<int> get upMicros => List.unmodifiable(_up);
   static final List<int> _up = [];
+
+  /// [upMicros] of the newest stroke's steps alone, from its press, in the
+  /// order they went out — its newest [strokeStepsKept] —: whether a
+  /// stroke's steps come up later as it goes on.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab): a big brush's pen→up p95 rose 44 → 102 ms along one stroke on
+  /// the emulator, and read again with the app opened afresh it was flat
+  /// (39/62 → 36/56) — the rise was the steps of the strokes before it,
+  /// in [upMicros]' window. Kept apart, one run answers it.
+  static List<int> get newestStrokeUpMicros => List.unmodifiable(_strokeUps);
+  static final List<int> _strokeUps = [];
+
+  /// Which stroke is the newest ([pressed]): a step's frame up after the
+  /// next press is not that one's.
+  static int _stroke = 0;
 
   /// How long from each of the newest strokes' press to the frame that
   /// showed its first step being up, in microseconds, oldest first.
@@ -130,6 +150,8 @@ abstract final class StrokeSteps {
     }
     _pressedAt = _micros();
     _armedAt = null;
+    _stroke += 1;
+    _strokeUps.clear();
   }
 
   /// The press of the stroke [pressed] told was handled: the stroke is
@@ -164,11 +186,12 @@ abstract final class StrokeSteps {
       return;
     }
     final out = _micros();
+    final stroke = _stroke;
     _keep(_held, out - first, stepsKept);
     final pressedAt = _pressedAt;
     _pressedAt = null;
     if (pressedAt == null) {
-      _afterItsFrame(together, (_) => _keep(_up, _micros() - first, stepsKept));
+      _afterItsFrame(together, (_) => _keepUp(stroke, _micros() - first));
       return;
     }
     final step = (
@@ -187,7 +210,7 @@ abstract final class StrokeSteps {
     );
     _afterItsFrame(together, (did) {
       final up = _micros();
-      _keep(_up, up - first, stepsKept);
+      _keepUp(stroke, up - first);
       _keep(_firstUps, up - pressedAt, strokesKept);
       // The newest stroke's: a frame is up after the frames before it.
       _firstStep = (
@@ -263,6 +286,15 @@ abstract final class StrokeSteps {
     });
   }
 
+  /// A step of [stroke]'s up [up] after its first dab: in [upMicros], and
+  /// in [newestStrokeUpMicros] while [stroke] is the newest.
+  static void _keepUp(int stroke, int up) {
+    _keep(_up, up, stepsKept);
+    if (stroke == _stroke) {
+      _keep(_strokeUps, up, strokeStepsKept);
+    }
+  }
+
   static void _keep(List<int> kept, int value, int room) {
     kept.add(value);
     if (kept.length > room) {
@@ -278,6 +310,7 @@ abstract final class StrokeSteps {
     _dabs.clear();
     _held.clear();
     _up.clear();
+    _strokeUps.clear();
     _firstUps.clear();
     _firstStep = null;
     _landing = null;

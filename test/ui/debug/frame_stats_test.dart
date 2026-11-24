@@ -532,6 +532,64 @@ void main() {
       );
     });
 
+    testWidgets("the newest stroke's steps along it: the p50 of its first "
+        'third and of its last, of its own steps alone — none under three', (
+      tester,
+    ) async {
+      MeasurementMode.frameStats.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      Future<void> step(int upMs) async {
+        StrokeSteps.queued();
+        now += 100;
+        StrokeSteps.stepped(1, together: null);
+        now += upMs * 1000 - 100;
+        tester.binding.scheduleFrame();
+        await tester.pump();
+      }
+
+      void published() {
+        FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+        FrameStats.publish();
+      }
+
+      // The stroke before, slow all along.
+      for (var at = 0; at < 6; at += 1) {
+        await step(50);
+      }
+      StrokeSteps.pressed();
+      await step(1);
+      await step(2);
+      published();
+      expect(
+        FrameStats.latest.value!.strokeAlong,
+        isNull,
+        reason: 'two steps: no third',
+      );
+
+      for (final upMs in [3, 4, 5, 6, 7, 8, 9]) {
+        await step(upMs);
+      }
+      published();
+      final stats = FrameStats.latest.value!;
+      expect(
+        stats.strokeUpP95,
+        50.0,
+        reason: '⛔premise: the window holds the stroke before',
+      );
+      expect(stats.strokeAlong, (first: 2.0, last: 8.0, steps: 9));
+
+      await tester.pumpWidget(
+        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(
+        find.text(' along  first ⅓ p50   2.0  last ⅓ p50   8.0  of 9'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the slope is over the interval it measured, not the window', (
       tester,
     ) async {

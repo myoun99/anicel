@@ -69,6 +69,46 @@ void main() {
     );
   });
 
+  testWidgets("the newest stroke's steps are kept apart from its press, in "
+      'order — a step of the stroke before, up after the press, is not its', (
+    tester,
+  ) async {
+    StrokeSteps.queued();
+    now = 1000;
+    StrokeSteps.stepped(1, together: null);
+    now = 2000;
+    await aFrame(tester);
+    expect(StrokeSteps.newestStrokeUpMicros, [2000], reason: '⛔premise');
+
+    StrokeSteps.queued();
+    now = 3000;
+    StrokeSteps.stepped(1, together: null);
+    StrokeSteps.pressed();
+    now = 4000;
+    await aFrame(tester);
+    expect(StrokeSteps.upMicros, [2000, 2000], reason: 'the window keeps it');
+    expect(
+      StrokeSteps.newestStrokeUpMicros,
+      isEmpty,
+      reason: 'up after the next press: not that stroke\'s',
+    );
+
+    StrokeSteps.queued();
+    now = 4500;
+    StrokeSteps.stepped(1, together: null);
+    now = 5000;
+    await aFrame(tester);
+    StrokeSteps.queued();
+    now = 5200;
+    StrokeSteps.stepped(1, together: null);
+    now = 8000;
+    await aFrame(tester);
+    expect(StrokeSteps.newestStrokeUpMicros, [1000, 3000]);
+
+    StrokeSteps.forget();
+    expect(StrokeSteps.newestStrokeUpMicros, isEmpty);
+  });
+
   testWidgets('a step whose frame is being drawn is up once that frame is', (
     tester,
   ) async {

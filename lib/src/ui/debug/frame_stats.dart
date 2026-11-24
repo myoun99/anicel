@@ -75,6 +75,7 @@ class FrameStatsSnapshot {
     required this.strokeHeldP95,
     required this.strokeUpP50,
     required this.strokeUpP95,
+    required this.strokeAlong,
     required this.firstStep,
     required this.firstUpP50,
     required this.firstUpWorst,
@@ -237,6 +238,12 @@ class FrameStatsSnapshot {
   final double strokeHeldP95;
   final double strokeUpP50;
   final double strokeUpP95;
+
+  /// The newest stroke's steps' up ([strokeUpP50]'s) along it
+  /// (`StrokeSteps.newestStrokeUpMicros`): the p50 over its first third and
+  /// over its last, and how many steps it took — null under three. A
+  /// stroke whose steps come later as it goes on reads later last.
+  final ({double first, double last, int steps})? strokeAlong;
 
   /// A stroke's first step and its landing, apart (`StrokeSteps`): the
   /// newest stroke's first step told whole, how long from the press to the
@@ -711,6 +718,7 @@ abstract final class FrameStats {
       strokeHeldP95: _percentileMillis(held, 0.95),
       strokeUpP50: _percentileMillis(strokeUps, 0.50),
       strokeUpP95: _percentileMillis(strokeUps, 0.95),
+      strokeAlong: _alongTheStroke(StrokeSteps.newestStrokeUpMicros),
       firstStep: StrokeSteps.firstStep,
       firstUpP50: _percentileMillis(firstUps, 0.50),
       firstUpWorst: _percentileMillis(firstUps, 1.0),
@@ -749,6 +757,23 @@ abstract final class FrameStats {
   /// Nearest-rank percentile over a SORTED list of microseconds, in
   /// milliseconds. Same index arithmetic the brush lab already uses, so
   /// numbers from the two instruments can be compared directly.
+  /// [FrameStatsSnapshot.strokeAlong] of [ups], a stroke's in order.
+  static ({double first, double last, int steps})? _alongTheStroke(
+    List<int> ups,
+  ) {
+    final third = ups.length ~/ 3;
+    if (third == 0) {
+      return null;
+    }
+    double p50Of(Iterable<int> part) =>
+        _percentileMillis([...part]..sort(), 0.50);
+    return (
+      first: p50Of(ups.take(third)),
+      last: p50Of(ups.skip(ups.length - third)),
+      steps: ups.length,
+    );
+  }
+
   static double _percentileMillis(List<int> sortedMicros, double p) =>
       _ranked(sortedMicros, p) / 1000.0;
 
