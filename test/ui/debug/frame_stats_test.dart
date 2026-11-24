@@ -1059,7 +1059,7 @@ void main() {
         ('MEMORY', r'app \d+\.\d MB  counted \d+\.\d  rest \d+\.\d$'),
         ('COMPILE', r'—$'),
         // The playback warmer's pace (H74), its row always there.
-        ('WARM', r'pics/s  p50.*  p95'),
+        ('WARM', 'pics/s  p50.*  p95'),
       ]) {
         expect(
           _said(RegExp('^${RegExp.escape(line)}.*$figure')),
