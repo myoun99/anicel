@@ -1,6 +1,7 @@
 import 'dart:ui' show FrameTiming;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
@@ -55,5 +56,23 @@ void main() {
     );
     expect(stats.compiles, engine.compiles);
     expect(stats.picturesMegabytes, engine.pictureBytes / 1024 / 1024);
+  });
+
+  test('the engine\'s compile words are read each in its place — and what '
+      'the folder answered is none where the OS keeps them and says '
+      'nothing', () {
+    expect(GpuEngine.compilesSaid([7, 2500000, 900000, 1, 3, 5]), (
+      made: 7,
+      micros: 2500000,
+      longestMicros: 900000,
+      underWay: 1,
+      stoodIn: 3,
+      found: 5,
+    ));
+    // u64::MAX, as the engine says it on Apple (rust/src/platform/apple.rs).
+    expect(
+      GpuEngine.compilesSaid([7, 2500000, 900000, 1, 3, -1]).found,
+      isNull,
+    );
   });
 }

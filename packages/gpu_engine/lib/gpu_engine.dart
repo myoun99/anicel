@@ -489,16 +489,21 @@ class GpuEngine {
   GpuCompiles get compiles => using((arena) {
     final into = arena<Uint64>(6);
     rust.engineCompiles(_engine, into);
-    return (
-      made: into[0],
-      micros: into[1],
-      longestMicros: into[2],
-      underWay: into[3],
-      stoodIn: into[4],
-      // The OS keeps them, and says nothing (rust/src/platform/apple.rs).
-      found: into[5] == -1 ? null : into[5],
-    );
+    return compilesSaid(into.asTypedList(6));
   });
+
+  /// The compiles [said] in the engine's six words
+  /// (rust/src/device.rs, `gpu_engine_compiles`): what [compiles] reads.
+  @visibleForTesting
+  static GpuCompiles compilesSaid(List<int> said) => (
+    made: said[0],
+    micros: said[1],
+    longestMicros: said[2],
+    underWay: said[3],
+    stoodIn: said[4],
+    // The OS keeps them, and says nothing (rust/src/platform/apple.rs).
+    found: said[5] == -1 ? null : said[5],
+  );
 
   /// Whether this engine's device has a clock of its own
   /// (rust/src/clock.rs): what a timed engine tells the GPU's time by
