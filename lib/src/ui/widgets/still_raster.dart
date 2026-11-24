@@ -1177,6 +1177,184 @@ abstract final class _FrameGap {
 /// the next, each a part of ONE image — and the ticks drawn live between
 /// them: how they are taken and handed to the scene. [_StillLayer] says
 /// when.
+/// How a still region's strata are laid in its one image ([_Strata.take]).
+abstract final class _StrataPacking {
+  /// Where each of [parts] goes in the one image, and the image's size: the
+  /// parts tallest first, each where its top ends lowest along the skyline
+  /// the ones before it left ([_skyline]), at whichever of a few widths
+  /// leaves the image smallest — the widest part's, and that with the
+  /// tallest of the others beside it, one more at a time — whole, or with
+  /// every part wider than the room beside the widest cut in two where its
+  /// halves fit that room ([_cut]).
+  ///
+  /// ↩️Each went beside the parts before it or under all of them, whichever
+  /// left the image smaller, and a band a sheet lays its row in (card a-
+  /// drag-holds-more-than-the-dock-once-on-master, 11-25) went under the
+  /// region's whole part, the image as wide as the region and the grid's
+  /// screen together: the timeline dock's image in a drag was 7.84M pixels
+  /// for 6.72M of parts, 10.3M in a comma's. ↩️Before 10-27 each went under
+  /// the one before, and a narrow stratum stacked under a wide one took the
+  /// wide one's whole width.
+  static _Packing packed(List<Rect?> parts) {
+    final whole = [
+      for (var i = 0; i < parts.length; i += 1)
+        if (parts[i] case final part?) (stratum: i, from: part),
+    ]..sort((a, b) => _taller(a.from, b.from));
+    if (whole.isEmpty) {
+      return (
+        pieces: List<List<_Piece>>.generate(parts.length, (_) => []),
+        size: Size.zero,
+      );
+    }
+    final widest = whole.reduce((a, b) => b.from.width > a.from.width ? b : a);
+    final widths = <double>{widest.from.width};
+    var beside = widest.from.width;
+    for (final part in whole) {
+      if (!identical(part, widest)) {
+        beside += part.from.width;
+        widths.add(beside);
+      }
+    }
+    _Packing? best;
+    for (final width in widths) {
+      final room = width - widest.from.width;
+      for (final pieces in [whole, _cut(whole, widest, room)]) {
+        final packing = _skyline(parts.length, pieces, width);
+        if (best == null ||
+            packing.size.width * packing.size.height <
+                best.size.width * best.size.height) {
+          best = packing;
+        }
+      }
+    }
+    return best!;
+  }
+
+  /// [parts] with each but [widest] that is wider than [room] cut into its
+  /// two halves where they fit it — tallest first still.
+  static List<({int stratum, Rect from})> _cut(
+    List<({int stratum, Rect from})> parts,
+    ({int stratum, Rect from}) widest,
+    double room,
+  ) => [
+    for (final part in parts)
+      if (identical(part, widest) ||
+          part.from.width <= room ||
+          (part.from.width / 2).ceilToDouble() > room)
+        part
+      else ...[
+        (
+          stratum: part.stratum,
+          from: Rect.fromLTRB(
+            part.from.left,
+            part.from.top,
+            part.from.left + (part.from.width / 2).ceilToDouble(),
+            part.from.bottom,
+          ),
+        ),
+        (
+          stratum: part.stratum,
+          from: Rect.fromLTRB(
+            part.from.left + (part.from.width / 2).ceilToDouble(),
+            part.from.top,
+            part.from.right,
+            part.from.bottom,
+          ),
+        ),
+      ],
+  ];
+
+  /// The taller of two parts first, the wider of two as tall.
+  static int _taller(Rect a, Rect b) {
+    final height = b.height.compareTo(a.height);
+    return height != 0 ? height : b.width.compareTo(a.width);
+  }
+
+  /// [pieces] of [strata] strata packed in turn into an image [width]
+  /// wide: each where its top ends lowest over the tops the pieces before
+  /// it left (the skyline), the lowest such place, then the leftmost.
+  static _Packing _skyline(
+    int strata,
+    List<({int stratum, Rect from})> pieces,
+    double width,
+  ) {
+    // The skyline as steps, left to right: where each starts and how far
+    // down it stands.
+    var steps = <({double x, double y})>[(x: 0, y: 0)];
+    final placed = List<List<_Piece>>.generate(strata, (_) => []);
+    var used = 0.0;
+    var height = 0.0;
+    for (final (:stratum, :from) in pieces) {
+      Offset? place;
+      for (final step in steps) {
+        if (step.x + from.width > width) {
+          break;
+        }
+        final y = _floorUnder(steps, step.x, step.x + from.width, width);
+        if (place == null ||
+            y < place.dy ||
+            (y == place.dy && step.x < place.dx)) {
+          place = Offset(step.x, y);
+        }
+      }
+      placed[stratum].add((from: from, at: place!));
+      final right = place.dx + from.width;
+      final bottom = place.dy + from.height;
+      used = used > right ? used : right;
+      height = height > bottom ? height : bottom;
+      steps = _raised(steps, place.dx, right, bottom);
+    }
+    return (pieces: placed, size: Size(used, height));
+  }
+
+  /// How far down the skyline [steps] stand anywhere from [left] to [right].
+  static double _floorUnder(
+    List<({double x, double y})> steps,
+    double left,
+    double right,
+    double width,
+  ) {
+    var floor = 0.0;
+    for (var i = 0; i < steps.length; i += 1) {
+      final end = i + 1 < steps.length ? steps[i + 1].x : width;
+      if (end > left && steps[i].x < right && steps[i].y > floor) {
+        floor = steps[i].y;
+      }
+    }
+    return floor;
+  }
+
+  /// [steps] with [left] to [right] raised to [bottom], the step after it
+  /// standing where it stood.
+  static List<({double x, double y})> _raised(
+    List<({double x, double y})> steps,
+    double left,
+    double right,
+    double bottom,
+  ) {
+    var after = 0.0;
+    final raised = <({double x, double y})>[];
+    for (final step in steps) {
+      if (step.x < left) {
+        raised.add(step);
+      }
+      if (step.x <= right) {
+        after = step.y;
+      }
+    }
+    raised.add((x: left, y: bottom));
+    if (steps.every((step) => step.x != right)) {
+      raised.add((x: right, y: after));
+    }
+    for (final step in steps) {
+      if (step.x >= right) {
+        raised.add(step);
+      }
+    }
+    return raised;
+  }
+}
+
 class _Strata {
   _Strata._({
     required this.image,
@@ -1382,9 +1560,10 @@ class _Strata {
       !a.isEmpty && !b.isEmpty && a.overlaps(b);
 
   /// [layout]'s strata drawn into ONE image — each its own part of it, cut
-  /// to the device pixels its pictures reach ([_packed] says where) — and a
-  /// picture per stratum that puts its part back where it was taken, 1:1
-  /// ([fit]), with [tint] over each where the repaints are shown.
+  /// to the device pixels its pictures reach ([_StrataPacking.packed] says
+  /// where) — and a picture per stratum that puts its part back where it
+  /// was taken, 1:1 ([fit]), with [tint] over each where the repaints are
+  /// shown.
   ///
   /// ⛔One image, not one a stratum: a snapshot costs a price of its own on
   /// the raster thread besides its pixels (1.6–2.0 ms on the real Windows
@@ -1406,7 +1585,7 @@ class _Strata {
     Color? tint,
   }) {
     final parts = _partsOf(layout.strata, size, fit);
-    final packing = _packed(parts);
+    final packing = _StrataPacking.packed(parts);
     final image = _imageOf(layout.strata, parts, packing, fit);
     final pictures = <ui.Picture?>[];
     for (var i = 0; i < parts.length; i += 1) {
@@ -1461,181 +1640,6 @@ class _Strata {
       parts.add(device == null || device.isEmpty ? null : device);
     }
     return parts;
-  }
-
-  /// Where each of [parts] goes in the one image, and the image's size: the
-  /// parts tallest first, each where its top ends lowest along the skyline
-  /// the ones before it left ([_skyline]), at whichever of a few widths
-  /// leaves the image smallest — the widest part's, and that with the
-  /// tallest of the others beside it, one more at a time — whole, or with
-  /// every part wider than the room beside the widest cut in two where its
-  /// halves fit that room ([_cut]).
-  ///
-  /// ↩️Each went beside the parts before it or under all of them, whichever
-  /// left the image smaller, and a band a sheet lays its row in (card a-
-  /// drag-holds-more-than-the-dock-once-on-master, 11-25) went under the
-  /// region's whole part, the image as wide as the region and the grid's
-  /// screen together: the timeline dock's image in a drag was 7.84M pixels
-  /// for 6.72M of parts, 10.3M in a comma's. ↩️Before 10-27 each went under
-  /// the one before, and a narrow stratum stacked under a wide one took the
-  /// wide one's whole width.
-  static _Packing _packed(List<Rect?> parts) {
-    final whole = [
-      for (var i = 0; i < parts.length; i += 1)
-        if (parts[i] case final part?) (stratum: i, from: part),
-    ]..sort((a, b) => _taller(a.from, b.from));
-    if (whole.isEmpty) {
-      return (
-        pieces: List<List<_Piece>>.generate(parts.length, (_) => []),
-        size: Size.zero,
-      );
-    }
-    final widest = whole.reduce((a, b) => b.from.width > a.from.width ? b : a);
-    final widths = <double>{widest.from.width};
-    var beside = widest.from.width;
-    for (final part in whole) {
-      if (!identical(part, widest)) {
-        beside += part.from.width;
-        widths.add(beside);
-      }
-    }
-    _Packing? best;
-    for (final width in widths) {
-      final room = width - widest.from.width;
-      for (final pieces in [whole, _cut(whole, widest, room)]) {
-        final packing = _skyline(parts.length, pieces, width);
-        if (best == null ||
-            packing.size.width * packing.size.height <
-                best.size.width * best.size.height) {
-          best = packing;
-        }
-      }
-    }
-    return best!;
-  }
-
-  /// [parts] with each but [widest] that is wider than [room] cut into its
-  /// two halves where they fit it — tallest first still.
-  static List<({int stratum, Rect from})> _cut(
-    List<({int stratum, Rect from})> parts,
-    ({int stratum, Rect from}) widest,
-    double room,
-  ) => [
-    for (final part in parts)
-      if (identical(part, widest) ||
-          part.from.width <= room ||
-          (part.from.width / 2).ceilToDouble() > room)
-        part
-      else ...[
-        (
-          stratum: part.stratum,
-          from: Rect.fromLTRB(
-            part.from.left,
-            part.from.top,
-            part.from.left + (part.from.width / 2).ceilToDouble(),
-            part.from.bottom,
-          ),
-        ),
-        (
-          stratum: part.stratum,
-          from: Rect.fromLTRB(
-            part.from.left + (part.from.width / 2).ceilToDouble(),
-            part.from.top,
-            part.from.right,
-            part.from.bottom,
-          ),
-        ),
-      ],
-  ];
-
-  /// The taller of two parts first, the wider of two as tall.
-  static int _taller(Rect a, Rect b) {
-    final height = b.height.compareTo(a.height);
-    return height != 0 ? height : b.width.compareTo(a.width);
-  }
-
-  /// [pieces] of [strata] strata packed in turn into an image [width]
-  /// wide: each where its top ends lowest over the tops the pieces before
-  /// it left (the skyline), the lowest such place, then the leftmost.
-  static _Packing _skyline(
-    int strata,
-    List<({int stratum, Rect from})> pieces,
-    double width,
-  ) {
-    // The skyline as steps, left to right: where each starts and how far
-    // down it stands.
-    var steps = <({double x, double y})>[(x: 0, y: 0)];
-    final placed = List<List<_Piece>>.generate(strata, (_) => []);
-    var used = 0.0;
-    var height = 0.0;
-    for (final (:stratum, :from) in pieces) {
-      Offset? place;
-      for (final step in steps) {
-        if (step.x + from.width > width) {
-          break;
-        }
-        final y = _floorUnder(steps, step.x, step.x + from.width, width);
-        if (place == null ||
-            y < place.dy ||
-            (y == place.dy && step.x < place.dx)) {
-          place = Offset(step.x, y);
-        }
-      }
-      placed[stratum].add((from: from, at: place!));
-      final right = place.dx + from.width;
-      final bottom = place.dy + from.height;
-      used = used > right ? used : right;
-      height = height > bottom ? height : bottom;
-      steps = _raised(steps, place.dx, right, bottom);
-    }
-    return (pieces: placed, size: Size(used, height));
-  }
-
-  /// How far down the skyline [steps] stand anywhere from [left] to [right].
-  static double _floorUnder(
-    List<({double x, double y})> steps,
-    double left,
-    double right,
-    double width,
-  ) {
-    var floor = 0.0;
-    for (var i = 0; i < steps.length; i += 1) {
-      final end = i + 1 < steps.length ? steps[i + 1].x : width;
-      if (end > left && steps[i].x < right && steps[i].y > floor) {
-        floor = steps[i].y;
-      }
-    }
-    return floor;
-  }
-
-  /// [steps] with [left] to [right] raised to [bottom], the step after it
-  /// standing where it stood.
-  static List<({double x, double y})> _raised(
-    List<({double x, double y})> steps,
-    double left,
-    double right,
-    double bottom,
-  ) {
-    var after = 0.0;
-    final raised = <({double x, double y})>[];
-    for (final step in steps) {
-      if (step.x < left) {
-        raised.add(step);
-      }
-      if (step.x <= right) {
-        after = step.y;
-      }
-    }
-    raised.add((x: left, y: bottom));
-    if (steps.every((step) => step.x != right)) {
-      raised.add((x: right, y: after));
-    }
-    for (final step in steps) {
-      if (step.x >= right) {
-        raised.add(step);
-      }
-    }
-    return raised;
   }
 
   /// [strata] drawn into their [parts], each where [packing] puts it in one
