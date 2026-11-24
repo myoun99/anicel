@@ -20,7 +20,7 @@ void main() {
     final activity = manifest.indexOf('android:name=".MainActivity"');
     expect(activity, greaterThanOrEqualTo(0), reason: 'premise: declared');
     final said = RegExp(
-      r'android:configChanges="([^"]*)"',
+      'android:configChanges="([^"]*)"',
     ).firstMatch(manifest.substring(activity));
     expect(said, isNotNull, reason: 'premise: it names its changes');
     final names = said!.group(1)!.split('|').toSet();
