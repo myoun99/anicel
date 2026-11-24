@@ -124,6 +124,75 @@ void main() {
         _ => const [],
       };
 
+  /// The cut's conte (`LayerKind.storyboard`), made where the cut has none,
+  /// with a cel on frame 0 and on each of [frames].
+  LayerId conteRow(EditorSessionManager s, List<int> frames) {
+    if (!s.layers.any((row) => row.kind == LayerKind.storyboard)) {
+      s.layerStack.addLayerOfKind(LayerKind.storyboard);
+    }
+    final conte = s.layers.firstWhere(
+      (row) => row.kind == LayerKind.storyboard,
+    );
+    s.selectLayer(conte.id);
+    for (final frame in [0, ...frames]) {
+      s.selectFrameIndex(frame);
+      s.createDrawingAtCurrentFrame();
+    }
+    s.selectFrameIndex(0);
+    return conte.id;
+  }
+
+  /// 🗣️H75 (유저 2026-11-24): 「콘티레이어도 동일하게 싱크어태치랑 블록
+  /// 그림교체라던가 가능하게. 제발 이런거 별개규칙 만들지않고 통일」 — the
+  /// conte and the rows synced on it trade as every row does, by the same
+  /// code.
+  group('🎯the same on the conte and the rows synced on it (H75)', () {
+    ({EditorSessionManager s, LayerId plain, LayerId conte, LayerId mirror})
+    rows() {
+      late LayerId plain;
+      late LayerId conte;
+      late LayerId mirror;
+      final s = sessionOf((s) {
+        conte = conteRow(s, [2, 4]);
+        mirror = mirrorsOn(s, conte, 1).single;
+        plain = drawingRow(s, [2]);
+      });
+      return (s: s, plain: plain, conte: conte, mirror: mirror);
+    }
+
+    test('a block dragged onto the conte\'s synced row trades pictures with '
+        'it, and the conte keeps its own', () {
+      final (:s, :plain, :conte, :mirror) = rows();
+      final (a, b) = (redAt(s, plain, 0), redAt(s, mirror, 0));
+      final conteRed = redAt(s, conte, 0);
+      final rowsBefore = s.requireActiveCut.layers;
+      sweep(s, plain, from: 0, to: 0);
+
+      drag(s, plain, onto: mirror);
+      s.rangeMove.endFrameRangeMoveDrag();
+
+      expect(redAt(s, mirror, 0), a);
+      expect(redAt(s, plain, 0), b);
+      expect(redAt(s, conte, 0), conteRed);
+      expect(s.requireActiveCut.layers, rowsBefore);
+    });
+
+    test('the conte\'s block dragged onto its own synced row trades, as a '
+        'base onto its own mirror does', () {
+      final (:s, plain: _, :conte, :mirror) = rows();
+      final rowsBefore = s.requireActiveCut.layers;
+      final (a, b) = (redAt(s, conte, 0), redAt(s, mirror, 2));
+      sweep(s, conte, from: 0, to: 0);
+
+      drag(s, conte, onto: mirror, frames: 2);
+      s.rangeMove.endFrameRangeMoveDrag();
+
+      expect(redAt(s, mirror, 2), a);
+      expect(redAt(s, conte, 0), b);
+      expect(s.requireActiveCut.layers, rowsBefore);
+    });
+  });
+
   group('🎯a block dragged onto a synced row', () {
     /// A plain row's cels on 0 and 2 beside a base's on 0, 2 and 4 and its
     /// synced row.

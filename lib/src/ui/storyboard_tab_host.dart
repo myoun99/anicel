@@ -901,10 +901,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                             required layerId,
                             required anchorIndex,
                             required headIndex,
+                            headLayerId,
                           }) => _session.updateFrameRangeSelectionDrag(
                             layerId: layerId,
                             anchorIndex: anchorIndex,
                             headIndex: headIndex,
+                            headLayerId: headLayerId,
                           ),
                       onClear: _session.clearFrameRangeSelection,
                       // Sliding the panels is the CUT-LOCAL move — the same

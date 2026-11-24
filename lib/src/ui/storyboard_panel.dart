@@ -592,11 +592,13 @@ class StoryboardStripSelectCallbacks {
   /// answer whether a frame is inside it.
   final ValueListenable<TimelineFrameRangeSelection?> selection;
 
-  /// A select-drag step in the anchor cut's LOCAL frames.
+  /// A select-drag step in the anchor cut's LOCAL frames — over its rows
+  /// from [layerId]'s to [headLayerId]'s, where the hand left the row.
   final void Function({
     required LayerId layerId,
     required int anchorIndex,
     required int headIndex,
+    LayerId? headLayerId,
   })
   onDrag;
   final VoidCallback onClear;

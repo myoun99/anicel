@@ -3281,14 +3281,17 @@ class _StoryboardRailRows {
     _TrackStrip strip,
     TimelineScale scale,
     _WindowedRows rows,
-  ) => [
-    for (final seat in _shownConteSeats(track))
+  ) {
+    final seats = _shownConteSeats(track);
+    return [
+    for (final seat in seats)
       () => [
         rows.piece(
           ('conteStrip', track.id, seat),
           _StoryboardConteRow(
             trackId: track.id,
             seat: seat,
+            seats: seats,
             layoutEntries: strip.entries,
             height: _state._rowHeights.conte,
             timelineScale: scale,
@@ -3322,7 +3325,8 @@ class _StoryboardRailRows {
             ),
           ),
       ],
-  ];
+    ];
+  }
 
   /// One track's SE strip rows (+ twirled-down audio/transform lanes) —
   /// track-global content, built from the base layout.
