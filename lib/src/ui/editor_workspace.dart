@@ -2487,7 +2487,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the fonts, the shortcut presets, the palettes and the fx plugins.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
+    // Into the window that stands, when one does (H81) — its 「파일 추가」
+    // and 「폴더 추가」 come through this door.
     importWindow: (picked, {required toPool}) =>
+        _importWindowInbox.takeIn(picked) ??
         _openImportWindow(picked: picked, poolOnly: toPool),
     // After the library has landed, as a resumed tool choice is
     // ([_WorkspaceBrushPresets.libraryLanded]): the read puts back what the
@@ -2597,6 +2600,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// [poolOnly] is a pool's door — the media panel's ＋, the viewer's
   /// 「미디어에 등록」: registering for later is what was asked. [spot] is
   /// where a drop put the file — the window shows it locked.
+  /// Where the one door hands the import window that stands what it brings.
+  final _importWindowInbox = ImportWindowInbox();
+
   Future<void> _openImportWindow({
     List<String> initialPaths = const [],
     List<FolderGrant> picked = const [],
@@ -2607,6 +2613,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     context: context,
     builder: (context) => ImportDialog(
       session: widget.session,
+      inbox: _importWindowInbox,
+      openFiles: () => unawaited(_pickAndOpen()),
+      openFolder: () => unawaited(_pickFolderAndOpen()),
       initialPaths: initialPaths,
       picked: picked,
       poolOnly: poolOnly,

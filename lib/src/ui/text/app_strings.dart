@@ -1900,6 +1900,8 @@ enum AppStrings {
 
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
+  String get imAddFiles => _s('imAddFiles');
+  String get imAddFolder => _s('imAddFolder');
   String imFileCount(int count) =>
       _s('imFileCountTemplate').replaceAll('{n}', '$count');
   String get imStatusImporting => _s('imStatusImporting');
@@ -3491,6 +3493,8 @@ enum AppStrings {
     'imPsdMerge': 'Merge layers',
     'imPsdExpand': 'Keep layers',
     'imNoSource': 'No source selected',
+    'imAddFiles': 'Add files',
+    'imAddFolder': 'Add folder',
     'imFileCountTemplate': '{n} files',
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
@@ -5337,6 +5341,8 @@ enum AppStrings {
     'imPsdMerge': 'レイヤーを統合',
     'imPsdExpand': 'レイヤーを保持',
     'imNoSource': 'ソースが選ばれていません',
+    'imAddFiles': 'ファイルを追加',
+    'imAddFolder': 'フォルダを追加',
     'imFileCountTemplate': '{n}個のファイル',
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
@@ -7319,6 +7325,8 @@ enum AppStrings {
     'imPsdMerge': '레이어 합치기',
     'imPsdExpand': '레이어 보존',
     'imNoSource': '고른 소스가 없습니다',
+    'imAddFiles': '파일 추가',
+    'imAddFolder': '폴더 추가',
     'imFileCountTemplate': '파일 {n}개',
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
@@ -9444,6 +9452,8 @@ enum AppStrings {
     'imPsdMerge': 'Fusionner les calques',
     'imPsdExpand': 'Garder les calques',
     'imNoSource': 'Aucune source',
+    'imAddFiles': 'Ajouter des fichiers',
+    'imAddFolder': 'Ajouter un dossier',
     'imFileCountTemplate': '{n} fichiers',
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
@@ -11377,6 +11387,8 @@ enum AppStrings {
     'imPsdMerge': '合并图层',
     'imPsdExpand': '保留图层',
     'imNoSource': '未选择来源',
+    'imAddFiles': '添加文件',
+    'imAddFolder': '添加文件夹',
     'imFileCountTemplate': '{n} 个文件',
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',

@@ -1,4 +1,4 @@
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show Completer, Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -90,13 +90,30 @@ part 'import_settings_rows.dart';
 /// thing: a file, or a layer of the cut a cut FOLDER lands as — and a row
 /// for what a folder leaves out, so nothing exits silently.
 ///
-/// ↩️It had a 「파일…」 and a 「컷 폴더…」 of its own, and the menu's
-/// 「가져오기/배치…」 opened it on nothing to press them (F-282, 유저
-/// 2026-10-09: 「열기랑 임포트랑 되도록 하나로」).
+/// Its 「파일 추가」 · 「폴더 추가」 are the open entrance's two picks, not
+/// pickers of its own ([openFiles] · [openFolder]): what they bring goes
+/// through the one door, and its import part comes into this window
+/// ([ImportWindowInbox]). 🗣️H81 (유저 2026-11-24): 「애초에 임포트창
+/// 떠있을때 밖 누르면 창닫혀서 추가임포트못해. 그러니 동일한 코드로
+/// 부르도록. 파일 폴더 둘다두는게 좋을듯」. ↩️It had a 「파일…」 and a
+/// 「컷 폴더…」 of its own, and the menu's 「가져오기/배치…」 opened it on
+/// nothing to press them (F-282, 유저 2026-10-09: 「열기랑 임포트랑 되도록
+/// 하나로」) — and from then on nothing could be added to a window that
+/// stood.
 ///
 /// v1 zones: source line → table | preview → action bar. The preset rail
 /// and queue drawers of the export skeleton join when parser presets get
 /// their store.
+/// Where the one door's import part comes in while an import window stands
+/// (H81): into that window, rather than a second one over it.
+final class ImportWindowInbox {
+  Future<void> Function(List<FolderGrant> picked)? _window;
+
+  /// [picked] taken into the window that stands, answering once it has
+  /// closed, as a window the door opens does — null when none stands.
+  Future<void>? takeIn(List<FolderGrant> picked) => _window?.call(picked);
+}
+
 class ImportDialog extends StatefulWidget {
   const ImportDialog({
     super.key,
@@ -108,9 +125,23 @@ class ImportDialog extends StatefulWidget {
     this.spot,
     this.putSettingsInPlace,
     this.projects,
+    this.inbox,
+    this.openFiles,
+    this.openFolder,
   });
 
   final EditorSessionManager session;
+
+  /// Where the one door hands this window what it brings while it stands
+  /// — null where nothing can bring more.
+  final ImportWindowInbox? inbox;
+
+  /// The open entrance's 「파일 열기」 and 「폴더 열기」 — the window's
+  /// 「파일 추가」 and 「폴더 추가」, which bring what they pick through the
+  /// one door into [inbox]. Null where there is no entrance to call: the
+  /// buttons stand, shut.
+  final VoidCallback? openFiles;
+  final VoidCallback? openFolder;
 
   /// Test seam: how a listed file's facts are read ([readMediaFacts]) — for
   /// a test that holds them back, to ask a row before they are in (board
@@ -1127,26 +1158,44 @@ class _ImportDialogState extends State<ImportDialog> {
     super.initState();
     _wait.status.addListener(_waitChanged);
     _wait.waiting.addListener(_waitChanged);
+    _takeIn(widget.initialPaths, widget.picked);
+    widget.inbox?._window = _takenFromTheDoor;
+  }
+
+  /// What the one door brings while this window stands ([ImportWindowInbox])
+  /// — taken in as what it opened on was.
+  Future<void> _takenFromTheDoor(List<FolderGrant> picked) {
+    setState(() => _takeIn(const [], picked));
+    return _closed.future;
+  }
+
+  /// Done when the window has gone.
+  final Completer<void> _closed = Completer<void>();
+
+  /// [paths] and [picked] taken in — what the window opens on, and what the
+  /// door brings it after ([_takenFromTheDoor]), by the one law.
+  void _takeIn(List<String> paths, List<FolderGrant> picked) {
     // A grant's path is taken now, as a path handed in is — the first frame
     // shows the files, not an empty window that fills a frame later. Its
     // token is kept for the run ([_pickedGrants]); a document's bytes come
     // after, under the wait a pick's always came under.
-    final grantedPaths = [for (final grant in widget.picked) ?grant.path];
+    final grantedPaths = [for (final grant in picked) ?grant.path];
     _pickedGrants.addAll([
-      for (final grant in widget.picked)
+      for (final grant in picked)
         if (grant.path != null) grant,
     ]);
     final documents = [
-      for (final grant in widget.picked)
+      for (final grant in picked)
         if (grant.document != null) grant,
     ];
     if (documents.isNotEmpty) {
       // Once this build is done: the wait the copies go under redraws.
       unawaited(Future<void>.microtask(() => _takeDocuments(documents)));
     }
+    final hadFolder = _folder != null;
     final settingsFiles = <String>[];
     final handed = <String>[];
-    for (final path in [...widget.initialPaths, ...grantedPaths]) {
+    for (final path in [...paths, ...grantedPaths]) {
       if (Directory(path).existsSync()) {
         if (_folder == null) {
           _folder = path;
@@ -1159,20 +1208,26 @@ class _ImportDialogState extends State<ImportDialog> {
         handed.add(path);
       }
     }
-    _handIn(handed);
     _takeSettingsFiles(settingsFiles);
-    final dropped = _folder;
-    if (dropped != null) {
+    if (_folder == null) {
+      _handIn(handed);
+    } else {
       // A folder came with loose files: the folder is the import, the
       // files are listed as ignored (one window, one source shape).
-      _ignoredSources.addAll(_files);
-      _files.clear();
-      _readFolder();
+      _ignoredSources.addAll([...handed, if (!hadFolder) ..._files]);
+      if (!hadFolder) {
+        _files.clear();
+        _readFolder();
+      }
     }
   }
 
   @override
   void dispose() {
+    if (widget.inbox?._window == _takenFromTheDoor) {
+      widget.inbox?._window = null;
+    }
+    _closed.complete();
     _factsShowing?.cancel();
     // A copy still on its way is stopped: nothing is left to take it.
     _wait.cancel();
@@ -3903,6 +3958,22 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
           ),
           if (parsed != null) ..._folderLanding(theme, parsed),
+          const SizedBox(width: 8),
+          for (final (key, label, open) in [
+            ('import-add-files', AppText.strings.imAddFiles, widget.openFiles),
+            (
+              'import-add-folder',
+              AppText.strings.imAddFolder,
+              widget.openFolder,
+            ),
+          ])
+            AppWindowActionButton(
+              AppWindowAction(
+                label: label,
+                actionKey: ValueKey<String>(key),
+                onPressed: _busy ? null : open,
+              ),
+            ),
         ],
       ),
     );

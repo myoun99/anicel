@@ -115,8 +115,7 @@ void main() {
           .widget<Text>(find.byKey(const ValueKey<String>('import-source-line')))
           .data,
       png,
-      reason: 'its top line names what was opened — and offers no pick of '
-          'its own',
+      reason: 'its top line names what was opened',
     );
   });
 
@@ -198,5 +197,91 @@ void main() {
 
     expect(handed(tester), [png]);
     expect(window(tester).poolOnly, isTrue);
+  });
+
+  // 🗣️H81 (유저 2026-11-24): 「애초에 임포트창 떠있을때 밖 누르면 창닫혀서
+  // 추가임포트못해. 그러니 동일한 코드로 부르도록. 파일 폴더 둘다두는게
+  // 좋을듯」.
+  group('the window\'s 「파일 추가」 · 「폴더 추가」 (H81)', () {
+    Future<void> openOn(WidgetTester tester, String png) async {
+      await pumpApp(tester);
+      pickerAnswers([granted(png)]);
+      await tapKey(tester, 'top-strip-project-button');
+      await tapToTheWindow(tester, 'menu-file-open');
+    }
+
+    testWidgets('🚨both stand from the window\'s first frame', (tester) async {
+      await openOn(tester, await picture(tester, 'A1.png'));
+
+      for (final key in ['import-add-files', 'import-add-folder']) {
+        expect(find.byKey(ValueKey<String>(key)), findsOneWidget);
+      }
+    });
+
+    testWidgets('🚨「파일 추가」 is 「파일 열기」\'s pick, and what it brings '
+        'joins the window that stands — no second window', (tester) async {
+      final a1 = await picture(tester, 'A1.png');
+      final other = Directory('${folder.path}/other')..createSync();
+      final b1 = spelled(
+        (await tester.runAsync(() => writeSolidPng(other, 'B1.png')))!,
+      );
+      await openOn(tester, a1);
+      pickerAnswers([granted(b1)]);
+
+      await tapKey(tester, 'import-add-files');
+      await settleLoadedPages(tester);
+
+      expect(find.byType(ImportDialog), findsOneWidget);
+      for (final name in ['A1.png', 'B1.png']) {
+        expect(
+          find.byKey(ValueKey<String>('import-row-$name')),
+          findsOneWidget,
+          reason: '$name is listed in the one window',
+        );
+      }
+    });
+
+    testWidgets('a picture added beside one of its run joins its row', (
+      tester,
+    ) async {
+      final a1 = await picture(tester, 'A1.png');
+      final other = Directory('${folder.path}/other')..createSync();
+      final a2 = spelled(
+        (await tester.runAsync(() => writeSolidPng(other, 'A2.png')))!,
+      );
+      await openOn(tester, a1);
+      pickerAnswers([granted(a2)]);
+
+      await tapKey(tester, 'import-add-files');
+      await settleLoadedPages(tester);
+
+      expect(
+        find.byKey(const ValueKey<String>('import-row-A2.png')),
+        findsNothing,
+        reason: 'A2 is A1\'s row\'s',
+      );
+    });
+
+    testWidgets('「폴더 추가」 is 「폴더 열기」\'s pick, into the window that '
+        'stands', (tester) async {
+      final cut = Directory('${folder.path}/upn_02_063_lo')..createSync();
+      await openOn(tester, await picture(tester, 'A1.png'));
+      FolderPicker.debugFolderPicker = ({initialDirectory}) async =>
+          FolderGrant.granted(path: spelled(cut.path));
+
+      await tapKey(tester, 'import-add-folder');
+      await settleLoadedPages(tester);
+
+      expect(find.byType(ImportDialog), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('import-source-line')),
+            )
+            .data,
+        spelled(cut.path),
+        reason: 'a folder is the import, as one opened with files is',
+      );
+    });
   });
 }
