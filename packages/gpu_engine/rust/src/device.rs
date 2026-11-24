@@ -874,6 +874,24 @@ impl Engine {
         self.poll().through();
     }
 
+    /// Test seam: this engine's polls stand behind one that ends as what
+    /// this returns is let go — no wait of the engine's is answered till
+    /// then, nor the GPU's answer to a body handed over unwaited told
+    /// ([`Self::map_then`]): what a test meets a body by before the GPU
+    /// can answer it, however soon the GPU would have. ⚠️For an engine of
+    /// a test's own (`testing::a_device_of_its_own`), and nothing on its
+    /// thread waiting for a poll meanwhile: a body that did would hold
+    /// the thread till the hold is let go, and whatever waits for that
+    /// thread with it.
+    #[cfg(test)]
+    pub(crate) fn polls_held(&self) -> mpsc::Sender<()> {
+        let (go, held) = mpsc::channel::<()>();
+        self.polls.post(move || {
+            let _ = held.recv();
+        });
+        go
+    }
+
     /// What `work` answers, run on the engine's thread while the caller
     /// waits ([`EngineThread::run_lent`]): where a verb's body runs,
     /// whatever thread called the verb — one body at a time, in the order
