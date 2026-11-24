@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/press_face.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
@@ -130,7 +131,8 @@ void main() {
     expect(hovered, greaterThanOrEqualTo(2), reason: 'controls were hovered');
   });
 
-  testWidgets('every control of the timeline\'s bar lights where it stands', (
+  testWidgets('every icon button of the timeline\'s bar lights across its '
+      'face', (
     tester,
   ) async {
     final mouse = await pumpPage(tester);
@@ -168,7 +170,27 @@ void main() {
     await frames(tester, 3);
     final rest = await shot();
     var lit = 0;
-    for (final face in barFaces(tester).values.expand((faces) => faces)) {
+    // The icon buttons: a state layer across the face. A pill's name cell
+    // and the zoom's chips light a sliver of themselves — 24 to 48 pixels,
+    // whatever stands under them (measured 11-24) — so a hover hidden under
+    // a ground is told only on a face its hover covers: 332 to 354 of 440
+    // moved where it is seen, 41 to 61 — its corners — under the pill's
+    // fill.
+    final iconFaces = {
+      for (final element in find
+          .descendant(
+            of: find.byType(TimelineCommandBar),
+            matching: find.descendant(
+              of: find.byType(AppIconButton),
+              matching: find.byWidgetPredicate((_) => true),
+            ),
+          )
+          .evaluate())
+        if (element.renderObject case final PressFace face
+            when face.attached)
+          face,
+    };
+    for (final face in iconFaces) {
       final box = face.localToGlobal(Offset.zero) & face.size;
       await mouse.moveTo(box.center);
       await frames(tester, 2);
@@ -179,17 +201,15 @@ void main() {
       }
       lit += 1;
       final hovered = await shot();
-      // ⚠️Seen at all, not seen across: a pill's hover is a faint wash on
-      // its own fill (48 of 865 pixels moved past 2 levels, on master), and
-      // what this guards is a hover laid under a ground — none moved.
+      final inside = box.deflate(2);
       expect(
-        changedIn(box.deflate(2), rest, hovered),
-        greaterThan(0),
+        changedIn(inside, rest, hovered),
+        greaterThan(inside.width * inside.height / 3),
         reason: 'the hover of the control at $box is seen',
       );
       await mouse.moveTo(groundOf(tester));
       await frames(tester, 2);
     }
-    expect(lit, greaterThanOrEqualTo(2), reason: 'controls were hovered');
+    expect(lit, greaterThanOrEqualTo(10), reason: 'buttons were hovered');
   });
 }
