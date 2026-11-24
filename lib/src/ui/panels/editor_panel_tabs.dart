@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/grip_band.dart';
 import '../widgets/kept_tail_row.dart';
+import '../widgets/live_sheet.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
@@ -467,7 +468,19 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
             // region's image ([StillRaster]) rather than taking it again —
             // 🔬a hover in and out took the bottom region's image three
             // times without the layer, once with it (10-24, test app).
-            child: TickLayer(
+            //
+            // 🚨A SHEET LIES OVER IT ([LiveSheet]): the band a hovered panel
+            // lights on its tabs ([LiftingGripBand.nearby]) is laid on the
+            // sheet, over the strip, and the strip's tick is left as it was
+            // — the region keeps its image (card a-hover-in-a-capsule-or-a-
+            // dock-takes-the-regions-image-again, 2026-11-24). ↩️The band was
+            // painted in the tick, which a pointer coming onto any panel
+            // changed: the dock's image was taken again at each, the
+            // header's controls on the way among them. The sill's controls
+            // paint in place ([LiveSheet.inPlace]): the strip's ground is
+            // painted in the tick, over the sheet's under layer, and a hover
+            // laid there would lie under it.
+            child: LiveSheet(child: TickLayer(
               child: Stack(
                 children: [
                   // 🚨The strip's ground is painted INSIDE the layer (10-27,
@@ -588,12 +601,12 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                     ),
                     tail: SizedBox(
                       height: height,
-                      child: _buildSillTrailing(),
+                      child: LiveSheet.inPlace(child: _buildSillTrailing()),
                     ),
                   ),
                 ],
               ),
-            ),
+            )),
           );
   }
 

@@ -180,9 +180,8 @@ class _LiftingGripBandState<T extends Object>
     );
   }
 
-  Widget _band() => ValueListenableBuilder<bool>(
-    valueListenable: widget.nearby,
-    builder: (context, nearby, _) => _GripBandLook((
+  Widget _band() {
+    GripBandSpec at(bool nearby) => (
       shape: widget.shape.borderRadius.resolve(
         Directionality.maybeOf(context),
       ),
@@ -190,8 +189,9 @@ class _LiftingGripBandState<T extends Object>
       extent: _bandExtent,
       edgeOutline: widget.edgeOutline,
       atBottom: widget.atBottom,
-    )),
-  );
+    );
+    return _GripBandLook(far: at(false), near: at(true), nearby: widget.nearby);
+  }
 
   /// [grip], carrying [data] when pressed and moved.
   Widget _lifting(T data, Widget grip) => OwningDraggable<T>(
@@ -239,19 +239,37 @@ typedef GripBandSpec = ({
 /// near a hand is, and a pointer coming onto a strip changed every band on
 /// it — in the picture the strip's still region holds. ↩️A `CustomPaint`
 /// till 2026-11-22.
+///
+/// 🚨IT HEARS [nearby] ITSELF, and no widget is built again for it (card
+/// a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-again,
+/// 2026-11-24): the band is given what it is far and near, and its box
+/// changes between them. ↩️A `ValueListenableBuilder` built it again — on a
+/// panel's tabs under the strip's `LayoutBuilder`, whose building again is
+/// a layout: the strip was laid out and painted again, and a pointer coming
+/// onto any panel took its dock's image again, the band on the sheet or not.
 class _GripBandLook extends LeafRenderObjectWidget {
-  const _GripBandLook(this.band);
+  const _GripBandLook({
+    required this.far,
+    required this.near,
+    required this.nearby,
+  });
 
-  final GripBandSpec band;
+  /// The band while nothing that holds it is under the pointer, and while
+  /// something is ([LiftingGripBand.nearby]).
+  final GripBandSpec far;
+  final GripBandSpec near;
+  final ValueListenable<bool> nearby;
 
   @override
   RenderGripBand createRenderObject(BuildContext context) =>
-      RenderGripBand(band)..wearSheet(LiveSheet.overOf(context));
+      RenderGripBand(far: far, near: near, nearby: nearby)
+        ..wearSheet(LiveSheet.overOf(context));
 
   @override
   void updateRenderObject(BuildContext context, RenderGripBand renderObject) {
     renderObject
-      ..band = band
+      ..ends = (far: far, near: near)
+      ..nearby = nearby
       ..wearSheet(LiveSheet.overOf(context));
   }
 }
@@ -259,15 +277,46 @@ class _GripBandLook extends LeafRenderObjectWidget {
 /// The band's box. It paints the band where no sheet is over it, and lays
 /// it on the sheet where one is ([LiveSheet]).
 class RenderGripBand extends RenderBox {
-  RenderGripBand(this._band);
+  RenderGripBand({
+    required GripBandSpec far,
+    required GripBandSpec near,
+    required ValueListenable<bool> nearby,
+  }) : _ends = (far: far, near: near),
+       _nearby = nearby;
 
-  GripBandSpec _band;
-  GripBandSpec get band => _band;
-  set band(GripBandSpec value) {
-    if (value == _band) {
+  ({GripBandSpec far, GripBandSpec near}) _ends;
+  ({GripBandSpec far, GripBandSpec near}) get ends => _ends;
+  set ends(({GripBandSpec far, GripBandSpec near}) value) {
+    _ends = value;
+    _show();
+  }
+
+  ValueListenable<bool> _nearby;
+  ValueListenable<bool> get nearby => _nearby;
+  set nearby(ValueListenable<bool> value) {
+    if (identical(value, _nearby)) {
       return;
     }
-    _band = value;
+    if (attached) {
+      _nearby.removeListener(_show);
+      value.addListener(_show);
+    }
+    _nearby = value;
+    _show();
+  }
+
+  /// The band as the screen has it: near or far, as [nearby] said last.
+  GripBandSpec get band => _shown;
+  late GripBandSpec _shown = _now;
+
+  GripBandSpec get _now => _nearby.value ? _ends.near : _ends.far;
+
+  void _show() {
+    final now = _now;
+    if (now == _shown) {
+      return;
+    }
+    _shown = now;
     if (_laid.onSheet) {
       _laid.changed();
     } else {
@@ -278,7 +327,7 @@ class RenderGripBand extends RenderBox {
   late final LaidLook<GripBandSpec> _laid = LaidLook<GripBandSpec>(
     this,
     // A band with no ink lays nothing.
-    () => _band.color.a == 0 ? null : _band,
+    () => band.color.a == 0 ? null : band,
     (canvas, band) => _paint(canvas, Offset.zero & size, band),
   );
 
@@ -287,12 +336,16 @@ class RenderGripBand extends RenderBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
+    _nearby.addListener(_show);
     _laid.attached();
+    // What it may have said while the box was out of the tree.
+    _show();
   }
 
   @override
   void detach() {
     _laid.detached();
+    _nearby.removeListener(_show);
     super.detach();
   }
 
@@ -313,14 +366,14 @@ class RenderGripBand extends RenderBox {
     if (_laid.onSheet) {
       return;
     }
-    _paint(context.canvas, offset & size, _band);
+    _paint(context.canvas, offset & size, band);
   }
 
   /// The band as the screen has it, in the box's own coordinates — whoever
   /// draws it, the box or the sheet over it.
   @visibleForTesting
   void debugPaintBand(Canvas canvas) =>
-      _paint(canvas, Offset.zero & size, _band);
+      _paint(canvas, Offset.zero & size, band);
 
   static void _paint(Canvas canvas, Rect thing, GripBandSpec band) {
     if (band.color.a == 0) {
