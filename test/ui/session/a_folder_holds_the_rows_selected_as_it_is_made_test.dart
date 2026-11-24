@@ -7,6 +7,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_sections.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
+    show resolveLayerDrop;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 
@@ -263,6 +265,90 @@ void main() {
     );
     _expectInItsOwnPlace(byDrawing.s, byDrawing.direction);
     expect(shapeOf(byDirection.s), shapeOf(byDrawing.s));
+  });
+
+  test('🎯let go in a gap among the drawing rows, a selection that reaches '
+      'the direction row moves its drawing rows there, the direction row '
+      'stays, whichever row the hand holds', () {
+    final s = session();
+    final bottom = s.activeLayerId!;
+    final rows = addRows(s, 2);
+    final direction = _added(s, LayerKind.instruction);
+    final stack = sectionedLayerOrder(s.requireActiveCut.layers);
+    int at(LayerId id) => stack.indexWhere((layer) => layer.id == id);
+    // The top drawing row, down into the gap right above the bottom one.
+    final gap = at(bottom) + 1;
+    final moved = [for (final layer in stack) layer.id]
+      ..remove(rows.last)
+      ..insert(gap, rows.last);
+
+    for (final hand in [rows.last, direction]) {
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: hand,
+        insertAt: gap,
+        alsoMoving: {rows.last, direction},
+      );
+      expect(plan?.order, moved, reason: 'the hand on ${stack.byId(hand)}');
+    }
+  });
+
+  test('🎯dropped on a folder that stands inside the span the selection '
+      'reaches, its drawing row goes in, whichever row the hand holds', () {
+    ({EditorSessionManager s, LayerId bottom, LayerId direction}) standing() {
+      final s = session();
+      final bottom = s.activeLayerId!;
+      addRows(s, 2);
+      final direction = _added(s, LayerKind.instruction);
+      s.selectLayer(bottom);
+      s.rowSelection.value = const [];
+      addFolder(s);
+      select(s, [direction, bottom]);
+      return (s: s, bottom: bottom, direction: direction);
+    }
+
+    LayerId folderOf(EditorSessionManager s) => stackOf(
+      s,
+    ).firstWhere((layer) => layer.kind == LayerKind.folder).id;
+
+    final shapes = <List<String>>[];
+    for (final byBottom in [true, false]) {
+      final (:s, :bottom, :direction) = standing();
+      final folder = folderOf(s);
+      final stack = sectionedLayerOrder(stackOf(s));
+      int at(LayerId id) => stack.indexWhere((layer) => layer.id == id);
+      expect(
+        at(bottom) < at(folder) && at(folder) < at(direction),
+        isTrue,
+        reason: '⛔premise: the folder stands between the rows picked',
+      );
+      _dropOn(s, byBottom ? bottom : direction, folder);
+      expect(stackOf(s).byId(bottom)!.folderId, folder);
+      _expectInItsOwnPlace(s, direction);
+      shapes.add(shapeOf(s));
+    }
+    expect(shapes.last, shapes.first, reason: 'the held row says nothing');
+  });
+
+  test('🎯made from a selection that reaches the direction row, the folder '
+      'is born where its drawing row stood, not at the top of their '
+      'section', () {
+    final s = session();
+    final rows = addRows(s, 2);
+    final direction = _added(s, LayerKind.instruction);
+    select(s, [direction, rows.first]);
+
+    final folder = addFolder(s);
+
+    final stack = sectionedLayerOrder(stackOf(s));
+    int at(LayerId id) => stack.indexWhere((layer) => layer.id == id);
+    expect(stack.byId(rows.first)!.folderId, folder);
+    expect(
+      [at(rows.first) < at(folder), at(folder) < at(rows.last)],
+      [isTrue, isTrue],
+      reason: 'the folder and its row under the drawing row not picked',
+    );
+    _expectInItsOwnPlace(s, direction);
   });
 
   test('a track\'s row picked first with the cut\'s — the cut\'s go in', () {
