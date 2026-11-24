@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
 import '../helpers/source_body.dart';
 
 /// 🗣️H82 (유저 2026-11-24): 「갤탭에서 tvp브러시 임포트해봣는데 진행창이
@@ -78,9 +79,8 @@ void main() {
     },
   };
   final sources = {
-    for (final file in Directory('lib').listSync(recursive: true))
-      if (file is File && file.path.endsWith('.dart'))
-        file.path.replaceAll(r'\', '/'): file.readAsStringSync(),
+    for (final file in dartFilesUnder('lib'))
+      file.path.replaceAll(r'\', '/'): file.readAsStringSync(),
   };
   for (final MapEntry(key: pattern, value: expected) in ledger.entries) {
     test('$pattern is called where the ledger says, and nowhere else', () {
