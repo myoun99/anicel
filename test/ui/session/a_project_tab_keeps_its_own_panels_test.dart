@@ -329,10 +329,9 @@ void main() {
   }
 
   testWidgets('🚨each timeline shows the conte where IT was left — its '
-      'frames at its own zoom — and one never opened at the default (H78)', (
-    tester,
-  ) async {
-    final project = createDefaultProject();
+      'rows and its frames, at its own zoom — and one never opened at the '
+      'default (H78)', (tester) async {
+    final project = manyTracks();
     final track = project.tracks.first;
     final projects = await openWindow(
       tester,
@@ -341,6 +340,7 @@ void main() {
           track.copyWith(
             cuts: [track.cuts.first.copyWith(duration: 480)],
           ),
+          ...project.tracks.skip(1),
         ],
       ),
     );
@@ -359,19 +359,29 @@ void main() {
         const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
       ),
     ).controller!;
+    ScrollController rows() => scrollableOf(
+      tester,
+      find.byKey(const ValueKey<String>('storyboard-vertical-viewport')),
+    ).controller!;
     session.panelViews.storyboardPixelsPerFrame.value = 8;
     await tester.pumpAndSettle();
     final across = (frames().position.maxScrollExtent / 2).roundToDouble();
-    expect(across, greaterThan(10), reason: '⛔전제: the frames overflow');
+    final down = (rows().position.maxScrollExtent / 2).roundToDouble();
+    expect(
+      [across, down],
+      everyElement(greaterThan(10)),
+      reason: '⛔전제: the frames and the rows overflow',
+    );
     frames().jumpTo(across);
+    rows().jumpTo(down);
     await tester.pumpAndSettle();
 
     session.timelineVerbs.addTimeline();
     await tester.pumpAndSettle();
     expect(session.timelineVerbs.currentTimelineId, isNot(first));
     expect(
-      [conteZoom(), frames().offset],
-      [PanelViewMemory.defaultStoryboardPixelsPerFrame, 0],
+      [conteZoom(), frames().offset, rows().offset],
+      [PanelViewMemory.defaultStoryboardPixelsPerFrame, 0, 0],
       reason: 'a timeline never opened shows the conte at the default zoom, '
           'at its start',
     );
@@ -379,8 +389,8 @@ void main() {
     session.timelineVerbs.openTimeline(first);
     await tester.pump();
     expect(
-      [conteZoom(), frames().offset],
-      [8, across],
+      [conteZoom(), frames().offset, rows().offset],
+      [8, across, down],
       reason: '🚨the first comes back where it was, from its first frame — '
           'not bent by the zoom of the timeline it came from',
     );
