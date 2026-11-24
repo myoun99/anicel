@@ -377,7 +377,8 @@ fn a_fill_floods_what_shows_and_lands_on_its_cel() {
     let landed = composite.run(engine, &plan(&pages, &sets, &steps), &tiles, extent, composite.widest());
     let out = landed.expect("land").out;
     let write = Write::new(engine).expect("compile the write path");
-    assert_eq!(write.changed(engine, &pages, &out, &places), Some(vec![Change::Inked; 2]));
+    let changes = write.changed(engine, &pages, &out, &places).map(|written| written.changes);
+    assert_eq!(changes, Some(vec![Change::Inked; 2]));
     let writes: Vec<_> = places.iter().enumerate().map(|(k, at)| (k, at.unwrap())).collect();
     Write::put(engine, &pages, &out, &writes).expect("put");
     let cel_words = words(&pages[0]);

@@ -27,10 +27,11 @@ mod tests;
 
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::shared::{
-    Encoded, Given, NO_PAGE, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits,
-    le_words, page_table, pipeline, plane, range, runs, tiles_a_pass,
+    Encoded, Given, INK_BOX_WGSL, NO_PAGE, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded,
+    fits, le_words, page_table, pipeline, plane, range, runs, tiles_a_pass,
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
@@ -60,9 +61,10 @@ pub(crate) enum Change {
 }
 
 impl Change {
-    /// The answer a tile's word of write.wgsl's bits gives.
-    fn of(word: u32) -> Self {
-        match (word & DIFFERS != 0, word & INKED != 0) {
+    /// The answer a tile's word of write.wgsl's bits gives, its ink
+    /// `inked` or not.
+    fn of(word: u32, inked: bool) -> Self {
+        match (word & DIFFERS != 0, inked) {
             (false, _) => Self::Same,
             (true, true) => Self::Inked,
             (true, false) => Self::Cleared,
@@ -70,9 +72,23 @@ impl Change {
     }
 }
 
-/// write.wgsl's `WRITE_DIFFERS` and `WRITE_INKED`.
+/// write.wgsl's `WRITE_DIFFERS`.
 const DIFFERS: u32 = 1;
-const INKED: u32 = 2;
+
+/// What the write's test says of each tile put, in their order: what it is
+/// beside the one stored where it goes, and the box its ink fills — none
+/// where it holds none.
+///
+/// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-places-
+/// Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): the test reads
+/// every word a box is made of, so a landing it tells is told where its ink
+/// lies — and the box is the one answer to whether any is left: a tile is
+/// `Inked` or `Cleared` by it.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Written {
+    pub(crate) changes: Vec<Change>,
+    pub(crate) inks: Vec<Option<InkBox>>,
+}
 
 /// The write path's test, compiled once for as many pages as the device
 /// lets it bind.
@@ -86,20 +102,20 @@ impl Write {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let read = pages.stored();
-        let sources = [TILE_WGSL, &read, include_str!("write.wgsl")];
+        let sources = [TILE_WGSL, &read, INK_BOX_WGSL, include_str!("write.wgsl")];
         Some(Self { changed: pipeline(engine, &sources, "write_changed"), pages })
     }
 
     /// What each of `put`'s tiles is beside what is stored where it
     /// goes — `places`, a tile's place on the pool's `pool` pages, or none
-    /// where nothing is stored. Waits for the GPU.
+    /// where nothing is stored — and where its ink lies. Waits for the GPU.
     pub(crate) fn changed(
         &self,
         engine: &Engine,
         pool: &[wgpu::Buffer],
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
-    ) -> Option<Vec<Change>> {
+    ) -> Option<Written> {
         // A pass binds its tiles put, a tile's bytes each. No test puts tiles
         // past a binding (2 GB here, 32,768 tiles), so none tells a tile's
         // bytes from a word in this line (mutant m14, 11-06).
@@ -125,14 +141,14 @@ impl Write {
         pool: &[wgpu::Buffer],
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
-        then: impl FnOnce(Option<Vec<Change>>) + Send + 'static,
+        then: impl FnOnce(Option<Written>) + Send + 'static,
     ) {
         let cut = tiles_a_pass(engine, TILE_BYTES, 0).map(|most| (self.pages.per_pass(), most));
         match cut.and_then(|cut| self.submitted_by(engine, pool, put, places, cut)) {
             None => then(None),
-            Some(None) => then(Some(Vec::new())),
+            Some(None) => then(Some(Written::default())),
             Some(Some(changed)) => {
-                engine.read_buffer_then(&changed, move |read| then(read.map(changes_of)));
+                engine.read_buffer_then(&changed, move |read| then(read.map(written_of)));
             }
         }
     }
@@ -146,17 +162,18 @@ impl Write {
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
         cut: (usize, usize),
-    ) -> Option<Vec<Change>> {
+    ) -> Option<Written> {
         match self.submitted_by(engine, pool, put, places, cut)? {
-            None => Some(Vec::new()),
-            Some(changed) => Some(changes_of(&engine.read_buffer(&changed)?)),
+            None => Some(Written::default()),
+            Some(changed) => Some(written_of(&engine.read_buffer(&changed)?)),
         }
     }
 
     /// The test of `put`'s tiles beside `places` submitted, its passes
     /// binding `per_pass` pages and taking `most` tiles at most: the
-    /// buffer the GPU writes each tile's word to — none where no tile
-    /// is asked, and nothing is submitted.
+    /// buffer the GPU writes each tile's word to, and then each one's box
+    /// ([`TILE_WORDS`] a tile in all) — none where no tile is asked, and
+    /// nothing is submitted.
     fn submitted_by(
         &self,
         engine: &Engine,
@@ -176,7 +193,7 @@ impl Write {
         if places.is_empty() {
             return Some(None);
         }
-        let changed_bytes = places.len() as u64 * 4;
+        let changed_bytes = places.len() as u64 * TILE_WORDS * 4;
         fits(engine, &[changed_bytes], std::iter::empty())?;
         let changed = plane(engine, "write changed", changed_bytes);
         let cut = runs(places.iter().map(|place| place.map(|at| at.page)), None, per_pass, most);
@@ -194,7 +211,8 @@ impl Write {
                         None => [NO_PAGE, 0],
                     })
                     .collect();
-                Given::new(engine, &mut encoder, &words, None, &[run.start as u32, 0, 0, 0])
+                let first = [run.start as u32, places.len() as u32, 0, 0];
+                Given::new(engine, &mut encoder, &words, None, &first)
             })
             .collect::<Option<Vec<Given>>>()?;
         let dispatches: Vec<Encoded> = cut
@@ -248,9 +266,17 @@ impl Write {
     }
 }
 
-/// What each tile is, by its word of the changed buffer's `bytes`.
-fn changes_of(bytes: &[u8]) -> Vec<Change> {
-    le_words(bytes).into_iter().map(Change::of).collect()
+/// The words the test writes a tile: its bits, then its box.
+const TILE_WORDS: u64 = 5;
+
+/// What each tile is, and where its ink lies, by the changed buffer's
+/// `bytes`: a word a tile, then four a tile.
+fn written_of(bytes: &[u8]) -> Written {
+    let words = le_words(bytes);
+    let (bits, boxes) = words.split_at(words.len() / TILE_WORDS as usize);
+    let inks: Vec<Option<InkBox>> = boxes.chunks_exact(4).map(InkBox::of).collect();
+    let changes = bits.iter().zip(&inks).map(|(&word, ink)| Change::of(word, ink.is_some())).collect();
+    Written { changes, inks }
 }
 
 /// Fails unless `put` holds `tiles` tiles.

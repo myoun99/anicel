@@ -28,6 +28,7 @@ use super::stroke::{Stroke, ground_of_rubs};
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::{Engine, Sent, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::{fail, take_last_error};
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, Named, TileAt};
 use crate::kernels::mesh::MeshGrid;
@@ -1559,6 +1560,29 @@ pub unsafe extern "C" fn gpu_engine_finished_changes(finished: *const Finished, 
             // SAFETY: see the function's contract.
             unsafe { *changes.add(at) = byte_of(change) };
         }
+    }
+    said.len()
+}
+
+/// Writes the box each tile of `finished`'s ink fills to `inks` — four
+/// words each, its left, top, right and bottom ([`InkBox::words`]: four 0s
+/// where it holds none), in the order they were asked — and returns how
+/// many tiles.
+///
+/// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-places-
+/// Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): the box a stroke's
+/// tile frames is told with what it is, so the move tool's box asks no scan.
+///
+/// # Safety
+/// `finished` is live, and `inks` holds four words for each tile asked.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_finished_inks(finished: *const Finished, inks: *mut i32) -> usize {
+    // SAFETY: see the function's contract.
+    let said = unsafe { &*finished }.inks();
+    // SAFETY: see the function's contract.
+    let out = unsafe { std::slice::from_raw_parts_mut(inks, said.len() * 4) };
+    for (&ink, words) in said.iter().zip(out.chunks_exact_mut(4)) {
+        words.copy_from_slice(&InkBox::words(ink));
     }
     said.len()
 }

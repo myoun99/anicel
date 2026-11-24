@@ -90,6 +90,9 @@ pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 /// export kernels' frame (`kernels/export/frame.wgsl`) and the composite's
 /// rows and output tiles.
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
+/// The box a tile's ink fills, folded by a workgroup a tile — after
+/// [`TILE_WGSL`]: the ink scan's and the write test's, the one fold.
+pub(crate) const INK_BOX_WGSL: &str = include_str!("ink_box.wgsl");
 /// `premultiply8` — a straight word as a surface Flutter shows holds it,
 /// and as the export lays it over a ground — and its rounding,
 /// `div255_round`, which the cel pixel blend takes too. `one_premultiply.rs`

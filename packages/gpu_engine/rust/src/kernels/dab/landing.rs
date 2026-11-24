@@ -10,6 +10,7 @@ use crate::kernels::composite::{Composite, Composited, Plan, Step, TILE, TileAt,
 use crate::kernels::mask::Mask;
 use crate::kernels::pool::{Cel, Pool, gathered_as_they_lie};
 use crate::kernels::shared::ResampleMap;
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::kernels::write::{Change, Write};
 
 /// A row's opacity at whole, the executor's 16-bit scale.
@@ -122,7 +123,7 @@ pub(crate) fn put(
 ) -> Option<Vec<(Change, Option<TileAt>)>> {
     let changes = if let Some(write) = compared {
         let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
-        write.changed(engine, pool.pages(), out, &under)?
+        write.changed(engine, pool.pages(), out, &under)?.changes
     } else {
         vec![Change::Inked; asked.len()]
     };
@@ -130,19 +131,26 @@ pub(crate) fn put(
 }
 
 /// A landing finished and yet to be put: its tiles made — tile after tile
-/// in the order they were asked — and what each is beside the tile under
-/// it. What takes a slot of it is its caller's to book
+/// in the order they were asked — what each is beside the tile under it,
+/// and where its ink lies. What takes a slot of it is its caller's to book
 /// (`gpu_engine_finished_land_unwaited`): the pool's books are the
 /// thread's that asks, and the answer comes on another.
 pub struct Finished {
     out: wgpu::Buffer,
     changes: Vec<Change>,
+    inks: Vec<Option<InkBox>>,
 }
 
 impl Finished {
     /// What each tile is, in the order they were asked.
     pub(crate) fn changes(&self) -> &[Change] {
         &self.changes
+    }
+
+    /// The box each tile's ink fills, in the order they were asked — none
+    /// where it holds none ([`crate::kernels::write::Written`]).
+    pub(crate) fn inks(&self) -> &[Option<InkBox>] {
+        &self.inks
     }
 
     /// The tiles made, tile after tile in the order they were asked.
@@ -154,7 +162,7 @@ impl Finished {
     /// makes (`kernels::shared::every_free`).
     #[cfg(test)]
     pub(crate) fn of_none_inked(out: wgpu::Buffer) -> Self {
-        Self { out, changes: Vec::new() }
+        Self { out, changes: Vec::new(), inks: Vec::new() }
     }
 
     /// The tiles that take a slot — the inked —, each by its place among
@@ -188,8 +196,8 @@ pub(crate) fn finished_then(
     };
     let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
     let made = out.clone();
-    write.changed_then(engine, pool, &out, &under, move |changes| {
-        then(changes.map(|changes| Finished { out: made, changes }));
+    write.changed_then(engine, pool, &out, &under, move |written| {
+        then(written.map(|written| Finished { out: made, changes: written.changes, inks: written.inks }));
     });
 }
 

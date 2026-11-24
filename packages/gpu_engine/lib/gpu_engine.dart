@@ -1553,7 +1553,7 @@ List<GpuLanded> _landed(
 /// same would take a page of the pool's for a moment, and a full pool
 /// would let go of tiles to make room for slots nothing keeps.
 final class GpuFinished {
-  GpuFinished._(this._engine, this._finished, this.changes) {
+  GpuFinished._(this._engine, this._finished, this.changes, this.inks) {
     debugKept += 1;
   }
 
@@ -1566,6 +1566,15 @@ final class GpuFinished {
 
   /// What each tile asked is, in the order they were asked.
   final List<GpuChange> changes;
+
+  /// The box each tile's ink fills, in the order they were asked — null
+  /// where it holds none.
+  ///
+  /// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  /// places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): told
+  /// with [changes], by the one test that tells them, so the box a stroke's
+  /// tiles frame asks no scan of its own.
+  final List<GpuInkBox?> inks;
 
   /// How many of its tiles take a slot: the inked.
   int get inked => changes.where((one) => one == GpuChange.inked).length;
@@ -1626,7 +1635,7 @@ final class GpuFinished {
           return;
         }
         finish.told.complete(
-          GpuFinished._(finish.engine, made, _changesOf(made)),
+          GpuFinished._(finish.engine, made, _changesOf(made), _inksOf(made)),
         );
       });
 
@@ -1638,6 +1647,15 @@ final class GpuFinished {
         return [
           for (var at = 0; at < count; at++) GpuChange.values[changes[at]],
         ];
+      });
+
+  static List<GpuInkBox?> _inksOf(Pointer<rust.Finished> finished) =>
+      using((arena) {
+        final count = rust.finishedChanges(finished, nullptr);
+        final words = arena<Int32>(_held(count * 4));
+        rust.finishedInks(finished, words);
+        final read = words.asTypedList(count * 4);
+        return [for (var at = 0; at < count; at++) _inkBoxAt(read, at * 4)];
       });
 
   /// What [handOver] hands the engine's thread — given where to write
@@ -4379,14 +4397,13 @@ class GpuReadout implements _OfAnEngine {
   void free() => rust.readoutFree(_readout);
 }
 
-/// A walked tile's ink: where it is on its cel's grid, and its box —
-/// tile-local, the far edges past the last column and row with ink — or
-/// null where it holds none.
-typedef GpuTileInk = ({
-  int column,
-  int row,
-  ({int left, int top, int right, int bottom})? box,
-});
+/// The box a tile's ink fills: tile-local, the far edges past the last
+/// column and row with ink.
+typedef GpuInkBox = ({int left, int top, int right, int bottom});
+
+/// A walked tile's ink: where it is on its cel's grid, and its box — null
+/// where it holds none.
+typedef GpuTileInk = ({int column, int row, GpuInkBox? box});
 
 /// The words the scan puts for a walked tile (cel_pixel/abi.rs's
 /// TILE_INK_WORDS): its column and row, then its box's four edges — four 0s
@@ -6254,18 +6271,17 @@ void _done(bool done) {
 }
 
 /// The walked tile whose words start at [at] of [words].
-GpuTileInk _walkedAt(Int32List words, int at) {
-  final [column, row, left, top, right, bottom] = words.sublist(
-    at,
-    at + _tileInkWords,
-  );
-  return (
-    column: column,
-    row: row,
-    box: right > left
-        ? (left: left, top: top, right: right, bottom: bottom)
-        : null,
-  );
+GpuTileInk _walkedAt(Int32List words, int at) =>
+    (column: words[at], row: words[at + 1], box: _inkBoxAt(words, at + 2));
+
+/// The box whose four words — its left, top, right and bottom
+/// (rust/src/kernels/cel_pixel/ink.rs, `InkBox::words`) — start at [at] of
+/// [words]: none where they are four 0s, no right past its left.
+GpuInkBox? _inkBoxAt(Int32List words, int at) {
+  final [left, top, right, bottom] = words.sublist(at, at + 4);
+  return right > left
+      ? (left: left, top: top, right: right, bottom: bottom)
+      : null;
 }
 
 /// The closed contours of the pixels [ends] hold — row `r`'s

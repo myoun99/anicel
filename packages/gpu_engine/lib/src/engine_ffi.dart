@@ -3127,6 +3127,11 @@ external int finishedChanges(
   Pointer<Uint8> changes,
 );
 
+@Native<UintPtr Function(Pointer<Finished>, Pointer<Int32>)>(
+  symbol: 'gpu_engine_finished_inks',
+)
+external int finishedInks(Pointer<Finished> finished, Pointer<Int32> inks);
+
 @Native<
   UintPtr Function(
     Pointer<Finished>,

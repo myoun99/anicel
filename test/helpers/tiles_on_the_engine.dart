@@ -73,13 +73,17 @@ List<BitmapTile> landedOn(
 
 /// What lands a tile of [value] at every byte for each tile asked, as a
 /// kernel stores what it lands, with no kernel to compile.
-LandedBy tilesOf(int value) => (pool, cel, asked) {
-  // A tile, not bytes of this call's: the store's copy reads them once it
-  // returns, holding what keeps them (GpuPool.store).
-  final tile = BitmapTile.written(
+LandedBy tilesOf(int value) => tilesLike(
+  BitmapTile.written(
     size: gpuTileSide,
     write: (pixels) => pixels.fillRange(0, gpuTileBytes, value),
-  );
+  ),
+);
+
+/// What lands [tile]'s bytes for each tile asked, as [tilesOf] does.
+LandedBy tilesLike(BitmapTile tile) => (pool, cel, asked) {
+  // A tile, not bytes of this call's: the store's copy reads them once it
+  // returns, holding what keeps them (GpuPool.store).
   return [
     for (final at in pool.store(cel, [
       for (final _ in asked) tile,

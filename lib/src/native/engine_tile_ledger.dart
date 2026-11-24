@@ -772,7 +772,8 @@ final GpuEngine _engine;
   /// What each of [tiles] — tiles landed here, each at its [column] and
   /// [row] — is beside the tile it landed on ([_Slot.under]), asked by [by]
   /// with no wait for the GPU (`GpuStroke.toldOf`) and told once it has
-  /// said: each one's ink, its own from then on ([BitmapTile.toldInk]).
+  /// said: each one's ink, its own from then on ([BitmapTile.toldInk]),
+  /// and the box it fills ([BitmapTile.rememberInkBounds]).
   /// Till then each shows what its stroke showed under the pen
   /// ([BitmapTile.showsInkNow]): ink, or where [erases], what the tile it
   /// landed on showed — an eraser adds no ink. Where the engine
@@ -789,6 +790,17 @@ final GpuEngine _engine;
   /// the stroke again compared, the UI's thread waiting for the GPU to say
   /// what each is. 「모름 → 아는 것으로 그리고, 답이 오면 고침」: what [land]
   /// compared waits for, this is told — as a cut ahead is ([landOnceTold]).
+  ///
+  /// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  /// places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): the move
+  /// tool's box (`bitmapSurfaceContentBounds`) scanned a stroke's tiles for
+  /// their ink the moment it was asked, waiting for the GPU on the UI's
+  /// thread — and a box drawn wide while that was told would open Ctrl+T on
+  /// the wrong centre. The test that tells what each tile is tells its box
+  /// too, so it is remembered here, before anything asks. ↩️Till then a tile
+  /// told the same was told the ink of the tile under it, unknown where
+  /// that one's was: the box is the one answer now — a tile the same holds
+  /// the bytes it was compared with, and the box is of those.
   Future<void> toldOf(
     List<({BitmapTile tile, int column, int row})> tiles, {
     required ToldBy by,
@@ -810,7 +822,7 @@ final GpuEngine _engine;
       asked.add((tile: tile, under: under));
       asks.add((column: column, row: row, under: under));
     }
-    List<GpuChange>? changes;
+    ({List<GpuChange> changes, List<GpuInkBox?> inks})? said;
     try {
       if (asked.isNotEmpty) {
         final finished = await held(
@@ -820,22 +832,28 @@ final GpuEngine _engine;
           ]),
         );
         try {
-          changes = finished.changes;
+          said = (changes: finished.changes, inks: finished.inks);
         } finally {
           finished.free();
         }
       }
     } on GpuRefused {
-      changes = null;
+      said = null;
     } finally {
       for (final (at, (:tile, :under)) in asked.indexed) {
-        final change = changes?[at];
-        tile.toldInk(switch (change) {
-          GpuChange.inked => true,
-          GpuChange.cleared => false,
-          GpuChange.same => under == null ? false : under.inkWithNoWait,
-          null => null,
-        });
+        final change = said?.changes[at];
+        if (said != null) {
+          final box = _boundsOf(said.inks[at]);
+          tile.rememberInkBounds(box);
+          // 🗣️브러시/렌더링 2026-11-24: a tile told the same is the tile
+          // under it in the cel from here on ([toldInPlaceOf] · the commit's
+          // `toldTidied`), and the box goes with it — it is that tile's
+          // bytes the test read.
+          if (change == GpuChange.same) {
+            under?.rememberInkBounds(box);
+          }
+        }
+        tile.toldInk(null);
         // ⚠️Only while its bytes are still the engine's alone: one whose
         // bytes came here meanwhile has let the tile it landed on go
         // ([_Slot.keepsNothing]), and told the same then it would read as
@@ -1059,19 +1077,20 @@ final GpuEngine _engine;
     debugInkScans += 1;
     final slots = hold.slotsOf(cel, tiles);
     for (final walked in _ink.run(pool, 0, 0, tiles.length, 1, slots)) {
-      final box = walked.box;
-      tiles[walked.column].rememberInkBounds(
-        box == null
-            ? null
-            : (
-                left: box.left,
-                top: box.top,
-                rightExclusive: box.right,
-                bottomExclusive: box.bottom,
-              ),
-      );
+      tiles[walked.column].rememberInkBounds(_boundsOf(walked.box));
     }
   });
+
+  /// The engine's [box] of a tile's ink as the app keeps one — none where
+  /// it holds none.
+  static TileInkBounds? _boundsOf(GpuInkBox? box) => box == null
+      ? null
+      : (
+          left: box.left,
+          top: box.top,
+          rightExclusive: box.right,
+          bottomExclusive: box.bottom,
+        );
 
   /// The scans [rememberInk] asked of the engine — each a wait of the
   /// GPU's: what a walk over many pictures asks once.

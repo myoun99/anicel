@@ -156,6 +156,84 @@ void main() {
     );
   });
 
+  // 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  // places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): the box the
+  // move tool and Ctrl+T frame a stroke's tiles by is told with what each
+  // is, so asking it after the stroke scans nothing and waits for nothing.
+  test('each tile is told the box its ink fills — inked, the same as the '
+      'tile under it, or none — and its box asks no scan and no wait', () async {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final stroke = GpuStroke(appGpuEngine);
+    addTearDown(stroke.free);
+    // Ink at (3, 40) and (90, 5): a box from (3, 5) to past (90, 40).
+    final points = BitmapTile.written(
+      size: gpuTileSide,
+      write: (pixels) {
+        pixels.fillRange(0, gpuTileBytes, 0);
+        for (final (x, y) in [(3, 40), (90, 5)]) {
+          pixels.fillRange(
+            (y * gpuTileSide + x) * 4,
+            (y * gpuTileSide + x + 1) * 4,
+            255,
+          );
+        }
+      },
+    );
+    const box = (left: 3, top: 5, rightExclusive: 91, bottomExclusive: 41);
+    List<({BitmapTile tile, int column, int row})> landed(
+      List<BitmapTile?> unders,
+      BitmapTile like, {
+      required int from,
+    }) => [
+      for (final (at, one) in ledger
+          .land(
+            [
+              for (final (k, under) in unders.indexed)
+                (column: from + k, row: 0, under: under),
+            ],
+            by: tilesLike(like),
+            ofTheHand: true,
+          )
+          .indexed)
+        (tile: one.tile!, column: from + at, row: 0),
+    ];
+    // Inked over nothing; the same as the tile under it, whose ink is not
+    // known here (the engine's alone); nothing over ink.
+    final [under] = landed([null], points, from: 9);
+    await patiently(ledger.toldOf([under], by: stroke.toldOf, erases: false));
+    under.tile.forgetInk();
+    expect(under.tile.inkBoundsKnown, isFalse, reason: '⛔premise: not known');
+    final tiles = [
+      ...landed([null], points, from: 0),
+      ...landed([under.tile], points, from: 1),
+      ...landed([points], BitmapTile.blank(size: gpuTileSide), from: 2),
+    ];
+
+    await patiently(ledger.toldOf(tiles, by: stroke.toldOf, erases: false));
+    final (reads, scans, waits) = (
+      ledger.debugTileReads,
+      ledger.debugInkScans,
+      debugWaitsHere,
+    );
+    expect(
+      [for (final (:tile, column: _, row: _) in tiles) tile.inkBoundsKnown],
+      everyElement(isTrue),
+      reason: 'each box is known once told',
+    );
+    expect([
+      for (final (:tile, column: _, row: _) in tiles) tile.inkBounds,
+    ], [box, box, null]);
+    // 🗣️브러시/렌더링 2026-11-24: told the same, the tile the cel keeps is
+    // the one under it (③-1, `toldInPlaceOf`) — and it keeps the box.
+    final kept = ledger.toldInPlaceOf(tiles[1].tile);
+    expect(kept, same(under.tile), reason: '⛔premise: the cel keeps under');
+    expect(kept!.inkBoundsKnown, isTrue, reason: 'the tile kept knows it');
+    expect(kept.inkBounds, box);
+    expect(ledger.debugTileReads, reads, reason: 'no byte read for any');
+    expect(ledger.debugInkScans, scans, reason: 'no scan asked of the GPU');
+    expect(debugWaitsHere, waits, reason: 'no wait for the GPU here');
+  });
+
   test('a told the GPU refuses leaves the ink not known, and a tile whose '
       'bytes are here is not asked', () async {
     final ledger = EngineTileLedger(appGpuEngine);

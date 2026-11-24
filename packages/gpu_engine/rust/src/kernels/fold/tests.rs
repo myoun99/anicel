@@ -209,7 +209,7 @@ fn beside(pages: &[wgpu::Buffer], tiles: &[Vec<u32>], places: &[TileAt]) -> Vec<
     let engine = rig().engine;
     let put = words_buffer(engine, "tiles put", &tiles.concat(), wgpu::BufferUsages::STORAGE);
     let places: Vec<Option<TileAt>> = places.iter().copied().map(Some).collect();
-    kernels().write.changed(engine, pages, &put, &places).expect("the write path's test")
+    kernels().write.changed(engine, pages, &put, &places).expect("the write path's test").changes
 }
 
 /// A row of the tiles at `places`, a column each, laid by `step`.

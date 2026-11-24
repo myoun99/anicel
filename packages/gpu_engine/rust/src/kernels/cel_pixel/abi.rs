@@ -23,7 +23,7 @@ use crate::kernels::dab::abi::{StampPicture, kept, reported, told_body};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
-use super::ink::{Ink, TileInk};
+use super::ink::{Ink, InkBox, TileInk};
 use super::lift::{Lift, Lifted};
 use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 
@@ -523,8 +523,7 @@ unsafe fn put_inks(inks: &[TileInk], out: *mut i32) -> isize {
     // SAFETY: see the function's contract.
     let out = unsafe { std::slice::from_raw_parts_mut(out, inks.len() * TILE_INK_WORDS) };
     for (tile, words) in inks.iter().zip(out.chunks_exact_mut(TILE_INK_WORDS)) {
-        let [left, top, right, bottom] =
-            tile.ink.map_or([0; 4], |ink| [ink.left, ink.top, ink.right, ink.bottom].map(|edge| edge as i32));
+        let [left, top, right, bottom] = InkBox::words(tile.ink);
         words.copy_from_slice(&[tile.column, tile.row, left, top, right, bottom]);
     }
     inks.len() as isize
