@@ -1022,7 +1022,8 @@ void main() {
       await seenThrough(zoomed);
       expect(gates, hasLength(2), reason: '⛔premise: both are on the GPU');
 
-      gates.first.complete();
+      const waited = (queuedMicros: 0, polledMicros: 0);
+      gates.first.complete(waited);
       await tester.pump();
       expect(
         canvas.view.standing(zoomed),
@@ -1030,9 +1031,18 @@ void main() {
         reason: 'the frame went up before the picture beside it',
       );
 
-      gates.last.complete();
+      gates.last.complete(waited);
       await tester.pump();
       expect(canvas.view.standing(zoomed), zoomed);
+      // Its finish says the wait for the other (`ScreenFinish.together`).
+      expect(
+        [
+          for (final up in ScreenTexture.upMicros.reversed.take(2))
+            up.went!.together,
+        ].any((together) => together > 0),
+        isTrue,
+        reason: 'the frame finished first waited for the one beside it',
+      );
 
       // Up, a frame drawn while it was on the GPU is drawn: what tells.
       float.value = redAt(0);

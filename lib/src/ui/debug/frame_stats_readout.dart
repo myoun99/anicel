@@ -99,10 +99,10 @@ class FrameStatsReadout extends StatelessWidget {
 
   /// What the engine's compiler made as the readout says it: how many,
   /// what they took in all and the longest, how many are under way, the
-  /// passes a second that stood in for their own, and how many the folder
-  /// it keeps them in answered — `—` where the OS keeps them and says
-  /// nothing, and where no engine is open.
-  static String _compileWords(GpuCompiles? compiles, double fullPerSecond) {
+  /// composite's passes that ran on the full one while their own was still
+  /// to come, and how many the folder it keeps them in answered — `—`
+  /// where the OS keeps them and says nothing, and where no engine is open.
+  static String _compileWords(GpuCompiles? compiles) {
     if (compiles == null) {
       return '—';
     }
@@ -110,7 +110,7 @@ class FrameStatsReadout extends StatelessWidget {
         'in ${(compiles.micros / 1e6).toStringAsFixed(1)} s  '
         'longest ${(compiles.longestMicros / 1000).toStringAsFixed(0)} ms  '
         'now ${compiles.underWay}  '
-        'full pass ${fullPerSecond.toStringAsFixed(1)}/s  '
+        'full pass ${compiles.stoodIn}  '
         'disk ${_orNone(compiles.found)}';
   }
 
@@ -280,8 +280,7 @@ class FrameStatsReadout extends StatelessWidget {
                     }}',
                 // What the engine's compiler made, and the composite's
                 // passes that stood in for their own ([GpuCompiles]).
-                'COMPILE '
-                    '${_compileWords(stats.compiles, stats.fullPassPerSecond)}',
+                'COMPILE ${_compileWords(stats.compiles)}',
                 'MEMORY  app ${_mb(stats.footprintMegabytes)}  '
                     'screens ${_mb(stats.screensMegabytes)}  '
                     'pictures ${switch (stats.picturesMegabytes) {

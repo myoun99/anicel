@@ -99,7 +99,6 @@ class FrameStatsSnapshot {
     required this.gpuBehindWorst,
     required this.gpuClocked,
     required this.compiles,
-    required this.fullPassPerSecond,
     required this.footprintMegabytes,
     required this.screensMegabytes,
     required this.picturesMegabytes,
@@ -294,11 +293,8 @@ class FrameStatsSnapshot {
   final bool? gpuClocked;
 
   /// What the engine's compiler made since it opened (`GpuEngine.compiles`)
-  /// — null where no engine is open — and the composite's passes a second
-  /// that ran on the pass that takes any plan while their own was still to
-  /// come.
+  /// — null where no engine is open.
   final GpuCompiles? compiles;
-  final double fullPassPerSecond;
 
   /// What the process holds as the OS says it
   /// (`QaMemory.processFootprintOrRssBytes`), what the engine's screens
@@ -475,7 +471,6 @@ abstract final class FrameStats {
     int points,
     int pointerMicros,
     int steps,
-    int stoodIn,
   })?
   _lastCounted;
 
@@ -707,7 +702,6 @@ abstract final class FrameStats {
       points: PointerClock.pointsCounted,
       pointerMicros: PointerClock.microsCounted,
       steps: StrokeSteps.stepsCounted,
-      stoodIn: compiles?.stoodIn ?? 0,
     );
     final before = _lastCounted;
     _lastCounted = counted;
@@ -773,7 +767,6 @@ abstract final class FrameStats {
       gpuBehindWorst: behindWorst,
       gpuClocked: engine?.clocked,
       compiles: compiles,
-      fullPassPerSecond: aSecond(counted.stoodIn, before?.stoodIn),
       footprintMegabytes: _megabytes(QaMemory.processFootprintOrRssBytes),
       screensMegabytes: _megabytes(ScreenTexture.liveBytes),
       picturesMegabytes: switch (engine?.pictureBytes) {
