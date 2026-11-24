@@ -192,8 +192,7 @@ void main() {
       final box = face.localToGlobal(Offset.zero) & face.size;
       await mouse.moveTo(box.center);
       await frames(tester, 2);
-      if (!face.debugState.hovered || !face.pressEnabled) {
-        // Dead: a dead control shows no hover.
+      if (!face.debugState.hovered) {
         continue;
       }
       lit += 1;
