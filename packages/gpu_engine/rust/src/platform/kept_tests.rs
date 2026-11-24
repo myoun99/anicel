@@ -81,6 +81,20 @@ fn seven_kept(turn: &DeviceTurn, folder: &std::path::Path) -> std::path::PathBuf
     path
 }
 
+/// How many of what its driver made of a pipeline before an engine is
+/// handed — one, where the driver makes a pipeline from a cache it is
+/// handed. ⛔None where the adapter is the CPU's: lavapipe says of each
+/// pipeline it made it without the cache (`VkPipelineCreationFeedback`
+/// VALID without APPLICATION_PIPELINE_CACHE_HIT — 🔬WSL 2026-11-24,
+/// .claude/lane-logs/k2294.txt: the two pins that took one for handed went
+/// red), and the count is the driver's word (vendor/wgpu-hal,
+/// vulkan/device.rs) — so there what was handed is made again, and kept
+/// over. ⚠️What is handed to the driver is not seen there either: only a
+/// driver that takes it tells it from none.
+fn taken(engine: &crate::device::Engine) -> u64 {
+    u64::from(engine.adapter.get_info().device_type != wgpu::DeviceType::Cpu)
+}
+
 /// What the next engine keeping in `folder` makes of `WRITES_SEVEN`, and
 /// how many pipelines the folder answered it.
 fn seven_next(turn: &DeviceTurn, folder: &std::path::Path) -> (u32, u64) {
@@ -106,11 +120,11 @@ fn what_the_driver_made_of_a_pipeline_is_handed_to_the_next_engine() {
     let next = keeping(&turn, &folder);
     let made = pipeline(&next, &[WRITES_SEVEN], "main");
     assert_eq!(first_word(&next, &made), 7, "the next engine is handed it, and it is seven's");
-    assert_eq!(pipelines_found(&next), 1);
+    assert_eq!(pipelines_found(&next), taken(&next), "taken, where the driver takes what it is handed");
     let mut said = [0u64; 6];
     // SAFETY: `next` is live and `said` holds six words.
     unsafe { crate::device::gpu_engine_compiles(&next, said.as_mut_ptr()) };
-    assert_eq!(said[5], 1, "the frame statistics' COMPILE line says it was handed");
+    assert_eq!(said[5], taken(&next), "the frame statistics' COMPILE line says so");
 }
 
 // A kept pipeline cut short — a crash as it was written, a disk — is
@@ -201,13 +215,18 @@ fn a_pipeline_the_driver_does_not_take_is_made_again_and_kept_over() {
     ]
     .concat();
     std::fs::write(&seven, &forged).expect("eight's pipeline under seven's asking");
+    let forged_at = std::fs::metadata(&seven).and_then(|it| it.modified()).expect("its time");
+    // Past the file system's tick, so that a file written again is later.
+    std::thread::sleep(std::time::Duration::from_millis(50));
     let next = keeping(&turn, &folder);
     let made = pipeline(&next, &[WRITES_SEVEN], "main");
     assert_eq!(pipelines_found(&next), 0, "not taken, so made again");
     assert_eq!(first_word(&next, &made), 7, "and it is seven's");
+    let kept_at = std::fs::metadata(&seven).and_then(|it| it.modified()).expect("its time");
+    assert!(kept_at > forged_at, "what was made then is kept over it");
     let last = keeping(&turn, &folder);
     let handed = pipeline(&last, &[WRITES_SEVEN], "main");
-    assert_eq!(pipelines_found(&last), 1, "kept over what was not taken");
+    assert_eq!(pipelines_found(&last), taken(&last), "taken, where the driver takes what it is handed");
     assert_eq!(first_word(&last, &handed), 7);
 }
 
