@@ -91,11 +91,11 @@ double _stretched(double frames, double pixelsPerFrame) {
 /// the zoom it comes with is no step.
 void applyZoomAnchoredScroll(
   TwoAxisScrollController controller, {
-  required double oldPixelsPerFrame,
-  required double newPixelsPerFrame,
+  required ({double from, double to}) pixelsPerFrame,
   int? anchorFrame,
   bool anotherPlace = false,
 }) {
+  final (from: oldPixelsPerFrame, to: newPixelsPerFrame) = pixelsPerFrame;
   final hold = controller.zoomHold;
   controller.zoomHold = null;
   if (anotherPlace ||

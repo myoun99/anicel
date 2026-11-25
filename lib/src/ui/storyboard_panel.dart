@@ -2027,8 +2027,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // hear the fold rule the grids' call keeps.
     applyZoomAnchoredScroll(
       _horizontalController,
-      oldPixelsPerFrame: oldWidget.pixelsPerFrame,
-      newPixelsPerFrame: widget.pixelsPerFrame,
+      pixelsPerFrame: (
+        from: oldWidget.pixelsPerFrame,
+        to: widget.pixelsPerFrame,
+      ),
       anchorFrame: widget.playheadFrame?.value,
       anotherPlace: !identical(
         widget.frameAxisOffset,

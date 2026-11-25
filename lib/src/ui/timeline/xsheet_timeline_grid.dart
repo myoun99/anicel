@@ -447,8 +447,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     // as the horizontal timeline (Axis rule).
     applyZoomAnchoredScroll(
       _frameScrollController,
-      oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
-      newPixelsPerFrame: widget.metrics.frameCellWidth,
+      pixelsPerFrame: (
+        from: oldWidget.metrics.frameCellWidth,
+        to: widget.metrics.frameCellWidth,
+      ),
       anchorFrame: widget.hooks.frameCursor.value,
       anotherPlace: !identical(
         widget.frameAxisOffset,

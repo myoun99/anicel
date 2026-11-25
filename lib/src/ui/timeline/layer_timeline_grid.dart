@@ -425,8 +425,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // notch or a pinch held its own point.
     applyZoomAnchoredScroll(
       _horizontalScrollController,
-      oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
-      newPixelsPerFrame: widget.metrics.frameCellWidth,
+      pixelsPerFrame: (
+        from: oldWidget.metrics.frameCellWidth,
+        to: widget.metrics.frameCellWidth,
+      ),
       anchorFrame: widget.hooks.frameCursor.value,
       anotherPlace: !identical(
         widget.frameAxisOffset,
