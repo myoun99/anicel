@@ -556,16 +556,19 @@ class _RenderGridScreen extends RenderBox {
   /// where it is laid ([EngineScreenTexture.windowOf]) — so a frame that
   /// moved nothing lays nothing while a bigger one opens, either.
   ///
-  /// 🚨WITH A QUARTER OF ITS ROOM LEFT EITHER SIDE (card
+  /// 🚨WITH A THIRD OF ITS ROOM LEFT EITHER SIDE (card
   /// the-left-edge-of-the-rows-blinks-for-a-frame-as-a-scroll-rewinds,
   /// 검증 11-25): a lay is shown once the GPU has finished it, and the
   /// frame up meanwhile is the one laid before — so the screen is laid
   /// again while that one still has what the view shows, around it with
-  /// half its room either side, and a step of a quarter of it a frame is on
-  /// the frame up in every frame. ↩️Laid again once what the view shows had
-  /// left it: the frame up had not got the step past its edge, and the
-  /// rows, laying on the new one, did not draw it — a scroll's last step
-  /// blank at the edge it came to for a frame, nearly every time.
+  /// half its room either side, and a step of a third of it a frame is on
+  /// the frame up in every frame. The canvas's law, and its share: a pan
+  /// asks for the next frame with its margin, a third of its room, still to
+  /// spare (`_RenderFrameScreen._servedByTheFrameDrawnLast`). ↩️Laid again
+  /// once what the view shows had left it: the frame up had not got the
+  /// step past its edge, and the rows, laying on the new one, did not draw
+  /// it — a scroll's last step blank at the edge it came to for a frame,
+  /// nearly every time.
   static bool _has(Rect laid, Rect shown) =>
       _hasAlong(laid.left, laid.right, shown.left, shown.right) &&
       _hasAlong(laid.top, laid.bottom, shown.top, shown.bottom);
@@ -581,7 +584,7 @@ class _RenderGridScreen extends RenderBox {
     if (room < 0) {
       return start == shownFrom;
     }
-    final kept = (room / 4).floorToDouble();
+    final kept = (room / 3).floorToDouble();
     return start + kept <= shownFrom && end - kept >= shownTo;
   }
 
