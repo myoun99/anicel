@@ -154,6 +154,26 @@ void main() {
       expect(source.readIntoSync(buffer, -1, 4), 0);
     });
 
+    test("a reader's read off the isolate's wait is the same window, "
+        'clamped the same — what PDFium reads a PDF through', () async {
+      final archive = fakeArchive();
+      final reader = MediaArchiveBytes(
+        archivePath: archive.path,
+        dataOffset: archive.offset,
+        length: archive.length,
+      ).openWindowReader();
+      addTearDown(reader.close);
+      final buffer = Uint8List(16);
+
+      expect(await reader.readInto(buffer, 110, 16), 10);
+      expect(buffer.sublist(0, 10), [
+        for (var byte = 110; byte < 120; byte += 1) byte,
+      ]);
+      expect(buffer[10], 0, reason: '0xBB from the next entry never appears');
+      expect(await reader.readInto(buffer, 120, 4), 0);
+      expect(await reader.readInto(buffer, -1, 4), 0);
+    });
+
     test('an ENTRY names its own framing — the factory reads the name, the '
         'call site does not', () {
       final archive = fakeArchive();

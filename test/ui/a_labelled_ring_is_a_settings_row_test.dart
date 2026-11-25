@@ -1,4 +1,5 @@
 
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,7 @@ import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../helpers/boolean_dot_probe.dart';
 import '../helpers/text_finders.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// 🚨★★★A RING BESIDE A LABEL IS ONE ROW — 유저 answered board
 /// `one-boolean-row-shape-Q1` on 2026-09-24: 「**설정 줄 하나로**」.
@@ -48,6 +50,7 @@ import '../helpers/text_finders.dart';
 /// (tool-settings-panel-tidy, 유저 2026-10-10: 「켜고 끄는 줄도 같은
 /// 높이와 같은 글자」).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// ② — the ring's box starts where the label's box has ended.
   void expectRingRightOf(WidgetTester tester, Finder tile, Finder label) {
     final ring = tester.getRect(
@@ -117,7 +120,7 @@ void main() {
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -32,7 +32,8 @@ import 'sound_filters.dart' show FilteredSpan;
 import 'audio_decode_stream.dart';
 
 /// One conform request — every field a sendable value so the whole thing
-/// can cross an isolate boundary.
+/// can cross an isolate boundary, but [onReading], which stays on this side
+/// ([crossing]).
 class ConformRequest {
   const ConformRequest({
     required this.sourcePath,
@@ -43,7 +44,29 @@ class ConformRequest {
     this.bucketsPerSecond = 80,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
+    this.onReading,
   });
+
+  /// Hears, on THIS isolate, how much of the source the conform has read
+  /// of what it reads ([AudioConformPipeline.ensureConform]'s `onRead`) —
+  /// told across by the worker that conforms ([onAWorkerReporting]).
+  ///
+  /// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+  /// 바이트를 센다」): the import window's percent while a sound is made.
+  final void Function(double fraction)? onReading;
+
+  /// This request as it crosses to a worker: without [onReading], which no
+  /// isolate message carries.
+  ConformRequest get crossing => ConformRequest(
+    sourcePath: sourcePath,
+    conformPath: conformPath,
+    source: source,
+    carriedConform: carriedConform,
+    projectSampleRate: projectSampleRate,
+    bucketsPerSecond: bucketsPerSecond,
+    speedNumerator: speedNumerator,
+    speedDenominator: speedDenominator,
+  );
 
   final String sourcePath;
 
@@ -87,9 +110,16 @@ class ConformRequest {
 /// substitute a synchronous fake.
 typedef ConformRunner = Future<ConformResult> Function(ConformRequest request);
 
-/// The production runner.
+/// The production runner, telling [ConformRequest.onReading] how far it has
+/// read as it goes.
 Future<ConformResult> runConformInIsolate(ConformRequest request) =>
-    Isolate.run(() => runConformHere(request));
+    onAWorkerReporting(request.onReading, _conformJob(request.crossing));
+
+/// [request]'s conform as a reporting worker's job — made here, where the
+/// closure holds the request alone ([onAWorkerReporting]'s ⚠️).
+ConformResult Function(void Function(double fraction) report) _conformJob(
+  ConformRequest request,
+) => (report) => runConformHere(request, onRead: report);
 
 /// One rate conversion of already-conformed PCM — the device opened at a
 /// rate the conform is not at (WASAPI shared mode owns its own rate and
@@ -279,14 +309,18 @@ Future<Float32List> _pcmFromPcmInto<R extends _PcmFromPcm<R>>(
 /// The workers' jobs, each in a function of its own: [onAWorker] copies
 /// the closure's whole context, and these hold a request and an address.
 Future<_Landed<ConformResult>> _conformOnAWorker(ConformRequest request) =>
-    onAWorker(() {
-      final result = runConformHere(request);
-      return _placedOnTheWorker(
-        result,
-        result.samples,
-        () => result.withSamples(null),
-      );
-    });
+    onAWorkerReporting(request.onReading, _placedConformJob(request.crossing));
+
+/// [_conformJob]'s, its PCM placed where the device plays it.
+_Landed<ConformResult> Function(void Function(double fraction) report)
+_placedConformJob(ConformRequest request) => (report) {
+  final result = runConformHere(request, onRead: report);
+  return _placedOnTheWorker(
+    result,
+    result.samples,
+    () => result.withSamples(null),
+  );
+};
 
 /// [lent]: where the samples [request] left out lie, when it left them out.
 Future<_Landed<Float32List>> _fromLentOnAWorker<R extends _PcmFromPcm<R>>(
@@ -395,14 +429,16 @@ Float32List runFilterHere(FilterRequest request) {
 /// saw it (2026-09-24).
 ///
 /// [window]: only those of the sound's own frames, and only those held — see
-/// [QaAudioDecoder.decodeSpan].
+/// [QaAudioDecoder.decodeSpan], as [onProgress] is.
 ({Float32List samples, int channels, int sampleRate})? decodeAudioSource(
   MediaByteSource source, {
   ({int start, int count})? window,
+  void Function(double fraction)? onProgress,
 }) {
   final decoded = QaAudioDecoder.instance.decodeSpan(
     _spanOf(source),
     window: window,
+    onProgress: onProgress,
   );
   if (decoded == null) {
     return null;
@@ -434,8 +470,12 @@ MediaSpan _spanOf(MediaByteSource source) {
 
 /// The pipeline itself, on whichever isolate this is called from —
 /// [runConformInIsolate]'s worker body, and directly callable by tests
-/// that want the real native path without isolate indirection.
-ConformResult runConformHere(ConformRequest request) {
+/// that want the real native path without isolate indirection. [onRead]
+/// hears how much of the source it has read ([ConformRequest.onReading]).
+ConformResult runConformHere(
+  ConformRequest request, {
+  void Function(double fraction)? onRead,
+}) {
   final pipeline = AudioConformPipeline(
     decode: openAudioSource,
     // The engine's resampler, which always loads — its Dart twin is the
@@ -445,6 +485,7 @@ ConformResult runConformHere(ConformRequest request) {
     bucketsPerSecond: request.bucketsPerSecond,
     speedNumerator: request.speedNumerator,
     speedDenominator: request.speedDenominator,
+    onRead: onRead,
   );
   return pipeline.ensureConform(
     sourcePath: request.sourcePath,

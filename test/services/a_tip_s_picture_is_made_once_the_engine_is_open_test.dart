@@ -12,6 +12,7 @@ import 'package:anicel/src/services/brush_tip_image_codec.dart';
 import 'package:anicel/src/services/brush_tip_thumbnails.dart';
 
 import '../helpers/poll_until.dart';
+import '../helpers/the_apps_engine_let_go.dart';
 
 /// 🗣️tip-coverage-is-a-second-r1-Q1 (유저 2026-11-12): 「미리 만들어 둔다 —
 /// 엔진이 열리면 기다리지 않고 받아 둔다」. A tip's picture — its mask read
@@ -21,6 +22,7 @@ import '../helpers/poll_until.dart';
 void main() {
   test('🚨a picture asked for before the engine is open waits for it, '
       'opening nothing, and lands once it is open', () async {
+    theAppHasNoEngineYet();
     final mask = _ramp('asked-early');
     final picture = BrushTipThumbnails.instance.of(mask);
     await pumpEventQueue();

@@ -7,7 +7,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/rendering.dart' show RenderBox, RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/sync_image_upload.dart' show pictureOfUploads;
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -53,9 +53,11 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/ui/widgets/still_raster.dart' show StillRaster;
 
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/cels_parked_cold.dart';
+import '../../helpers/raster_parity.dart' show parityRoundingTolerance;
 import '../../helpers/settle_async.dart';
 
 /// 🗣️F-215 (유저 2026-09-28): 「콘티 프리뷰패널에서 브러시 허용 on시 그림들이
@@ -396,10 +398,23 @@ void main() {
           );
           return;
         }
+        // Every still region on screen, in the shot's pixels.
+        final regions = [
+          for (final element in find.byType(StillRaster).evaluate())
+            if (element.renderObject case final RenderBox region
+                when region.attached && region.hasSize)
+              Rect.fromPoints(
+                region.localToGlobal(Offset.zero) * ratio,
+                region.localToGlobal(region.size.bottomRight(Offset.zero)) *
+                    ratio,
+              ),
+        ];
         expect(
-          first.differingFrom(settled),
+          first.differingFrom(settled, composited: regions),
           0,
-          reason: 'what the switch drew is what stays on screen',
+          reason:
+              'what the switch drew is what stays on screen, first at '
+              '${first.unlike(settled, composited: regions)}',
         );
       });
     }
@@ -809,24 +824,60 @@ class _Shot {
     return found;
   }
 
-  /// The pixels that differ from [other]'s, as indices in reading order.
-  Iterable<int> _differing(_Shot other) sync* {
+  /// The pixels that differ from [other]'s, as indices in reading order —
+  /// inside [composited], only by more than an image's compositing rounds.
+  ///
+  /// ⚖️A still region's image is its content drawn onto a surface of its
+  /// own and composed over what lies under it, where drawn live it blends
+  /// once: the two agree in arithmetic and not in rounding, by up to
+  /// [parityRoundingTolerance] at an antialiased edge (`raster_parity.dart`,
+  /// the law every still region's parity is held to). A region whose image
+  /// was opaque — a capsule with its ground in it — composed back exactly;
+  /// one with a sheet in it (card a-hover-in-a-capsule-or-a-dock-takes-the-
+  /// regions-image-again, 2026-11-23) holds its rows over the sheet in an
+  /// image of their own, and the view pill's moved 954 pixels by 1/255 on
+  /// Impeller between the frame the switch was drawn in, live, and the one
+  /// that settled on its image. Outside every region the pixels are the
+  /// switch's, and there not one may move.
+  Iterable<int> _differing(
+    _Shot other, {
+    List<Rect> composited = const [],
+  }) sync* {
     for (var i = 0; i < rgba.length; i += 4) {
-      if (rgba[i] != other.rgba[i] ||
-          rgba[i + 1] != other.rgba[i + 1] ||
-          rgba[i + 2] != other.rgba[i + 2] ||
-          rgba[i + 3] != other.rgba[i + 3]) {
-        yield i ~/ 4;
+      var worst = 0;
+      for (var c = 0; c < 4; c += 1) {
+        final apart = (rgba[i + c] - other.rgba[i + c]).abs();
+        if (apart > worst) {
+          worst = apart;
+        }
       }
+      if (worst == 0) {
+        continue;
+      }
+      final pixel = i ~/ 4;
+      final at = Offset((pixel % width) + 0.5, (pixel ~/ width) + 0.5);
+      if (worst <= parityRoundingTolerance &&
+          composited.any((region) => region.contains(at))) {
+        continue;
+      }
+      yield pixel;
     }
   }
 
   /// Where the first [limit] pixels that differ from [other]'s lie, (x, y).
-  List<(int, int)> unlike(_Shot other, {int limit = 8}) => [
-    for (final pixel in _differing(other).take(limit))
+  List<(int, int)> unlike(
+    _Shot other, {
+    int limit = 8,
+    List<Rect> composited = const [],
+  }) => [
+    for (final pixel in _differing(
+      other,
+      composited: composited,
+    ).take(limit))
       (pixel % width, pixel ~/ width),
   ];
 
-  /// How many pixels differ from [other]'s.
-  int differingFrom(_Shot other) => _differing(other).length;
+  /// How many pixels differ from [other]'s ([_differing]).
+  int differingFrom(_Shot other, {List<Rect> composited = const []}) =>
+      _differing(other, composited: composited).length;
 }

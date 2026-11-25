@@ -1,5 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_sections.dart' show TimelineSection;
 import '../../models/playback_mode.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
@@ -40,11 +41,12 @@ class ProjectResume {
     this.tools = const {},
     this.playbackMode,
     this.timelineZoom = const {},
-    this.storyboardZoom,
+    this.conteZooms = const {},
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
     this.rulerView = FrameRulerView.frames,
     this.laneGraphs = LaneGraphsView.none,
+    this.hiddenSections = const {},
     this.mediaFileViews = const {},
   });
 
@@ -72,17 +74,20 @@ class ProjectResume {
   /// 「프로젝트와 같이 저장되도록」) — a cut nobody zoomed is not here.
   final Map<CutId, double> timelineZoom;
 
-  /// The conte's zoom (F-267) — null when it was left at its default.
-  final double? storyboardZoom;
+  /// The conte's zoom each timeline was left at, by its id (F-267 → H78) —
+  /// one the conte never showed is not here.
+  final Map<String, double> conteZooms;
 
-  /// How far each frame panel was scrolled along its frames, by rail, in
-  /// pixels at that panel's zoom (F-267) — a rail left at its start is not
-  /// here.
+  /// How far each frame panel was scrolled along its frames, by rail and
+  /// the place it shows — the cut, for the timeline panel and the sheet,
+  /// the timeline, for the conte (`PanelAxes`, H78) — in pixels at that
+  /// panel's zoom (F-267); one left at its start is not here.
   final Map<String, double> frameAxisOffsets;
 
   /// How far each frame panel was scrolled along its layers — the
-  /// timeline's rows, the sheet's columns, the conte's rows — by rail, in
-  /// pixels (F-267); a rail left at its start is not here.
+  /// timeline's rows, the sheet's columns, the conte's rows — by rail and
+  /// place as [frameAxisOffsets], in pixels (F-267); one left at its start
+  /// is not here.
   final Map<String, double> layerAxisOffsets;
 
   /// How the frame panels count a frame (초+코마 표시 · 페이지, F-354 · I-81 —
@@ -100,6 +105,13 @@ class ProjectResume {
   /// keeps it.
   final LaneGraphsView laneGraphs;
 
+  /// The SE and camera sections the frame panels hide (the timeline
+  /// toolbar's toggles, `RailView.hiddenSections`) — 🗣️H77 (유저
+  /// 2026-11-24 「se나 카메라 섹션 표시 상태가 파일에? 기억되도록」): a view
+  /// setting kept here as the zooms are. Hiding one is no edit, and the file
+  /// still keeps it; a file that says nothing shows every section.
+  final Set<TimelineSection> hiddenSections;
+
   /// The page and the framing each file was left at in the viewers, by the
   /// file's path (F-382, `MediaFileViews`) — a view kept here as the zooms
   /// are: looking at a reference is no edit, and the file still keeps it. A
@@ -116,7 +128,7 @@ class ProjectResume {
       'timelineZoom': {
         for (final entry in timelineZoom.entries) entry.key.value: entry.value,
       },
-    if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
+    if (conteZooms.isNotEmpty) 'conteZooms': conteZooms,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
     if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
     if (rulerView != FrameRulerView.frames)
@@ -134,6 +146,8 @@ class ProjectResume {
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
+    if (hiddenSections.isNotEmpty)
+      'hiddenSections': [for (final section in hiddenSections) section.name],
     if (mediaFileViews.isNotEmpty)
       'mediaFileViews': {
         for (final MapEntry(key: path, value: view) in mediaFileViews.entries)
@@ -162,7 +176,7 @@ class ProjectResume {
             in _positiveByName(json['timelineZoom']).entries)
           CutId(key): value,
       },
-      storyboardZoom: _positive(json['storyboardZoom']),
+      conteZooms: _positiveByName(json['conteZooms']),
       frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
       layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
       rulerView: FrameRulerView.fromJson(json['frameRuler']),
@@ -179,6 +193,11 @@ class ProjectResume {
               if (key is String && key.isNotEmpty) key,
         },
       ),
+      hiddenSections: {
+        if (json['hiddenSections'] case final List<Object?> names)
+          for (final section in TimelineSection.values)
+            if (names.contains(section.name)) section,
+      },
       mediaFileViews: {
         for (final MapEntry(:key, :value)
             in anicelObjectMapField(json['mediaFileViews']).entries)

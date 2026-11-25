@@ -585,10 +585,14 @@ class _WorkspaceBrushPresets {
     );
   }
 
+  /// A library's ＋: [importFromFile] picks, and brings in what it picked
+  /// behind the one wait window (H82).
   Future<void> _importAndNotice(
-    Future<String?> Function() importFromFile,
+    Future<String?> Function({required BringIn behind}) importFromFile,
   ) async {
-    final message = await importFromFile();
+    final message = await importFromFile(
+      behind: <T>(bring) => bringBehindTheWaitWindow(_state.context, bring),
+    );
     if (message == null || !_state.mounted) {
       return;
     }

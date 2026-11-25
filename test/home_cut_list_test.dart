@@ -1,6 +1,7 @@
 // HomePage widget tests — the cut list: order, create, duplicate, delete.
 // Split from widget_test.dart (2026-09-04) so the suite runs across
 // isolates; the shared probes live in helpers/home_page_probes.dart.
+import 'helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
@@ -14,6 +15,7 @@ import 'helpers/home_page_probes.dart';
 import 'helpers/app_icon_button_probe.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {

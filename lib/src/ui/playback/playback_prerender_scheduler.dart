@@ -9,6 +9,7 @@ import '../../models/cut_warm_extent.dart';
 import '../../models/onion_skin_settings.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../core/dev_profile.dart';
+import '../debug/warm_steps.dart';
 import 'playback_pictures.dart';
 
 /// How much of what is wanted is composited already.
@@ -643,6 +644,7 @@ class PlaybackPrerenderScheduler {
       return false;
     }
     final took = watch.elapsed;
+    WarmSteps.made(took.inMicroseconds);
     _composeTime = _composeTime == Duration.zero
         ? took
         : (_composeTime * 3 + took) ~/ 4;

@@ -46,7 +46,17 @@ void main() {
   late Map<String, Uint8List> palettesGot;
   late Map<String, Uint8List> fxPluginsGot;
 
+  /// Whether the import window stood as each library was brought into.
+  late List<bool> broughtBehindTheWindow;
+  void bringing() => broughtBehindTheWindow.add(
+    find
+        .byKey(const ValueKey<String>('import-progress-dialog'))
+        .evaluate()
+        .isNotEmpty,
+  );
+
   OpenedFilesDoor door() {
+    broughtBehindTheWindow = [];
     windowGot = [];
     windowToPool = false;
     projectsGot = [];
@@ -67,26 +77,31 @@ void main() {
       },
       bringBrushes: (name, bytes) async {
         done.add('brushes');
+        bringing();
         brushesGot[name] = bytes;
         return 'brushes from $name';
       },
       bringFont: (bytes) async {
         done.add('font');
+        bringing();
         fontsGot.add(bytes);
         return 'a font';
       },
       bringShortcuts: (files) async {
         done.add('shortcuts');
+        bringing();
         shortcutsGot = {for (final (:name, :bytes) in files) name: bytes};
         return ['keys from ${[for (final file in files) file.name]}'];
       },
       bringPalettes: (name, bytes) async {
         done.add('palettes');
+        bringing();
         palettesGot[name] = bytes;
         return 'colours from $name';
       },
       bringFxPlugins: (name, bytes) async {
         done.add('fx plugins');
+        bringing();
         fxPluginsGot[name] = bytes;
         return 'a plugin from $name';
       },
@@ -94,7 +109,9 @@ void main() {
   }
 
   /// [handed] through the door from inside a real Navigator, which its
-  /// notices need — closing each notice as it comes.
+  /// notices need — closing each notice as it comes. A frame at a time: the
+  /// wait window the libraries are brought behind turns for as long as it
+  /// stands, and never settles.
   Future<void> knock(
     WidgetTester tester,
     List<FolderGrant> handed, {
@@ -124,13 +141,13 @@ void main() {
       tester,
       () => finished,
       everyFrame: () async {
-        await tester.pumpAndSettle();
+        await tester.pump();
         final close = find.byKey(const ValueKey<String>('app-notice-close'));
         if (close.evaluate().isNotEmpty) {
           onNotice?.call();
           done.add('notice');
           await tester.tap(close);
-          await tester.pumpAndSettle();
+          await tester.pump();
         }
       },
     );
@@ -196,6 +213,40 @@ void main() {
       'default.khc': [4],
       'Mine.anishortcut': [8],
     });
+  });
+
+  // 🗣️H82 (유저 2026-11-24): 「갤탭에서 tvp브러시 임포트해봣는데 진행창이
+  // 안뜨고 갑자기 가져왔다고만 뜸. 다른거도 확인해서 뭐든 임포트면 통일해서
+  // 뜨게」.
+  testWidgets('🚨every library is brought into behind the one wait window — '
+      'the import window\'s — and it is down before what they said is said', (
+    tester,
+  ) async {
+    var windowAtNotice = true;
+    await knock(
+      tester,
+      [
+        fileNamed('Pack.tvpx', [7]),
+        fileNamed('Face.otf', [9]),
+        fileNamed('Skin.anipalette', [6]),
+        fileNamed('Invert.anifx', [3]),
+        fileNamed('default.khc', [4]),
+      ],
+      onNotice: () => windowAtNotice = find
+          .byKey(const ValueKey<String>('import-progress-dialog'))
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    expect(done.take(5), [
+      'brushes',
+      'font',
+      'palettes',
+      'fx plugins',
+      'shortcuts',
+    ], reason: '⛔premise: each was brought');
+    expect(broughtBehindTheWindow, List.filled(5, true));
+    expect(windowAtNotice, isFalse);
   });
 
   testWidgets('a program\'s shortcut files are handed over together, once '

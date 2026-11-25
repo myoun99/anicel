@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/export_scope_pick.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️유저 2026-10-05: 「출력은 정상적으로 됬는데 같은 겸용컷에서 타임시트랑
 /// 컷봉투 출력하려니 컷 없다고 뜨는데 이거뭐지? 겸용컷 문제 넓게 확인안한거
@@ -53,6 +55,7 @@ import '../../helpers/export_scope_pick.dart';
 /// Cels tab writes, under the cels' one scope — and the answer above is
 /// the same.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -143,7 +146,7 @@ void main() {
     // (a_linked_groups_cels_are_listed_in_the_windows_cut_test).
     await tester.binding.setSurfaceSize(const Size(1470, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

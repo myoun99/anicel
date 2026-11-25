@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 import '../../helpers/fill_pieces.dart';
 import '../brush_canvas_test_helpers.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// I-69 (유저 2026-10-04): 「브러시 상태를 그대로 사용해서 도형그림. 샤프
 /// 브러시 그대로 사각형 그린다던가 … 그냥 진짜 브러시랑 똑같이
@@ -534,6 +535,7 @@ void main() {
     ) async {
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
+      theTreeGoesFirst(tester);
       await _pump(tester, host, _brush(), overlay: overlay);
       return overlay;
     }
@@ -753,6 +755,7 @@ void main() {
       final host = _Host();
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
+      theTreeGoesFirst(tester);
       await _pump(tester, host, _brush(), overlay: overlay, cel: wide);
       final laid = debugStrokeDabsLaid = <BrushDab>[];
       host.show!.showStroke(long);
@@ -838,6 +841,7 @@ void main() {
       final host = _Host();
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
+      theTreeGoesFirst(tester);
       await _pump(tester, host, _brush(), overlay: overlay, cel: big);
       ShapeArea areaOf(CanvasSelectionShape shape) {
         final region = CanvasSelectionRegion.shape(shape);
@@ -906,6 +910,7 @@ void main() {
       final host = _Host();
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
+      theTreeGoesFirst(tester);
       await _pump(tester, host, _brush(), overlay: overlay, cel: big);
       final region = CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 10, top: 40, right: 60, bottom: 90),

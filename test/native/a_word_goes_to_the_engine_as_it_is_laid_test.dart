@@ -374,6 +374,7 @@ void main() {
 
   test('the faces are there once the bundle\'s are read — an order of them '
       'made once, the bundled order the bundled faces', () async {
+    EngineFaces.debugForget();
     expect(EngineFaces.areRead, isFalse, reason: 'premise: none asked yet');
     final bundled = await EngineFaces.bundled();
     expect(EngineFaces.areRead, isTrue);

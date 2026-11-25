@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/conte/conte_book_page.dart';
@@ -20,6 +21,7 @@ import '../../helpers/rail_group_button.dart';
 /// keeps where its pill stood ([CanvasFloorInsets.leftPillBeside]), so
 /// every panel laid there frames its first frame as it stands.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   final sheets = EditorWorkspace.railGroupId(right: true, slot: 2);
   String top(int slot) => EditorWorkspace.topGroupId(slot: slot);
   Finder band(String groupId) =>

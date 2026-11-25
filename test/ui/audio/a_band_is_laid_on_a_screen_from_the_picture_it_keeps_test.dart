@@ -94,6 +94,19 @@ void main() {
     expect(first.picture.debugHolds, 0, reason: 'freed: none holds it');
   });
 
+  test('🚨a band laid on a screen whose frame up does not show it yet says '
+      'so, and its painter draws it as well (card a-fast-vertical-timeline-'
+      'scroll-paints-row-pictures-a-notch-behind-their-labels)', () {
+    final band = EngineWaveBand();
+    addTearDown(band.letGo);
+    late bool laid;
+    final tiles = rowSlot(shownUp: false).paintThrough(
+      () => laid = band.layOn(onto, drawn(), 1),
+    );
+    expect(tiles, hasLength(1), reason: '⛔premise: it laid the band');
+    expect(laid, isFalse, reason: 'its painter draws it till a frame shows it');
+  });
+
   test('where no screen lays, it lays nothing and says so', () {
     final band = EngineWaveBand();
     addTearDown(band.letGo);

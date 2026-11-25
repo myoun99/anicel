@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -73,6 +74,7 @@ Future<EditorSessionManager> _open(WidgetTester tester) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('eye ON = the spans APPLY in the playback composite; a REAL '
       'tap on the STORYBOARD eye bypasses them — and a REAL tap on the '
       'TIMELINE clone row\'s eye brings them back', (tester) async {

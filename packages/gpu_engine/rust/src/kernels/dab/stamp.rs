@@ -33,10 +33,10 @@ pub(crate) mod tests;
 
 use std::ops::Range;
 
-use super::landing::{self, Asked, Finished, Laid, Over};
+use super::landing::{self, Asked, Finished, Laid, Landed, Over};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileAt, TileSet};
+use crate::kernels::composite::{Composite, TILE, TILE_BYTES, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::mesh::{MeshGrid, MeshOwners};
 use crate::kernels::pool::{Cel, Pool};
@@ -45,7 +45,7 @@ use crate::kernels::shared::{
     pipeline, plane, room, rows_a_binding, tiles_a_page, whole, words_bound, words_buffer,
 };
 use crate::kernels::warp::{Boxed, Warp, Window};
-use crate::kernels::write::{Change, Write};
+use crate::kernels::write::Write;
 
 /// The stops a gradient is looked up in: four to each level a channel
 /// takes — the count the app looked its gradient up in, when it painted
@@ -405,7 +405,7 @@ impl StampLanding {
         source: &Source,
         asked: &[Asked],
         laid: &Laid,
-    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+    ) -> Option<Vec<Landed>> {
         if asked.is_empty() {
             return Some(Vec::new());
         }

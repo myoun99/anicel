@@ -5,11 +5,31 @@ use std::ffi::c_void;
 
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::empty();
 
+/// No device opens here, so nothing is compiled to keep.
+pub fn keep_shaders(_device: &wgpu::Device, _folder: Option<std::path::PathBuf>) {}
+
+/// No device opens here.
+pub fn pipelines_found(_device: &wgpu::Device) -> Option<u64> {
+    None
+}
+
 pub struct SharedHandle;
 
 impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
         std::ptr::null_mut()
+    }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
+
+    /// How the buffer was laid out, read back off it — where the platform
+    /// lets the engine say ([`super::Laid`]): never here.
+    pub fn laid_said(&self) -> String {
+        String::new()
     }
 }
 
@@ -18,8 +38,14 @@ pub fn create(
     _width: u32,
     _height: u32,
     _format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     Err("no bridge to Flutter's screen on this platform yet".into())
+}
+
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "none".to_owned()
 }
 
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
@@ -33,4 +59,10 @@ pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
 /// Why the device went — unsaid: there is none here to go.
 pub fn device_went_by(_device: &wgpu::Device) -> u32 {
     super::WENT_UNSAID
+}
+
+/// What asks the device's driver whether it took the device — nothing:
+/// there is no device here to take.
+pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked> {
+    None
 }

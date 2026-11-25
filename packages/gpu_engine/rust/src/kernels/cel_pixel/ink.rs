@@ -18,11 +18,11 @@ use crate::device::Engine;
 use crate::kernels::composite::TileSet;
 use crate::kernels::mask::BYTE_WGSL;
 use crate::kernels::shared::{
-    Encoded, Given, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, pipeline, plane,
-    runs, tiles_a_pass,
+    Encoded, Given, INK_BOX_WGSL, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, le_words,
+    pipeline, plane, runs, tiles_a_pass,
 };
 
-use super::{TILE_WORDS, WALK_WGSL, entries, walk, words};
+use super::{TILE_WORDS, WALK_WGSL, entries, walk};
 
 /// The storage buffers a pass binds besides its pages: what it is given and
 /// the boxes — and the pass's first tile, a uniform.
@@ -58,7 +58,7 @@ impl Ink {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let read = pages.stored();
-        let sources = [TILE_WGSL, &read, BYTE_WGSL, WALK_WGSL, include_str!("ink.wgsl")];
+        let sources = [TILE_WGSL, &read, BYTE_WGSL, WALK_WGSL, INK_BOX_WGSL, include_str!("ink.wgsl")];
         Some(Self {
             scan: pipeline(engine, &sources, "ink_box"),
             pages,
@@ -89,8 +89,25 @@ impl Ink {
         engine: &Engine,
         pool: &[wgpu::Buffer],
         cel: &TileSet,
-        (per_pass, most): (usize, usize),
+        cut: (usize, usize),
     ) -> Option<Vec<TileInk>> {
+        match self.submitted_by(engine, pool, cel, cut)? {
+            None => Some(Vec::new()),
+            Some((places, boxes)) => Some(inks_of(&places, &engine.read_buffer(&boxes)?)),
+        }
+    }
+
+    /// The scan of `cel` submitted, its passes binding `per_pass` pages and
+    /// taking `most` tiles at most: each walked tile's place on the cel's
+    /// grid, in the walk's order, and the buffer the GPU writes their boxes
+    /// to — none where the walk met no tile, and nothing is submitted.
+    fn submitted_by(
+        &self,
+        engine: &Engine,
+        pool: &[wgpu::Buffer],
+        cel: &TileSet,
+        (per_pass, most): (usize, usize),
+    ) -> Option<Option<(Vec<(i32, i32)>, wgpu::Buffer)>> {
         cut_by(&self.pages, (per_pass, most))?;
         let walk = walk(cel, pool.len(), None)?;
         // ⚠️DX12 makes a buffer of nothing and reads it back, so no test
@@ -100,7 +117,7 @@ impl Ink {
         // buffer of nothing either, and past the binding a device would
         // refuse it where this refuses the cel.
         if walk.is_empty() {
-            return Some(Vec::new());
+            return Some(None);
         }
         let bytes = walk.len() as u64 * 16;
         fits(engine, &[bytes], std::iter::empty())?;
@@ -125,17 +142,39 @@ impl Ink {
             .collect();
         encode_on(engine, &mut encoder, &dispatches);
         engine.queue.submit([encoder.finish()]);
-        let boxes = words(&engine.read_buffer(&boxes)?);
-        let inks = walk.iter().zip(boxes.chunks_exact(4)).map(|(tile, found)| TileInk {
-            column: tile.column,
-            row: tile.row,
-            ink: (found[0] <= found[2]).then_some(InkBox {
-                left: found[0],
-                top: found[1],
-                right: found[2] + 1,
-                bottom: found[3] + 1,
-            }),
-        });
-        Some(inks.collect())
+        let places = walk.iter().map(|tile| (tile.column, tile.row)).collect();
+        Some(Some((places, boxes)))
     }
+}
+
+impl InkBox {
+    /// The box `found` — four words of shared/ink_box.wgsl's fold: the
+    /// least column and row, then the greatest — says: none where its left
+    /// passed its right.
+    pub(crate) fn of(found: &[u32]) -> Option<Self> {
+        (found[0] <= found[2]).then_some(Self {
+            left: found[0],
+            top: found[1],
+            right: found[2] + 1,
+            bottom: found[3] + 1,
+        })
+    }
+
+    /// `ink` as the app reads a box: its left, top, right and bottom —
+    /// four 0s where there is none.
+    pub(crate) fn words(ink: Option<Self>) -> [i32; 4] {
+        ink.map_or([0; 4], |ink| [ink.left, ink.top, ink.right, ink.bottom].map(|edge| edge as i32))
+    }
+}
+
+/// Each tile at `places` — the walk's order — and its ink, as `boxes`, the
+/// bytes the scan wrote, say it: four words a tile.
+fn inks_of(places: &[(i32, i32)], boxes: &[u8]) -> Vec<TileInk> {
+    let boxes = le_words(boxes);
+    let inks = places.iter().zip(boxes.chunks_exact(4)).map(|(&(column, row), found)| TileInk {
+        column,
+        row,
+        ink: InkBox::of(found),
+    });
+    inks.collect()
 }

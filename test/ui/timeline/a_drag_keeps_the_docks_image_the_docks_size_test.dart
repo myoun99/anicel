@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
+import 'package:anicel/src/ui/widgets/live_sheet.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 
 /// 🚨A DRAG KEEPS THE TIMELINE DOCK'S IMAGE THE DOCK'S SIZE (10-27,
@@ -54,6 +55,16 @@ import 'package:anicel/src/ui/widgets/still_raster.dart';
 /// times the dock went unseen (11-09).
 void main() {
   setUpAll(openAppGpuEngine);
+
+  /// Whether [box] is painted in [region].
+  bool heldBy(RenderObject box, RenderStillRaster region) {
+    for (RenderObject? above = box; above != null; above = above.parent) {
+      if (identical(above, region)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   bool holdsAScreen(ContainerLayer layer) {
     for (var child = layer.firstChild;
@@ -206,11 +217,27 @@ void main() {
         region.getTransformTo(null),
         Offset.zero & region.size,
       );
-      final over = tester
-          .getRect(find.byType(TimelineGridScreenHost))
-          .intersect(dock);
+      // What stands over a layer always drawn live is in the image a second
+      // time, each its due, counted alike: the grid's screen, and every
+      // sheet a hover is laid on ([LiveSheet] — what is painted over it is
+      // a part of its own, so the hover is drawn live between it and its
+      // ground; card a-drag-holds-more-than-the-dock-once-on-master, 관제
+      // 11-25 「시트 위 몫도 격자 화면 몫과 같은 법으로」).
+      final overLive = [
+        tester.getRect(find.byType(TimelineGridScreenHost)),
+        for (final sheet in find.byType(LiveSheet).evaluate())
+          if (sheet.renderObject case final RenderBox box
+              when box.attached && heldBy(box, region))
+            box.localToGlobal(Offset.zero) & box.size,
+      ];
       // 🔬1.09 of the two: the corner beside the shorter part stays empty.
-      final due = (bytesOf(region.size) + bytesOf(over.size)) * 1.10;
+      final due =
+          (bytesOf(region.size) +
+              overLive.fold(
+                0,
+                (sum, over) => sum + bytesOf(over.intersect(dock).size),
+              )) *
+          1.10;
       expect(
         region.rasterBytes,
         inInclusiveRange(1, due),

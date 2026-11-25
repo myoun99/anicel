@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/made_once.dart';
 import '../../models/font_face_facts.dart';
 import '../../services/font_file_reader.dart';
 import '../../services/font_library_service.dart';
@@ -218,9 +219,9 @@ class ImportedFonts extends ChangeNotifier {
   /// Once, whoever asks and however often: a font brought before the index
   /// was read waits for this ([importBytes]), so nothing is ever done to a
   /// library that has not been read.
-  Future<void> load() => _indexRead ??= _readIndex();
+  Future<void> load() => _indexRead.of(_readIndex);
 
-  Future<void>? _indexRead;
+  final _indexRead = MadeOnce<void>();
 
   Future<void> _readIndex() async {
     final read = await _service.loadIndex();
@@ -231,8 +232,9 @@ class ImportedFonts extends ChangeNotifier {
     _tell();
   }
 
-  /// Picks a file and brings it as a font ([importBytes]).
-  Future<FontImportOutcome> importFromFile() async {
+  /// Picks a file and brings it as a font ([importBytes]), [behind] what
+  /// the door stands it behind.
+  Future<FontImportOutcome> importFromFile({required BringIn behind}) async {
     String? family;
     final refusal = await importPickedFile(
       pick: _picker,
@@ -242,6 +244,7 @@ class ImportedFonts extends ChangeNotifier {
         family = outcome.family;
         return outcome.refusal;
       },
+      behind: behind,
     );
     return (family: family, refusal: refusal);
   }

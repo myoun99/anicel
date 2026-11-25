@@ -1017,6 +1017,11 @@ enum AppStrings {
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlNoLayers => _s('tlNoLayers');
+
+  /// The notice over a rasterize that left rows the references they are —
+  /// a file that would not open, a use changed while it was read
+  /// (🗣️F-374-Q11 「막고 경고」).
+  String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
   String get tlLinkedWith => _s('tlLinkedWith');
@@ -1895,6 +1900,8 @@ enum AppStrings {
 
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
+  String get imAddFiles => _s('imAddFiles');
+  String get imAddFolder => _s('imAddFolder');
   String imFileCount(int count) =>
       _s('imFileCountTemplate').replaceAll('{n}', '$count');
   String get imStatusImporting => _s('imStatusImporting');
@@ -3486,6 +3493,8 @@ enum AppStrings {
     'imPsdMerge': 'Merge layers',
     'imPsdExpand': 'Keep layers',
     'imNoSource': 'No source selected',
+    'imAddFiles': 'Add files',
+    'imAddFolder': 'Add folder',
     'imFileCountTemplate': '{n} files',
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
@@ -3876,6 +3885,7 @@ enum AppStrings {
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
     'tlNoLayers': 'No layers',
+    'rasterizeLeftReferences': 'Some layers were left as references.',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
     'tlLinkedWith': 'Linked with',
@@ -4301,11 +4311,7 @@ enum AppStrings {
     'shortcutAction.window-region-fold': 'タイムライン領域を畳む / 開く',
     'shortcutAction.window-reset-layout': 'ワークスペース配置をリセット',
     'menuAction.edit-debug': 'デバッグ',
-    'shortcutAction.edit-input-inspector': '入力インスペクタ',
-    'shortcutAction.edit-frame-timing-overlay': 'フレームタイミングのオーバーレイ',
-    'shortcutAction.edit-frame-stats': 'フレーム統計',
-    'shortcutAction.edit-engine-stages': 'エンジンの段階別時間',
-    'shortcutAction.edit-show-repaints': '再描画を表示',
+    'shortcutAction.edit-debug-window': 'デバッグウィンドウ',
     'shortcutAction.help-about': 'Anicel について',
     'shortcutAction.help-send-feedback': 'フィードバックを送る',
     'fileOpenTitle': 'プロジェクトを開く',
@@ -5142,6 +5148,7 @@ enum AppStrings {
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
     'importWarning.soundMissing': 'この場所に音声ファイルがありません: {path}',
     'importWarning.celUnreadable': '{file}: 絵を読めませんでした — {detail}',
+    'importWarning.fileUnreadable': '{file}: ファイルを読めませんでした — {detail}',
     'importWarning.psdBitDepth': '{depth}ビットのドキュメントを8ビットに落としました。',
     'importWarning.psdVectorMask': '{name}: ベクターマスクを無視しました。',
     'importWarning.psdComposite': '合成画像の圧縮形式 {compression} には対応していません — 飛ばしました。',
@@ -5335,6 +5342,8 @@ enum AppStrings {
     'imPsdMerge': 'レイヤーを統合',
     'imPsdExpand': 'レイヤーを保持',
     'imNoSource': 'ソースが選ばれていません',
+    'imAddFiles': 'ファイルを追加',
+    'imAddFolder': 'フォルダを追加',
     'imFileCountTemplate': '{n}個のファイル',
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
@@ -5849,6 +5858,7 @@ enum AppStrings {
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
     'tlNoLayers': 'レイヤーがありません',
+    'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
     'tlLinkedWith': '兼用先',
@@ -6279,11 +6289,7 @@ enum AppStrings {
     'shortcutAction.window-region-fold': '타임라인 영역 접기 / 펼치기',
     'shortcutAction.window-reset-layout': '작업공간 배치 초기화',
     'menuAction.edit-debug': '디버그',
-    'shortcutAction.edit-input-inspector': '입력 인스펙터',
-    'shortcutAction.edit-frame-timing-overlay': '프레임 타이밍 오버레이',
-    'shortcutAction.edit-frame-stats': '프레임 통계',
-    'shortcutAction.edit-engine-stages': '엔진 단계별 시간',
-    'shortcutAction.edit-show-repaints': '다시 그리기 표시',
+    'shortcutAction.edit-debug-window': '디버그 창',
     'shortcutAction.help-about': 'Anicel 정보',
     'shortcutAction.help-send-feedback': '의견 보내기',
     'fileOpenTitle': '프로젝트 열기',
@@ -7128,6 +7134,7 @@ enum AppStrings {
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
     'importWarning.soundMissing': '사운드 파일이 이 자리에 없습니다: {path}',
     'importWarning.celUnreadable': '{file}: 그림을 읽지 못했습니다 — {detail}',
+    'importWarning.fileUnreadable': '{file}: 파일을 읽지 못했습니다 — {detail}',
     'importWarning.psdBitDepth': '{depth}비트 문서를 8비트로 낮췄습니다.',
     'importWarning.psdVectorMask': '{name}: 벡터 마스크를 무시했습니다.',
     'importWarning.psdComposite': '합성 이미지의 압축 방식 {compression} 은(는) 지원하지 않습니다 — 건너뛰었습니다.',
@@ -7320,6 +7327,8 @@ enum AppStrings {
     'imPsdMerge': '레이어 합치기',
     'imPsdExpand': '레이어 보존',
     'imNoSource': '고른 소스가 없습니다',
+    'imAddFiles': '파일 추가',
+    'imAddFolder': '폴더 추가',
     'imFileCountTemplate': '파일 {n}개',
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
@@ -7828,6 +7837,7 @@ enum AppStrings {
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
     'tlNoLayers': '레이어 없음',
+    'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
     'tlLinkedWith': '겸용 대상',
@@ -8282,12 +8292,7 @@ enum AppStrings {
     'shortcutAction.window-region-fold': 'Replier / déplier la zone de timeline',
     'shortcutAction.window-reset-layout': "Réinitialiser l'espace de travail",
     'menuAction.edit-debug': 'Débogage',
-    'shortcutAction.edit-input-inspector': "Inspecteur d'entrée",
-    'shortcutAction.edit-frame-timing-overlay':
-        'Superposition du minutage des images',
-    'shortcutAction.edit-frame-stats': 'Statistiques des images',
-    'shortcutAction.edit-engine-stages': 'Temps du moteur par étape',
-    'shortcutAction.edit-show-repaints': 'Afficher les redessins',
+    'shortcutAction.edit-debug-window': 'Fenêtre de débogage',
     'shortcutAction.help-about': 'À propos de Anicel',
     'shortcutAction.help-send-feedback': 'Envoyer un avis',
     'fileOpenTitle': 'Ouvrir un projet',
@@ -9188,6 +9193,8 @@ enum AppStrings {
         'Le fichier son n\'est pas à cet emplacement : {path}',
     'importWarning.celUnreadable':
         '{file} : impossible de lire l\'image — {detail}',
+    'importWarning.fileUnreadable':
+        '{file} : impossible de lire le fichier — {detail}',
     'importWarning.psdBitDepth': 'Document {depth} bits ramené à 8 bits.',
     'importWarning.psdVectorMask': '{name} : masque vectoriel ignoré.',
     'importWarning.psdComposite':
@@ -9449,6 +9456,8 @@ enum AppStrings {
     'imPsdMerge': 'Fusionner les calques',
     'imPsdExpand': 'Garder les calques',
     'imNoSource': 'Aucune source',
+    'imAddFiles': 'Ajouter des fichiers',
+    'imAddFolder': 'Ajouter un dossier',
     'imFileCountTemplate': '{n} fichiers',
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
@@ -9961,6 +9970,7 @@ enum AppStrings {
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
     'tlNoLayers': 'Aucun calque',
+    'rasterizeLeftReferences': 'Certains calques restent des références.',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
     'tlLinkedWith': 'Lié à',
@@ -10421,11 +10431,7 @@ enum AppStrings {
     'shortcutAction.window-region-fold': '折叠 / 展开时间轴区域',
     'shortcutAction.window-reset-layout': '重置工作区布局',
     'menuAction.edit-debug': '调试',
-    'shortcutAction.edit-input-inspector': '输入检查器',
-    'shortcutAction.edit-frame-timing-overlay': '帧时序叠加',
-    'shortcutAction.edit-frame-stats': '帧统计',
-    'shortcutAction.edit-engine-stages': '引擎分段耗时',
-    'shortcutAction.edit-show-repaints': '显示重绘',
+    'shortcutAction.edit-debug-window': '调试窗口',
     'shortcutAction.help-about': '关于 Anicel',
     'shortcutAction.help-send-feedback': '发送反馈',
     'fileOpenTitle': '打开项目',
@@ -11206,6 +11212,7 @@ enum AppStrings {
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
     'importWarning.soundMissing': '此位置没有声音文件：{path}',
     'importWarning.celUnreadable': '{file}：无法读取该画面——{detail}',
+    'importWarning.fileUnreadable': '{file}：无法读取文件——{detail}',
     'importWarning.psdBitDepth': '{depth} 位文档已降为 8 位。',
     'importWarning.psdVectorMask': '{name}：已忽略矢量蒙版。',
     'importWarning.psdComposite': '合成图像使用压缩方式 {compression}——已跳过。',
@@ -11385,6 +11392,8 @@ enum AppStrings {
     'imPsdMerge': '合并图层',
     'imPsdExpand': '保留图层',
     'imNoSource': '未选择来源',
+    'imAddFiles': '添加文件',
+    'imAddFolder': '添加文件夹',
     'imFileCountTemplate': '{n} 个文件',
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
@@ -11851,6 +11860,7 @@ enum AppStrings {
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',
     'tlNoLayers': '没有图层',
+    'rasterizeLeftReferences': '部分图层仍保留为参照。',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
     'tlLinkedWith': '链接到',

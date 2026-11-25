@@ -298,3 +298,45 @@ fn nothing_is_read_from_nothing() {
     }
     std::fs::remove_file(path.path()).expect("cleanup");
 }
+
+/// 🚨HOW FAR A MEDIUM IS READ is the furthest byte any read handed back —
+/// a read behind it moves nothing, one past the end counts nothing — the
+/// medium's own bytes whether it is stored plain or framed, and a span
+/// opened again for another reader counts into the first's
+/// ([Span::reaching]): what a decoder has read, whichever reads it
+/// (🗣️유저 11-23, decoder-reads-skip-the-percent-Q2 「디코더가 읽은 바이트를
+/// 센다」).
+#[test]
+fn how_far_a_medium_is_read_is_the_furthest_byte_its_readers_handed_back() {
+    let bytes = medium(5000);
+    let blob = framed(&bytes, 1000);
+    let (plain, plain_at) = archive(&bytes);
+    let (kept, kept_at) = archive(&blob);
+    let plain = file("reach-plain", &plain);
+    let kept = file("reach-framed", &kept);
+    for (what, path, offset, length, is_framed) in [
+        ("plain", plain.path(), plain_at, bytes.len() as i64, false),
+        ("framed", kept.path(), kept_at, blob.len() as i64, true),
+    ] {
+        let name = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+        let mut span = Span::open(&name, offset, length, is_framed).expect("opened");
+        let reach = span.reach();
+        assert_eq!(reach.get(), 0, "{what}: nothing read yet");
+        let mut out = [0u8; 100];
+        assert_eq!(span.read(1200, &mut out), Some(100));
+        assert_eq!(reach.get(), 1300, "{what}: to the end of the read");
+        assert_eq!(span.read(10, &mut out), Some(100));
+        assert_eq!(reach.get(), 1300, "{what}: a read behind it moves nothing");
+        assert_eq!(span.read(4950, &mut out), Some(50));
+        assert_eq!(reach.get(), 5000, "{what}: to the medium's end, never past it");
+        assert_eq!(span.read(6000, &mut out), Some(0));
+        assert_eq!(reach.get(), 5000, "{what}: past the end, nothing");
+
+        reach.from_nothing();
+        let mut again = Span::open(&name, offset, length, is_framed).expect("opened").reaching(reach.clone());
+        assert_eq!(again.read(2000, &mut out), Some(100));
+        assert_eq!(reach.get(), 2100, "{what}: a span opened again counts into the first's");
+        assert_eq!(span.reach().get(), 2100, "{what}: one count");
+        drop((span, again));
+    }
+}

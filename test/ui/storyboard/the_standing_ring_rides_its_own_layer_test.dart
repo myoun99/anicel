@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +26,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 /// its own now, as the timeline's playhead does — and since F-212 the ring
 /// paints nothing, but the standing cell still moves with the playhead.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 24;
 
   Project project() => Project(

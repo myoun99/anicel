@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -42,6 +43,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 /// exercised, not merely counted: each is CALLED and its answer checked, so
 /// a hook wired to something that cannot answer still fails.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Cut cut(String id) => Cut(
     id: CutId(id),
     name: id,

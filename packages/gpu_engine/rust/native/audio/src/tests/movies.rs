@@ -4,7 +4,10 @@
 //! connection round deleted the C (connection-round-checklist H,
 //! 2026-11-08).
 
-use super::{Sounds, Span, TempFile, between_junk, decode, expect_the_same_sound, expect_window_of, framed, noise};
+use super::{
+    Sounds, Span, TempFile, between_junk, decode, expect_the_same_sound, expect_window_of, framed, noise,
+    read_through_in_pieces,
+};
 use crate::FORMAT_MOVIE_PCM;
 
 /// How a writer stores a movie's sound: the description's type, its
@@ -410,4 +413,32 @@ fn expect_refused(what: &str, bytes: &[u8]) {
     let file = TempFile::new("refused.mov", bytes);
     let span = Span::whole(file.path());
     assert_ne!(decode(&span, 0, -1).format, FORMAT_MOVIE_PCM, "{what}");
+}
+
+/// 🚨HOW FAR A MOVIE'S SOUND IS READ WALKS THE MOVIE as its sound comes —
+/// the movie's box at the file's END (a movie not made for the web) is the
+/// decoder's way in, not the walk (`Stream::begin`'s count from nothing) —
+/// over the picture's bytes between the sound's chunks, to the sound's
+/// last; and so of a movie the save framed, inside the project file
+/// (🗣️유저 11-23, decoder-reads-skip-the-percent-Q2 「디코더가 읽은 바이트를
+/// 센다」 — the import window's percent while a movie's sound is made).
+#[test]
+fn how_far_a_movie_s_sound_is_read_walks_the_movie_as_the_sound_comes() {
+    let reel = Layout { chunks: vec![250; 8], between: 4000, ..Layout::default() };
+    let bytes = movie(&SOWT, 2, &reel);
+    let plain = TempFile::new("walked.mov", &bytes);
+    let blob = framed(&bytes, 3000);
+    let (kept, kept_at) = between_junk("walked-framed.mov", &blob);
+    for (what, span) in [
+        ("plain", Span::whole(plain.path())),
+        ("framed", Span { path: kept.path(), offset: kept_at, length: blob.len() as i64, framed: true }),
+    ] {
+        let said = read_through_in_pieces(&span, 250);
+        assert!(said.len() > 4, "{what}: {said:?}");
+        assert!(said[0] < 0.25, "{what}: {said:?} — the box at the end is the way in");
+        assert!(said.windows(2).all(|two| two[0] <= two[1]), "{what}: {said:?}");
+        let middle = said[said.len() / 2];
+        assert!(said[0] < middle && middle < 0.8, "{what}: {said:?} — a step at a time");
+        assert!(*said.last().expect("read") > 0.85, "{what}: {said:?} — to the sound's last chunk");
+    }
 }

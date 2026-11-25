@@ -1132,6 +1132,34 @@ fn a_ui_that_stands_holding_what_was_heard_never_stands_the_drain() {
     assert_eq!(count, 2, "what was taken while it stood, heard once it was let go");
 }
 
+// 🔬공통 11-23 08:06, the crate's gate in debug: a move's packet, taken by
+// the drain it woke while a poll held what was heard, waited for the drain
+// after — ten seconds here (`a_move_whose_packet_is_not_heard_yet_wakes_the_reader`
+// went red), 4 ms in the app, past the move's own pairing
+// (pen-receive-threads-are-one).
+#[test]
+fn what_the_drain_took_while_the_ui_held_what_was_heard_is_heard_at_its_next_read() {
+    let (driver, _turn) = driver();
+    let _window = AppWindow::show();
+    driver.play(&installed(&[queued(1000, 100)]));
+    assert_eq!(wintab::open_drained_every(150, ASLEEP), Ok(()));
+    assert_eq!(handed_soon(), 1, "the first drain heard");
+    driver.play(&installed(&[queued(1004, 200)]));
+    let held = wintab::hold();
+    let before = driver.seen().asks;
+    crate::receiver::now(crate::receiver::Work::Drain, ASLEEP);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while driver.seen().asks == before && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    let drained = driver.seen().asks > before;
+    drop(held);
+    let count = handed_within(std::time::Duration::from_millis(200));
+    crate::qat_close();
+    assert!(drained, "LIVENESS — the woken drain took the queue while the UI held");
+    assert_eq!(count, 1, "taken while the UI held, heard at the UI's next read and not a drain later");
+}
+
 // 🚨NO CALL INTO THE DRIVER ON A CONTEXT ONCE IT IS CLOSED: the drain is
 // taken away under its lock, so a drain the receiver is in ends first and
 // none comes after — what the drain thread's join kept before

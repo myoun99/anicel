@@ -1089,7 +1089,7 @@ abstract final class FolderPicker {
                 },
         );
         if (!done) {
-          throw FileSystemException('파일을 읽지 못했습니다', path);
+          throw FileSystemException('still coming when the wait ran out', path);
         }
       } on Object {
         over = true;
@@ -1103,7 +1103,7 @@ abstract final class FolderPicker {
         }
         return (path: copy.destination, staged: false);
       }
-      throw FileSystemException('파일을 읽지 못했습니다', path);
+      throw FileSystemException(await copy.refusal ?? 'unavailable', path);
     }
     // 🎯THE PROVIDER IS ASKED BEFORE THE FILE IS BELIEVED. A materialised
     // item reads at once — and it may be the copy the provider cached last
@@ -1157,7 +1157,21 @@ abstract final class FolderPicker {
     } on FileSystemException {
       // Never written, or held: the room goes with the run either way.
     }
-    throw FileSystemException('파일을 읽지 못했습니다', path);
+    throw FileSystemException(await _whyUnread(path), path);
+  }
+
+  /// Why the pick at [path] did not read, as a warning's detail says it
+  /// (H72: 「읽을수없다」 named no reason, so the Galaxy Tab's road could not
+  /// be told from a photo of it).
+  static Future<String> _whyUnread(String path) async {
+    if (!await File(path).exists()) {
+      return 'no file at its path';
+    }
+    return switch (await arrivalOf(path)) {
+      FileArrival.nothing => 'none of it could be read',
+      FileArrival.partway => 'only part of it arrived',
+      FileArrival.whole => 'it arrived only after the wait',
+    };
   }
 
   /// Lets go of [source]'s copy when it is the staged one

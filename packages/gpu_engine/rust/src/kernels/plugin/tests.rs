@@ -109,6 +109,18 @@ fn every_fixture_draws_on_the_device_what_the_cpu_draws() {
     }
 }
 
+/// A plugin's group is any shape of 256 invocations (fx_wgsl's check), so
+/// the tallest is one across and 256 down — which the device the engine
+/// opens gives a group for it (`used`, in `device.rs`: the engine's own
+/// groups go 16 down).
+#[test]
+fn a_group_one_across_and_256_down_draws_on_the_device_what_the_cpu_draws() {
+    let source = "@compute @workgroup_size(1, 256)\nfn anicel_render(@builtin(global_invocation_id) at: vec3<u32>) {\n\
+                  let here = anicel_here();\nanicel_out(anicel_in(here.x, here.y) ^ u32(here.x * 31 + here.y));\n}\n\
+                  fn anicel_reach() -> u32 { return 0u; }";
+    assert_eq!(assert_alike("one across, 256 down", &Given::new([3, 300], 0, &[]), source), Ok(()));
+}
+
 #[test]
 fn an_endless_plugin_is_cut_on_the_device_where_the_cpu_cuts_it() {
     let mut given = Given::new([19, 7], 0, &[]);

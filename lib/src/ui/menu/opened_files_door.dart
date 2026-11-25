@@ -10,6 +10,7 @@ import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../brush/picked_file.dart' show PickedFile;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
+import '../dialogs/behind_the_wait_window.dart' show bringBehindTheWaitWindow;
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/open_file_flow.dart' show noticeUnsupportedFiles;
 import '../text/app_strings.dart';
@@ -185,24 +186,9 @@ final class OpenedFilesDoor {
         return;
       }
     }
-    final shortcuts = [
-      for (final grant in sorted.shortcuts) await _read(grant),
-    ];
-    final said = [
-      for (final grant in sorted.brushes) await _bring(grant, bringBrushes),
-      for (final grant in sorted.fonts)
-        await _bring(grant, (_, bytes) => bringFont(bytes)),
-      for (final grant in sorted.palettes) await _bring(grant, bringPalettes),
-      for (final grant in sorted.fxPlugins)
-        await _bring(grant, bringFxPlugins),
-      for (final (:name, :bytes) in shortcuts)
-        if (bytes == null) AppText.strings.imUnreadable(name),
-      if (shortcuts.any((file) => file.bytes != null))
-        ...await bringShortcuts([
-          for (final (:name, :bytes) in shortcuts)
-            if (bytes != null) (name: name, bytes: bytes),
-        ]),
-    ].nonNulls.toList();
+    final said = _intoTheLibraries(sorted)
+        ? await bringBehindTheWaitWindow(context, () => _bringAll(sorted))
+        : const <String>[];
     if (!context.mounted) {
       return;
     }
@@ -230,6 +216,40 @@ final class OpenedFilesDoor {
     if (sorted.projects.isNotEmpty) {
       await openProjects(sorted.projects);
     }
+  }
+
+  /// Whether any of [sorted] goes into a library — a brush, a font, a
+  /// palette, an fx plugin, a program's shortcuts.
+  static bool _intoTheLibraries(SortedOpen sorted) => [
+    sorted.brushes,
+    sorted.fonts,
+    sorted.palettes,
+    sorted.fxPlugins,
+    sorted.shortcuts,
+  ].any((files) => files.isNotEmpty);
+
+  /// [sorted]'s files read and brought into their libraries, behind the one
+  /// wait window (H82 🗣️유저 2026-11-24: 「뭐든 임포트면 통일해서 뜨게」) —
+  /// what each said.
+  Future<List<String>> _bringAll(SortedOpen sorted) async {
+    final shortcuts = [
+      for (final grant in sorted.shortcuts) await _read(grant),
+    ];
+    return [
+      for (final grant in sorted.brushes) await _bring(grant, bringBrushes),
+      for (final grant in sorted.fonts)
+        await _bring(grant, (_, bytes) => bringFont(bytes)),
+      for (final grant in sorted.palettes) await _bring(grant, bringPalettes),
+      for (final grant in sorted.fxPlugins)
+        await _bring(grant, bringFxPlugins),
+      for (final (:name, :bytes) in shortcuts)
+        if (bytes == null) AppText.strings.imUnreadable(name),
+      if (shortcuts.any((file) => file.bytes != null))
+        ...await bringShortcuts([
+          for (final (:name, :bytes) in shortcuts)
+            if (bytes != null) (name: name, bytes: bytes),
+        ]),
+    ].nonNulls.toList();
   }
 
   /// [grant]'s bytes handed to [bring] under the file's own name — what it

@@ -1,0 +1,390 @@
+A HardwareBuffer texture (patch 0006) tells its producer when the GPU has read
+what each frame drew of it (board the-galaxy-tab-canvas-went-slow-on-build-1095,
+위험 1). The producer showed a buffer once its own GPU had finished it, and
+wrote it again as soon as it was not shown — while the raster thread, a layer
+tree behind (pipeline depth 2), and the GPU after it could still be reading it
+for the frame that showed it.
+
+createHardwareBufferTexture(buffer, readSignal) takes a native function the
+reads are told to: `void (*)(int64_t texture_id, int32_t kind, uint64_t count)`.
+The texture counts the paints that drew its image. Once a frame is submitted
+(Rasterizer, after the frame's Submit — Texture::OnFrameSubmitted, every
+texture alike), the Impeller Vulkan texture tells "submitted through count"
+(kind 0) and submits an empty command buffer whose completion — its fence
+covers what the queue took before it — tells "read through count" (kind 1),
+on error too, so no producer stands waiting on a failed submit. A frame that
+did not draw the texture tells nothing: the last frame that drew it told its
+own reads. The GL texture tells nothing, and its producer sees no reads to
+wait for. A readSignal of 0 asks for none.
+
+The producer's side (gpu_engine's ScreenTexture) writes a buffer again only
+once two UI frames have begun since the last layer tree that showed it — the
+pipeline has submitted that tree then — and the reads have caught up with
+what was submitted.
+
+The consumer's getter the native side asks by name is
+hardwareBufferReadSignal()J — a name the stock engine's strings hold
+nowhere (its libflutter.so of every ABI holds "readSignal" already), so a
+release is read per ABI for 0007's native by it, as for 0006's by
+acquireLatestHardwareBuffer (tool/flutter_engine/check_android_release.sh).
+
+diff --git a/engine/src/flutter/common/graphics/texture.cc b/engine/src/flutter/common/graphics/texture.cc
+index 74d76c9..2feb6e2 100644
+--- a/engine/src/flutter/common/graphics/texture.cc
++++ b/engine/src/flutter/common/graphics/texture.cc
+@@ -90,6 +90,12 @@ void TextureRegistry::OnGrContextDestroyed() {
+   }
+ }
+ 
++void TextureRegistry::OnFrameSubmitted() {
++  for (auto& it : mapping_) {
++    it.second->OnFrameSubmitted();
++  }
++}
++
+ std::shared_ptr<Texture> TextureRegistry::GetTexture(int64_t id) {
+   auto it = mapping_.find(id);
+   return it != mapping_.end() ? it->second : nullptr;
+diff --git a/engine/src/flutter/common/graphics/texture.h b/engine/src/flutter/common/graphics/texture.h
+index f5b7c0a..f27f666 100644
+--- a/engine/src/flutter/common/graphics/texture.h
++++ b/engine/src/flutter/common/graphics/texture.h
+@@ -58,6 +58,12 @@ class Texture : public ContextListener {
+   // Called on raster thread.
+   virtual void OnTextureUnregistered() = 0;
+ 
++  // ANICEL — not Flutter's. Called on raster thread, on every texture, once
++  // a frame the layer tree drew has been submitted to the GPU
++  // (TextureRegistry::OnFrameSubmitted): a texture that tells its producer
++  // when the GPU has read what it drew hangs that on here.
++  virtual void OnFrameSubmitted() {}
++
+   int64_t Id() { return id_; }
+ 
+  private:
+@@ -91,6 +97,10 @@ class TextureRegistry {
+   // Called from raster thread.
+   void OnGrContextDestroyed();
+ 
++  // ANICEL — not Flutter's. Called from raster thread once a frame is
++  // submitted to the GPU: each texture's Texture::OnFrameSubmitted.
++  void OnFrameSubmitted();
++
+  private:
+   std::map<int64_t, std::shared_ptr<Texture>> mapping_;
+   size_t image_counter_ = 0;
+diff --git a/engine/src/flutter/shell/common/rasterizer.cc b/engine/src/flutter/shell/common/rasterizer.cc
+index 6af8bfc..1c8f1c6 100644
+--- a/engine/src/flutter/shell/common/rasterizer.cc
++++ b/engine/src/flutter/shell/common/rasterizer.cc
+@@ -834,6 +834,10 @@ DrawSurfaceStatus Rasterizer::DrawToSurfaceUnsafe(
+     } else {
+       frame->Submit();
+     }
++    // ANICEL — not Flutter's: what this frame drew is with the GPU now, so a
++    // texture can hang "read" on what follows it in the queue
++    // (Texture::OnFrameSubmitted).
++    compositor_context_->texture_registry()->OnFrameSubmitted();
+ 
+ #if !SLIMPELLER
+     // Do not update raster cache metrics for kResubmit because that status
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture.cc b/engine/src/flutter/shell/platform/android/image_external_texture.cc
+index 4ad8f95..a5c45ee 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture.cc
++++ b/engine/src/flutter/shell/platform/android/image_external_texture.cc
+@@ -39,6 +39,9 @@ void ImageExternalTexture::Paint(PaintContext& context,
+     ProcessFrame(context, ToSkRect(bounds));
+   }
+   if (dl_image_) {
++    if (read_signal_ != nullptr) {
++      painted_ += 1;
++    }
+     context.canvas->DrawImageRect(
+         dl_image_,                             // image
+         DlRect::Make(dl_image_->GetBounds()),  // source rect
+@@ -118,6 +121,15 @@ JavaLocalRef ImageExternalTexture::AcquireLatestHardwareBuffer(
+       jni_facade_->HardwareBufferConsumerAcquireLatest(
+           JavaLocalRef(image_texture_entry_));
+   if (handed.has_value()) {
++    if (!handed.value().is_null()) {
++      // Asked as the one buffer is taken: the entry says it once.
++      std::optional<int64_t> signal =
++          jni_facade_->HardwareBufferConsumerReadSignal(
++              JavaLocalRef(image_texture_entry_));
++      read_signal_ = signal.value_or(0) == 0
++                         ? nullptr
++                         : reinterpret_cast<ReadSignal>(signal.value());
++    }
+     return handed.value();
+   }
+   image = AcquireLatestImage();
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture.h b/engine/src/flutter/shell/platform/android/image_external_texture.h
+index fce2682..951e51b 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture.h
++++ b/engine/src/flutter/shell/platform/android/image_external_texture.h
+@@ -81,6 +81,23 @@ class ImageExternalTexture : public flutter::Texture {
+   /// it is held where [AcquireLatestImage] is asked alone.
+   JavaLocalRef AcquireLatestHardwareBuffer(JavaLocalRef& image);
+ 
++  /// ANICEL — not Flutter's. What an entry that takes HardwareBuffers is told
++  /// of what it drew (TextureRegistry.HardwareBufferConsumer#readSignal): its
++  /// texture id, a kind — kReadSubmitted, every paint through `count` is with
++  /// the GPU; kReadDone, the GPU has read through `count` — and the count of
++  /// paints. Null where the entry asked for none, and nothing is told.
++  using ReadSignal = void (*)(int64_t texture_id,
++                              int32_t kind,
++                              uint64_t count);
++  static constexpr int32_t kReadSubmitted = 0;
++  static constexpr int32_t kReadDone = 1;
++  ReadSignal read_signal_ = nullptr;
++
++  /// The paints of this texture that drew its image, and how many of them
++  /// were told submitted.
++  uint64_t painted_ = 0;
++  uint64_t submitted_ = 0;
++
+   AHardwareBuffer* AHardwareBufferFor(
+       const fml::jni::JavaRef<jobject>& hardware_buffer);
+ 
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
+index 7b20d89..cd41eef 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
++++ b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
+@@ -36,6 +36,31 @@ void ImageExternalTextureVKImpeller::Attach(PaintContext& context) {
+ 
+ void ImageExternalTextureVKImpeller::Detach() {}
+ 
++// ANICEL — not Flutter's. Every paint of this frame is with the GPU: the
++// entry is told so, and told again once the GPU has done all of it — an
++// empty submit after the frame's own, whose fence covers what the queue
++// took before it (board the-galaxy-tab-canvas-went-slow-on-build-1095, 위험 1:
++// a producer that writes its buffer again while it is read tears the frame
++// that reads it). A frame that did not draw this texture tells nothing, and
++// need not: the last frame that drew it told its own reads.
++void ImageExternalTextureVKImpeller::OnFrameSubmitted() {
++  if (read_signal_ == nullptr || painted_ == submitted_) {
++    return;
++  }
++  submitted_ = painted_;
++  const ReadSignal signal = read_signal_;
++  const int64_t id = Id();
++  const uint64_t through = submitted_;
++  signal(id, kReadSubmitted, through);
++  auto buffer = impeller_context_->CreateCommandBuffer();
++  // Told on error too: a submit that failed reads nothing more, and a
++  // producer left waiting for it would stand still.
++  [[maybe_unused]] auto status = impeller_context_->GetCommandQueue()->Submit(
++      {buffer}, [signal, id, through](impeller::CommandBuffer::Status) {
++        signal(id, kReadDone, through);
++      });
++}
++
+ void ImageExternalTextureVKImpeller::ProcessFrame(PaintContext& context,
+                                                   const SkRect& bounds) {
+   JavaLocalRef image;
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.h b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.h
+index 8e102d2..f770edd 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.h
++++ b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.h
+@@ -33,6 +33,9 @@ class ImageExternalTextureVKImpeller : public ImageExternalTexture {
+   void ProcessFrame(PaintContext& context, const SkRect& bounds) override;
+   void Detach() override;
+ 
++  // |flutter::Texture|
++  void OnFrameSubmitted() override;
++
+   const std::shared_ptr<impeller::ContextVK> impeller_context_;
+ };
+ 
+diff --git a/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java b/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
+index 9ae6ae7..00f956c 100644
+--- a/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
++++ b/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
+@@ -306,9 +306,11 @@ public class FlutterRenderer implements TextureRegistry {
+   @NonNull
+   @Override
+   @RequiresApi(API_LEVELS.API_26)
+-  public HardwareBufferTextureEntry createHardwareBufferTexture(@NonNull HardwareBuffer buffer) {
++  public HardwareBufferTextureEntry createHardwareBufferTexture(
++      @NonNull HardwareBuffer buffer, long readSignal) {
+     final HardwareBufferTextureRegistryEntry entry =
+-        new HardwareBufferTextureRegistryEntry(nextTextureId.getAndIncrement(), buffer);
++        new HardwareBufferTextureRegistryEntry(
++            nextTextureId.getAndIncrement(), buffer, readSignal);
+     Log.v(TAG, "New HardwareBufferTextureEntry ID: " + entry.id());
+     // The image texture's door: the native side asks the entry which it takes.
+     registerImageTexture(entry.id(), entry, /*resetOnBackground=*/ false);
+@@ -1041,10 +1043,20 @@ public class FlutterRenderer implements TextureRegistry {
+     // from where the tree placed it (card
+     // panning-then-pen-jumps-the-android-canvas-a-frame, 관제 2026-11-23).
+     private HardwareBuffer buffer;
++    // ANICEL: told the GPU's reads of the buffer, so the producer writes it
++    // again only once it is read (createHardwareBufferTexture).
++    private final long readSignal;
+ 
+-    HardwareBufferTextureRegistryEntry(long id, @NonNull HardwareBuffer buffer) {
++    HardwareBufferTextureRegistryEntry(
++        long id, @NonNull HardwareBuffer buffer, long readSignal) {
+       this.id = id;
+       this.buffer = buffer;
++      this.readSignal = readSignal;
++    }
++
++    @Override
++    public long hardwareBufferReadSignal() {
++      return readSignal;
+     }
+ 
+     @Override
+diff --git a/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java b/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
+index b38d706..beed66f 100644
+--- a/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
++++ b/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
+@@ -104,13 +104,18 @@ public interface TextureRegistry {
+    * <p>NOTE: Caller should not call HardwareBuffer.close() on the buffer handed.
+    *
+    * <p>NOTE: Nothing waits for the buffer to be written: the caller shows the texture once its GPU
+-   * has finished writing the buffer, and writes it again only where it is not shown.
++   * has finished writing the buffer, and writes it again only once the GPU has read it ({@code
++   * readSignal}).
+    *
++   * @param readSignal the native function the GPU's reads of the buffer are told to, as {@code
++   *     void (*)(int64_t texture_id, int32_t kind, uint64_t count)} — kind 0: every paint through
++   *     {@code count} is submitted; 1: the GPU has read through {@code count} — or 0 for none.
+    * @return a HardwareBufferTextureEntry.
+    */
+   @NonNull
+   @RequiresApi(26)
+-  default HardwareBufferTextureEntry createHardwareBufferTexture(@NonNull HardwareBuffer buffer) {
++  default HardwareBufferTextureEntry createHardwareBufferTexture(
++      @NonNull HardwareBuffer buffer, long readSignal) {
+     throw new UnsupportedOperationException("this registry takes no HardwareBuffers");
+   }
+ 
+@@ -366,6 +371,14 @@ public interface TextureRegistry {
+     @Nullable
+     @RequiresApi(26)
+     HardwareBuffer acquireLatestHardwareBuffer();
++
++    /**
++     * The native function the GPU's reads of the buffer are told to — {@link
++     * #createHardwareBufferTexture}'s {@code readSignal} — or 0 for none. Asked by name from native
++     * code, by a name the stock engine holds nowhere: a release is read for it per ABI.
++     */
++    @Keep
++    long hardwareBufferReadSignal();
+   }
+ 
+   @Keep
+diff --git a/engine/src/flutter/shell/platform/android/jni/jni_mock.h b/engine/src/flutter/shell/platform/android/jni/jni_mock.h
+index d41abd8..6d02cf0 100644
+--- a/engine/src/flutter/shell/platform/android/jni/jni_mock.h
++++ b/engine/src/flutter/shell/platform/android/jni/jni_mock.h
+@@ -95,6 +95,11 @@ class JNIMock final : public PlatformViewAndroidJNI {
+               (JavaLocalRef image_texture_entry),
+               (override));
+ 
++  MOCK_METHOD(std::optional<int64_t>,
++              HardwareBufferConsumerReadSignal,
++              (JavaLocalRef image_texture_entry),
++              (override));
++
+   MOCK_METHOD(void,
+               SurfaceTextureDetachFromGLContext,
+               (JavaLocalRef surface_texture),
+diff --git a/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h b/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h
+index b43ba70..ff7da06 100644
+--- a/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h
++++ b/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h
+@@ -161,6 +161,15 @@ class PlatformViewAndroidJNI {
+   virtual std::optional<JavaLocalRef> HardwareBufferConsumerAcquireLatest(
+       JavaLocalRef image_texture_entry) = 0;
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      ANICEL — not Flutter's. The native function an entry that
++  ///             takes HardwareBuffers is told the GPU's reads by
++  ///             (TextureRegistry.HardwareBufferConsumer#readSignal) — 0 for
++  ///             none — or nullopt where the entry is not one.
++  ///
++  virtual std::optional<int64_t> HardwareBufferConsumerReadSignal(
++      JavaLocalRef image_texture_entry) = 0;
++
+   //----------------------------------------------------------------------------
+   /// @brief      Positions and sizes a platform view if using hybrid
+   ///             composition.
+diff --git a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
+index 9b7d861..7ba6d46 100644
+--- a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
++++ b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
+@@ -146,6 +146,8 @@ static jmethodID g_hardware_buffer_close_method = nullptr;
+ 
+ static jmethodID g_acquire_latest_hardware_buffer_method = nullptr;
+ 
++static jmethodID g_hardware_buffer_read_signal_method = nullptr;
++
+ static jmethodID g_compute_platform_resolved_locale_method = nullptr;
+ 
+ static jmethodID g_request_dart_deferred_library_method = nullptr;
+@@ -1258,6 +1260,15 @@ bool PlatformViewAndroid::Register(JNIEnv* env) {
+     // Continue on: no entry takes HardwareBuffers then.
+     fml::jni::ClearException(env, true);
+   }
++  if (!g_hardware_buffer_consumer_texture_registry_interface->is_null()) {
++    g_hardware_buffer_read_signal_method = env->GetMethodID(
++        g_hardware_buffer_consumer_texture_registry_interface->obj(),
++        "hardwareBufferReadSignal", "()J");
++  }
++  if (g_hardware_buffer_read_signal_method == nullptr) {
++    // Continue on: such an entry is told nothing of the GPU's reads then.
++    fml::jni::ClearException(env, true);
++  }
+ 
+   g_compute_platform_resolved_locale_method = env->GetMethodID(
+       g_flutter_jni_class->obj(), "computePlatformResolvedLocale",
+@@ -1777,6 +1788,32 @@ PlatformViewAndroidJNIImpl::HardwareBufferConsumerAcquireLatest(
+   return taken;
+ }
+ 
++std::optional<int64_t>
++PlatformViewAndroidJNIImpl::HardwareBufferConsumerReadSignal(
++    JavaLocalRef image_texture_entry) {
++  if (g_hardware_buffer_read_signal_method == nullptr ||
++      image_texture_entry.is_null()) {
++    return std::nullopt;
++  }
++  JNIEnv* env = fml::jni::AttachCurrentThread();
++  // The entry is held through a weak reference, as an Image entry is.
++  fml::jni::ScopedJavaLocalRef<jobject> entry(
++      env, env->CallObjectMethod(image_texture_entry.obj(),
++                                 g_java_weak_reference_get_method));
++  if (entry.is_null() ||
++      !env->IsInstanceOf(
++          entry.obj(),
++          g_hardware_buffer_consumer_texture_registry_interface->obj())) {
++    return std::nullopt;
++  }
++  jlong signal =
++      env->CallLongMethod(entry.obj(), g_hardware_buffer_read_signal_method);
++  if (fml::jni::ClearException(env, false)) {
++    return std::nullopt;
++  }
++  return static_cast<int64_t>(signal);
++}
++
+ void PlatformViewAndroidJNIImpl::FlutterViewOnDisplayPlatformView(
+     int view_id,
+     int x,
+diff --git a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h
+index f08c54c..99b75a5 100644
+--- a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h
++++ b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h
+@@ -69,6 +69,9 @@ class PlatformViewAndroidJNIImpl final : public PlatformViewAndroidJNI {
+   std::optional<JavaLocalRef> HardwareBufferConsumerAcquireLatest(
+       JavaLocalRef image_texture_entry) override;
+ 
++  std::optional<int64_t> HardwareBufferConsumerReadSignal(
++      JavaLocalRef image_texture_entry) override;
++
+   void FlutterViewOnDisplayPlatformView(int view_id,
+                                         int x,
+                                         int y,

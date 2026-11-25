@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
@@ -30,6 +31,7 @@ import '../../helpers/home_page_probes.dart';
 /// window, which says where you are in the words of the panel you work in
 /// (유저 2026-09-24), drew that row an empty band.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const trackId = TrackId('t');
 
   CameraPose at(double x) => CameraPose(center: CanvasPoint(x: x, y: 0));

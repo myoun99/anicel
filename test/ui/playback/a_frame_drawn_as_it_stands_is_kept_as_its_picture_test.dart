@@ -28,6 +28,8 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
@@ -239,6 +241,10 @@ void main() {
     await theCelsRead(tester, canvas.run);
     final first = await handed(tester, canvas, treeOf());
     expect(canvas.store.laid, [first], reason: 'made once it was painted');
+    // As the frame statistics count it (PictureWrites, H67).
+    MeasurementMode.debugWindow.value = true;
+    addTearDown(MeasurementMode.reset);
+    final before = PictureWrites.counted;
 
     for (final opacity in [0.75, 0.5, 0.25]) {
       final tree = treeOf(opacity: opacity);
@@ -251,6 +257,11 @@ void main() {
     }
 
     expect(canvas.store.laid, [first], reason: 'each value kept as it stood');
+    expect(
+      PictureWrites.counted.whole - before.whole,
+      3,
+      reason: 'each value laid whole on the view\'s own screen',
+    );
     await tester.pumpWidget(const SizedBox());
   });
 

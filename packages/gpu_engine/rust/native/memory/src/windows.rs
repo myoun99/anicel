@@ -52,6 +52,12 @@ pub(crate) fn available() -> Option<u64> {
     status().map(|status| status.ullAvailPhys)
 }
 
+/// Windows has no per-mapping account a process can read of itself: the line
+/// that names what holds the footprint is the Linux kernel's (`crate::mappings`).
+pub(crate) fn mappings() -> Option<Vec<(String, u64)>> {
+    None
+}
+
 pub(crate) fn app_limit() -> Option<u64> {
     None
 }

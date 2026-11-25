@@ -1194,7 +1194,31 @@ void main() {
   /// `_CutsAhead` to fit: past a told answer its run and region are
   /// whichever run stands then — the run handed in is how the cut knows
   /// its answer is still its own.
-  const wideSignatures = 457;
+  ///
+  /// ⚠️457 → 458 on 2026-11-24, one named as the rule above asks (card
+  /// the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2, 관제
+  /// 2026-11-24): `BrushLiveStrokeRasterizer.promoteStrokeTiles` (five —
+  /// the cel under the stroke, its blend, whether it erases, its dabs, and
+  /// what the overlay shows of it) took what each step put, as shown:
+  /// pen-up hands those tiles over in place of laying the stroke again and
+  /// waiting for the GPU. 🔬`clean_code_diff` against the lane's base
+  /// (`68e631395`) names that one added and nothing gone. ⛔Not kept on the
+  /// stroke to fit: the overlay holds what it shows and lets each go, and
+  /// pen-up asks it, so no tile it let go is handed over.
+  ///
+  /// ⚠️458 → 461 on 2026-11-24, three named as the rule above asks (card
+  /// decoder-reads-skip-the-percent-Q3 — 유저 2026-11-24: 「풀어 낸 프레임 ÷
+  /// 풀 프레임」): a sound's cut tells the window how far its decode has
+  /// come, and the hearer goes down the one road its frames take —
+  /// `TrimmedPieces._sound` (five — the file, the piece's work path, the
+  /// span, its pull, the hearer), `soundSpanAsWav` and `decodeAudioOfFrames`
+  /// (five each — the source, the frames, the clock, the pull, the hearer),
+  /// as `_movie` (six) always took who hears its frames written.
+  /// `_pulledBetween` (five → six) was counted already. 🔬The scan against
+  /// master (`98c519c3d`) names those three added and nothing gone. ⛔Not
+  /// folded into the span or the clock to fit: the pull is how a sound's
+  /// frames are counted, the hearer is the window's — two questions.
+  const wideSignatures = 461;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -2087,7 +2111,28 @@ void main() {
   /// ceiling of 83, `ShortcutSettingsDialogState` having crossed there
   /// since `55fcd0e8b` (82 → 83 by the same diff). ⛔Not split to fit: each
   /// answer stands beside the reset it answers for.
-  const longClasses = 86;
+  ///
+  /// ⚠️86 → 87 on 2026-11-23, ONE name: `_StillLayer` crossed (592 → 651)
+  /// when a live tick that stood still came to be taken back into its
+  /// stratum in a gap in the frames, in one image, and no longer in the
+  /// frame its count ran out (card a-frame-pick-recuts-and-rebakes-the-
+  /// docks-ticks — measured in the real app against the law before it).
+  /// 🔬`clean_code_diff` against master (`350b24871`) names this one and
+  /// no other class. It stood at 693 first: the stay a tick learns was
+  /// written into the region, reading and writing four of the tick's own
+  /// fields — it went to the tick (`TickSceneLayer._movedAloneIn`), whose
+  /// fields they are. ⛔Not split further to fit: what is left is when the
+  /// region takes its own image again, which a seam would say in two places.
+  ///
+  /// ⚠️87 → 88 on 2026-11-24, ONE name: `UndoSurfaceSnapshot` crossed
+  /// (599 → 605) when a told picture came to take the handed tiles' place
+  /// in the step that holds them (card the-start-of-every-stroke-stalls-on-
+  /// the-galaxy-tab ③-1, 관제 2026-11-24 ⓐ): `heldHere`, its picture while
+  /// no drop and no park under way moves it out — what the step may take a
+  /// told picture into. 🔬`clean_code_diff` against master (`714123138`)
+  /// names this one and no other class. ⛔Not split to fit: whether it is
+  /// dropped, parking or let go are its own fields, read beside them.
+  const longClasses = 88;
 
   late CleanCodeScan scan;
   setUpAll(() {

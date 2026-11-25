@@ -224,6 +224,12 @@ abstract interface class MediaWindowReader {
   /// how many landed — [MediaByteSource.readIntoSync]'s shape.
   int readIntoSync(Uint8List buffer, int position, int size);
 
+  /// [readIntoSync] with the wait off this isolate: a cloud file comes down
+  /// INSIDE a read, and a document read from the UI isolate (PDFium's
+  /// windows, asked through pdfrx) must not stand the app still while it
+  /// does (decoder-reads-skip-the-percent, 11-24).
+  Future<int> readInto(Uint8List buffer, int position, int size);
+
   void close();
 }
 
@@ -240,15 +246,31 @@ final class _FileWindowReader implements MediaWindowReader {
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) {
+    final wanted = _wanted(position, size);
+    if (wanted == 0) {
+      return 0;
+    }
+    _file.setPositionSync(base + position);
+    return _file.readIntoSync(buffer, 0, wanted);
+  }
+
+  @override
+  Future<int> readInto(Uint8List buffer, int position, int size) async {
+    final wanted = _wanted(position, size);
+    if (wanted == 0) {
+      return 0;
+    }
+    await _file.setPosition(base + position);
+    return _file.readInto(buffer, 0, wanted);
+  }
+
+  /// How much of [size] from [position] lies inside the file's [length].
+  int _wanted(int position, int size) {
     final limit = length;
     if (position < 0 || size <= 0 || (limit != null && position >= limit)) {
       return 0;
     }
-    final wanted = limit == null || size < limit - position
-        ? size
-        : limit - position;
-    _file.setPositionSync(base + position);
-    return _file.readIntoSync(buffer, 0, wanted);
+    return limit == null || size < limit - position ? size : limit - position;
   }
 
   @override
@@ -787,6 +809,12 @@ final class _SpanWindowReader implements MediaWindowReader {
   @override
   int readIntoSync(Uint8List buffer, int position, int size) =>
       position < 0 || size <= 0 ? 0 : _span.readInto(buffer, position, size);
+
+  /// ⚠️Read here: the engine's span reads are calls into it, and the bytes
+  /// they read are the project's own — never a user's file on the cloud.
+  @override
+  Future<int> readInto(Uint8List buffer, int position, int size) async =>
+      readIntoSync(buffer, position, size);
 
   @override
   void close() => _span.close();

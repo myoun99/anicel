@@ -25,14 +25,29 @@ use super::{
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{Lent, TILE_TEXELS};
-use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, q, room, sixteen_bit};
+use crate::kernels::plugin::Pace;
+use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, chunks, q, room, sixteen_bit};
 
 /// The most gain a light takes — the app's Highlight Gain's.
 pub(crate) const MOST_GAIN: f64 = 100.0;
 /// The most fringe a lens takes — the app's Diffraction Fringe's.
 pub(crate) const MOST_FRINGE: f64 = 500.0;
-/// gather.wgsl's `Gather`: the light's four words and seventeen of its own.
-const GATHER_WORDS: usize = 21;
+/// gather.wgsl's `Gather`: the light's four words and eighteen of its own.
+const GATHER_WORDS: usize = 22;
+/// What a row of the iris a gather's invocation reads costs, in the
+/// charges a device's [`Pace`] is measured in — what a chunk of the gather
+/// is sized by, its invocations each reading every row of the table's
+/// reach, twice where a fringe weighs the core.
+///
+/// 🔬Measured on the main PC (2026-11-23 04:29, `a_row_of_the_iris_charges`
+/// three times — a new project's canvas at radii 75 and 150, no fringe):
+/// 1089, 1156 and 1052 charges; the most of them, as a larger one only
+/// makes chunks smaller. A radius it has drawn alone (관제 11-22,
+/// lens-blur-sends-every-band-in-one-submit: ≤150 on the GPU during the
+/// user's trip): a larger one is the same rows, more of them. ⚠️A ratio of
+/// that device's — a row read against a division turned —: one whose
+/// memory lags its arithmetic more may spend more per charge on a row.
+const ROW_CHARGES: u32 = 1156;
 /// sums.wgsl's SUMS_RUN.
 const RUN: u32 = 64;
 /// A pixel's sum's bytes: four channels of two words.
@@ -211,6 +226,16 @@ fn sums_bytes(picture: [i32; 4]) -> [u64; 2] {
     ]
 }
 
+/// The most one invocation of a gather spends, in charges
+/// ([`ROW_CHARGES`]): every row of the table's `reach` either way of its
+/// pixel, twice where `fringed` — the core read beside the outline
+/// (gather.wgsl) — whatever level a blur map names, as none reaches past
+/// the table's.
+fn gather_share(reach: u32, fringed: bool) -> u32 {
+    let rows = (2 * reach + 1) * if fringed { 2 } else { 1 };
+    rows.saturating_mul(ROW_CHARGES)
+}
+
 /// What of a blur map's pixel names its level — the app's
 /// `IrisMapChannel`: one of its channels, or its luma. Each is gather.wgsl's
 /// word for it (MAP_LUMA).
@@ -271,7 +296,8 @@ impl LensBlur {
     /// the same rectangle, nothing outside the picture — or the paper, where
     /// the lens repeats it. Submits the work; the caller waits. The sums and
     /// the tiles put are the engine's spares, as a Gaussian's planes and
-    /// tiles are ([`super::run`]).
+    /// tiles are ([`super::run`]). Its gather goes in chunks the device's
+    /// pace sizes, each a submit of its own ([`Self::run_in`]).
     pub(crate) fn run(
         &self,
         engine: &Engine,
@@ -281,13 +307,28 @@ impl LensBlur {
         lens: &Lens,
         map: Option<BlurMap<&wgpu::Buffer>>,
     ) -> Option<Lent> {
-        self.run_in(engine, tiles, rect, picture, (lens, map), room(engine))
+        let pace = Pace::of(engine)?;
+        self.run_in(engine, tiles, rect, picture, (lens, map), (room(engine), pace))
     }
 
     /// `run`, in bands whose sums a binding of `room` bytes holds
     /// ([`bands`]): a band's sums are its rows and the iris's reach past
     /// them each side, inside the picture — every row its gather reads —,
-    /// one plane of them each band's in turn.
+    /// one plane of them each band's in turn. Each band's gather goes in
+    /// chunks of as many workgroups as `pace` finishes within the budget,
+    /// every invocation reading every row of the table's reach
+    /// ([`ROW_CHARGES`]), each chunk a submit of its own (the shared
+    /// `chunks`) after the band's sums, a submit of theirs — the first
+    /// band's with the clear of what the gather puts.
+    ///
+    /// 🗣️관제 2026-11-22 (lens-blur-sends-every-band-in-one-submit): 「한
+    /// 제출을 일의 크기로 자른다 — 다른 커널 가족에 「한 제출의 상한」이 이미
+    /// 있으면 그 법을 쓴다」 — the plug-ins' (`kernels/plugin`). ↩️Every
+    /// band's sums and gather went in one submit till then: a new
+    /// project's canvas, 2340 × 1654, at a radius of 500 with a fringe
+    /// read some 7.7 billion rows of sums in it — reckoned, never run
+    /// (camera-lens-blur-on-an-empty-image-row-reset-the-gpu-driver 11-22
+    /// 17:22) — more than a slow device may do inside Windows' ~2 s reset.
     fn run_in(
         &self,
         engine: &Engine,
@@ -295,7 +336,7 @@ impl LensBlur {
         rect: TileRect,
         picture: [i32; 4],
         (lens, map): (&Lens, Option<BlurMap<&wgpu::Buffer>>),
-        room: u64,
+        (room, pace): (u64, Pace),
     ) -> Option<Lent> {
         let in_range = (0.0..=MOST_FRINGE).contains(&lens.fringe);
         let fringe = in_range.then(|| q(lens.fringe / MOST_FRINGE, 16, f64::MAX));
@@ -343,33 +384,31 @@ impl LensBlur {
         own.extend([u32::from(lens.paper.is_some()), fringe as u32, laid.reach, laid.rows]);
         own.extend([laid.levels, map.map_or(0, |map| map.channel as u32)]);
         let uniform = wgpu::BufferUsages::UNIFORM;
-        let gathers: Vec<wgpu::Buffer> = bands
-            .iter()
-            .map(|&band| {
-                let mut own = own.clone();
-                own.extend([sums_over(band)[1], band[0], band[1]].map(|edge| edge as u32));
-                debug_assert_eq!(own.len(), GATHER_WORDS);
-                words_buffer(engine, "lens gather", &own, uniform)
-            })
-            .collect();
         let held = held_words(Held::Tiles, Held::Tiles, rect);
         let held = words_buffer(engine, "lens held", &held, uniform);
         // Nothing outside the pixels the gather puts: zeroed with the passes.
         let put_bytes = rect.tiles() * TILE_TEXELS * 4;
         let out = engine.spares.of(engine, put_bytes);
         let map_tiles = map.map_or(tiles, |map| map.tiles);
-        // A band's sums, then its gather out of them — the next band's sums
-        // go in the same plane after it.
-        let encoded: Vec<Encoded> = bands
-            .iter()
-            .zip(&sums)
-            .zip(&gathers)
-            .flat_map(|((&band, laid_sums), own)| {
+        let most = pace.chunk(gather_share(laid.reach, fringe > 0), GROUP * GROUP);
+        let both = [planes[0].buffer(), planes[1].buffer()];
+        let mut clear = Some((out.buffer(), put_bytes));
+        // A band's sums, then its gather out of them a chunk at a time —
+        // the next band's sums go in the same plane after its last.
+        for (&band, laid_sums) in bands.iter().zip(&sums) {
+            encode_cleared(engine, clear.take().as_slice(), &self.sums.passes(tiles, laid_sums, both));
+            let (across, down) = groups(band);
+            for ([column, row], [wide, high]) in chunks([across, down], most) {
+                let mut own = own.clone();
+                let first = [left + (column * GROUP) as i32, band[0] + (row * GROUP) as i32];
+                own.extend([sums_over(band)[1], first[0], first[1], band[1]].map(|edge| edge as u32));
+                debug_assert_eq!(own.len(), GATHER_WORDS);
+                let own = words_buffer(engine, "lens gather", &own, uniform);
                 let bound = [
                     (0, &held),
                     (1, tiles),
                     (2, out.buffer()),
-                    (3, own),
+                    (3, &own),
                     (4, planes[0].buffer()),
                     (5, &laid.table),
                     (6, map_tiles),
@@ -377,14 +416,11 @@ impl LensBlur {
                 let gather = Encoded {
                     pipeline: &self.gather,
                     bound: whole(&bound),
-                    groups: flat(groups(band)),
+                    groups: (wide, high, 1),
                 };
-                let both = [planes[0].buffer(), planes[1].buffer()];
-                let [runs, carry] = self.sums.passes(tiles, laid_sums, both);
-                [runs, carry, gather]
-            })
-            .collect();
-        encode_cleared(engine, &[(out.buffer(), put_bytes)], &encoded);
+                encode(engine, &[gather]);
+            }
+        }
         Some(out)
     }
 }

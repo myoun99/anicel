@@ -40,6 +40,7 @@ import '../helpers/cel_text_fixture.dart' show textOf;
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/surface_rgba_in_place.dart';
 import '../helpers/the_points_the_os_saw.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// The sub colour a gradient runs to (I-160-Q3), and as a pixel reads it.
 const _sub = 0xFF00FF00;
@@ -275,6 +276,7 @@ void main() {
       );
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
+      theTreeGoesFirst(tester);
       final floods = <CanvasPoint>[];
       await tester.pumpWidget(
         app(
@@ -1592,6 +1594,7 @@ void main() {
     );
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       app(
         BrushCanvasPanel(

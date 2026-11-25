@@ -12,20 +12,23 @@
 //!   of its own (SwapChain11.cpp:343-360, mNeedsOffscreenTextureCopy).
 //! - ALLOW_SIMULTANEOUS_ACCESS: such a texture decays to COMMON once its
 //!   ExecuteCommandLists finishes (MS docs, "State decay to common"), so
-//!   it is handed over without a barrier wgpu cannot express.
+//!   it is handed over without a barrier wgpu cannot express — how this
+//!   platform keeps the law of a screen's buffer (platform/mod.rs).
 //! - ALLOW_UNORDERED_ACCESS: the compute pass stores into it.
 
 use std::ffi::{OsString, c_void};
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 
-use windows::Win32::Foundation::{CloseHandle, E_OUTOFMEMORY, GENERIC_ALL, HANDLE, HMODULE};
+use windows::Win32::Foundation::{
+    CloseHandle, E_OUTOFMEMORY, FreeLibrary, GENERIC_ALL, HANDLE, HMODULE,
+};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_HEAP_FLAG_NONE, D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT,
     D3D12_RESOURCE_DESC, D3D12_RESOURCE_DIMENSION_BUFFER, D3D12_RESOURCE_DIMENSION_TEXTURE2D,
     D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
     D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON,
-    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, ID3D12Resource,
+    D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_TEXTURE_LAYOUT_UNKNOWN, ID3D12Device, ID3D12Resource,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_UNKNOWN,
@@ -38,9 +41,9 @@ use windows::Win32::Graphics::Dxgi::{
 };
 use windows::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-    GetModuleFileNameW, GetModuleHandleExW,
+    GetModuleFileNameW, GetModuleHandleExW, LoadLibraryW,
 };
-use windows::core::{HRESULT, PCWSTR};
+use windows::core::{HRESULT, PCWSTR, w};
 use wgpu::hal::api::Dx12;
 
 /// Flutter's ANGLE sits on D3D11, which opens a D3D12 resource by NT
@@ -54,6 +57,18 @@ pub struct SharedHandle(HANDLE);
 impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
         self.0.0
+    }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
+
+    /// How the buffer was laid out, read back off it — where the platform
+    /// lets the engine say ([`super::Laid`]): never here.
+    pub fn laid_said(&self) -> String {
+        String::new()
     }
 }
 
@@ -77,6 +92,7 @@ pub fn create(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     // SAFETY: the raw device is only used to make a resource, never to
     // change wgpu's own state.
@@ -222,6 +238,11 @@ pub fn committed_buffer(device: &wgpu::Device, desc: &wgpu::BufferDescriptor) ->
     Some(unsafe { device.create_buffer_from_hal::<Dx12>(hal_buffer, desc) })
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "d3d12 shared handle".to_owned()
+}
+
 /// The adapter's LUID, high part in the upper 32 bits.
 pub fn adapter_luid(adapter: &wgpu::Adapter) -> Option<u64> {
     // SAFETY: only reads the adapter's description.
@@ -284,6 +305,77 @@ pub fn device_went_by(device: &wgpu::Device) -> u32 {
     }
 }
 
+/// What asks `device`'s driver whether it took the device: whether
+/// D3D12 names a reason it was removed (`GetDeviceRemovedReason`, whose
+/// reason [`device_went_by`] reads).
+///
+/// ⚠️Of D3D12's own device, by a hold of its own — not through wgpu's:
+/// whoever asks whether the engine's device is gone asks it, the thread
+/// the app's frames are built on among them, and wgpu's device is in no
+/// hand but a thread's of the engine (`Engine::device`). A call into the
+/// runtime that waits on no GPU.
+pub fn asking_the_driver_of(device: &wgpu::Device) -> Option<super::DriverAsked> {
+    // SAFETY: only takes a hold of the device D3D12 made.
+    let device = unsafe { device.as_hal::<Dx12>() }?.raw_device().clone();
+    let asked = AskedAnywhere { device, _loaded: Loaded::d3d12()? };
+    Some(Box::new(move || asked.removed()))
+}
+
+/// D3D12's device, as what any thread may ask whether it was removed —
+/// and D3D12 itself, held loaded for as long.
+///
+/// 🚨THE HOLD KEEPS D3D12 LOADED ([`Loaded`]). wgpu frees `d3d12.dll` as
+/// the last of its instance, adapter and device goes (wgpu-hal,
+/// dx12/mod.rs, `D3D12Lib`), whatever of D3D12's is held still — and a
+/// hold let go of after that calls into a library no longer there.
+/// 🔬2026-11-23, this lane's first affected run: a test process that
+/// closed its one engine ended by an access violation (flutter_tester,
+/// 0xC0000005), in four files of test/native. An engine lets go of its
+/// `Refusals` after all it holds of wgpu (`Engine`'s fields, in their
+/// order), and a wait handed over holds one past the engine
+/// (device.rs, `Told`). ⛔Not mended by the order an engine lets go in:
+/// every holder of a `Refusals` would have to keep that order.
+struct AskedAnywhere {
+    // ⚠️In this order: the device is let go of first, into a library
+    // still loaded.
+    device: ID3D12Device,
+    _loaded: Loaded,
+}
+
+// SAFETY: a D3D12 device is free-threaded — any of its methods may be
+// called from any thread at once (Microsoft Learn, "Multithreading and
+// Direct3D 12" — unlike D3D11's context), and this asks it one question;
+// a library's count is the loader's, given back from whatever thread.
+unsafe impl Send for AskedAnywhere {}
+
+impl AskedAnywhere {
+    fn removed(&self) -> bool {
+        // SAFETY: only asks the device why it was removed.
+        unsafe { self.device.GetDeviceRemovedReason() }.is_err()
+    }
+}
+
+/// `d3d12.dll` held loaded: one count more of the loader's own, given
+/// back as this goes ([`AskedAnywhere`] has why).
+struct Loaded(HMODULE);
+
+impl Loaded {
+    /// By the name wgpu loads it by (wgpu-hal, `D3D12Lib::new`): the
+    /// library a device was made by is loaded already, so this loads
+    /// nothing and counts one more.
+    fn d3d12() -> Option<Self> {
+        // SAFETY: loads a library of the system's by its name.
+        unsafe { LoadLibraryW(w!("d3d12.dll")) }.ok().map(Self)
+    }
+}
+
+impl Drop for Loaded {
+    fn drop(&mut self) {
+        // SAFETY: gives back the one count [`Self::d3d12`] took.
+        let _ = unsafe { FreeLibrary(self.0) };
+    }
+}
+
 /// D3D12's reason for a device removed, as the app names it. Each as
 /// Microsoft says it (Learn, "Handle device removed scenarios in Direct3D
 /// 11", read 2026-11-13): hung — the driver stopped responding over
@@ -315,12 +407,20 @@ pub fn shader_compiler() -> wgpu::Dx12Compiler {
 }
 
 /// What DXC and the driver make for `device` kept in `folder`, or nowhere
-/// where it is `None` (vendor/wgpu-hal, compile_cache.rs).
+/// where it is `None` (vendor/wgpu-hal, auxil/compile_cache.rs — Vulkan's
+/// by the same code).
 pub fn keep_shaders(device: &wgpu::Device, folder: Option<PathBuf>) {
     // SAFETY: names only where the hal device keeps what it made.
     if let Some(hal_device) = unsafe { device.as_hal::<Dx12>() } {
         hal_device.keep_shaders_in(folder);
     }
+}
+
+/// How many of `device`'s pipelines the folder it keeps them in has
+/// answered ([`keep_shaders`]).
+pub fn pipelines_found(device: &wgpu::Device) -> Option<u64> {
+    // SAFETY: only reads a count.
+    unsafe { device.as_hal::<Dx12>() }.map(|hal_device| hal_device.pipelines_found())
 }
 
 /// cargo test's engine is the test binary, beside which nothing installs
@@ -501,30 +601,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         assert_eq!(super::device_went_by(first_engine().device()), WENT_UNSAID);
     }
 
-    // ---- What DXC and the driver made, kept (vendor/wgpu-hal, compile_cache.rs) ----
+    // ---- What DXC and the driver made, kept (vendor/wgpu-hal, auxil/compile_cache.rs) ----
 
-    // Each test's engines are its own, so that no other test's compiles go
-    // into its folder, and the folder is its own.
-    const WRITES_SEVEN: &str = "
-@group(0) @binding(0) var<storage, read_write> out: array<u32>;
-@compute @workgroup_size(1)
-fn main() { out[0] = 7u; }
-";
+    // What every keeping platform's pins share — and the pins of what the
+    // driver made of a pipeline — are kept_tests.rs's; DXC's are here.
+    use crate::platform::kept_tests::{WRITES_SEVEN, first_word, keeping, kept_files, kept_in, pipelines_found};
 
-    /// The test's folder to keep in, gone with the test — at its end, or as
-    /// it panics (oracle's `TempFile`). ↩️Each test removed its folder at
-    /// its last line, which a test that failed first never reached: 33 were
-    /// left in Temp on the main PC on 11-18 (card
-    /// engine-kept-tests-leave-their-folder-when-they-fail).
-    fn kept_in(name: &str) -> oracle::TempFile {
-        oracle::TempFile::at(&format!("gpu_engine_kept_{name}"))
-    }
-
-    fn keeping(turn: &DeviceTurn, folder: &std::path::Path) -> crate::device::Engine {
-        let engine = turn.engine();
-        super::keep_shaders(engine.device(), Some(folder.to_path_buf()));
-        engine
-    }
 
     fn found(engine: &crate::device::Engine) -> u64 {
         // SAFETY: only reads a count.
@@ -536,41 +618,7 @@ fn main() { out[0] = 7u; }
         unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_waited()
     }
 
-    fn pipelines_found(engine: &crate::device::Engine) -> u64 {
-        // SAFETY: only reads a count.
-        unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").pipelines_found()
-    }
 
-    /// The files of `folder` whose extension is `extension` — `dxil` what
-    /// DXC made, `pso` what the driver made of a pipeline, `turn` a turn.
-    fn kept_files(folder: &std::path::Path, extension: &str) -> Vec<(std::path::PathBuf, u64)> {
-        let mut files: Vec<_> = std::fs::read_dir(folder)
-            .map(|entries| {
-                entries
-                    .filter_map(|entry| {
-                        let entry = entry.ok()?;
-                        Some((entry.path(), entry.metadata().ok()?.len()))
-                    })
-                    .filter(|(path, _)| path.extension().is_some_and(|it| it == extension))
-                    .collect()
-            })
-            .unwrap_or_default();
-        files.sort();
-        files
-    }
-
-    /// What `pipeline` writes to the first word of the buffer at binding 0.
-    fn first_word(engine: &crate::device::Engine, pipeline: &wgpu::ComputePipeline) -> u32 {
-        use crate::kernels::shared::{Encoded, encode, whole};
-        let out = engine.filled(
-            "kept DXIL",
-            &[0; 4],
-            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        );
-        encode(engine, &[Encoded { pipeline, bound: whole(&[(0, &out)]), groups: (1, 1, 1) }]);
-        let bytes = crate::testing::read_buffer(engine, &out);
-        u32::from_le_bytes(bytes[..4].try_into().unwrap())
-    }
 
     // 🗣️유저 2026-11-13 (the-wait-window-stands-seven-seconds-on-the-surface-Q1,
     // 「디스크 캐시」): what one engine's DXC made, the next is handed — and
@@ -711,68 +759,6 @@ fn main() { out[0] = 7u; }
         assert_eq!((first_word(&next, &seven), first_word(&next, &eight)), (7, 8));
     }
 
-    // 🔬What the driver made of a pipeline, the next engine is handed — and
-    // it is that pipeline (board two-tests-spend-the-wait-windows-minute-
-    // under-load, 11-18: from the eleventh process on, NVIDIA's own cache
-    // made every pipeline again).
-    #[test]
-    fn what_the_driver_made_of_a_pipeline_is_handed_to_the_next_engine() {
-        let turn = a_device_of_its_own();
-        let kept = kept_in("pso_handed");
-        let folder = kept.path();
-        let first = keeping(&turn, &folder);
-        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&first), 0, "nothing was kept before");
-        assert_eq!(kept_files(&folder, "pso").len(), 1, "what the driver made is kept, in one file");
-        let next = keeping(&turn, &folder);
-        let handed = pipeline(&next, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&next), 1, "the next engine is handed it");
-        assert_eq!(first_word(&next, &handed), 7);
-    }
-
-    // What the driver made of another shader's pipeline, kept whole under
-    // this one's asking — as nothing in the folder can make it — is
-    // refused by the driver, and the pipeline made again and kept over it.
-    // 🧪What a refusal looks like whatever refuses: a driver updated past
-    // what the key names refuses alike, and the pipeline must still come.
-    #[test]
-    fn a_pipeline_the_driver_refuses_is_made_again_and_kept_over() {
-        let turn = a_device_of_its_own();
-        let kept = kept_in("pso_refused");
-        let folder = kept.path();
-        let first = keeping(&turn, &folder);
-        let _ = pipeline(&first, &[WRITES_SEVEN], "main");
-        let Ok([(seven, _)]) = <[_; 1]>::try_from(kept_files(&folder, "pso")) else {
-            panic!("one pipeline is kept");
-        };
-        let _ = pipeline(&first, &[&WRITES_SEVEN.replace("7u", "8u")], "main");
-        let eight = kept_files(&folder, "pso").into_iter().map(|(path, _)| path).find(|path| *path != seven);
-        let (seven_file, eight_file) = (
-            std::fs::read(&seven).expect("seven's"),
-            std::fs::read(eight.expect("eight's")).expect("eight's"),
-        );
-        // A kept file (compile_cache.rs): the magic, what was asked's length,
-        // what was made's length and hash — eight bytes each — then what
-        // was asked, then what was made.
-        let made_from = |file: &[u8]| 32 + u64::from_le_bytes(file[8..16].try_into().unwrap()) as usize;
-        let forged = [
-            &seven_file[..16],
-            &eight_file[16..32],
-            &seven_file[32..made_from(&seven_file)],
-            &eight_file[made_from(&eight_file)..],
-        ]
-        .concat();
-        std::fs::write(&seven, &forged).expect("eight's pipeline under seven's asking");
-        let next = keeping(&turn, &folder);
-        let made = pipeline(&next, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&next), 0, "refused, so made again");
-        assert_eq!(first_word(&next, &made), 7, "and it is seven's");
-        let last = keeping(&turn, &folder);
-        let handed = pipeline(&last, &[WRITES_SEVEN], "main");
-        assert_eq!(pipelines_found(&last), 1, "kept over what was refused");
-        assert_eq!(first_word(&last, &handed), 7);
-    }
-
     /// What `WRITES_SEVEN` is kept as, made by an engine of its own in a
     /// folder of its own: (its file's name, its bytes).
     fn seven_as_kept(turn: &DeviceTurn, name: &str) -> (std::ffi::OsString, Vec<u8>) {
@@ -797,25 +783,86 @@ fn main() { out[0] = 7u; }
 
     /// What an engine keeping its shaders in `folder` makes of
     /// `WRITES_SEVEN` on a thread of its own, the main thread running
-    /// `then` once that compile waits on another's turn, before it hears:
-    /// (the compiles the folder answered, what the kernel wrote).
+    /// `then` once that compile waits on another's turn — and `till` holds
+    /// of it — before it hears: (the engine, what the kernel wrote).
     ///
     /// 🧪IN TURN, NOT IN TIME (board a-kernel-wait-test-goes-red-under-load,
     /// 11-18): ↩️the main thread slept 500 ms and ran `then`, and on a
     /// machine under load the compile might not have looked by then — a
     /// pin of a wait that need not have waited.
-    fn seven_beside(turn: &DeviceTurn, folder: &std::path::Path, then: impl FnOnce()) -> (u64, u32) {
+    fn seven_beside(
+        turn: &DeviceTurn,
+        folder: &std::path::Path,
+        till: impl Fn(&crate::device::Engine) -> bool,
+        then: impl FnOnce(),
+    ) -> (crate::device::Engine, u32) {
         let engine = keeping(turn, folder);
-        std::thread::scope(|scope| {
+        let word = std::thread::scope(|scope| {
             let compiling = scope.spawn(|| pipeline(&engine, &[WRITES_SEVEN], "main"));
-            while waited(&engine) == 0 {
+            while waited(&engine) == 0 || !till(&engine) {
                 assert!(!compiling.is_finished(), "the compile ended without waiting on the turn");
                 std::thread::yield_now();
             }
             then();
             let compiled = compiling.join().expect("the compile");
-            (found(&engine), first_word(&engine, &compiled))
-        })
+            first_word(&engine, &compiled)
+        });
+        (engine, word)
+    }
+
+    /// No more than the wait: [`seven_beside`] runs `then` as soon as the
+    /// compile waits.
+    fn at_once(_: &crate::device::Engine) -> bool {
+        true
+    }
+
+    fn said(engine: &crate::device::Engine) -> u64 {
+        // SAFETY: only reads a count.
+        unsafe { engine.device().as_hal::<super::Dx12>() }.expect("DX12").dxil_said()
+    }
+
+    // 🧭an-engine-setup-hangs-in-a-batch (2026-11-23): a turn waited for
+    // past `TURN_SAID` is said on stderr — once as the wait goes on, once
+    // as it ends — and a wait shorter is said nowhere
+    // (`a_kernel_another_compiles_now_is_waited_for`). A test's engine
+    // compiles on the test's isolate, so a wait for a turn stands where no
+    // Dart timeout speaks, and stderr is what such a run leaves.
+    #[test]
+    fn a_turn_waited_for_long_is_said_as_it_goes_on_and_as_it_ends() {
+        let turn = a_device_of_its_own();
+        let (kept_as, _) = seven_as_kept(&turn, "said_made");
+        let kept = kept_in("said");
+        let folder = kept.path();
+        let held = a_turn_on_seven(&folder, &kept_as);
+        let (engine, word) = seven_beside(&turn, &folder, |engine| said(engine) > 0, || {
+            std::fs::remove_file(&held).expect("the other lets go");
+        });
+        assert_eq!(said(&engine), 2, "said as it went on, and as it took the turn");
+        assert_eq!((found(&engine), word), (0, 7), "compiled here");
+    }
+
+    // 🧭an-engine-setup-hangs-in-a-batch: a turn says whose it is — the
+    // process that holds it — for whoever waits on it to say.
+    #[test]
+    fn a_turn_says_whose_it_is() {
+        let turn = a_device_of_its_own();
+        let kept = kept_in("whose");
+        let folder = kept.path();
+        let engine = keeping(&turn, &folder);
+        let slowly = seven_slowly();
+        let whose = std::thread::scope(|scope| {
+            let compiling = scope.spawn(|| pipeline(&engine, &[slowly.as_str()], "main"));
+            loop {
+                let whose = kept_files(&folder, "turn")
+                    .into_iter()
+                    .find_map(|(path, _)| std::fs::read_to_string(path).ok().filter(|it| !it.is_empty()));
+                if whose.is_some() || compiling.is_finished() {
+                    break whose;
+                }
+                std::thread::yield_now();
+            }
+        });
+        assert_eq!(whose, Some(std::process::id().to_string()));
     }
 
     // 🚨A kernel another process compiles now is waited for — what it
@@ -828,14 +875,15 @@ fn main() { out[0] = 7u; }
         let kept = kept_in("waited");
         let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
-        let (found, word) = seven_beside(&turn, &folder, || {
+        let (engine, word) = seven_beside(&turn, &folder, at_once, || {
             let beside = folder.join("beside.tmp");
             std::fs::write(&beside, &bytes).expect("kept by the other");
             std::fs::rename(&beside, folder.join(&kept_as)).expect("under its name");
             std::fs::remove_file(&held).expect("the other lets go");
         });
-        assert_eq!(found, 1, "handed what the other kept, not compiled again");
+        assert_eq!(found(&engine), 1, "handed what the other kept, not compiled again");
         assert_eq!(word, 7);
+        assert_eq!(said(&engine), 0, "a wait shorter than `TURN_SAID` is said nowhere");
     }
 
     /// `WRITES_SEVEN` after a long run of sums: a kernel DXC takes a while
@@ -912,10 +960,10 @@ fn main() {{
         let kept = kept_in("let_go");
         let folder = kept.path();
         let held = a_turn_on_seven(&folder, &kept_as);
-        let (found, word) = seven_beside(&turn, &folder, || {
+        let (engine, word) = seven_beside(&turn, &folder, at_once, || {
             std::fs::remove_file(&held).expect("let go");
         });
-        assert_eq!((found, word), (0, 7), "compiled here");
+        assert_eq!((found(&engine), word), (0, 7), "compiled here");
         let kept = kept_files(&folder, "dxil").into_iter().map(|(path, _)| path).collect::<Vec<_>>();
         assert_eq!(kept, [folder.join(&kept_as)], "kept");
         assert_eq!(kept_files(&folder, "turn"), [], "and the turns gone with their holder");

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -19,6 +20,7 @@ import '../../helpers/home_page_probes.dart';
 /// hand letting go of a count put off under it (F-620-Q3,
 /// `PlaybackCacheBudget.readinessMoved`): each panel's band hears that.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('the timeline\'s band and the conte\'s hear where a frame '
       'stands', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));

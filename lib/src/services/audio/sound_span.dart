@@ -33,14 +33,23 @@ import 'wav16_header.dart';
 ///
 /// [pull]: the sound played that much faster again, as a movie laid frame
 /// for frame plays it ([decodeAudioOfFrames]).
+///
+/// [onProgress]: how far its decode has come ([decodeAudioOfFrames]).
 Uint8List? soundSpanAsWav(
   MediaByteSource source,
   KeptSpan kept,
   ProjectClock clock, {
   ({int numerator, int denominator}) pull = noPull,
+  void Function(double fraction)? onProgress,
 }) {
   final frames = (first: kept.first, count: kept.count);
-  final decoded = decodeAudioOfFrames(source, frames, clock, pull: pull);
+  final decoded = decodeAudioOfFrames(
+    source,
+    frames,
+    clock,
+    pull: pull,
+    onProgress: onProgress,
+  );
   if (decoded == null) {
     return null;
   }
@@ -71,11 +80,16 @@ Uint8List? soundSpanAsWav(
 /// (both sides scaled by the exact rational) — so [clock]'s frames count it
 /// as they count a sound of its own: what a movie rewritten at the
 /// project's speed hears (🗣️F-588, [framePullOf]).
+///
+/// [onProgress] hears how far the decode of the frames has come — the
+/// frames decoded of those to decode ([decodeAudioSource]); the ask for
+/// the rate decodes none.
 ({Float32List samples, int channels, int sampleRate})? decodeAudioOfFrames(
   MediaByteSource source,
   ({int first, int count}) frames,
   ProjectClock clock, {
   ({int numerator, int denominator}) pull = noPull,
+  void Function(double fraction)? onProgress,
 }) {
   final probe = _decodedBetween(source, 0, 0);
   if (probe == null) {
@@ -89,6 +103,7 @@ Uint8List? soundSpanAsWav(
     pace.frameToSample(frames.first + frames.count, probe.sampleRate),
     probe.sampleRate,
     pull,
+    onProgress,
   );
 }
 
@@ -110,13 +125,19 @@ Uint8List? soundSpanAsWav(
   int end,
   int sampleRate,
   ({int numerator, int denominator}) pull,
+  void Function(double fraction)? onProgress,
 ) {
   final inputRate = sampleRate * pull.numerator;
   final outputRate = sampleRate * pull.denominator;
   final reach = resampleReach(inputRate: inputRate, outputRate: outputRate);
   final turns = (reach + pull.numerator - 1) ~/ pull.numerator;
   final from = start - turns * pull.numerator;
-  final decoded = _decodedBetween(source, from < 0 ? 0 : from, end + reach);
+  final decoded = _decodedBetween(
+    source,
+    from < 0 ? 0 : from,
+    end + reach,
+    onProgress: onProgress,
+  );
   if (decoded == null) {
     return null;
   }
@@ -215,11 +236,13 @@ Int16List? int16PcmBefore(
 ({Float32List samples, int channels, int sampleRate})? _decodedBetween(
   MediaByteSource source,
   int start,
-  int end,
-) {
+  int end, {
+  void Function(double fraction)? onProgress,
+}) {
   final decoded = decodeAudioSource(
     source,
     window: (start: start, count: end - start),
+    onProgress: onProgress,
   );
   return decoded == null || decoded.channels <= 0 ? null : decoded;
 }

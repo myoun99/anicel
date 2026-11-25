@@ -117,6 +117,8 @@ class _StoryboardFolded {
     frames: (context, geometry) => _StoryboardConteRow(
       trackId: track.id,
       seat: seat,
+      // A folded strip stands alone: no row beside it to land on.
+      seats: [seat],
       layoutEntries: entries,
       height: height,
       timelineScale: _state._scale,

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -42,6 +43,7 @@ import '../../helpers/draw_on_current_frame.dart' show inkCel;
 /// name tag stands on is made of the camera — the tag is posed in the shot
 /// (I-67-Q1) — and a camera dragged over it moves the frames as any hand.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 8, height: 8);
 

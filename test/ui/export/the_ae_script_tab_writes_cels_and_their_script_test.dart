@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -40,6 +41,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/written_wav.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The AE Script tab's run, down to the files on disk: the cels the Cels
 /// list picks, written as the tab writes them, and the script beside them
@@ -51,6 +53,7 @@ import '../../helpers/written_wav.dart';
 /// 거기서 셀부분 선택하는 동작은 셀 탭 그대로 사용하되, 용지 적용은
 /// 필요없으니 그런부분 없앤다던가?」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -167,7 +170,7 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

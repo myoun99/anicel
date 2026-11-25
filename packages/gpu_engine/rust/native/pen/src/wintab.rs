@@ -9,7 +9,8 @@
 //! - The packet queue is drained without CXO_MESSAGES (no message pump
 //!   dependency) into the packets heard ([`Heard`]) by the receiver's
 //!   thread ([`crate::receiver`] — [`DRAIN_EVERY`], and sooner where a
-//!   move's packet is not heard yet: [`readings_at`]), and by a message
+//!   move's packet is not heard yet: [`readings_at`]), which sends what it
+//!   takes ([`SENT`]), and by a message
 //!   that presses (points_win.rs). Dart's poll reads what was heard, and so do the
 //!   points' readers (points_win.rs), which give each point the pen or a
 //!   mouse made what the packet that put it there says of the pen — its
@@ -22,7 +23,8 @@
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use crate::points::{Driven, Point};
@@ -404,15 +406,12 @@ impl Opened {
 
 /// The open context's queue, and room for the whole of it: what drains it
 /// — the receiver's thread, a press ([`drain`]) — takes it in turn, and
-/// hears what it took before the next takes any, so the packets heard keep
-/// the driver's order.
+/// sends or hears what it took before the next takes any, so the packets
+/// heard keep the driver's order.
 struct Drain {
     driver: Driver,
     context: *mut c_void,
     room: Vec<Packet>,
-    /// What the receiver's thread took while the UI's held what was heard
-    /// ([`drain_on_its_own`]), heard first at the next drain.
-    held: Vec<Packet>,
 }
 
 // SAFETY: a context handle and the driver's entry points, only ever used
@@ -444,24 +443,31 @@ fn take_queued(drain: &mut Drain) -> usize {
     (got.max(0) as usize).min(QUEUE)
 }
 
-/// What `drain` held back, then the `got` it just took, heard by `tablet`'s
-/// open context.
-fn hand_over(drain: &mut Drain, got: usize, tablet: &mut Tablet) {
-    if let Some(opened) = tablet.opened.as_mut() {
-        opened.heard.hear(&drain.held);
-        opened.heard.hear(&drain.room[..got]);
-    }
-    drain.held.clear();
-}
+/// What the receiver's drains took, in the order taken — sent by the drain
+/// that took it, heard by whoever takes what was heard, before it reads
+/// ([`tablet`]).
+///
+/// 🚨THE RECEIVER ONLY SENDS (pen-receive-threads-are-one, 2026-11-23), as
+/// it does the mouse's reads ([`crate::mouse_kept`]'s `SENT`): it heard
+/// what it took itself where the UI's thread did not hold what was heard
+/// (`try_lock`), and held the rest back for its next drain. 🔬공통 11-23,
+/// the crate's gate in debug: a move's packet, taken by the drain it woke
+/// while a poll held what was heard, waited ten seconds for the drain after
+/// (`a_move_whose_packet_is_not_heard_yet_wakes_the_reader`) — in the app
+/// 4 ms, past the pairing of the move that woke it ([`readings_at`]). A
+/// send waits on nobody, and the next read hears it.
+static SENT: LazyLock<(Sender<Vec<Packet>>, Mutex<Receiver<Vec<Packet>>>)> = LazyLock::new(|| {
+    let (send, heard) = mpsc::channel();
+    (send, Mutex::new(heard))
+});
 
 /// The receiver's turn ([`crate::receiver::Work::Drain`]): every packet
-/// the driver has queued taken into what was heard. Whether a context is
+/// the driver has queued taken and sent ([`SENT`]). Whether a context is
 /// still open.
 ///
 /// 🚨IT NEVER WAITS ON THE UI'S THREAD: what was heard is the UI's to read
-/// (`poll` · `readings_at` · `pair`), and where the UI holds it the packets
-/// taken are held back for the next drain; where the UI drains itself (a
-/// press), this turn is the UI's.
+/// (`poll` · `readings_at` · `pair`), and the packets taken are sent to it;
+/// where the UI drains itself (a press), this turn is the UI's.
 pub(crate) fn drain_on_its_own() -> bool {
     // The UI's press is draining it: the queue is heard all the same.
     let Some(mut drain) = receiver::if_free(&DRAIN) else {
@@ -471,12 +477,8 @@ pub(crate) fn drain_on_its_own() -> bool {
         return false;
     };
     let got = take_queued(drain);
-    match receiver::if_free(&TABLET) {
-        Some(mut tablet) => hand_over(drain, got, &mut tablet),
-        None => {
-            let Drain { room, held, .. } = drain;
-            held.extend_from_slice(&room[..got]);
-        }
+    if got > 0 {
+        let _ = SENT.0.send(drain.room[..got].to_vec());
     }
     true
 }
@@ -495,7 +497,9 @@ pub(crate) fn drain() {
         return;
     };
     let got = take_queued(drain);
-    hand_over(drain, got, &mut tablet());
+    if let Some(opened) = tablet().opened.as_mut() {
+        opened.heard.hear(&drain.room[..got]);
+    }
 }
 
 struct Tablet {
@@ -509,8 +513,18 @@ unsafe impl Send for Tablet {}
 
 static TABLET: Mutex<Tablet> = Mutex::new(Tablet { driver: None, opened: None });
 
+/// The tablet, what the receiver sent ([`SENT`]) heard first by its open
+/// context — let go of where none is open.
 fn tablet() -> std::sync::MutexGuard<'static, Tablet> {
-    TABLET.lock().unwrap_or_else(PoisonError::into_inner)
+    let mut tablet = TABLET.lock().unwrap_or_else(PoisonError::into_inner);
+    let sent = SENT.1.lock().unwrap_or_else(PoisonError::into_inner);
+    for taken in sent.try_iter() {
+        if let Some(opened) = tablet.opened.as_mut() {
+            opened.heard.hear(&taken);
+        }
+    }
+    drop(sent);
+    tablet
 }
 
 impl Tablet {
@@ -629,7 +643,7 @@ pub(crate) fn open_drained_every(within: u32, every: Duration) -> Result<(), Ref
     tablet.opened = Some(Opened { context: opened, scales, within, output, heard: Heard::default() });
     drop(tablet);
     let room = vec![Packet::default(); QUEUE];
-    *drain_lock() = Some(Drain { driver, context: opened, room, held: Vec::new() });
+    *drain_lock() = Some(Drain { driver, context: opened, room });
     EVERY.store(u64::try_from(every.as_micros()).unwrap_or(u64::MAX), Ordering::Relaxed);
     receiver::now(Work::Drain, every);
     Ok(())

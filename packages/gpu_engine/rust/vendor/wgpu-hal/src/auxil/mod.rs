@@ -7,6 +7,11 @@ pub(super) mod dxgi;
 #[cfg(all(native, feature = "renderdoc"))]
 pub(super) mod renderdoc;
 
+// ANICEL: what DXC and the drivers made, kept on disk (compile_cache.rs) —
+// D3D12's and Vulkan's by one code.
+#[cfg(any(dx12, vulkan))]
+pub(crate) mod compile_cache;
+
 pub mod db {
     pub mod amd {
         /// cbindgen:ignore

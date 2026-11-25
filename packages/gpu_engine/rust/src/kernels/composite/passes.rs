@@ -1,6 +1,6 @@
-//! The composite's passes as it keeps them: the full ones, one to an
-//! output, each in a cell of its own ([`Fulls`]), and a plan's own, made by
-//! the thread that compiles them apart ([`Passes`]).
+//! The composite's passes as it keeps them: the full ones and the move,
+//! one to an output, each in a cell of its own ([`OnePerOutput`]), and a
+//! plan's own, made by the thread that compiles them apart ([`Passes`]).
 //!
 //! 🚨NOTHING IS COMPILED UNDER A LOCK OF THESE. A verb's body runs on the
 //! engine's thread, and one that waits there for a compile leaves that
@@ -22,20 +22,22 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use super::Compiled;
 
-/// A full pass's cell: empty till the pass is made.
+/// A pass's cell, of one made once to an output: empty till it is made.
 pub(super) type Cell = Arc<OnceLock<wgpu::ComputePipeline>>;
 
-/// The pass that takes any plan (`Compiled::full`), one to an output — the
-/// tiles', and a surface's of each format one is stored in.
+/// A pass made once to an output — the tiles', and a surface's of each
+/// format one is stored in: the one that takes any plan
+/// (`Compiled::full`), and the one that moves a surface's texels
+/// (`moved.rs`), each kept so.
 #[derive(Default)]
-pub(super) struct Fulls(Mutex<Vec<(Option<&'static str>, Cell)>>);
+pub(super) struct OnePerOutput(Mutex<Vec<(Option<&'static str>, Cell)>>);
 
-impl Fulls {
+impl OnePerOutput {
     fn held(&self) -> MutexGuard<'_, Vec<(Option<&'static str>, Cell)>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The cell of the full pass for `surface`'s output — the one cell that
+    /// The cell of the pass for `surface`'s output — the one cell that
     /// output has.
     pub(super) fn cell(&self, surface: Option<&'static str>) -> Cell {
         let mut cells = self.held();

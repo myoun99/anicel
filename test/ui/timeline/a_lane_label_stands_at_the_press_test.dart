@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,7 @@ import '../../helpers/named_finders.dart';
 /// tap clears on the release (「클릭하고 떼면 뭐든 비우게」). ↩️It stood on
 /// the release, which a sweep never reaches.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   late EditorSessionManager session;
   late LaneRowAddress header;
 

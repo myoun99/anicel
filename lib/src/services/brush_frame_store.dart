@@ -644,6 +644,7 @@ class BrushFrameStore {
     // detector that crossed on one rule while the paint read another is how
     // the block came to disagree with the drawing in the first place.
     final has = celHasRenderableContent(canonicalKey);
+    _askAgainOnceTold(canonicalKey);
     final had = _celsWithContent.contains(canonicalKey);
     if (has == had) {
       return;
@@ -654,6 +655,28 @@ class BrushFrameStore {
       _celsWithContent.remove(canonicalKey);
     }
     _crossing.add(canonicalKey);
+  }
+
+  /// [canonicalKey]'s cel asked again ([_noteCelContent]) once the tiles of
+  /// it whose ink is still to be told are told ([BitmapTile.inkTold]) —
+  /// drawn meanwhile, as under the pen ([BitmapSurface.showsSomethingNow]):
+  /// asked as it stands then, so a cel that has moved on crosses no more.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-2): 「모름 → 아는 것으로 그리고, 답이 오면 고침」 — a crossing told
+  /// then is told as every other is ([celContentRevision]).
+  void _askAgainOnceTold(BrushFrameKey canonicalKey) {
+    final told = [
+      for (final tile
+          in _bakedSurfaces[canonicalKey]?.tiles.values ??
+              const <BitmapTile>[])
+        ?tile.inkTold,
+    ];
+    if (told.isNotEmpty) {
+      unawaited(
+        Future.wait(told).then((_) => _noteCelContent(canonicalKey)),
+      );
+    }
   }
 
   /// One bump of [celContentRevision] for every cel crossed since the last
@@ -1424,12 +1447,7 @@ class BrushFrameStore {
     }
     final behind = _behind(shell);
     _writeDownWhatWaits(key, behind);
-    // In its place in the line ([_storeHot] puts a cel last).
-    _bakedSurfaces[key] = behind;
-    _hotWeights.weigh(key, behind);
-    if (_displayCaches.containsKey(key)) {
-      storeRebuiltDisplayCache(key: key, previewSurface: behind);
-    }
+    _inItsPlace(key, behind);
     return true;
   }
 
@@ -2426,6 +2444,38 @@ class BrushFrameStore {
     _scheduleCooling();
   }
 
+  /// [to] in [from]'s place as [key]'s hot picture — the same pixels, held
+  /// by other objects (`BrushFrameEditingCoordinator.takeToldTidied`) — and
+  /// its display cache with it. ⛔NOT an edit: the cel stays as clean or as
+  /// dirty as it was, at its revision, with what it keeps. False, and
+  /// nothing changed, where [from] is its hot picture no longer.
+  ///
+  bool takeSamePicture(
+    BrushFrameKey key,
+    BitmapSurface from,
+    BitmapSurface to,
+  ) {
+    key = _canonicalize(key);
+    if (!identical(_bakedSurfaces[key], from)) {
+      return false;
+    }
+    _inItsPlace(key, to);
+    return true;
+  }
+
+  /// [surface] as [key]'s hot picture in its place in the line ([_storeHot]
+  /// puts a cel last), weighed as what it holds, and its display cache
+  /// with it: the same pixels, held by other objects — a shell
+  /// ([_becomesItsShell]) or a told picture ([takeSamePicture]). ↩️Each
+  /// wrote these lines itself till the second (2026-11-24, ③-1).
+  void _inItsPlace(BrushFrameKey key, BitmapSurface surface) {
+    _bakedSurfaces[key] = surface;
+    _hotWeights.weigh(key, surface);
+    if (_displayCaches.containsKey(key)) {
+      storeRebuiltDisplayCache(key: key, previewSurface: surface);
+    }
+  }
+
   /// Every tile the HOT surfaces hold, into [tiles] (an identity set) — what
   /// a holder that shares tiles with this store must not count again (the
   /// app's clipboard, in the memory census). Cold and file cels hold no
@@ -2776,7 +2826,10 @@ class BrushFrameStore {
       // it: the block stayed white and the pixel buttons stayed lit (유저
       // 2026-08-27: 「삭제눌렀으면 그림이 사라진거니 블록이 회색되고 버튼도
       // 비활성화되야하는데 둘다 아님」).
-      return baked.showsSomething;
+      // As it shows NOW: a tile whose ink is still to be told shows ink, as
+      // under the pen, and the cel is asked again once told
+      // ([_askAgainOnceTold]).
+      return baked.showsSomethingNow;
     }
     // ⛔Cold and file-backed cels are NOT asked by decoding: that would
     // MATERIALIZE every cel of the project, and this is called per visible

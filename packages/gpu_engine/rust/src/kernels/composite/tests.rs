@@ -1933,7 +1933,9 @@ fn walks_told(engine: &Engine) -> Vec<String> {
 // statistics' stages part (H66, 2026-11-23) —, and the submit's own line
 // told them as one. A chained plan walks again once its chains ran, and
 // that walk's submit is the same door's. On a device of its own: what is
-// told is the engine's, every test's on the shared one.
+// told is the engine's, every test's on the shared one. Told once the GPU
+// has written the submit's stamps (clock.rs) — and on a device with no
+// clock, of no walk at all.
 #[test]
 fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
     let turn = a_device_of_its_own();
@@ -1943,11 +1945,19 @@ fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
     let (pages, chained_pages) = (scene.pool.upload(&engine), chained.pool.upload(&engine));
     // SAFETY: a live engine.
     unsafe { crate::device::gpu_engine_timed(&raw const engine, true) };
+    let told = |engine: &Engine| {
+        crate::testing::done_here(engine).expect("the GPU done");
+        walks_told(engine)
+    };
 
     let done = composite
         .run(&engine, &scene.plan(&pages), &scene.tiles, CANVAS, composite.widest())
         .expect("composite the canvas");
-    let ran = walks_told(&engine);
+    let ran = told(&engine);
+    if engine.queue.clock.is_none() {
+        assert!(ran.is_empty(), "a device with no clock tells no walk's GPU time: {ran:?}");
+        return;
+    }
     assert_eq!(ran.len(), 1, "a run is one submit: {ran:?}");
 
     let sets = [canvas_set()];
@@ -1964,14 +1974,14 @@ fn a_timed_walk_s_submit_is_told_of_the_door_that_asked() {
     };
     let texture = surface_on(&engine, SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
     composite.show(&engine, &plan, &texture, whole_screen(), composite.widest()).expect("show");
-    let shown = walks_told(&engine);
+    let shown = told(&engine);
     assert_eq!(shown.len(), 1, "a show is one submit: {shown:?}");
     assert_ne!(ran, shown, "⛔a run and a show are told at one place");
 
     composite
         .run(&engine, &chained.plan(&chained_pages), &chained.tiles, NO_EDGE, composite.widest())
         .expect("composite the chained rows");
-    let walked_again = walks_told(&engine);
+    let walked_again = told(&engine);
     assert!(walked_again.contains(&ran[0]), "⛔the walk after its chains is not the door's: {walked_again:?}");
 }
 
@@ -2219,6 +2229,41 @@ fn a_pass_asked_for_while_what_is_compiled_apart_is_held_comes_once_it_is_let_go
     engine.apart.let_go();
     composite.settle();
     assert!(made().is_some_and(|its_own| its_own != any));
+}
+
+// What the compiler made, and each pass that ran on the pass that takes
+// any plan while its own was still to come, is counted where the frame
+// statistics read it (`gpu_engine_compiles`): the pipeline compiled apart
+// is one more made, with its time, and its pass counts as standing in no
+// more (🗣️유저 2026-11-24, card the-galaxy-tab-canvas-went-slow-on-
+// build-1095: 「앱 키고 초기에 스트로크 초기렉」 — the readout said none).
+#[test]
+fn a_pass_that_stands_in_for_its_own_is_counted_and_its_own_compile_too() {
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let composite = Composite::new(&engine).expect("compile the composite");
+    let own = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
+    let compiles = || {
+        let mut into = [0u64; 6];
+        // SAFETY: `engine` is live and `into` holds six words.
+        unsafe { crate::device::gpu_engine_compiles(&engine, into.as_mut_ptr()) };
+        into
+    };
+    let [opened, micros, longest, under_way, stood_in, _] = compiles();
+    assert!(opened > 0 && micros > 0 && longest > 0, "the full passes, made as it opened, are counted");
+    assert!(longest <= micros);
+    assert_eq!((under_way, stood_in), (0, 0));
+    engine.apart.hold();
+    let _ = composite.pass(&engine, own);
+    let _ = composite.pass(&engine, own);
+    assert_eq!(compiles()[4], 2, "each pass on the one that takes any, its own to come");
+    engine.apart.let_go();
+    composite.settle();
+    let _ = composite.pass(&engine, own);
+    let [made, micros_after, _, under_way, stood_in, _] = compiles();
+    assert_eq!(made, opened + 1, "its own pass made, one more");
+    assert!(micros_after > micros, "with the time it took");
+    assert_eq!((under_way, stood_in), (0, 2), "its own runs now, nothing compiling");
 }
 
 // The executor an app opens has the tiles' full pass and the surface's,

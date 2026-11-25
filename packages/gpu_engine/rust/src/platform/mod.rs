@@ -1,8 +1,38 @@
 //! The way to Flutter's screen without a copy, one file per platform with
 //! the same face: Windows hands Flutter a texture the engine made
 //! (windows.rs), and so do iOS and macOS, through an IOSurface (apple.rs),
-//! and Linux, through a dma-buf (linux.rs); Android presents into a window
-//! Flutter made (android.rs); the rest have no bridge yet.
+//! Linux, through a dma-buf (linux.rs), and Android, through an
+//! AHardwareBuffer (android.rs); the rest have no bridge yet.
+//!
+//! 🚨THE LAW OF A SCREEN'S BUFFER: what is handed to Flutter is laid out so
+//! that the engine's device and Flutter's read it alike with nothing
+//! handed between them — no compression for one to resolve, no layout for
+//! one to change. Each platform keeps it by how it makes the buffer:
+//! - Windows: ALLOW_SIMULTANEOUS_ACCESS — the texture decays to COMMON
+//!   once the engine's work on it finishes (windows.rs).
+//! - Linux: the LINEAR modifier (linux.rs).
+//! - Android: CPU_READ_RARELY, which drivers lay out uncompressed
+//!   (android.rs, `allocated`). A request to the driver, not a guarantee
+//!   as LINEAR is — so the debug screen's check measures a buffer laid
+//!   each way (the app's `ScreenCheck`, [`Laid`]).
+//! - iOS and macOS: an IOSurface (apple.rs) — how Metal keeps it there has
+//!   not been read (공통 2026-11-24).
+//!
+//! 🗣️유저 2026-11-24 (card the-galaxy-tab-canvas-went-slow-on-build-1095,
+//! through 관제): 「2번은 안드만 해당이야? 통일해도 이거는 통일안된단거야?
+//! 통일기준으로 정하면안되나」 — one law, which Android alone broke till
+//! then (an OPTIMAL image laid as its driver chose).
+//!
+//! 🚨AND A BUFFER IS DRAWN ON AGAIN ONLY ONCE FLUTTER HAS FINISHED READING
+//! IT (risk 1 of that card, 2026-11-24): one law for every platform, kept
+//! by the app's `ScreenTurns` — three buffers, the next drawn on one let go
+//! of two of the app's frames ago, and read, where Flutter says what it
+//! has read ([`crate::screen_reads`]). Where it says so is each platform's:
+//! - Android: Anicel's Flutter, patch 0007 — the texture tells its paints
+//!   submitted and read.
+//! - Windows, Linux, iOS and macOS: nothing says it yet, and the frames
+//!   alone answer (the card's table of what each could tell it by, and
+//!   why not where it cannot).
 
 #[cfg(target_os = "android")]
 mod android;
@@ -10,6 +40,10 @@ mod android;
 mod apple;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod vulkan;
+#[cfg(all(test, any(windows, target_os = "linux")))]
+mod kept_tests;
 #[cfg(not(any(
     windows,
     target_os = "android",
@@ -36,7 +70,7 @@ use self::unsupported as native;
 #[cfg(windows)]
 use self::windows as native;
 
-pub(crate) use native::{adapter_luid, device_went_by, video_memory};
+pub(crate) use native::{adapter_luid, asking_the_driver_of, device_went_by, video_memory};
 #[cfg(windows)]
 pub(crate) use native::committed_buffer;
 
@@ -44,11 +78,10 @@ use std::ffi::c_void;
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
 
-use crate::device::{Engine, let_go};
+use crate::device::{Engine, Sent, let_go};
 use crate::fail;
 
-/// The instance the engine's adapters come from. The engine keeps it:
-/// Android's window surfaces must come from it too.
+/// The instance the engine's adapters come from.
 pub(crate) fn instance() -> wgpu::Instance {
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = native::BACKENDS;
@@ -70,15 +103,31 @@ static SHADERS_KEPT_IN: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Keeps what `device`'s shader compiler makes in the app's folder for
 /// them ([`SHADERS_KEPT_IN`]), for the next launch to hand the driver
-/// instead of compiling it again: on Windows what DXC makes, and what the
-/// driver makes of each pipeline on it (vendor/wgpu-hal, compile_cache.rs).
-/// 🗣️유저 2026-11-13,
+/// instead of compiling it again — 🚨ON EVERY PLATFORM, each backend by its
+/// own means (`native::keep_shaders`): D3D12 keeps what DXC makes and what
+/// the driver makes of each pipeline, Vulkan (Android, Linux) what the
+/// driver makes of each pipeline — both by one code (vendor/wgpu-hal,
+/// auxil/compile_cache.rs) — and on Apple the OS keeps Metal's itself
+/// (apple.rs). 🗣️유저 2026-11-13,
 /// the-wait-window-stands-seven-seconds-on-the-surface-Q1 「디스크 캐시」.
-#[cfg_attr(not(windows), allow(unused_variables))]
+///
+/// ↩️TILL 2026-11-24 WINDOWS ALONE KEPT ANY (`#[cfg(windows)]` here, by no
+/// one's word — the cards say only that the Surface was where it was
+/// measured): the Galaxy Tab (Adreno 740, Vulkan) compiled every kernel
+/// and pass at every launch (card the-galaxy-tab-canvas-went-slow-on-build-
+/// 1095, 2026-11-24 — 「앱 키고 초기에 스트로크 초기렉 아직있고, 시간지나면
+/// 점점 괜찮아져」). 🗣️관제 the same day: the law split by platform made one
+/// (절대명령 1).
 pub(crate) fn keep_shaders(device: &wgpu::Device) {
     let folder = SHADERS_KEPT_IN.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    #[cfg(windows)]
-    windows::keep_shaders(device, folder);
+    native::keep_shaders(device, folder);
+}
+
+/// How many of `device`'s pipelines the folder it keeps them in has
+/// answered since it opened ([`keep_shaders`]) — none where the OS keeps
+/// them and says nothing (Apple).
+pub(crate) fn pipelines_found(device: &wgpu::Device) -> Option<u64> {
+    native::pipelines_found(device)
 }
 
 /// Names the folder — `folder`'s `length` bytes of UTF-8 — where each
@@ -135,6 +184,11 @@ pub const WENT_BY_RESET: u32 = 4;
 /// Reset by its driver, which failed.
 pub const WENT_BY_DRIVER: u32 = 5;
 
+/// What asks a device's driver whether it took the device
+/// ([`asking_the_driver_of`]) — waiting on nothing, from whatever thread
+/// asks. Why it did is [`device_went_by`]'s to say.
+pub(crate) type DriverAsked = Box<dyn Fn() -> bool + Send>;
+
 /// A texture kernels write — and, where the platform shares textures,
 /// Flutter shows.
 pub struct Surface {
@@ -163,12 +217,65 @@ pub(crate) fn stores(engine: &Engine, format: wgpu::TextureFormat) -> bool {
             .contains(wgpu::Features::BGRA8UNORM_STORAGE)
 }
 
+/// How a surface's memory is to be laid out, where the platform lets the
+/// engine say: Android alone does (platform/android.rs, `allocated`) —
+/// there a screen asks for the layout the CPU may read too, which drivers
+/// keep uncompressed, and the debug screen's check makes one of each to
+/// tell whether that was needed. The others take what they make.
+#[derive(Clone, Copy)]
+pub enum Laid {
+    ForTheCpuToo,
+    AsTheDriverChooses,
+}
+
+/// AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE (hardware_buffer.h).
+const AHB_USAGE_GPU_SAMPLED_IMAGE: u64 = 1 << 8;
+/// AHARDWAREBUFFER_USAGE_CPU_READ_RARELY (hardware_buffer.h).
+const AHB_USAGE_CPU_READ_RARELY: u64 = 2;
+
+/// The AHardwareBuffer usage a surface laid `laid` is allocated with on
+/// Android (android.rs, `allocated`): Flutter samples it, and the CPU may
+/// read it now and then where [`Laid::ForTheCpuToo`]. Written here rather
+/// than there because a host test reads it — no test machine compiles the
+/// Android file (관제 2026-11-24 02:36: the check's two layouts must be
+/// two in fact, card the-galaxy-tab-canvas-went-slow-on-build-1095).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) const fn ahb_usage(laid: Laid) -> u64 {
+    match laid {
+        Laid::ForTheCpuToo => AHB_USAGE_GPU_SAMPLED_IMAGE | AHB_USAGE_CPU_READ_RARELY,
+        Laid::AsTheDriverChooses => AHB_USAGE_GPU_SAMPLED_IMAGE,
+    }
+}
+
+#[cfg(test)]
+mod laid_tests {
+    use super::*;
+
+    /// The CPU's usage bits of an AHardwareBuffer (hardware_buffer.h:
+    /// CPU_READ_MASK 0xF, CPU_WRITE_MASK 0xF0).
+    const CPU: u64 = 0xFF;
+
+    #[test]
+    fn a_screen_asks_for_the_cpu_too_and_the_drivers_own_for_none_of_it() {
+        assert_eq!(ahb_usage(Laid::ForTheCpuToo) & CPU, AHB_USAGE_CPU_READ_RARELY);
+        assert_eq!(ahb_usage(Laid::AsTheDriverChooses) & CPU, 0);
+        for laid in [Laid::ForTheCpuToo, Laid::AsTheDriverChooses] {
+            assert_ne!(ahb_usage(laid) & AHB_USAGE_GPU_SAMPLED_IMAGE, 0, "Flutter samples both");
+        }
+    }
+}
+
 impl Surface {
-    fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat) -> Option<Self> {
+    fn new(engine: &Engine, width: u32, height: u32, format: wgpu::TextureFormat, laid: Laid) -> Option<Self> {
+        // Android's window refused one before it was a surface (2026-11-23):
+        // an image of no texel is no image to Vulkan or D3D12.
+        if width == 0 || height == 0 {
+            return fail(format!("a {width} × {height} surface"));
+        }
         if !stores(engine, format) {
             return fail("this adapter cannot store to bgra8unorm from a compute pass");
         }
-        match native::create(engine.device(), width, height, format) {
+        match native::create(engine.device(), width, height, format, laid) {
             Ok((texture, shared)) => Some(Self { texture, shared }),
             Err(error) => fail(error),
         }
@@ -176,8 +283,9 @@ impl Surface {
 }
 
 /// Makes a `width` × `height` texture of BGRA or RGBA 8-bit unorm texels,
-/// shared with Flutter where the platform shares textures. Null on
-/// failure; see the last error.
+/// shared with Flutter where the platform shares textures — laid out for
+/// the CPU to read too where `for_the_cpu_too` and the platform lets it be
+/// said ([`Laid`]). Null on failure; see the last error.
 ///
 /// # Safety
 /// `engine` is live.
@@ -187,11 +295,13 @@ pub unsafe extern "C" fn gpu_engine_surface_new(
     width: u32,
     height: u32,
     bgra: bool,
+    for_the_cpu_too: bool,
 ) -> *mut Surface {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
+    let laid = if for_the_cpu_too { Laid::ForTheCpuToo } else { Laid::AsTheDriverChooses };
     engine.on_thread(|| {
-        Surface::new(engine, width, height, surface_format(bgra))
+        Surface::new(engine, width, height, surface_format(bgra), laid)
             .map_or(std::ptr::null_mut(), |surface| engine.hands(surface))
     })
 }
@@ -215,10 +325,114 @@ pub unsafe extern "C" fn gpu_engine_surface_texture(surface: *const Surface) -> 
     &unsafe { &*surface }.texture
 }
 
+/// Copies the pixels `rect` of what the kernels wrote to `surface` —
+/// [left, top, right, bottom) — onto what Flutter shows of it, where the
+/// two are apart (Android's screens on a device whose AHardwareBuffer
+/// images take no stores, `platform/android.rs`, `Way::Copied`): on the
+/// engine's thread in its turn, its caller waiting for none of it
+/// ([`Engine::posted`]) — where it fails, the caller's next done fails by
+/// it. Nothing where the two are one texture, every other surface.
+///
+/// The app asks it once a frame is drawn, of what the frame's draws wrote
+/// (`GpuSurface.settle`), before it asks for the GPU's done: the frame is
+/// shown once the copy is done too.
+///
+/// # Safety
+/// `engine` and `surface` are live, `surface` made on `engine`; `rect`
+/// holds four words. `surface` is let go of on the engine's thread
+/// ([`let_go`]), behind this in turn.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_surface_settle(
+    engine: *const Engine,
+    surface: *const Surface,
+    rect: *const u32,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, made) = unsafe { (&*engine, &*surface) };
+    if made.shared.shown().is_none() {
+        return;
+    }
+    // SAFETY: see the function's contract.
+    let [left, top, right, bottom] = unsafe { *rect.cast::<[u32; 4]>() };
+    let size = made.texture.size();
+    let (right, bottom) = (right.min(size.width), bottom.min(size.height));
+    if left >= right || top >= bottom {
+        return;
+    }
+    let handed = Sent((engine.clone(), surface));
+    engine.posted(move || {
+        let (engine, surface) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let made = unsafe { &*surface };
+        let shown = made.shared.shown()?;
+        let at = wgpu::Origin3d { x: left, y: top, z: 0 };
+        let mut encoder =
+            engine.device().create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                origin: at,
+                ..made.texture.as_image_copy()
+            },
+            wgpu::TexelCopyTextureInfo {
+                origin: at,
+                ..shown.as_image_copy()
+            },
+            wgpu::Extent3d {
+                width: right - left,
+                height: bottom - top,
+                depth_or_array_layers: 1,
+            },
+        );
+        engine.queue.submit([encoder.finish()]);
+        Some(())
+    });
+}
+
+/// Copies the way a surface reaches Flutter's screen on `engine` — where
+/// Android's cannot, what stands in the way ([`native::screen_said`]) —
+/// into `buffer` (UTF-8) and returns its full length, for the debug
+/// screen.
+///
+/// # Safety
+/// `engine` is live and `buffer` holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_screen_said(
+    engine: *const Engine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let said = engine.on_thread(|| native::screen_said(engine.device()));
+    crate::copy_out(&said, buffer, capacity)
+}
+
+/// Copies how `surface`'s buffer was laid out, read back off it — on
+/// Android its AHardwareBuffer's usage, empty elsewhere
+/// (`SharedHandle::laid_said`) — into `buffer` (UTF-8) and returns its full
+/// length, for the debug screen's check.
+///
+/// # Safety
+/// `surface` came from `gpu_engine_surface_new` and is live, and `buffer`
+/// holds `capacity` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_surface_laid_said(
+    surface: *const Surface,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    // SAFETY: see the function's contract.
+    let surface = unsafe { &*surface };
+    crate::copy_out(&surface.shared.laid_said(), buffer, capacity)
+}
+
 /// What Flutter opens the surface by — on Windows, an NT handle; on iOS
 /// and macOS, a CVPixelBuffer the caller does not own (retain it before
 /// handing it to Flutter); on Linux, the `DmaBuf` that describes the
-/// plane; null where the platform shares no texture.
+/// plane; on Android, the AHardwareBuffer the caller does not own
+/// (`GpuEnginePlugin.register` hands Flutter a reference of its own);
+/// null where the platform shares no texture.
 ///
 /// # Safety
 /// `surface` is live.

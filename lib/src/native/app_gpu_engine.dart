@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
     show ChangeNotifier, Listenable, ValueListenable, visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
+import '../core/made_once.dart';
 import '../services/persistence/app_support_path.dart';
 import 'gpu_adapter_choice.dart';
 import 'screen_texture.dart';
@@ -28,7 +29,11 @@ GpuEngine get appGpuEngine => _its.engine ??= _opener()();
 /// of different engines.
 final class _AppsEngine {
   GpuEngine? engine;
-  Future<GpuEngine>? opening;
+
+  /// The engine once [openAppGpuEngine] has opened it and told of it —
+  /// handed as itself from then on, not as the future of its opening
+  /// ([MadeOnce]).
+  final opening = MadeOnce<GpuEngine>();
 }
 
 _AppsEngine _its = _AppsEngine();
@@ -89,11 +94,18 @@ bool get appGpuEngineIsGone => _its.engine?.isGone ?? false;
 GpuDeviceWent get appGpuEngineWentBy =>
     _its.engine?.wentBy ?? GpuDeviceWent.unsaid;
 
+/// How many waits on the app's engine passed their limit with its device
+/// standing ([GpuEngine.waitsPastTheirLimit]) — none where the app has
+/// opened no engine: asked without opening one.
+int get appGpuEngineWaitsPastTheirLimit =>
+    _its.engine?.waitsPastTheirLimit ?? 0;
+
 /// What the app's engine says as a device goes, a line each: whether its
-/// device is gone and why, then what it handed the GPU and has not heard it
-/// finish, after the newest it has ([GpuEngine.unfinishedSubmits]) — asked
-/// without opening one. Waits on neither the engine's thread nor its
-/// device, so it is said of an engine whose device went.
+/// device is gone and why, how many of its waits passed their limit, then
+/// what it handed the GPU and has not heard it finish, after the newest it
+/// has ([GpuEngine.unfinishedSubmits]) — asked without opening one. Waits
+/// on neither the engine's thread nor its device, so it is said of an
+/// engine whose device went.
 ///
 /// 🗣️H63 (관제 2026-11-18): a reset of the GPU leaves what the engine had
 /// sent it and not had back — written where the app hears a device went
@@ -105,6 +117,7 @@ List<String> get appGpuEngineLossLines {
   }
   return [
     'engine gone=${engine.isGone} went=${engine.wentBy.name}',
+    'engine waits past their limit=${engine.waitsPastTheirLimit}',
     ...const LineSplitter().convert(engine.unfinishedSubmits),
   ];
 }
@@ -245,26 +258,45 @@ final class KeptOnTheAppsEngine<T extends Object> {
   KeptOnTheAppsEngine([this._free]);
 
   final void Function(T)? _free;
-  T? _kept;
+  MadeOnce<T>? _kept;
   _AppsEngine? _on;
 
-  /// What is kept, null where nothing is.
-  T? get orNull {
+  /// What is kept on the engine the app has now, made or on its way — none
+  /// yet where what was kept is another engine's.
+  MadeOnce<T> get _onTheEngineNow {
     if (!identical(_on, _its)) {
-      _kept = null;
-      _on = null;
+      _kept = MadeOnce(_free);
+      _on = _its;
     }
-    return _kept;
+    return _kept!;
   }
+
+  /// What is kept, null where nothing is.
+  T? get orNull => _onTheEngineNow.orNull;
 
   /// What is kept — [make]'s, kept from now, where nothing is.
   T of(T Function() make) {
-    final kept = orNull;
-    if (kept != null) {
-      return kept;
-    }
-    _on = _its;
-    return _kept = make();
+    final kept = _onTheEngineNow;
+    return kept.orNull ?? kept.keep(make());
+  }
+
+  /// What is kept, at once where it is — else made by [make] off the turn
+  /// that asks, one making however many ask while it goes, and kept as it
+  /// is made ([MadeOnce]: handed from then on as itself, never as the
+  /// future of its making).
+  ///
+  /// The app let its engine go while [make] made it on that engine: what it
+  /// made is that engine's — freed — and the app's is asked the same way.
+  Future<T> once(Future<T> Function() make) {
+    final its = _its;
+    return _onTheEngineNow.of(() async {
+      final made = await make();
+      if (identical(its, _its)) {
+        return made;
+      }
+      _free?.call(made);
+      return once(make);
+    });
   }
 
   /// Lets go of what is kept, freed — the memory is tight, or a test
@@ -292,21 +324,35 @@ String? debugTakeAppGpuEngineNoted() {
   return engine == null || engine.isGone ? null : engine.debugTakeNoted();
 }
 
+/// Test seam: ends once the GPU has finished all that was handed to the
+/// app's engine ([GpuEngine.done]) — at once where none is open or its
+/// device is gone. What every test waits for as it ends, before it is
+/// asked of the screens it made (`flutter_test_config.dart`): a lay on the
+/// engine's clock lands by then, and frees what its store let go of
+/// meanwhile.
+@visibleForTesting
+Future<void> debugAppGpuEngineDone() async {
+  final engine = _its.engine;
+  if (engine != null && !engine.isGone) {
+    await engine.done();
+  }
+}
+
 /// Test seam: whether anything has asked for the app's engine since the
 /// app last let one go — opened it or begun to ([openAppGpuEngine]), or
 /// made it at once ([appGpuEngine]). [appGpuEngineOpen] says only the
 /// first once it is done.
 @visibleForTesting
 bool get debugAppGpuEngineAskedFor =>
-    _its.engine != null || _its.opening != null;
+    _its.engine != null || _its.opening.isAsked;
 
 /// A set of kernels on [appGpuEngine], one for the app: compiled here the
 /// first time anything asks, if [warm] has not got there first — and
 /// again on the next engine, once the app lets this one go
 /// ([KeptOnTheAppsEngine]).
 final class AppKernels<T extends Object> {
-  AppKernels(this._here, this._off, this._free)
-    : _kept = KeptOnTheAppsEngine(_free);
+  AppKernels(this._here, this._off, void Function(T) free)
+    : _kept = KeptOnTheAppsEngine(free);
 
   /// Test seam: [warm] compiles on this isolate, as [kept] does. A widget
   /// test's clock is pumped, and lends a compile on another isolate no real
@@ -316,7 +362,6 @@ final class AppKernels<T extends Object> {
 
   final T Function(GpuEngine) _here;
   final Future<T> Function(GpuEngine) _off;
-  final void Function(T) _free;
 
   final KeptOnTheAppsEngine<T> _kept;
 
@@ -329,46 +374,38 @@ final class AppKernels<T extends Object> {
   /// compiled it: what a use that must not compile on this isolate waits
   /// on.
   ///
-  /// ⚠️Not [warm]'s future where there is no need: that one is made once
-  /// and kept, and a future made under a widget test's faked clock tells
-  /// one awaited in real time (`runAsync`) that it is done only when the
-  /// faked clock is pumped — an export's frame waited for it for good.
+  /// ⚠️Not [warm]'s future where there is no need: what is compiled is
+  /// handed with no turn waited. ↩️Till 2026-11-23 [warm] handed the future
+  /// it was made once and kept by, and a future made under a widget test's
+  /// faked clock tells one awaited in real time (`runAsync`) that it is
+  /// done only when the faked clock is pumped — an export's frame waited
+  /// for it for good. [warm] hands what is compiled as itself now
+  /// ([KeptOnTheAppsEngine.once]).
   FutureOr<T> get ready => _kept.orNull ?? warm();
 
   /// [kept] compiled off this isolate, at once where it is compiled already:
   /// ahead of a first use that would otherwise wait with the app frozen.
   /// One compile, however many ask: what needs the kernels asks as the
   /// launch does, and waits on the same one (🗣️관제 2026-11-10 18:14,
-  /// gpu-canonical-store ⑦).
-  Future<T> warm() => _warming.of(_warmed);
-  final _warming = KeptOnTheAppsEngine<Future<T>>();
+  /// gpu-canonical-store ⑦). Asked for the other way while it compiled
+  /// ([kept]), the app keeps one ([MadeOnce.keep]).
+  Future<T> warm() => _kept.once(_warmed);
 
-  Future<T> _warmed() async {
-    if (debugCompileHere) {
-      return kept;
-    }
-    final its = _its;
-    final made = _kept.orNull ?? await _off(appGpuEngine);
-    if (!identical(its, _its)) {
-      // The app let its engine go while this compiled on it: what it made
-      // is that engine's, and the app's is asked the same way.
-      _free(made);
-      return warm();
-    }
-    // Asked for the other way while this compiled: the app keeps one.
-    final one = _kept.of(() => made);
-    if (!identical(one, made)) {
-      _free(made);
-    }
-    return one;
-  }
+  Future<T> _warmed() async =>
+      debugCompileHere ? kept : await _off(appGpuEngine);
 
   /// Test seam: gone, as at launch — and with it every kernel the engine
   /// keeps ([GpuEngine.debugForgetKernels]), or the set would be made
   /// again of those, with nothing to compile.
+  ///
+  /// 🚨FREED, AND WHAT KEPT IT FROM BEFORE HOLDS A FREED ONE: the frame
+  /// tools keep the composite (`appEngineFrameTools`), and a frame laid with
+  /// them after it was forgotten waited for good on the engine's thread
+  /// (card bundled-files-find-the-engine-already-open ③, 2026-11-23). A
+  /// test of the first compile of a set something keeps starts from no
+  /// engine (`theAppHasNoEngineYet`), as a launch does.
   void debugForget() {
     _kept.forget();
-    _warming.forget();
     _its.engine?.debugForgetKernels();
   }
 }
@@ -586,9 +623,14 @@ String? debugAppShaderFolder;
 /// where it is open already — and tells [appGpuEngineOpen]. The app asks
 /// after its first frame; a test that shows the engine's screens asks for
 /// itself.
+///
+/// 🔬Handed as the engine once it is open, not as the future of its
+/// opening ([MadeOnce]): the shell's test opened it in its own widget test,
+/// and every file bundled after it waited on that future in its
+/// `setUpAll` for good (card an-engine-setup-hangs-in-a-batch, 2026-11-23).
 Future<GpuEngine> openAppGpuEngine() {
   final its = _its;
-  return its.opening ??= () async {
+  return its.opening.of(() async {
     final opened = its.engine ?? await _opening();
     // Asked the other way while this one opened: the app keeps one.
     final engine = its.engine ??= opened;
@@ -600,7 +642,7 @@ Future<GpuEngine> openAppGpuEngine() {
       _opened.opened(engine);
     }
     return engine;
-  }();
+  });
 }
 
 /// An engine opened off this isolate — or on it, where a test asks

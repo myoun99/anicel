@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../helpers/brought_at_once.dart';
 import '../helpers/temp_dir.dart';
 
 BrushTipMask _mask(String id, {int size = 8, int value = 200}) => BrushTipMask(
@@ -322,7 +323,7 @@ void main() {
       addTearDown(library.dispose);
 
       expect(
-        await library.importFromFile(),
+        await library.importFromFile(behind: broughtAtOnce),
         'Could not open the file: Bad state: no dialog',
       );
     });
@@ -335,7 +336,7 @@ void main() {
       addTearDown(library.dispose);
       final before = library.tips.length;
 
-      expect(await library.importFromFile(), isNull);
+      expect(await library.importFromFile(behind: broughtAtOnce), isNull);
       expect(library.tips.length, before);
     });
 
@@ -347,7 +348,7 @@ void main() {
       );
       addTearDown(library.dispose);
 
-      expect(await library.importFromFile(), isNull);
+      expect(await library.importFromFile(behind: broughtAtOnce), isNull);
       expect(library.tips.last.name, 'stem.name');
       expect(library.tips.last.builtIn, isFalse);
     });

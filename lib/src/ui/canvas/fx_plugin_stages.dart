@@ -178,11 +178,14 @@ final class FxPluginStages implements PluginSteps {
 
   /// What each step the last round met told — its plugin failed or drew,
   /// run or kept ([_Stage.takeKept]): what a picture recorded here tells
-  /// again wherever it is shown (`EngineFramePicture.hold`).
+  /// again wherever it is shown (`EngineFramePicture.tellAs`).
   FxPluginRunsTold get _told => {
     for (final stage in _stages.take(_met))
-      if (stage.effect.run case final run? when stage.ran)
-        ?run.told: (run: run, failed: stage.output == null),
+      if (stage.effect case ResolvedLayerEffect(
+        :final worn?,
+        run: _?,
+      ) when stage.ran)
+        worn: stage.output == null,
   };
 
   /// [record], each plugin's step met in it drawing what its plugin made

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_sections.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
@@ -453,6 +455,71 @@ void main() {
     reopened.dispose();
   });
 
+  test('🚨each cut keeps its own scroll and each timeline the conte\'s '
+      'scroll and zoom — through a save and an open (H78, 유저 2026-11-24: '
+      '「타임라인별로 스크롤상태, 줌상태 별도기억, 내부컷도 마찬가지」)',
+      () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final views = s.panelViews;
+    final first = s.timelineVerbs.currentTimelineId;
+    final firstCut = s.activeCutId!;
+    views.frameAxisOffsets['timeline']!.value = 480;
+    views.layerAxisOffsets['timeline']!.value = 150;
+    views.frameAxisOffsets['storyboard']!.value = 96;
+    views.storyboardPixelsPerFrame.value = 3.5;
+
+    s.selectCut(const CutId('c2'));
+    expect(
+      [
+        views.frameAxisOffsets['timeline']!.value,
+        views.layerAxisOffsets['timeline']!.value,
+      ],
+      [0, 0],
+      reason: 'a cut never scrolled opens at its start — not where the last '
+          'one was left',
+    );
+    views.frameAxisOffsets['timeline']!.value = 64;
+    expect(
+      views.frameAxisOffsets['storyboard']!.value,
+      96,
+      reason: 'the conte shows the timeline, not the cut',
+    );
+
+    s.timelineVerbs.addTimeline();
+    expect(s.timelineVerbs.currentTimelineId, isNot(first));
+    expect(
+      views.storyboardPixelsPerFrame.value,
+      PanelViewMemory.defaultStoryboardPixelsPerFrame,
+      reason: 'a timeline never zoomed opens at the default',
+    );
+    expect(views.frameAxisOffsets['storyboard']!.value, 0);
+    views.storyboardPixelsPerFrame.value = 9;
+    views.layerAxisOffsets['storyboard']!.value = 30;
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    final back = reopened.panelViews;
+    expect(back.storyboardPixelsPerFrame.value, 9, reason: 'the open one');
+    expect(back.layerAxisOffsets['storyboard']!.value, 30);
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+
+    reopened.timelineVerbs.openTimeline(first);
+    expect(back.storyboardPixelsPerFrame.value, 3.5);
+    expect(back.frameAxisOffsets['storyboard']!.value, 96);
+    expect(back.layerAxisOffsets['storyboard']!.value, 0);
+
+    reopened.selectCut(firstCut);
+    expect(back.frameAxisOffsets['timeline']!.value, 480);
+    expect(back.layerAxisOffsets['timeline']!.value, 150);
+    reopened.selectCut(const CutId('c2'));
+    expect(back.frameAxisOffsets['timeline']!.value, 64);
+    reopened.dispose();
+  });
+
   test('a file that says nothing of the panels opens them as a new project '
       'does — the conte at its default zoom, each panel at its start',
       () async {
@@ -551,5 +618,100 @@ void main() {
     );
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
     reopened.dispose();
+  });
+
+  test('🚨the sections the panels hide come back hidden with the file — '
+      'through the append, and shown again too — and hiding one is no edit '
+      '(H77, 유저 2026-11-24: 「se나 카메라 섹션 표시 상태가 파일에? '
+      '기억되도록」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    final steps = s.historyManager.undoCount;
+    TabRailWiring.of(s).toggleSection(TimelineSection.se);
+    TabRailWiring.of(s).toggleSection(TimelineSection.camera);
+    expect(
+      s.historyManager.undoCount,
+      steps,
+      reason: 'no undo step takes a section back',
+    );
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'and hiding one marks nothing unsaved',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(reopened.railView.hiddenSections.value, {
+      TimelineSection.se,
+      TimelineSection.camera,
+    });
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    TabRailWiring.of(reopened).toggleSection(TimelineSection.camera);
+    await reopened.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    reopened.dispose();
+
+    final again = await openedSession(projectPath);
+    expect(
+      again.railView.hiddenSections.value,
+      {TimelineSection.se},
+      reason: 'shown again, the file keeps that too',
+    );
+    again.dispose();
+
+    final fresh = EditorSessionManager(initialProject: twoCuts());
+    await fresh.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    fresh.dispose();
+    final shown = await openedSession(projectPath);
+    expect(
+      shown.railView.hiddenSections.value,
+      isEmpty,
+      reason: 'a file that hid nothing shows every section',
+    );
+    shown.dispose();
+  });
+
+  test('🚨a saved row in a section the file hides opens standing on a shown '
+      'row — the sections are hidden before the standing law asks (H77 · '
+      'F-169)', () async {
+    final project = createDefaultProject();
+    final cut = project.tracks.first.cuts.first;
+    final camera = cameraLayerIdForCut(cut.id);
+    File(projectPath).writeAsBytesSync(
+      buildAnicelArchiveBytes(
+        project: project,
+        cels: const [],
+        sessionFields: AnicelSessionFields(
+          resume: {
+            'cutId': cut.id.value,
+            'layerId': camera.value,
+            'hiddenSections': ['camera'],
+          },
+        ),
+      ),
+    );
+
+    final opened = await openedSession(projectPath);
+    expect(opened.railView.hiddenSections.value, {TimelineSection.camera});
+    expect(
+      opened.activeLayerId,
+      isNot(camera),
+      reason: 'the camera row is off the screen, so the open stands on the '
+          'row that stands in for it',
+    );
+    opened.dispose();
   });
 }

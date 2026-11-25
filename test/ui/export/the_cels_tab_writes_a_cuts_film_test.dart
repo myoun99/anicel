@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -40,6 +41,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-151 (유저 2026-11-03): 「출력창, 셀 탭에 영상도 출력하는 기능 추가.
 /// 내보낼 종류에 동영상 넣고, 오른쪽 옵션에도 동영상 형식 넣고. 동영상
@@ -51,6 +53,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// The cut's FILM is one of its documents: a row at the foot of the list, a
 /// block a cut, written as the Sequence tab writes that cut.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -142,7 +145,7 @@ void main() {
     );
     await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -523,7 +526,7 @@ void main() {
     draw(session);
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

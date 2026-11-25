@@ -167,12 +167,15 @@ class BrushTipLibrary extends ChangeNotifier {
 
   /// Picks an image and registers it as a tip, naming it after the file.
   /// Returns a user-facing message on failure, `null` on success, and
-  /// `null` when the picker was simply cancelled.
-  Future<String?> importFromFile() => importPickedFile(
-    pick: _picker,
-    disposed: () => _disposed,
-    import: (pick) => registerImageBytes(pick.bytes, name: pick.stem),
-  );
+  /// `null` when the picker was simply cancelled. The image is read
+  /// [behind] what the door stands it behind.
+  Future<String?> importFromFile({required BringIn behind}) =>
+      importPickedFile(
+        pick: _picker,
+        disposed: () => _disposed,
+        import: (pick) => registerImageBytes(pick.bytes, name: pick.stem),
+        behind: behind,
+      );
 
   void rename(String id, String name) {
     _tips = mappedOrSame(

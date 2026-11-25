@@ -32,11 +32,11 @@ use fx_wgsl::{Bound, CHUNK_WORD, CUT, Cut, FRAME, Frame, INPUT, Kernel, OUTPUT, 
 use crate::device::Engine;
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::shared::{
-    Encoded, encode, fits, le_bytes, le_words, pipeline_or_why, plane, whole, words_buffer,
+    Encoded, chunks, encode, fits, le_bytes, le_words, pipeline_or_why, plane, whole, words_buffer,
 };
 
 use pace::Batches;
-pub(crate) use pace::Pace;
+pub(crate) use pace::{CHUNK_BUDGET, Pace};
 pub(crate) use tiles::Tiled;
 use tiles::Tiles;
 
@@ -264,24 +264,6 @@ fn usage(bound: &Bound) -> wgpu::BufferUsages {
     let back = if bound.written { wgpu::BufferUsages::COPY_SRC } else { wgpu::BufferUsages::empty() };
     let chunked = if bound.name == FRAME { wgpu::BufferUsages::COPY_DST } else { wgpu::BufferUsages::empty() };
     kind | back | chunked
-}
-
-/// The chunks a dispatch of `groups` — across, down — is cut into, `most`
-/// workgroups each at most: rows of the groups across where `most` holds a
-/// row, runs along a row where it does not. Each is its first group and
-/// its groups across and down; every group lies in one of them.
-fn chunks([across, down]: [u32; 2], most: u64) -> Vec<([u32; 2], [u32; 2])> {
-    if across == 0 || down == 0 {
-        return Vec::new();
-    }
-    let wide = u32::try_from(most.clamp(1, u64::from(across))).expect("no more than across");
-    let high = u32::try_from((most / u64::from(wide)).clamp(1, u64::from(down))).expect("no more than down");
-    (0..down)
-        .step_by(high as usize)
-        .flat_map(|top| {
-            (0..across).step_by(wide as usize).map(move |left| ([left, top], [wide.min(across - left), high.min(down - top)]))
-        })
-        .collect()
 }
 
 /// `words`, with zeros after them where they are fewer than

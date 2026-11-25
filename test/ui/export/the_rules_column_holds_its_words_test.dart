@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -26,6 +27,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The Cels list's rules column (F-289) was drawn 168 wide around the words
 /// it holds — 셀 · 콘티 · 미술 · 디렉션 in one strip, 기준 · 어태치 beside
@@ -38,6 +40,7 @@ import '../../helpers/app_faces.dart';
 /// words ran long, and then as `Flexible`s, which cut 「디렉션」 and
 /// 「어태치」 to an equal share of a column they fitted.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUpAll(loadTheAppFaces);
   setUp(() {
     AppExport.settings.value = AppExportSettings();
@@ -94,7 +97,7 @@ void main() {
   Future<void> pumpCels(WidgetTester tester, Size surface) async {
     await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     final session = film();
     addTearDown(session.dispose);
     await tester.pumpWidget(

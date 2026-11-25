@@ -332,6 +332,7 @@ void main() {
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
+        landing: entry.tile,
       );
       if (image != null) {
         cache.adoptDecoded(entry.tile, image);

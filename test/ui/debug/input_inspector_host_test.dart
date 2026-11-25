@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
+
+/// The app's own: the debug window over the app (`MaterialApp.builder`,
+/// as main.dart lays it), where the inspector's panel is shown.
+Widget _windowed(BuildContext context, Widget? child) =>
+    DebugWindowHost(child: child!);
 
 /// R26 #33: toggling the Input Inspector must not REMOUNT the editor
 /// under it — the old host swapped its child between bare and wrapped,
@@ -13,18 +19,18 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(home: InputInspectorHost(child: _InitCountingChild())),
+      const MaterialApp(builder: _windowed, home: InputInspectorHost(child: _InitCountingChild())),
     );
     expect(_InitCountingChildState.initCount, 1);
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsNothing,
     );
 
     InputInspector.visible.value = true;
     await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsOneWidget,
     );
     expect(
@@ -36,7 +42,7 @@ void main() {
     InputInspector.visible.value = false;
     await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsNothing,
     );
     expect(
@@ -50,11 +56,11 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(home: InputInspectorHost(child: SizedBox.expand())),
+      const MaterialApp(builder: _windowed, home: InputInspectorHost(child: SizedBox.expand())),
     );
     await tester.tapAt(const Offset(100, 100));
     expect(
-      InputInspector.samples,
+      InputInspector.events,
       isEmpty,
       reason: 'the always-mounted listener must gate on visibility',
     );
@@ -62,7 +68,7 @@ void main() {
     InputInspector.visible.value = true;
     await tester.pump();
     await tester.tapAt(const Offset(100, 100));
-    expect(InputInspector.samples, isNotEmpty);
+    expect(InputInspector.events, isNotEmpty);
   });
 
   /// 🚨★★H21 (유저 2026-08-23): 「인풋 인스펙터가 리셋도안먹고 **처음 키고
@@ -77,7 +83,7 @@ void main() {
       'inspector still counts, so the number can say whether delivery '
       'itself stopped', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: InputInspectorHost(child: SizedBox.expand())),
+      const MaterialApp(builder: _windowed, home: InputInspectorHost(child: SizedBox.expand())),
     );
 
     expect(InputInspector.arrivals, 0);
@@ -92,9 +98,9 @@ void main() {
           'answer the question it exists for',
     );
     expect(
-      InputInspector.samples,
+      InputInspector.events,
       isEmpty,
-      reason: 'and it does NOT disturb the visibility gate on the samples',
+      reason: 'and it does NOT disturb the visibility gate on the events',
     );
 
     InputInspector.visible.value = true;
@@ -142,6 +148,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        builder: _windowed,
         home: InputInspectorHost(
           child: ValueListenableBuilder<int>(
             valueListenable: rebuild,
@@ -159,7 +166,7 @@ void main() {
     // is the situation on screen, and why this has to be a second pump.
     await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsOneWidget,
       reason: 'fixture premise: the card is mounted and listening',
     );
@@ -188,7 +195,7 @@ void main() {
   testWidgets('closing the card CLEARS it — a diagnosis surface you just '
       're-opened is a fresh one', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: InputInspectorHost(child: SizedBox.expand())),
+      const MaterialApp(builder: _windowed, home: InputInspectorHost(child: SizedBox.expand())),
     );
     InputInspector.visible.value = true;
     // What the binding kept out as a pen's echo (F-400): on the card's
@@ -198,7 +205,7 @@ void main() {
     await tester.tapAt(const Offset(100, 100));
     await tester.pump();
     expect(
-      InputInspector.touchDownCount + InputInspector.samples.length,
+      InputInspector.touchDownCount + InputInspector.events.length,
       greaterThan(0),
     );
     expect(find.textContaining(' echo=2'), findsOneWidget);
@@ -209,7 +216,7 @@ void main() {
     await tester.pump();
 
     expect(InputInspector.visible.value, isFalse);
-    expect(InputInspector.samples, isEmpty);
+    expect(InputInspector.events, isEmpty);
     expect(InputInspector.touchDownCount, 0);
     expect(InputInspector.arrivals, 0);
     expect(InputInspector.echoes, 0);

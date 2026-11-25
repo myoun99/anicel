@@ -50,12 +50,15 @@ OsPoint seenAt(
 
 /// A press of a [kind] contact at [from], moved through [moves] — each a
 /// move the OS merged those points into, the newest its own, in the view's
-/// pixels — and lifted where the last one ends: one pump after each.
+/// pixels — and lifted where the last one ends: one pump after each. A
+/// [lift] is the points the OS merged into the lift, the newest its own,
+/// and the lift is there.
 Future<void> dragThroughMergedMoves(
   WidgetTester tester,
   Offset from,
   List<List<Offset>> moves, {
   PointerDeviceKind kind = PointerDeviceKind.mouse,
+  List<Offset> lift = const [],
 }) async {
   const pointer = 61;
   tester.binding.handlePointerEvent(
@@ -84,8 +87,14 @@ Future<void> dragThroughMergedMoves(
     tester.binding.handlePointerEvent(move);
     await tester.pump();
   }
-  tester.binding.handlePointerEvent(
-    PointerUpEvent(pointer: pointer, kind: kind, position: before),
+  final up = PointerUpEvent(
+    pointer: pointer,
+    kind: kind,
+    position: lift.isEmpty ? before : lift.last,
   );
+  if (lift.isNotEmpty) {
+    pairWithThePointsTheOsSaw(up, [for (final point in lift) seenAt(point)]);
+  }
+  tester.binding.handlePointerEvent(up);
   await tester.pump();
 }

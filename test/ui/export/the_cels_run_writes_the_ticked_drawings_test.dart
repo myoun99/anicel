@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -43,6 +44,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The Cels tab's RUN, down to the files on disk — the plan and the list
 /// are pinned beside it (`export_cel_group_plan_test.dart`,
@@ -55,6 +57,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// 🗣️F-289 (유저 2026-10-05): 「디렉션레이어 출력시, 그림이 디렉션레이어의
 /// 지시인데, 그게아니라 그림 그릴수있는 레이어니 거기 있는 그림 출력하도록」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -162,7 +165,7 @@ void main() {
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

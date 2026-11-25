@@ -2,14 +2,15 @@ import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
 
-/// The app's MEASUREMENT switches — the diagnosis overlays, in one place.
+/// The app's MEASUREMENT switches: the debug window, and the repaint tint
+/// it carries in its head. Static [ValueNotifier]s toggled from the top
+/// strip's SETTINGS popover, inert until asked for.
 ///
-/// This is the second of them. The first is the pen program's
-/// `InputInspector` (Settings ▸ Input Inspector), and they answer different
-/// questions about the same session: the inspector says what the platform
-/// DELIVERED, this says what the app did with the frame it had. Both are
-/// static [ValueNotifier]s toggled from the top strip's SETTINGS popover,
-/// both inert until asked for.
+/// 🗣️유저 2026-11-24 (card one-debug-window-shows-everything Q2, 「결정은
+/// 다 권고대로」): ONE switch — the input inspector, the frame statistics,
+/// the engine's stages and the frame-timing graphs were four, and the user
+/// had to know which to turn on, while a photo of one held a quarter of
+/// what a question needed.
 ///
 /// ⚠️These used to say "Edit ▸", and the Edit menu has not existed since
 /// the seven-menu bar was replaced by the top strip — every command it
@@ -17,97 +18,47 @@ import 'package:flutter/foundation.dart';
 /// doc comment is worse than none: it sent a reader looking for a menu
 /// that is not there, which has already cost one round.
 abstract final class MeasurementMode {
-  /// Flutter's frame-timing overlay (Settings ▸ Frame Timing Overlay): two
-  /// graphs over the app. Each bar is a frame; the line across them is the
-  /// frame budget, so bars crossing it are the jank.
+  /// The debug window (Settings ▸ Debug ▸ Debug Window): what the platform
+  /// delivered, what the app did with each frame, what the engine took
+  /// place by place, and what memory the app holds — on one screen, every
+  /// sum with its parts and the rest. See `DebugWindow`.
   ///
-  /// 🚨WHICH GRAPH IS WHICH — this comment had it BACKWARDS, and getting it
-  /// backwards means reading GPU jank as Dart jank and fixing the wrong
-  /// thread:
+  /// It is also the gate of what only it reads: the frame statistics'
+  /// window, the strokes' steps, the pictures' writes, the repaint causes,
+  /// the pointer's clock and the engine's timing all collect while it is
+  /// up, and none of them costs a thing while it is down.
   ///
-  ///  * TOP    = the RASTER thread. Replaying the recorded picture into
-  ///             pixels: uploads, shaders, `saveLayer` offscreens.
-  ///  * BOTTOM = the UI thread. Dart — build, layout and paint, where
-  ///             "paint" RECORDS commands and touches no pixel at all.
+  /// ★Numbers, not graphs alone — three reasons the frame statistics stood
+  /// beside Flutter's own graphs, and stand in their place now:
   ///
-  /// ⚠️Each graph is LABELLED on screen. Read the label, not the position —
-  /// this file has already been wrong about the position once.
-  ///
-  /// Read it while DOING the thing — Flutter renders on demand, so an
-  /// idle app sitting at 0fps is not a finding. What it is for: the three
-  /// canvas workloads want opposite things from the frame clock and only
-  /// measurement separates them — a stroke wants the lowest latency at
-  /// the display's full rate (120Hz on ProMotion, which
-  /// `CADisableMinimumFrameDurationOnPhone` in ios/Runner/Info.plist
-  /// unlocks), playback wants exactly the cel rate and nothing more, and
-  /// a scrub wants no re-raster of cels it already holds.
-  ///
-  /// A TOGGLE and not just a build flag because flipping a `--dart-define`
-  /// on a tablet costs a full rebuild and reinstall — useless for "watch
-  /// this one stroke". The define below only seeds the starting value, so
-  /// a run can still start with it on.
-  ///
-  /// Orthogonal to `--profile`: this decides what is DRAWN, the build mode
-  /// decides what is MEASURED. In a debug build these are debug-build
-  /// frame times, which is this project's performance bar; `flutter run
-  /// --profile` gives near-release numbers and the DevTools timeline to
-  /// take a bottleneck apart once the overlay says which thread lost.
-  static final ValueNotifier<bool> frameTimingOverlay = ValueNotifier<bool>(
-    startWithFrameTimingOverlay,
-  );
-
-  /// 🪦Show Unpainted Tiles (2026-09-09 → 09-17) painted magenta wherever
-  /// the canvas painter had no picture for a coordinate — the one event
-  /// under the whole stale-tile family, invisible by construction because
-  /// the painter's answer to 「I have nothing here」 was to draw nothing.
-  /// A coordinate with bytes pictures itself inside the paint now, so the
-  /// event cannot happen and the switch had nothing left to show.
-
-  /// The frame clock in NUMBERS (Settings ▸ Frame Stats): raster, UI and
-  /// end-to-end latency as p50/p95, plus the engine's raster-cache
-  /// counts. See [FrameStats].
-  ///
-  /// The fourth switch, and the one that answers what the graphs above
-  /// cannot. Three reasons it exists next to them rather than instead of
-  /// them:
-  ///
-  ///  * **Percentiles.** The overlay reports max and avg. An average
-  ///    over a rolling window reads the same for a flat cost and a
-  ///    RISING one, which is the exact shape of "it gets worse as I
-  ///    keep working"; a max is a single frame.
+  ///  * **Percentiles.** A graph's max and average read the same for a
+  ///    flat cost and a RISING one, which is the exact shape of "it gets
+  ///    worse as I keep working"; a max is a single frame.
   ///  * **Latency.** `FrameTiming.totalSpan` is the whole pipeline for
   ///    one frame, and Flutter pipelines — build and raster can both sit
   ///    inside budget while the end-to-end span runs long, which is what
-  ///    "smooth but the pen feels behind" is made of. The overlay has no
-  ///    line for it.
+  ///    "smooth but the pen feels behind" is made of.
   ///  * **Retained raster.** `layerCacheCount`/`pictureCacheCount` are
   ///    the only way from Dart to see whether a repaint boundary bought
-  ///    anything on the GPU. A boundary stops re-RECORDING; only the
-  ///    cache stops re-RASTERIZING.
+  ///    anything on the GPU.
   ///
-  /// ⚠️Prefer this one when the two disagree. The overlay is two
-  /// full-width bar graphs redrawn every frame INSIDE the scene whose
-  /// raster time it reports — it is part of its own measurement. This
-  /// is a column of text at 4 Hz behind a repaint boundary.
-  static final ValueNotifier<bool> frameStats = ValueNotifier<bool>(
-    startWithFrameStats,
-  );
-
-  /// The engine's work place by place, under the frame statistics'
-  /// lines (Settings ▸ Debug ▸ Engine Stages). See `EngineStages`.
+  /// 🪦Flutter's frame-timing overlay was a switch of its own till
+  /// 2026-11-24 (Q2: 「Flutter 그래프는 창 그래프가 대신」) — two full-width
+  /// graphs redrawn every frame INSIDE the scene whose raster time they
+  /// reported, part of their own measurement. The window's graph draws
+  /// the same frames from their timings.
   ///
-  /// A switch of its own, beside [frameStats] and not a part of it: a
-  /// timed engine waits out each submit where it makes it
-  /// (rust/src/took.rs), so its frames are longer than the ones
-  /// [frameStats] reads with this off — the instrument is in its own
-  /// number, which those lines never were.
-  static final ValueNotifier<bool> engineStages = ValueNotifier<bool>(
-    startWithEngineStages,
+  /// 🪦So were the engine's stages (till 2026-11-24): a timed engine waits
+  /// for nothing to be timed (rust/src/took.rs), so the frames the window
+  /// reads are the same with them on — ↩️till 2026-11-23 it waited out
+  /// each submit, which was the reason they had a switch apart.
+  static final ValueNotifier<bool> debugWindow = ValueNotifier<bool>(
+    startWithDebugWindow,
   );
 
   /// Tints a surface every time it is BAKED (Settings ▸ Show Repaints).
   ///
-  /// The fifth switch, and the one two mature apps decided they could not
+  /// The tint two mature apps decided they could not
   /// ship without: Krita carries `KisRepaintDebugger` in production and
   /// paints it at the end of `paintGL`; Blender tints every drawn region
   /// a random colour under `G.debug_value == 888`, commented "for
@@ -146,43 +97,22 @@ abstract final class MeasurementMode {
     'QA_SHOW_REPAINTS',
   );
 
-  /// Seeds [engineStages]:
+  /// Seeds [debugWindow]:
   ///
   /// ```
-  /// flutter run --dart-define=QA_ENGINE_STAGES=true
-  /// ```
-  static const bool startWithEngineStages = bool.fromEnvironment(
-    'QA_ENGINE_STAGES',
-  );
-
-  /// Seeds [frameStats]:
-  ///
-  /// ```
-  /// flutter run --dart-define=QA_FRAME_STATS=true
-  /// ```
-  static const bool startWithFrameStats = bool.fromEnvironment(
-    'QA_FRAME_STATS',
-  );
-
-  /// Seeds [frameTimingOverlay] so a measurement run can start with the
-  /// graphs already up:
-  ///
-  /// ```
-  /// flutter run --profile --dart-define=QA_PERF_OVERLAY=true
+  /// flutter run --dart-define=QA_DEBUG_WINDOW=true
   /// ```
   ///
-  /// False in every ordinary build, pinned by a test — an overlay left on
-  /// ships two graphs across the user's canvas.
-  static const bool startWithFrameTimingOverlay = bool.fromEnvironment(
-    'QA_PERF_OVERLAY',
+  /// False in every ordinary build, pinned by a test — a window left on
+  /// ships the instruments across the user's canvas.
+  static const bool startWithDebugWindow = bool.fromEnvironment(
+    'QA_DEBUG_WINDOW',
   );
 
   /// Test hygiene: back to the build's own defaults.
   @visibleForTesting
   static void reset() {
-    frameTimingOverlay.value = startWithFrameTimingOverlay;
-    frameStats.value = startWithFrameStats;
-    engineStages.value = startWithEngineStages;
+    debugWindow.value = startWithDebugWindow;
     showRepaints.value = startWithShowRepaints;
   }
 }

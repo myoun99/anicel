@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -25,6 +26,7 @@ import '../../helpers/named_finders.dart';
 /// at every press — the conte's tab listened to a hand copy of the rail's
 /// view without the filter.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const panels = ['timeline', 'conte'];
   const solos = {
     'legend-kind': 'legend-filter-kind-animation',

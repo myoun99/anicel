@@ -1,10 +1,14 @@
 import 'dart:io';
+import 'dart:typed_data' show BytesBuilder;
 
 import 'package:anicel/src/native/engine_faces.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
+
+import '../helpers/project_scratch_folder.dart';
 
 /// 🚨THE ENGINE'S FACES GO OVER A FILE AT A TIME (board
 /// engine-faces-load-35-mb-on-the-ui-thread, 🔬저장 11-14: the 35 MB of
@@ -15,7 +19,10 @@ import 'package:gpu_engine/gpu_engine.dart';
 ///
 /// 🚨AND WHERE THE BUNDLE IS FILES, THE ENGINE MAPS THEM AND NO ONE READS
 /// THEM (engine-fonts-held-twice, 🗣️유저 「사본이나 ram에있는걸 최대한
-/// 없애고싶어서」): the bundle is asked for none of them.
+/// 없애고싶어서」): the bundle is asked for none of them — nor where it
+/// lies stored in the APK, as Android's AssetManager says
+/// (engine-fonts-held-twice-Q1, 유저 11-22 「글꼴을 압축 없이 두고 둘 다
+/// 비춰 쓴다」).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -80,6 +87,87 @@ void main() {
     expect(await readsWhileReading(), [
       for (var i = 0; i < files.length; i += 1) i,
     ]);
+  });
+
+  /// The bundle lying in an APK: the six files one after another in one
+  /// file, past a few bytes, as stored entries lie in it — and the OS
+  /// asked where each lies answering [answer] of each one's span (null:
+  /// held compressed). The keys it was asked of, in order.
+  Future<List<List<String>>> inAnApk(
+    Object? Function(int place, Map<String, Object> span) answer,
+  ) async {
+    final folder = Directory.systemTemp.createTempSync('anicel-apk-');
+    deleteAfterSessionEnds(folder);
+    final apk = File('${folder.path}/base.apk');
+    final spans = <Map<String, Object>>[];
+    final holder = BytesBuilder(copy: false)..add([1, 2, 3]);
+    for (final file in files) {
+      final bytes = File(file).readAsBytesSync();
+      spans.add({
+        'path': apk.path,
+        'offset': holder.length,
+        'length': bytes.length,
+      });
+      holder.add(bytes);
+    }
+    apk.writeAsBytesSync(holder.takeBytes());
+
+    final asked = <List<String>>[];
+    messenger.setMockMethodCallHandler(AppStorage.channel, (call) async {
+      expect(call.method, 'bundledFiles');
+      final keys = (call.arguments as List).cast<String>();
+      asked.add(keys);
+      return [
+        for (final (place, _) in keys.indexed) answer(place, spans[place]),
+      ];
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(AppStorage.channel, null),
+    );
+    final was = EngineFaces.bundleInTheApk;
+    EngineFaces.bundleInTheApk = true;
+    addTearDown(() => EngineFaces.bundleInTheApk = was);
+    bundleIn(null);
+    return asked;
+  }
+
+  test('where the bundle lies stored in the APK, the engine maps each from '
+      'where the OS says and the bundle reads none', () async {
+    final asked = await inAnApk((_, span) => span);
+
+    expect(await readsWhileReading(), isEmpty);
+    expect(asked, [files]);
+  });
+
+  test('a file the APK holds compressed is read through the bundle', () async {
+    // The OS has no span of the second: openFd refuses a compressed entry.
+    await inAnApk((place, span) => place == 1 ? null : span);
+
+    expect(await readsWhileReading(), [1]);
+  });
+
+  test('if the OS says nothing, every file is read through the bundle', () async {
+    await inAnApk((_, _) => throw PlatformException(code: 'gone'));
+
+    expect(await readsWhileReading(), [
+      for (var i = 0; i < files.length; i += 1) i,
+    ]);
+  });
+
+  test('a file in the folder is the whole of its file; one not there, or '
+      'any where there is no folder, none', () {
+    final folder = Directory.current.path;
+    final file = files.first;
+
+    expect(EngineFaces.spansInFolder(folder, [file, 'no-such.ttf']), [
+      (
+        path: '$folder/$file',
+        offset: 0,
+        length: File(file).lengthSync(),
+      ),
+      null,
+    ]);
+    expect(EngineFaces.spansInFolder(null, [file]), [null]);
   });
 
   test("the bundle's folder is where Flutter's embedder reads it", () {

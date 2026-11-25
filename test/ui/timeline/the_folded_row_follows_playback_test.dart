@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -46,6 +47,7 @@ import '../../helpers/timeline_zoom.dart';
 /// ⛔THE WHOLE FAMILY: the timeline's folded row, the same row folded from
 /// the sheet's orientation, and the storyboard's folded track row.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// A cut long enough to page several times at the default zoom.
   Project longCut() {
     final project = createDefaultProject();

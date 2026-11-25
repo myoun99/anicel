@@ -51,17 +51,32 @@ void main() {
   group('a window PDFium asks for', () {
     final window = Uint8List(64);
 
-    test('read whole, is its size', () {
-      expect(readPdfWindow(_Reader((size) => size), window, 0, 64), 64);
+    test('is read off the isolate, never with it standing still — a cloud '
+        'file comes down inside a read', () async {
+      final reader = _Reader(
+        (size) => size,
+        sync: (_) => throw StateError('read with the isolate standing'),
+      );
+
+      expect(await readPdfWindow(reader, window, 0, 64), 64);
     });
 
-    test('read SHORT, is 0 — PDFium takes any other number for success', () {
-      expect(readPdfWindow(_Reader((size) => size - 1), window, 0, 64), 0);
+    test('read whole, is its size', () async {
+      expect(await readPdfWindow(_Reader((size) => size), window, 0, 64), 64);
     });
 
-    test('a read that throws is 0, not a page drawn from a stale buffer', () {
+    test('read SHORT, is 0 — PDFium takes any other number for success',
+        () async {
       expect(
-        readPdfWindow(
+        await readPdfWindow(_Reader((size) => size - 1), window, 0, 64),
+        0,
+      );
+    });
+
+    test('a read that throws is 0, not a page drawn from a stale buffer',
+        () async {
+      expect(
+        await readPdfWindow(
           _Reader((_) => throw const FileSystemException('gone')),
           window,
           0,
@@ -70,6 +85,65 @@ void main() {
         0,
       );
     });
+  });
+
+  // 🗣️유저 11-23 「pdf읽기는 퍼센트 안들어간단게 뭐야 … 당연히
+  // 넣어야하는거아니야?」 — what PDFium reads while it opens is the file's
+  // read (F-608-Q2).
+  group('how far a PDF is read while it opens', () {
+    test('rises with the bytes read, of the bytes the file holds', () {
+      final heard = <double>[];
+      final reads = PdfOpeningReads(400, heard.add);
+
+      reads.took(100);
+      reads.took(200);
+      reads.took(100);
+
+      expect(heard, [0.25, 0.75, 1]);
+    });
+
+    test('a window read again counts again, and stops at the whole', () {
+      final heard = <double>[];
+      final reads = PdfOpeningReads(400, heard.add)..took(300);
+
+      reads.took(300);
+
+      expect(heard, [0.75, 1]);
+    });
+
+    test("once open, a page's reads are its rasterizing's — not told", () {
+      final heard = <double>[];
+      final reads = PdfOpeningReads(400, heard.add)..took(100);
+
+      reads.opened();
+      reads.took(100);
+
+      expect(heard, [0.25]);
+    });
+
+    test('a failed window (0) reads nothing', () {
+      final heard = <double>[];
+      PdfOpeningReads(400, heard.add).took(0);
+
+      expect(heard, isEmpty);
+    });
+  });
+
+  test('a test opener that hears the reads is told them', () async {
+    final fake = FakePdfDocument(pageSizes: const [ui.Size(1, 1)]);
+    final heard = <double>[];
+    PdfRenderService.debugOpenerOverride =
+        (source, {void Function(double fraction)? onRead}) async {
+      onRead?.call(1);
+      return fake;
+    };
+
+    await PdfRenderService.open(
+      const MediaFileBytes('C:/anywhere/z.pdf'),
+      onRead: heard.add,
+    );
+
+    expect(heard, [1]);
   });
 
   test('debugResetForTests clears the override and the probe verdict', () {
@@ -83,12 +157,17 @@ void main() {
 
 /// A window reader that answers [answer] for any window.
 class _Reader implements MediaWindowReader {
-  _Reader(this.answer);
+  _Reader(this.answer, {int Function(int size)? sync}) : _sync = sync ?? answer;
 
   final int Function(int size) answer;
+  final int Function(int size) _sync;
 
   @override
-  int readIntoSync(Uint8List buffer, int position, int size) => answer(size);
+  int readIntoSync(Uint8List buffer, int position, int size) => _sync(size);
+
+  @override
+  Future<int> readInto(Uint8List buffer, int position, int size) async =>
+      answer(size);
 
   @override
   void close() {}

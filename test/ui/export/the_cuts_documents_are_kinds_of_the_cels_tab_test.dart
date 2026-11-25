@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -44,6 +45,7 @@ import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-289 (유저 2026-10-05): 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
 /// 컷봉투탭도 셀 내부로 편입. 위치는 추가버튼의 미술/디렉션/시트/컷봉투
@@ -55,6 +57,7 @@ import '../../helpers/text_finders.dart';
 /// a row each at the foot of the list, a block a file, turned off, stood on
 /// and written by the one law every drawing of the list answers to.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -127,7 +130,7 @@ void main() {
     }
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

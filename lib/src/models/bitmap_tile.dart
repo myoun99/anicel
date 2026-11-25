@@ -623,6 +623,34 @@ class BitmapTile implements Finalizable {
   bool get hasInk =>
       _hasInk ??= readPixels<bool>((_, view) => anyInkIn(view));
 
+  /// [hasInk] where it costs no wait for the GPU: null for a tile the
+  /// engine alone holds whose ink nobody has said.
+  bool? get inkWithNoWait => _hasInk ?? (isOnlyOnEngine ? null : hasInk);
+
+  /// Whether it shows anything, said now: one whose ink is still to be told
+  /// ([inkToBeTold]) shows what its stroke showed its cel under the pen — a
+  /// painting stroke's ink (🗣️관제 2026-11-24, card the-start-of-every-
+  /// stroke-stalls-on-the-galaxy-tab ③-2 「모름 → 아는 것으로 그리고, 답이
+  /// 오면 고침」: shown as the tile under, a first stroke's block went grey at
+  /// pen-up and white once told), an erasing stroke's what the tile under it
+  /// showed (🗣️F-482: an eraser adds no ink). ⛔Not a file's ([hasInk]).
+  bool get showsInkNow => inkWithNoWait ?? _toBeTold?.shows ?? hasInk;
+
+  /// When its ink is told, and what it shows till then ([inkToBeTold]).
+  Future<void>? get inkTold => _toBeTold?.told;
+  ({Future<void> told, bool shows})? _toBeTold;
+
+  /// Its ink to be told by [told] ([toldInk]), [showsInk] shown till then.
+  void inkToBeTold(Future<void> told, {required bool showsInk}) =>
+      _toBeTold = _hasInk == null ? (told: told, shows: showsInk) : null;
+
+  /// What was told of its ink — null says nothing —, the first writer
+  /// winning as [rememberInkBounds]'s does.
+  void toldInk(bool? hasInk) {
+    _hasInk ??= hasInk;
+    _toBeTold = null;
+  }
+
   TileInkBounds? _inkBounds;
 
   /// The tight box of this tile's ink, in TILE-LOCAL pixels — null when
@@ -681,6 +709,7 @@ class BitmapTile implements Finalizable {
     assert(isOnEngine, 'only a tile the engine made loses its pixels');
     _hasInk = null;
     _inkBounds = null;
+    _toBeTold = null;
   }
 
   /// The reference scan: this tile's words, in Dart.

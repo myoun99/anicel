@@ -1350,8 +1350,7 @@ pub unsafe extern "C" fn gpu_engine_composited_free(composited: *mut Composited)
 /// right, bottom) — leaving the rest of it as it was, and waits for the GPU;
 /// returns how many passes it took, -1 on failure (see the last error).
 /// `target` is what the screen shows: a surface's texture
-/// (`gpu_engine_surface_texture`) or the one a window is drawn on
-/// (`gpu_engine_window_target`), one entry for both (kernels/mod.rs).
+/// (`gpu_engine_surface_texture`).
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `rect` holds four words.
@@ -1553,6 +1552,20 @@ pub unsafe extern "C" fn gpu_engine_pictures_idle_bytes(engine: *const Engine) -
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     engine.pictures.idle_bytes() + engine.work.bytes() + engine.spares.bytes()
+}
+
+/// The bytes of the pages `engine`'s pictures have their tiles on, made
+/// (kernels/pool's `Pictures::bytes`) — a page whole, its free slots too:
+/// the frame statistics' MEMORY line, beside what the OS says the app
+/// holds (card the-galaxy-tab-canvas-went-slow-on-build-1095, 2026-11-24:
+/// 520 → 1372 MB at a pen's first touch, none of it the screens').
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pictures_bytes(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.pictures.bytes()
 }
 
 /// The bytes of the tiles `engine`'s pictures hold that none of them
@@ -1758,5 +1771,34 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
         let camera = Camera { inverse, mode: sampling(sampling_id)? };
         let shown = screen.with(|screen| screen.show(engine, composite, camera, target, rect, composite.widest()));
         shown.map(drop)
+    });
+}
+
+/// Moves the texels of `target` by (`dx`, `dy`) — the one at (x, y) to
+/// (x + dx, y + dy) — leaving those the move uncovers as they were, and
+/// submits the work ([`Composite::moved`]): what a screen panned by whole
+/// pixels still holds of its frame, before [`gpu_engine_screen_show`]
+/// draws the rest. `target` is a surface's texture or the one a window is
+/// drawn on, as that verb's is.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`. What is handed is let go of on
+/// the engine's thread ([`let_go`]), behind this in turn.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_composite_move(
+    composite: *const Composite,
+    engine: *const Engine,
+    target: *const wgpu::Texture,
+    dx: i32,
+    dy: i32,
+) {
+    let handed = Sent((composite, engine, target));
+    // SAFETY: see the function's contract.
+    unsafe { &*engine }.posted(move || {
+        let (composite, engine, target) = handed.taken();
+        // SAFETY: live till let go of, behind this (the function's
+        // contract).
+        let (composite, engine, target) = unsafe { (&*composite, &*engine, &*target) };
+        composite.moved(engine, target, (dx, dy))
     });
 }

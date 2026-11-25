@@ -205,19 +205,32 @@ class BrushFrameEditingCoordinator {
   /// cleared every old-size cache) — and a cel laid on the canvas as it
   /// seeds ([_laysCelsOnItsCanvas]) is the store's truth at that size.
   BrushEditSessionState _seedSession(BrushFrameKey key) {
-    final blank = sessionStore.reset(key);
     final baked = frameStore.bakedSurfaceOrNull(key);
     if (baked == null || !_standsOn(baked)) {
-      return blank;
+      return sessionStore.reset(key);
     }
-    final laid = resizeBitmapSurfaceCanvas(baked, sessionStore.canvasSize);
-    final seeded = sessionStore.update(
+    final seeded = _sessionAfresh(
       key,
-      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: laid)),
+      resizeBitmapSurfaceCanvas(baked, sessionStore.canvasSize),
     );
     _donateSessionSurfaceToDisplayCache(key, seeded);
     return seeded;
   }
+
+  /// [key]'s session begun again on [surface]: no edit before it, nothing
+  /// of the one it had kept — what a seed ([_seedSession]), a restore
+  /// ([restoreSurfaceSnapshot]) and a told tidy ([takeToldTidied]) each
+  /// make of it. ↩️Each wrote the reset and the update itself till the
+  /// third (2026-11-24, ③-1).
+  BrushEditSessionState _sessionAfresh(
+    BrushFrameKey key,
+    BitmapSurface surface,
+  ) => sessionStore.update(
+    key,
+    sessionStore
+        .reset(key)
+        .copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
+  );
 
   /// Whether a session stands on [baked]: one at the canvas's size, or of
   /// any size where this coordinator lays its cels on the canvas
@@ -422,14 +435,46 @@ class BrushFrameEditingCoordinator {
     if (surface.canvasSize != sessionStore.canvasSize) {
       return;
     }
-    final blank = sessionStore.reset(key);
-    final state = sessionStore.update(
-      key,
-      blank.copyWith(canvasState: CanvasSurfaceState(currentSurface: surface)),
-    );
+    final state = _sessionAfresh(key, surface);
     frameStore.markCelEdited(key);
     _donateSessionSurfaceToDisplayCache(key, state);
     _invalidateBrushFrame(cacheInvalidationSink, key);
+  }
+
+  /// [picture] — [key]'s cel as it stands — once the tiles pen-up handed it
+  /// are told what they are ([toldTidied]): the same pixels, held by what
+  /// the cel held before the stroke or by nothing, made the cel's current
+  /// pixels as [restoreSurfaceSnapshot] makes one — the session, the baked
+  /// truth and its display cache, and the tiles it put through the one door
+  /// ([_invalidateBrushFrame]). Returns what it put.
+  ///
+  /// ⛔NOT an edit: the cel is not marked edited, and no history step is
+  /// made of it. 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-
+  /// on-the-galaxy-tab ③-1 ㉠): asked only by the step whose after
+  /// [picture] is, while no other step holds it (`TidiesOnceTold`) — a
+  /// picture taken where somebody else still held [picture] would leave the
+  /// handed tiles in that holder alone, where no bill sees them.
+  ///
+  /// Null, and the cel left as it is, where [picture] is its baked truth no
+  /// longer ([BrushFrameStore.takeSamePicture] — a session follows the
+  /// store, [_storeMovedPast]), or no tile of it was told either.
+  BitmapSurface? takeToldTidied(
+    BrushFrameKey key,
+    BitmapSurface picture, {
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) {
+    final tidied = toldTidied(picture);
+    if (tidied == null ||
+        !frameStore.takeSamePicture(key, picture, tidied.surface)) {
+      return null;
+    }
+    _sessionAfresh(key, tidied.surface);
+    _invalidateBrushFrame(
+      cacheInvalidationSink,
+      key,
+      dirtyTiles: tidied.tiles,
+    );
+    return tidied.surface;
   }
 
   /// 🚨★★★THE ONE DOOR EVERY SURFACE REPLACEMENT LEAVES THROUGH. Both

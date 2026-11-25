@@ -38,6 +38,7 @@ import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/surface_rgba_in_place.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🚨F-420 — A SHEET RUNS THE TOOL IN HAND (유저 2026-10-20: 「캔버스
 /// 베이스패널에서 브러시허용일때, 도형도구 선택되있는데 브러시가 그려짐.
@@ -63,7 +64,7 @@ void main() {
     final views = <CanvasViewport>[];
     await tester.binding.setSurfaceSize(const Size(1000, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

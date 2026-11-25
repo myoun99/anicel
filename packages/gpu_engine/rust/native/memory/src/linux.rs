@@ -3,6 +3,8 @@
 
 use std::mem::zeroed;
 
+use crate::smaps::{private_by_mapping, private_kilobytes};
+
 fn info() -> Option<libc::sysinfo> {
     // SAFETY: plain integers, for the kernel to fill.
     let mut info: libc::sysinfo = unsafe { zeroed() };
@@ -27,18 +29,20 @@ pub(crate) fn footprint() -> Option<u64> {
 /// A line is read as the C's `sscanf("Private_Clean: %lld kB")` read it:
 /// the number after the name, whatever follows it.
 fn private_bytes(rollup: &str) -> Option<u64> {
-    let kilobytes: Vec<u64> = rollup
-        .lines()
-        .filter_map(|line| {
-            let rest = line
-                .strip_prefix("Private_Clean:")
-                .or_else(|| line.strip_prefix("Private_Dirty:"))?
-                .trim_start();
-            let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-            rest[..end].parse().ok()
-        })
-        .collect();
+    let kilobytes: Vec<u64> = rollup.lines().filter_map(private_kilobytes).collect();
     (!kilobytes.is_empty()).then(|| kilobytes.iter().sum::<u64>() * 1024)
+}
+
+/// What each mapping of this process holds of [`footprint`]: the private
+/// pages of /proc/self/smaps, summed by the mapping's name (card
+/// the-first-pen-down-adds-850-mb-on-the-galaxy-tab — a Galaxy Tab's
+/// footprint grew 850 MB at the first pen-down and no number of the app's
+/// own said whose). 🚨Far dearer than the rollup: the kernel walks every
+/// mapping's pages under the mmap lock, so it is read off the UI thread
+/// and seldom (`crate::mappings`).
+pub(crate) fn mappings() -> Option<Vec<(String, u64)>> {
+    let smaps = std::fs::read_to_string("/proc/self/smaps").ok()?;
+    Some(private_by_mapping(&smaps))
 }
 
 pub(crate) fn available() -> Option<u64> {

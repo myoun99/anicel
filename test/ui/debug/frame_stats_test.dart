@@ -1,17 +1,28 @@
+import 'dart:io' show File;
 import 'dart:ui' show FrameTiming;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuSampling;
+import 'package:gpu_engine/gpu_engine.dart' show GpuSampling, SharedTexture;
 
 import 'package:anicel/main.dart';
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/screen_texture.dart';
+import 'package:anicel/src/services/memory_allowance.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
+import 'package:anicel/src/ui/debug/engine_behind.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
-import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/debug/pointer_clock.dart';
+import 'package:anicel/src/ui/debug/repaint_cause.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
+import 'package:anicel/src/ui/debug/stroke_steps.dart';
+import 'package:anicel/src/ui/debug/warm_steps.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
+
+import '../../helpers/text_finders.dart';
 
 /// Repaints whenever its notifier ticks, so a test can make a bake happen
 /// on demand. `shouldRepaint` is false on purpose: the `repaint` listenable
@@ -34,6 +45,13 @@ class _TickPainter extends CustomPainter {
 /// One synthetic frame. Every duration is expressed in milliseconds so
 /// the expectations below read as the numbers a person would see on
 /// screen.
+/// A line the debug window's columns say containing [pattern] — of its
+/// lines alone: the head and the bars say a figure of theirs again.
+Finder _said(Pattern pattern) => find.descendant(
+  of: find.byKey(DebugWindow.linesKey),
+  matching: find.textContaining(pattern),
+);
+
 FrameTiming _frame({
   required double uiMs,
   required double rasterMs,
@@ -78,31 +96,31 @@ void main() {
   });
 
   group('the switch', () {
-    test('is off unless --dart-define=QA_FRAME_STATS=true seeds it', () {
+    test('is off unless --dart-define=QA_DEBUG_WINDOW=true seeds it', () {
       expect(
-        MeasurementMode.startWithFrameStats,
+        MeasurementMode.startWithDebugWindow,
         isFalse,
         reason: 'default builds must not draw a measurement readout',
       );
-      expect(MeasurementMode.frameStats.value, isFalse);
+      expect(MeasurementMode.debugWindow.value, isFalse);
     });
 
     test('reset returns it to the build default', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       MeasurementMode.reset();
       expect(
-        MeasurementMode.frameStats.value,
-        MeasurementMode.startWithFrameStats,
+        MeasurementMode.debugWindow.value,
+        MeasurementMode.startWithDebugWindow,
       );
     });
 
     test('turning it off empties the window and unpublishes', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 2)]);
       FrameStats.publish();
       expect(FrameStats.latest.value, isNotNull);
 
-      MeasurementMode.frameStats.value = false;
+      MeasurementMode.debugWindow.value = false;
       expect(
         FrameStats.latest.value,
         isNull,
@@ -112,10 +130,10 @@ void main() {
 
     test('turning it off forgets the pointer packets timed while it was '
         'up', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       PointerClock.handled(points: 2, micros: 300);
 
-      MeasurementMode.frameStats.value = false;
+      MeasurementMode.debugWindow.value = false;
 
       expect(PointerClock.packetsCounted, 0);
       expect(PointerClock.packetMicros, isEmpty);
@@ -141,7 +159,7 @@ void main() {
     });
 
     test('republishes on the frame clock, not on every frame', () {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
 
       // First frame publishes immediately — otherwise the readout would
       // sit on "no frames yet" for a quarter second after every toggle.
@@ -330,9 +348,9 @@ void main() {
       addTearDown(ScreenTexture.debugForgetUps);
       // Each part largest in a frame of its own.
       for (final up in const [
-        (draw: 1000, finish: 4000, show: 2000),
-        (draw: 3000, finish: 20000, show: 500),
-        (draw: 2000, finish: 6000, show: 9000),
+        (draw: 1000, finish: 4000, show: 2000, went: null),
+        (draw: 3000, finish: 20000, show: 500, went: null),
+        (draw: 2000, finish: 6000, show: 9000, went: null),
       ]) {
         ScreenTexture.debugWentUp(up);
       }
@@ -348,11 +366,38 @@ void main() {
       expect([stats.screenDrawP50, stats.screenDrawP95], [2.0, 3.0]);
       expect([stats.screenFinishP50, stats.screenFinishP95], [6.0, 20.0]);
       expect([stats.screenShowP50, stats.screenShowP95], [2.0, 9.0]);
+      expect(stats.screenFinishWent, isNull, reason: 'no frame said its parts');
+    });
+
+    test('a finish\'s parts are those of the frames that said them', () {
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      ScreenTexture.debugWentUp((draw: 0, finish: 90000, show: 0, went: null));
+      for (final (queued, polled) in const [
+        (1000, 6000),
+        (3000, 4000),
+        (2000, 5000),
+      ]) {
+        ScreenTexture.debugWentUp((
+          draw: 0,
+          finish: queued + polled + 900,
+          show: 0,
+          went: (queued: queued, polled: polled, heard: 600, together: 300),
+        ));
+      }
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+
+      final went = FrameStats.latest.value!.screenFinishWent!;
+      expect([went.queuedP50, went.queuedP95], [2.0, 3.0]);
+      expect([went.polledP50, went.polledP95], [5.0, 6.0]);
+      expect([went.heardP50, went.heardP95], [0.6, 0.6]);
+      expect([went.togetherP50, went.togetherP95], [0.3, 0.3]);
     });
 
     test('the screens\' rates are slopes over the interval between two '
         'publications, as the bakes\' is', () {
-      const up = (draw: 0, finish: 1000, show: 0);
+      const up = (draw: 0, finish: 1000, show: 0, went: null);
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
       ScreenTexture.debugWentUp(up, behind: true);
@@ -436,6 +481,190 @@ void main() {
       );
     });
 
+    test('the warm line is the newest pictures\' times and their slope — '
+        'the pictures made a second (H74)', () {
+      MeasurementMode.debugWindow.value = true;
+      addTearDown(WarmSteps.forget);
+      WarmSteps.made(30000);
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var ms = 0; ms <= 4000; ms += 40)
+          _frame(uiMs: 1, rasterMs: 1, atMs: ms),
+      ]);
+      FrameStats.publish();
+      expect(
+        FrameStats.latest.value!.warmsPerSecond,
+        0,
+        reason: 'the first publication has no reading before it',
+      );
+
+      for (final micros in const [80000, 20000, 50000]) {
+        WarmSteps.made(micros);
+      }
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
+      ]);
+      FrameStats.publish();
+
+      final stats = FrameStats.latest.value!;
+      expect(stats.warmsPerSecond, closeTo(3 / 0.25, 0.01));
+      expect(
+        [stats.warmP50, stats.warmP95],
+        [50.0, 80.0],
+        reason: 'over the four pictures kept: 20 30 50 80 ms',
+      );
+    });
+
+    testWidgets('the GPU line is the submits behind as published, and the '
+        'most read at a frame built since the last publication', (
+      tester,
+    ) async {
+      MeasurementMode.debugWindow.value = true;
+      var behind = 7;
+      EngineBehind.debugNow = () => behind;
+      addTearDown(() => EngineBehind.debugNow = null);
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      behind = 2;
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      final first = FrameStats.latest.value!;
+      expect([first.gpuBehind, first.gpuBehindWorst], [2, 7]);
+
+      FrameStats.publish();
+      final next = FrameStats.latest.value!;
+      expect(
+        [next.gpuBehind, next.gpuBehindWorst],
+        [2, 2],
+        reason: 'the most since the last publication, not since the first',
+      );
+    });
+
+    testWidgets('the stroke lines are the newest steps and their slope — the '
+        'dabs each carried, how long its first dab was held for it, and how '
+        'long till the frame that showed it was up', (tester) async {
+      MeasurementMode.debugWindow.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      Future<void> step(
+        int dabs, {
+        required int queued,
+        required int laid,
+        required int up,
+      }) async {
+        now = queued;
+        StrokeSteps.queued();
+        now = laid;
+        StrokeSteps.stepped(dabs, together: null);
+        now = up;
+        tester.binding.scheduleFrame();
+        await tester.pump();
+      }
+
+      await step(1, queued: 0, laid: 2000, up: 5000);
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var ms = 0; ms <= 4000; ms += 40)
+          _frame(uiMs: 1, rasterMs: 1, atMs: ms),
+      ]);
+      FrameStats.publish();
+      expect(
+        FrameStats.latest.value!.stepsPerSecond,
+        0,
+        reason: 'the first publication has no reading before it',
+      );
+
+      await step(9, queued: 10000, laid: 18000, up: 30000);
+      await step(2, queued: 40000, laid: 41000, up: 44000);
+      await step(3, queued: 50000, laid: 54000, up: 60000);
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
+      ]);
+      FrameStats.publish();
+
+      final stats = FrameStats.latest.value!;
+      expect(stats.stepsPerSecond, closeTo(3 / 0.25, 0.01));
+      expect(
+        [stats.dabsPerStepP50, stats.dabsPerStepWorst],
+        [3, 9],
+        reason: 'over the four steps kept: 1 2 3 9 dabs',
+      );
+      expect(
+        [stats.strokeHeldP50, stats.strokeHeldP95],
+        [4.0, 8.0],
+        reason: 'held 2 8 1 4 ms',
+      );
+      expect(
+        [stats.strokeUpP50, stats.strokeUpP95],
+        [10.0, 20.0],
+        reason: 'up 5 20 4 10 ms after their first dab',
+      );
+
+      FrameStats.reset();
+      expect(
+        [StrokeSteps.stepsCounted, StrokeSteps.dabsKept],
+        [0, isEmpty],
+        reason: 'what was counted while last up says nothing of now',
+      );
+    });
+
+    testWidgets("the newest stroke's steps along it: the p50 of its first "
+        'third and of its last, of its own steps alone — none under three', (
+      tester,
+    ) async {
+      MeasurementMode.debugWindow.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      Future<void> step(int upMs) async {
+        StrokeSteps.queued();
+        now += 100;
+        StrokeSteps.stepped(1, together: null);
+        now += upMs * 1000 - 100;
+        tester.binding.scheduleFrame();
+        await tester.pump();
+      }
+
+      void published() {
+        FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+        FrameStats.publish();
+      }
+
+      // The stroke before, slow all along.
+      for (var at = 0; at < 6; at += 1) {
+        await step(50);
+      }
+      StrokeSteps.pressed();
+      await step(1);
+      await step(2);
+      published();
+      expect(
+        FrameStats.latest.value!.strokeAlong,
+        isNull,
+        reason: 'two steps: no third',
+      );
+
+      for (final upMs in [3, 4, 5, 6, 7, 8, 9]) {
+        await step(upMs);
+      }
+      published();
+      final stats = FrameStats.latest.value!;
+      expect(
+        stats.strokeUpP95,
+        50.0,
+        reason: '⛔premise: the window holds the stroke before',
+      );
+      expect(stats.strokeAlong, (first: 2.0, last: 8.0, steps: 9));
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(
+        find.text(' along  first ⅓ p50   2.0  last ⅓ p50   8.0  of 9'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the slope is over the interval it measured, not the window', (
       tester,
     ) async {
@@ -445,7 +674,7 @@ void main() {
       // publication (a quarter second) by the whole window's span
       // (seconds), and so answered "0.0/s" no matter what was baking.
       // Only a fixture that actually bakes can tell the two apart.
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       final repaint = ValueNotifier<int>(0);
       addTearDown(repaint.dispose);
 
@@ -530,7 +759,7 @@ void main() {
       // a panel closes or a dock is rearranged. A slope taken across that
       // is negative, and `-4.0/s` is printed on screen as confidently as
       // any other number.
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       final repaint = ValueNotifier<int>(0);
       addTearDown(repaint.dispose);
 
@@ -598,20 +827,21 @@ void main() {
     ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: MeasurementReadoutHost(child: Text('app', textDirection: TextDirection.ltr)),
+          home: DebugWindowHost(child: Text('app', textDirection: TextDirection.ltr)),
         ),
       );
-      expect(find.byType(FrameStatsReadout), findsNothing);
+      expect(find.byType(DebugWindow), findsNothing);
 
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       await tester.pump();
-      expect(find.byType(FrameStatsReadout), findsOneWidget);
+      expect(find.byType(DebugWindow), findsOneWidget);
 
       // The instrument sits over whatever panel happens to be under it,
-      // so it must not be the thing that receives the click.
+      // so it must not be the thing that receives the click — but for its
+      // head's own buttons.
       final ignoring = tester.widgetList<IgnorePointer>(
         find.ancestor(
-          of: find.byType(FrameStatsReadout),
+          of: _said('MEMORY  app'),
           matching: find.byType(IgnorePointer),
         ),
       );
@@ -619,18 +849,54 @@ void main() {
     });
 
     testWidgets('says so when no frames have arrived', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
-      expect(find.textContaining('no frames yet'), findsOneWidget);
+      expect(_said('no frames yet'), findsOneWidget);
+    });
+
+    testWidgets("says the panels' bakes by their cause", (tester) async {
+      addTearDown(RepaintCause.forget);
+      RepaintCause.tally('pointer');
+      RepaintCause.tally('pointer');
+      MeasurementMode.debugWindow.value = true;
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(_said(RegExp('^bakes .*pointer 2')), findsOneWidget);
+    });
+
+    testWidgets('says the ceilings the holders are kept under (H74)', (
+      tester,
+    ) async {
+      final tiles = TilePictureBudget.instance.byteBudget;
+      addTearDown(() {
+        TilePictureBudget.instance.byteBudget = tiles;
+        MemoryAllowance.factor.value = 1;
+      });
+      TilePictureBudget.instance.byteBudget = 96 << 20;
+      MemoryAllowance.factor.value = 0.5;
+      MeasurementMode.debugWindow.value = true;
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      // No project open: nothing plays ahead and nothing is undone yet.
+      expect(
+        _said(
+          'BUDGET  playback —  tiles 96.0  undo — MB  allowance ×0.50',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('prints raster, UI, latency and both cache lines', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       FrameStats.debugFeed(<FrameTiming>[
         _frame(
           uiMs: 0.4,
@@ -643,24 +909,81 @@ void main() {
       FrameStats.publish();
 
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
 
-      expect(find.textContaining('RASTER'), findsOneWidget);
-      expect(find.textContaining('12.3'), findsOneWidget);
-      expect(find.textContaining('LATENCY'), findsOneWidget);
-      expect(find.textContaining('SCREEN'), findsOneWidget);
-      expect(find.textContaining('layer   cache 3'), findsOneWidget);
-      expect(find.textContaining('picture cache 0'), findsOneWidget);
+      expect(_said('RASTER'), findsOneWidget);
+      expect(_said('12.3'), findsOneWidget);
+      expect(_said('LATENCY'), findsOneWidget);
+      expect(_said('SCREEN'), findsOneWidget);
+      expect(_said('layer   cache 3'), findsOneWidget);
+      expect(_said('picture cache 0'), findsOneWidget);
+    });
+
+    testWidgets('prints the screens\' waits for a buffer Flutter can no '
+        'longer read: none, with no word, where nothing tells the reads; '
+        'the cut word and its counts where it was cut off', (tester) async {
+      MeasurementMode.debugWindow.value = true;
+      ScreenTexture.debugForgetUps();
+      addTearDown(ScreenTexture.debugForgetUps);
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(
+        find.text(' wait   0  0.0 ms  past bound 0  cut 0  —'),
+        findsOneWidget,
+        reason: 'no screen opened: nothing tells its reads, nothing waits',
+      );
+
+      ScreenTexture.surfaceWaits.untold = SharedTexture.untoldOn('windows');
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.text(
+          ' wait   0  0.0 ms  past bound 0  cut 0  못 냄 · D3D 는 묶을 때 알린다',
+        ),
+        findsOneWidget,
+        reason: 'a texture that can tell no read says why, by its adapter',
+      );
+
+      ScreenTexture.surfaceWaits
+        ..waits = 4
+        ..waitMicros = 312500
+        ..readsPastTheBound = 3
+        ..cuts = 1
+        ..screensCut = 1
+        ..heard = true;
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.text(' wait   4  312.5 ms  past bound 3  cut 1  끊김'),
+        findsOneWidget,
+      );
+
+      ScreenTexture.surfaceWaits.screensCut = 0;
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pump();
+      expect(_said('cut 1  신호'), findsOneWidget);
     });
 
     testWidgets('prints what a frame waited for, a screen\'s frame part by '
         'part, and the pointer packets', (tester) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       ScreenTexture.debugForgetUps();
       addTearDown(ScreenTexture.debugForgetUps);
-      ScreenTexture.debugWentUp((draw: 1100, finish: 22200, show: 3300));
+      ScreenTexture.debugWentUp((
+        draw: 1100,
+        finish: 22200,
+        show: 3300,
+        went: (queued: 5000, polled: 12000, heard: 3000, together: 2200),
+      ));
       PointerClock.handled(points: 3, micros: 4400);
       FrameStats.debugFeed(<FrameTiming>[
         _frame(
@@ -673,7 +996,7 @@ void main() {
       FrameStats.publish();
 
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       await tester.pump();
 
@@ -686,37 +1009,221 @@ void main() {
         (' draw', '1.1'),
         (' finish', '22.2'),
         (' show', '3.3'),
+        ('  went', 'queue 5.0/5.0  gpu 12.0/12.0  heard 3.0/3.0  together '
+            r'2\.2/2\.2$'),
         ('POINTER', '4.4'),
         ('POINTER', 'pts/s'),
       ]) {
         expect(
-          find.textContaining(RegExp('^${RegExp.escape(line)}.*$figure')),
+          _said(RegExp('^${RegExp.escape(line)}.*$figure')),
           findsOneWidget,
           reason: '$line … $figure',
         );
       }
       expect(
-        find.textContaining('copied'),
-        findsNothing,
-        reason: 'no window was opened: every platform but Android',
+        find.text(' path   —'),
+        findsOneWidget,
+        reason: 'no screen was opened: its row stands, saying none',
       );
     });
 
-    testWidgets('says whether a window\'s frame is copied onto its image, '
-        'on the line of its show', (tester) async {
-      MeasurementMode.frameStats.value = true;
-      addTearDown(() => ScreenTexture.debugWindowsAre(copied: false));
+    testWidgets('prints a stroke\'s steps, the submits behind on the GPU, the '
+        'memory held and the display\'s rate', (tester) async {
+      MeasurementMode.debugWindow.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      StrokeSteps.queued();
+      now = 6600;
+      StrokeSteps.stepped(7, together: null);
+      now = 9900;
+      tester.binding.scheduleFrame();
+      await tester.pump();
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
-      await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
-      );
-
-      ScreenTexture.debugWindowsAre(copied: true);
       FrameStats.publish();
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
       await tester.pump();
 
+      for (final (line, figure) in const [
+        ('FRAME STATS', r'fps  display \d+Hz$'),
+        ('STROKE', r'steps/s  dabs/step p50 7  max 7$'),
+        (' held', r'p50   6\.6'),
+        (' pen→up', r'p50   9\.9'),
+        // No engine is open in a test: none of its figures, not a zero.
+        ('GPU', r'behind —  max —  timestamps —$'),
+        // The census's sum, its counted share and the rest — the window's
+        // memory is the census's (ONE CENSUS).
+        ('MEMORY', r'app \d+\.\d MB  counted \d+\.\d  rest \d+\.\d$'),
+        ('COMPILE', r'—$'),
+        // The playback warmer's pace (H74), its row always there.
+        ('WARM', 'pics/s  p50.*  p95'),
+      ]) {
+        expect(
+          _said(RegExp('^${RegExp.escape(line)}.*$figure')),
+          findsOneWidget,
+          reason: '$line … $figure',
+        );
+      }
+    });
+
+    testWidgets('keeps the mappings\' row under the memory, saying none '
+        'till the OS says whose the memory is', (tester) async {
+      MeasurementMode.debugWindow.value = true;
+      String? said;
+      QaMemory.debugMappings = () => said;
+      addTearDown(() => QaMemory.debugMappings = null);
+      Future<void> shown() async {
+        FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+        FrameStats.publish();
+        await tester.pumpWidget(
+          const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+        );
+        await tester.pump();
+      }
+
+      List<String> rows() {
+        final lines = tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byKey(DebugWindow.linesKey),
+                matching: find.anyText(),
+              ),
+            )
+            .map((text) => text.data ?? '')
+            .toList();
+        final at = lines.indexWhere((line) => line.startsWith(' maps   '));
+        expect(at, greaterThanOrEqualTo(0), reason: 'the maps row stands');
+        return lines.sublist(at, at + 1 + mappingsNamed);
+      }
+
+      await shown();
+      expect(rows(), [' maps   —', '  —', '  —', '  —', '  —']);
+
+      final long = '/data/app/~~x/com.myoun.anicel-1/lib/arm64/${'a' * 30}.so';
+      said = 'kgsl-3d0 412.3  [anon:scudo:primary] 210.0  $long 64.5  '
+          'read 23 ms';
+      await shown();
+      expect(rows(), [
+        ' maps   read 23 ms',
+        '  kgsl-3d0 412.3',
+        '  [anon:scudo:primary] 210.0',
+        '  …${long.substring(long.length - 39)} 64.5',
+        '  —',
+      ]);
+
+      // As many as the engine names.
       expect(
-        find.textContaining(RegExp(r'^ show .*  copied$')),
+        File('packages/gpu_engine/rust/native/memory/src/lib.rs')
+            .readAsStringSync(),
+        contains('const MAPPINGS_NAMED: usize = $mappingsNamed;'),
+      );
+    });
+
+    testWidgets('prints a stroke\'s first step and its landing apart — none '
+        'till there is one — and the press to up over the strokes kept', (
+      tester,
+    ) async {
+      MeasurementMode.debugWindow.value = true;
+      var now = 0;
+      StrokeSteps.debugMicros = () => now;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      addTearDown(() => EngineBehind.debugNow = null);
+      addTearDown(ScreenAsked.debugForget);
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+      await tester.pump();
+      expect(find.text(' first  —'), findsOneWidget);
+      expect(find.text(' landed —'), findsOneWidget);
+      expect(find.text('  wrote —'), findsNWidgets(2));
+
+      Future<void> aStroke(int pressedAt, {required int upAfter}) async {
+        now = pressedAt;
+        StrokeSteps.pressed();
+        now += 400;
+        StrokeSteps.queued();
+        now += 500;
+        StrokeSteps.armed();
+        now += 1100;
+        StrokeSteps.stepped(1, together: null);
+        PictureWrites.wrote(PictureWrite.inPlace);
+        PictureWrites.wrote(PictureWrite.whole);
+        ScreenAsked.shown((
+          columns: 64,
+          rows: 10,
+          texels: 640,
+          moved: null,
+          scale: 1,
+          mode: GpuSampling.nearest,
+        ));
+        now = pressedAt + upAfter;
+        tester.binding.scheduleFrame();
+        await tester.pump();
+      }
+
+      EngineBehind.debugNow = () => 3;
+      await aStroke(10000, upAfter: 20000);
+      await aStroke(40000, upAfter: 10000);
+      await aStroke(60000, upAfter: 5000);
+      EngineBehind.debugNow = () => 4;
+      now = 69000;
+      StrokeSteps.lifted();
+      now = 70000;
+      StrokeSteps.landed(together: null);
+      PictureWrites.wrote(PictureWrite.copied);
+      now = 76000;
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      FrameStats.publish();
+      final stats = FrameStats.latest.value!;
+      expect(stats.firstStep, StrokeSteps.firstStep);
+      expect(stats.landing, StrokeSteps.landing);
+      expect(
+        [stats.firstUpP50, stats.firstUpWorst],
+        [10.0, 20.0],
+        reason: 'press to up 20 10 5 ms',
+      );
+      await tester.pump();
+
+      for (final line in const [
+        ' first  arm 0.9  dab 0.4  held 1.6  up 5.0  behind 3',
+        '  wrote in place 1  copied 0  whole 1  64x10  x1.00  nearest',
+        ' press→up p50  10.0  max  20.0',
+        ' landed commit 1.0  up 7.0  behind 4',
+        '  wrote in place 0  copied 1  whole 0  drew none',
+      ]) {
+        expect(find.text(line), findsOneWidget, reason: line);
+      }
+    });
+
+    testWidgets('says the way the screen reaches Flutter\'s, and why it was '
+        'refused, on a row of its own', (tester) async {
+      MeasurementMode.debugWindow.value = true;
+      addTearDown(() => ScreenTexture.debugPathIs(''));
+      FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
+      await tester.pumpWidget(
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
+      );
+
+      ScreenTexture.debugPathIs('ahb');
+      FrameStats.publish();
+      await tester.pump();
+      expect(find.text(' path   ahb'), findsOneWidget);
+
+      ScreenTexture.debugPathIs(
+        'ahb no — ahb storage no',
+        refused: 'ahb storage no',
+      );
+      FrameStats.publish();
+      await tester.pump();
+      expect(
+        find.text(' path   ahb no — ahb storage no  refused: ahb storage no'),
         findsOneWidget,
       );
     });
@@ -725,29 +1232,67 @@ void main() {
         'display\'s scale and the mode —, on the line of its draw', (
       tester,
     ) async {
-      MeasurementMode.frameStats.value = true;
+      MeasurementMode.debugWindow.value = true;
       addTearDown(ScreenAsked.debugForget);
       ScreenAsked.debugForget();
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       await tester.pumpWidget(
-        const MaterialApp(home: MeasurementReadoutHost(child: SizedBox())),
+        const MaterialApp(home: DebugWindowHost(child: SizedBox())),
       );
       FrameStats.publish();
       await tester.pump();
       expect(
-        find.textContaining(RegExp(r'^ draw .*\d\s*$')),
+        _said(RegExp(r'^ draw .*\d\s*$')),
         findsOneWidget,
         reason: 'no screen was shown: the line ends on its figures',
       );
 
       for (final (asked, said) in const [
         (
-          (columns: 2560, rows: 1536, scale: 0.9712, mode: GpuSampling.blend),
+          (
+            columns: 2560,
+            rows: 1536,
+            texels: 2560 * 1536,
+            moved: null,
+            scale: 0.9712,
+            mode: GpuSampling.blend,
+          ),
           '2560x1536  x0.97  blend',
         ),
         (
-          (columns: 640, rows: 1408, scale: 1.88, mode: GpuSampling.nearest),
+          (
+            columns: 640,
+            rows: 1408,
+            texels: 640 * 1408,
+            moved: null,
+            scale: 1.88,
+            mode: GpuSampling.nearest,
+          ),
           '640x1408  x1.88  nearest',
+        ),
+        // A pan's: what it held moved, and the band it uncovered drawn —
+        // the box round it the target, its walks a part of that.
+        (
+          (
+            columns: 3584,
+            rows: 2560,
+            texels: 128 * 2560,
+            moved: (-128, 0),
+            scale: 0.63,
+            mode: GpuSampling.blend,
+          ),
+          '3584x2560 drew 328k moved -128,0  x0.63  blend',
+        ),
+        (
+          (
+            columns: 96,
+            rows: 64,
+            texels: 512,
+            moved: (0, 8),
+            scale: 1.0,
+            mode: GpuSampling.nearest,
+          ),
+          '96x64 drew 512 moved 0,8  x1.00  nearest',
         ),
       ]) {
         ScreenAsked.shown(asked);
@@ -755,7 +1300,7 @@ void main() {
         await tester.pump();
 
         expect(
-          find.textContaining(RegExp('^ draw .*  ${RegExp.escape(said)}\$')),
+          _said(RegExp('^ draw .*  ${RegExp.escape(said)}\$')),
           findsOneWidget,
           reason: said,
         );
@@ -763,13 +1308,13 @@ void main() {
     });
   });
 
-  testWidgets('the app mounts the readout host above every route', (
+  testWidgets('the app mounts the debug window\'s host above every route', (
     tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pump();
     expect(
-      find.byType(MeasurementReadoutHost),
+      find.byType(DebugWindowHost),
       findsOneWidget,
       reason: 'MaterialApp.builder is the only level above the Navigator',
     );

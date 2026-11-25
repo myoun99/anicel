@@ -3062,24 +3062,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // (`FloatResamplePreview`, a-drag-in-an-open-box-resamples-a-move).
         _scheduleResamples();
       case TransformDrag():
-        _updateTransformDrag(drag, _toCanvas(event.localPosition));
+        _updateTransformDrag(drag, [
+          for (final point in PenPath.eventsOf(event))
+            _toCanvas(point.localPosition),
+        ]);
     }
   }
 
   /// A lasso traces every point the OS saw ([PenPath]), each its own step;
   /// a box and a line end where the newest is.
   void _traceMarquee(MarqueeDrag drag, PointerMoveEvent event) {
-    setState(() {
-      for (final point in PenPath.eventsOf(event)) {
-        drag
-          ..screenTravel += point.delta.distance
-          ..update(
-            _toCanvas(point.localPosition),
-            keepsRatio: _shapeKeepsRatioNow,
-            shift: _shiftHeld,
-          );
-      }
-    });
+    setState(() => PenPath.eventsOf(event).forEach(_marqueeStep(drag)));
     if (widget.tool == CanvasSelectionTool.drawShape) {
       widget.onDrawShapeDragged?.call(
         drawnCopiesOf(drag.path(), _guideCarries),
@@ -3087,12 +3080,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
   }
 
+  /// One point the OS saw, one step of [drag] — a move's and the lift's
+  /// alike.
+  void Function(PointerEvent point) _marqueeStep(MarqueeDrag drag) =>
+      (point) => drag
+        ..screenTravel += point.delta.distance
+        ..update(
+          _toCanvas(point.localPosition),
+          keepsRatio: _shapeKeepsRatioNow,
+          shift: _shiftHeld,
+        );
+
   /// Every branch below mutates the open warp, and every one of them must
   /// then ask the preview to catch up. Wrapping rather than sprinkling the
   /// call through five early returns is the difference between "the mesh
   /// preview stopped updating" being impossible and being a future bug.
-  void _updateTransformDrag(TransformDrag drag, CanvasPoint pointer) {
-    _updateTransformDragGeometry(drag, pointer);
+  ///
+  /// [pointers] are every point the OS saw of the move ([PenPath]), one
+  /// step each: a turn counts its windings ([TransformBoxLaw.turn]), and a
+  /// stall that merged three quarters round into one move read a quarter
+  /// back (card every-path-takes-every-point-the-os-saw ⓐ⑥).
+  void _updateTransformDrag(
+    TransformDrag drag,
+    Iterable<CanvasPoint> pointers,
+  ) {
+    for (final pointer in pointers) {
+      _updateTransformDragGeometry(drag, pointer);
+    }
     _scheduleResamples();
   }
 
@@ -3306,6 +3320,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // in rather than having its BEFORE region put back.
     switch (drag) {
       case MarqueeDrag():
+        // The points the OS merged into the lift are the trace's last
+        // stretch; the lift's own point is where the hand left, as it was
+        // — a stroke's lift reads them the same (`BrushEditPress`).
+        final lift = PenPath.eventsOf(event);
+        lift.take(lift.length - 1).forEach(_marqueeStep(drag));
         _finishMarquee(drag);
       case MoveDrag():
       case TransformDrag():

@@ -13,6 +13,12 @@
 .githooks/** text eol=lf
 *.sh text eol=lf
 
+# 🚨A PATCH HANDED BACK WITH CRLF DOES NOT APPLY: `git apply` reads its
+# context lines byte for byte, and the sources it is laid on are LF in git
+# (tool/flutter_engine — the patches the Flutter engine Anicel builds for
+# itself is made with, 2026-11-23).
+*.patch text eol=lf
+
 # 🚨★★FLUTTER REWRITES ITS PLUGIN REGISTRANTS ON EVERY COMMAND, IN LF.
 #
 # A checkout under `core.autocrlf` hands them back as CRLF, so every lane

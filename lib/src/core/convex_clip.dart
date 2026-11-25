@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 /// The part of the convex polygon [subject] that lies inside the convex
@@ -13,6 +14,24 @@ List<Offset> convexIntersection(List<Offset> subject, List<Offset> clip) {
     kept = _keptBy(kept, clip[edge], clip[(edge + 1) % clip.length], inside);
   }
   return kept;
+}
+
+/// The part of the convex polygon [polygon] where `a·x + b·y + c >= 0`, or
+/// empty where none of it is — [polygon] cut by that line, as
+/// [convexIntersection] cuts by each edge of a clip.
+List<Offset> convexCutBy(List<Offset> polygon, double a, double b, double c) {
+  final length = math.sqrt(a * a + b * b);
+  if (length == 0) {
+    return c >= 0 ? polygon : const [];
+  }
+  final (x, y, by) = (a / length, b / length, c / length);
+  final on = Offset(-x * by, -y * by);
+  return _keptBy(
+    polygon,
+    on,
+    on + Offset(y, -x),
+    (from, to, point) => _cross(to - from, point - from) >= 0,
+  );
 }
 
 /// The convex polygon [polygon] with every edge moved [by] toward its

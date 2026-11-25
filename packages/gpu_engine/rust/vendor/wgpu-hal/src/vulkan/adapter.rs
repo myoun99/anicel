@@ -1356,6 +1356,22 @@ impl PhysicalDeviceProperties {
             extensions.push(ext::image_drm_format_modifier::NAME);
         }
 
+        // ANICEL — not wgpu's: Android's screens are AHardwareBuffers the
+        // engine makes and Flutter shows (gpu_engine's platform/android.rs),
+        // imported as the Linux plugin's dma-bufs are. The extension's own
+        // needs past Vulkan 1.1 — which promotes external memory, dedicated
+        // allocation and YCbCr conversion — are `VK_EXT_queue_family_foreign`;
+        // on a 1.0 device those are extensions of their own, which this
+        // does not turn on, so it is not asked for there.
+        #[cfg(target_os = "android")]
+        if self.device_api_version >= vk::API_VERSION_1_1
+            && self.supports_extension(ash::android::external_memory_android_hardware_buffer::NAME)
+            && self.supports_extension(ext::queue_family_foreign::NAME)
+        {
+            extensions.push(ash::android::external_memory_android_hardware_buffer::NAME);
+            extensions.push(ext::queue_family_foreign::NAME);
+        }
+
         // Optional `VK_EXT_memory_budget`
         if self.supports_extension(ext::memory_budget::NAME) {
             extensions.push(ext::memory_budget::NAME);
@@ -2979,6 +2995,10 @@ impl super::Adapter {
             #[cfg(feature = "renderdoc")]
             render_doc: Default::default(),
             counters: Default::default(),
+            compile_cache: Default::default(),
+            adapter_named: adapter_named(&self.phd_capabilities.properties),
+            says_what_it_took: self.phd_capabilities.device_api_version >= vk::API_VERSION_1_3
+                && self.instance.instance_api_version >= vk::API_VERSION_1_3,
         };
 
         Ok(crate::OpenDevice { device, queue })
@@ -3548,4 +3568,18 @@ fn query_cooperative_matrix_properties(
         result.len()
     );
     result
+}
+
+/// ANICEL — not wgpu's: which adapter `properties` are of and which driver
+/// runs it, as bytes — what the driver made of a pipeline is kept by them
+/// (`super::Device::kept_compute_pipeline`): the vendor, the device, the
+/// driver's version and the identity it gives what its pipeline caches
+/// hold, which changes with any build of it that makes them otherwise.
+fn adapter_named(properties: &vk::PhysicalDeviceProperties) -> Vec<u8> {
+    let mut named = Vec::new();
+    for word in [properties.vendor_id, properties.device_id, properties.driver_version] {
+        named.extend_from_slice(&word.to_le_bytes());
+    }
+    named.extend_from_slice(&properties.pipeline_cache_uuid);
+    named
 }

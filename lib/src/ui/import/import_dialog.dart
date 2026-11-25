@@ -1,8 +1,9 @@
-import 'dart:async' show Timer, unawaited;
+import 'dart:async' show Completer, Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, visibleForTesting;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
@@ -26,7 +27,8 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
-import '../../services/media/media_byte_source.dart' show HeldMediaBytes;
+import '../../services/media/media_byte_source.dart'
+    show HeldMediaBytes, HoldMediaBytes;
 import '../../services/media/media_facts.dart';
 import '../../services/media/movie_bytes.dart' show readHeldMovieInfo;
 import '../audio/audio_conform_store.dart';
@@ -88,13 +90,30 @@ part 'import_settings_rows.dart';
 /// thing: a file, or a layer of the cut a cut FOLDER lands as — and a row
 /// for what a folder leaves out, so nothing exits silently.
 ///
-/// ↩️It had a 「파일…」 and a 「컷 폴더…」 of its own, and the menu's
-/// 「가져오기/배치…」 opened it on nothing to press them (F-282, 유저
-/// 2026-10-09: 「열기랑 임포트랑 되도록 하나로」).
+/// Its 「파일 추가」 · 「폴더 추가」 are the open entrance's two picks, not
+/// pickers of its own ([openFiles] · [openFolder]): what they bring goes
+/// through the one door, and its import part comes into this window
+/// ([ImportWindowInbox]). 🗣️H81 (유저 2026-11-24): 「애초에 임포트창
+/// 떠있을때 밖 누르면 창닫혀서 추가임포트못해. 그러니 동일한 코드로
+/// 부르도록. 파일 폴더 둘다두는게 좋을듯」. ↩️It had a 「파일…」 and a
+/// 「컷 폴더…」 of its own, and the menu's 「가져오기/배치…」 opened it on
+/// nothing to press them (F-282, 유저 2026-10-09: 「열기랑 임포트랑 되도록
+/// 하나로」) — and from then on nothing could be added to a window that
+/// stood.
 ///
 /// v1 zones: source line → table | preview → action bar. The preset rail
 /// and queue drawers of the export skeleton join when parser presets get
 /// their store.
+/// Where the one door's import part comes in while an import window stands
+/// (H81): into that window, rather than a second one over it.
+final class ImportWindowInbox {
+  Future<void> Function(List<FolderGrant> picked)? _window;
+
+  /// [picked] taken into the window that stands, answering once it has
+  /// closed, as a window the door opens does — null when none stands.
+  Future<void>? takeIn(List<FolderGrant> picked) => _window?.call(picked);
+}
+
 class ImportDialog extends StatefulWidget {
   const ImportDialog({
     super.key,
@@ -106,9 +125,35 @@ class ImportDialog extends StatefulWidget {
     this.spot,
     this.putSettingsInPlace,
     this.projects,
+    this.inbox,
+    this.openFiles,
+    this.openFolder,
   });
 
   final EditorSessionManager session;
+
+  /// Where the one door hands this window what it brings while it stands
+  /// — null where nothing can bring more.
+  final ImportWindowInbox? inbox;
+
+  /// The open entrance's 「파일 열기」 and 「폴더 열기」 — the window's
+  /// 「파일 추가」 and 「폴더 추가」, which bring what they pick through the
+  /// one door into [inbox]. Null where there is no entrance to call: the
+  /// buttons stand, shut.
+  final VoidCallback? openFiles;
+  final VoidCallback? openFolder;
+
+  /// Test seam: how a listed file's facts are read ([readMediaFacts]) — for
+  /// a test that holds them back, to ask a row before they are in (board
+  /// a-three-frame-gif-reads-as-one-picture-in-the-wide-check: a row asked
+  /// before its pictures were counted answered for one).
+  @visibleForTesting
+  static Future<MediaFacts?> Function(
+    MediaAssetKind kind,
+    String path,
+    HoldMediaBytes hold,
+  )
+  readFacts = readMediaFacts;
 
   /// Files the app already holds, handed in by path (files or one folder) —
   /// a media row placed, a drag from the pool.
@@ -240,7 +285,10 @@ class _FileReport {
       _in(_Stretch.cut, _cuttingStep(kind), fraction);
 
   /// [fraction] of the file read in ([readHeldMediaBytes]) — a picture from
-  /// the cloud comes down inside this read (F-608-Q2).
+  /// the cloud comes down inside this read (F-608-Q2) — or read by its
+  /// decoder: a sound's or a movie's by its conform's
+  /// ([AudioConformStore.ensurePeaksFor], decoder-reads-skip-the-percent-Q2),
+  /// a PDF by PDFium as it opens ([PdfOpeningReads]).
   void reading(double fraction) =>
       _in(_Stretch.read, AppText.strings.imStepReading, fraction);
 
@@ -744,39 +792,83 @@ class _ImportDialogState extends State<ImportDialog> {
   final Map<String, List<String>?> _folderNames = {};
 
   /// Each listed picture's run by its names alone ([pictureRunOf]), by its
-  /// pool key — before a size has been asked of it.
-  final Map<String, PictureRun?> _namedRuns = {};
+  /// pool key — before a size has been asked of it — with where each
+  /// picture beside it stands, by name ([_besideOf]). One cache for both:
+  /// a run's pictures are read at the paths its names were found at.
+  final Map<String, ({PictureRun? run, Map<String, String> at})> _namedRuns =
+      {};
 
   /// Each listed picture's run once every picture of it is measured — by
-  /// its pool key, as [_namedRuns] — which nothing changes after.
+  /// its pool key, as [_namedRuns] — which nothing changes after but a
+  /// file handed in ([_handIn]).
   final Map<String, PictureRun?> _measuredRuns = {};
 
-  /// [path]'s run as its folder names it ([pictureRunOf]) — null for a file
-  /// that is no picture, or runs with none.
-  PictureRun? _namedRunOf(String path) {
+  /// [path]'s run as the pictures beside it name it ([pictureRunOf]) —
+  /// null for a file that is no picture, or runs with none.
+  PictureRun? _namedRunOf(String path) => _named(path).run;
+
+  /// Where [picture] of [path]'s run stands.
+  String _runPicturePath(String path, RunPicture picture) =>
+      _named(path).at[picture.file]!;
+
+  ({PictureRun? run, Map<String, String> at}) _named(String path) {
     if (mediaAssetKindForPath(path) != MediaAssetKind.image) {
-      return null;
+      return (run: null, at: const {});
     }
     return _namedRuns.putIfAbsent(normalizedMediaPath(path), () {
-      final folder = File(path).parent.path;
-      final names = _folderNames.putIfAbsent(folder, () {
-        try {
-          return [
-            for (final entry in Directory(folder).listSync())
-              if (entry is File) mediaFileName(entry.path),
-          ];
-        } on FileSystemException {
-          return null;
-        }
-      });
-      return names == null
-          ? null
-          : pictureRunOf(
-              mediaFileName(path),
-              names,
-              folderName: mediaParentFolderName(path),
-            );
+      final at = _besideOf(path);
+      return (
+        run: pictureRunOf(
+          mediaFileName(path),
+          at.keys,
+          folderName: mediaParentFolderName(path),
+        ),
+        at: at,
+      );
     });
+  }
+
+  /// The pictures [path] can run with, each at its path by its name: the
+  /// files of its folder, and the files handed in with it whose name its
+  /// folder has none of.
+  ///
+  /// 🗣️H71 (유저 2026-11-24): 「안드 파일임포트시 a1만열리고 그 뒤
+  /// a2부터 a18까지 연결임포트가 안됨 … 이는 전플랫폼 통일」 — a document
+  /// a provider hands over (Drive on Android) is read through a copy of
+  /// its own, each in a folder of its own ([ProviderDocuments.copyIn]), so
+  /// its folder lists it alone: the pictures picked with it are its run's
+  /// as a folder's are. The files a folder's walk lists are not handed in.
+  Map<String, String> _besideOf(String path) {
+    final folder = File(path).parent.path;
+    final names = _folderNames.putIfAbsent(folder, () {
+      try {
+        return [
+          for (final entry in Directory(folder).listSync())
+            if (entry is File) mediaFileName(entry.path),
+        ];
+      } on FileSystemException {
+        return null;
+      }
+    });
+    final at = {
+      for (final name in names ?? const <String>[]) name: '$folder/$name',
+    };
+    if (_folder == null) {
+      for (final handed in _files) {
+        at.putIfAbsent(mediaFileName(handed), () => handed);
+      }
+    }
+    return at;
+  }
+
+  /// [paths] listed as files handed in, each asked of ([_probe]) once all
+  /// of them are: a picture runs with the ones handed in beside it
+  /// ([_besideOf]), so the runs read before them are read again.
+  void _handIn(Iterable<String> paths) {
+    _files.addAll(paths);
+    _namedRuns.clear();
+    _measuredRuns.clear();
+    paths.forEach(_probe);
   }
 
   /// The numbered run [path] is part of, when its row is placed — null for
@@ -798,10 +890,9 @@ class _ImportDialogState extends State<ImportDialog> {
     if (named == null) {
       return null;
     }
-    final folder = File(path).parent.path;
     final sizeKeys = {
       for (final picture in named.pictures)
-        picture.file: normalizedMediaPath('$folder/${picture.file}'),
+        picture.file: normalizedMediaPath(_runPicturePath(path, picture)),
     };
     if (!sizeKeys.values.every(_facts.containsKey)) {
       return null;
@@ -834,10 +925,12 @@ class _ImportDialogState extends State<ImportDialog> {
   /// through — or null for a file in none.
   List<String>? _runFilesOf(String path) {
     final run = _runOf(path);
-    final folder = File(path).parent.path;
     return run == null
         ? null
-        : [for (final picture in run.pictures) '$folder/${picture.file}'];
+        : [
+            for (final picture in run.pictures)
+              _runPicturePath(path, picture),
+          ];
   }
 
   /// What the window asks of a file the moment it is listed: whether its
@@ -854,10 +947,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// asked in the one line of reads — its run stops where the size changes
   /// ([_runOf]), and a press of Import waits for them ([_placeFiles]).
   void _probeRun(String path) {
-    final folder = File(path).parent.path;
     for (final picture in _namedRunOf(path)?.pictures ?? const <RunPicture>[]) {
       _readFacts(
-        '$folder/${picture.file}',
+        _runPicturePath(path, picture),
         wanted: () => _files.contains(path),
       );
     }
@@ -909,7 +1001,7 @@ class _ImportDialogState extends State<ImportDialog> {
       final kind = mediaAssetKindForPath(path);
       final facts = kind == null
           ? null
-          : await readMediaFacts(kind, path, _holdBytes);
+          : await ImportDialog.readFacts(kind, path, _holdBytes);
       if (mounted) {
         _facts[key] = facts;
         _showFactsSoon();
@@ -1024,11 +1116,10 @@ class _ImportDialogState extends State<ImportDialog> {
         continue;
       }
       rows[path] = [];
-      final folder = File(path).parent.path;
       for (final picture
           in _broughtRunOf(path)?.pictures ?? const <RunPicture>[]) {
         bringer.putIfAbsent(
-          normalizedMediaPath('$folder/${picture.file}'),
+          normalizedMediaPath(_runPicturePath(path, picture)),
           () => path,
         );
       }
@@ -1067,25 +1158,44 @@ class _ImportDialogState extends State<ImportDialog> {
     super.initState();
     _wait.status.addListener(_waitChanged);
     _wait.waiting.addListener(_waitChanged);
+    _takeIn(widget.initialPaths, widget.picked);
+    widget.inbox?._window = _takenFromTheDoor;
+  }
+
+  /// What the one door brings while this window stands ([ImportWindowInbox])
+  /// — taken in as what it opened on was.
+  Future<void> _takenFromTheDoor(List<FolderGrant> picked) {
+    setState(() => _takeIn(const [], picked));
+    return _closed.future;
+  }
+
+  /// Done when the window has gone.
+  final Completer<void> _closed = Completer<void>();
+
+  /// [paths] and [picked] taken in — what the window opens on, and what the
+  /// door brings it after ([_takenFromTheDoor]), by the one law.
+  void _takeIn(List<String> paths, List<FolderGrant> picked) {
     // A grant's path is taken now, as a path handed in is — the first frame
     // shows the files, not an empty window that fills a frame later. Its
     // token is kept for the run ([_pickedGrants]); a document's bytes come
     // after, under the wait a pick's always came under.
-    final grantedPaths = [for (final grant in widget.picked) ?grant.path];
+    final grantedPaths = [for (final grant in picked) ?grant.path];
     _pickedGrants.addAll([
-      for (final grant in widget.picked)
+      for (final grant in picked)
         if (grant.path != null) grant,
     ]);
     final documents = [
-      for (final grant in widget.picked)
+      for (final grant in picked)
         if (grant.document != null) grant,
     ];
     if (documents.isNotEmpty) {
       // Once this build is done: the wait the copies go under redraws.
       unawaited(Future<void>.microtask(() => _takeDocuments(documents)));
     }
+    final hadFolder = _folder != null;
     final settingsFiles = <String>[];
-    for (final path in [...widget.initialPaths, ...grantedPaths]) {
+    final handed = <String>[];
+    for (final path in [...paths, ...grantedPaths]) {
       if (Directory(path).existsSync()) {
         if (_folder == null) {
           _folder = path;
@@ -1095,23 +1205,29 @@ class _ImportDialogState extends State<ImportDialog> {
       } else if (_isSettingsFile(path)) {
         settingsFiles.add(path);
       } else {
-        _files.add(path);
-        _probe(path);
+        handed.add(path);
       }
     }
     _takeSettingsFiles(settingsFiles);
-    final dropped = _folder;
-    if (dropped != null) {
+    if (_folder == null) {
+      _handIn(handed);
+    } else {
       // A folder came with loose files: the folder is the import, the
       // files are listed as ignored (one window, one source shape).
-      _ignoredSources.addAll(_files);
-      _files.clear();
-      _readFolder();
+      _ignoredSources.addAll([...handed, if (!hadFolder) ..._files]);
+      if (!hadFolder) {
+        _files.clear();
+        _readFolder();
+      }
     }
   }
 
   @override
   void dispose() {
+    if (widget.inbox?._window == _takenFromTheDoor) {
+      widget.inbox?._window = null;
+    }
+    _closed.complete();
     _factsShowing?.cancel();
     // A copy still on its way is stopped: nothing is left to take it.
     _wait.cancel();
@@ -1146,18 +1262,21 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final path in paths)
         if (!_isSettingsFile(path)) path,
     ];
+    final beside = _folder != null;
     setState(() {
       _takeSettingsFiles(paths.where(_isSettingsFile));
-      if (_folder != null) {
+      if (beside) {
         _ignoredSources.addAll(files);
         if (_parsed case final parsed?) {
           _leftOut = _leftOutOf(parsed);
         }
-      } else {
-        _files.addAll(files);
       }
     });
-    files.forEach(_probe);
+    if (beside) {
+      files.forEach(_probe);
+    } else {
+      _handIn(files);
+    }
   }
 
   /// Whether [path] is a settings file, which comes in as its rows
@@ -1203,10 +1322,10 @@ class _ImportDialogState extends State<ImportDialog> {
   /// come is left out and named in the warnings the status line opens.
   Future<List<String>> _readablePathsOf(List<FolderGrant> picked) async {
     final paths = <String>[];
-    final missed = <String>[];
+    final missed = <WarningLine>[];
     for (final grant in picked) {
       if (grant.document case final document?) {
-        final copy = await _readableForImport(document.uri);
+        final (path: copy, :why) = await _readableForImport(document.uri);
         if (!mounted) {
           // The window went while the copy came: nothing will let go of it.
           if (copy != null) {
@@ -1215,7 +1334,7 @@ class _ImportDialogState extends State<ImportDialog> {
           return const [];
         }
         if (copy == null) {
-          missed.add(document.name);
+          missed.add(_unreadLine(document.name, why));
         } else {
           _intakeCopies.add(copy);
           paths.add(copy);
@@ -1226,10 +1345,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     if (picked.any((grant) => grant.document != null)) {
       setState(
-        () => _status = _Warnings([
-          for (final name in missed)
-            partsOf(AppText.strings.imUnreadable(name), about: name),
-        ]),
+        () => _status = _Warnings(missed),
       );
     }
     return paths;
@@ -1474,8 +1590,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// still produce one: an import names the asset after its file, so a
   /// temp name would land in the project as the drawing's name. Waiting
   /// for the PICK to read is the only outcome this door can use.
-  /// Answers null when the file never arrives or the user stops it.
-  Future<String?> _readableForImport(String path) async {
+  /// Answers no path when the file never arrives — and why, where the read
+  /// said — or the user stops it.
+  Future<({String? path, String? why})> _readableForImport(
+    String path,
+  ) async {
     _wait.begin();
     try {
       final source = await FolderPicker.materializeOpenedFile(
@@ -1490,13 +1609,13 @@ class _ImportDialogState extends State<ImportDialog> {
       );
       if (source.staged) {
         unawaited(FolderPicker.letGoOfStagedCopy(source));
-        return null;
+        return (path: null, why: null);
       }
-      return source.path;
+      return (path: source.path, why: null);
     } on MaterializeCancelled {
-      return null;
-    } on FileSystemException {
-      return null;
+      return (path: null, why: null);
+    } on FileSystemException catch (error) {
+      return (path: null, why: error.message);
     } finally {
       if (mounted) {
         _wait.ended();
@@ -1584,18 +1703,20 @@ class _ImportDialogState extends State<ImportDialog> {
   /// status line, and its Cancel gives that file up. ↩️Only a movie that
   /// baked stood behind one — a window of its own for every movie — and
   /// the rest said 「임포트하는 중…」 on this window's status line.
-  Future<bool> _importBehindTheWaitWindow(_ImportTally tally) =>
-      runWithAppProgress<bool>(
-        context: context,
-        title: AppText.strings.imImport,
-        titleIcon: Icons.download_outlined,
-        runningLabel: AppText.strings.imStatusImporting,
-        windowKey: const ValueKey<String>('import-progress-dialog'),
-        runningStatus: _RunningLine(_wait.status, _step),
-        onCancel: _wait.cancel,
-        cancelLive: _wait.waiting,
-        task: (report) => _importAll(tally, report),
-      );
+  Future<bool> _importBehindTheWaitWindow(_ImportTally tally) {
+    final window = AppWaitWindow.importing();
+    return runWithAppProgress<bool>(
+      context: context,
+      title: window.title,
+      titleIcon: window.titleIcon,
+      runningLabel: window.runningLabel,
+      windowKey: window.windowKey,
+      runningStatus: _RunningLine(_wait.status, _step),
+      onCancel: _wait.cancel,
+      cancelLive: _wait.waiting,
+      task: (report) => _importAll(tally, report),
+    );
+  }
 
   /// 🗣️import-movie-fps-mismatch-notice (유저 10-06: 「알리는게 좋겠어」 ·
   /// 「셋다 맞고」, 10-10 「1번」 — asked when Import is pressed): a movie
@@ -1937,12 +2058,24 @@ class _ImportDialogState extends State<ImportDialog> {
     final held =
         !_landsInANewProject(path) &&
         widget.session.projectFile.projectHoldsMediaBytes(path);
-    if (held || await _readableForImport(path) != null) {
+    if (held) {
       return true;
     }
-    _warnOf(tally, path, AppText.strings.imUnreadable);
+    final (path: read, :why) = await _readableForImport(path);
+    if (read != null) {
+      return true;
+    }
+    tally.warnings.add(_unreadLine(_shownName(path), why));
     return false;
   }
+
+  /// [name] not reading, as a warning says it — and why, where the read
+  /// said (H72, 유저 2026-11-24: 「갤탭 psd임포트 경고뜨면서 안됨.
+  /// 읽을수없다면서」): the provider's refusal, or how far the file came.
+  /// A wait the user stopped says no why.
+  static WarningLine _unreadLine(String name, String? why) => why == null
+      ? partsOf(AppText.strings.imUnreadable(name), about: name)
+      : ImportWarning.fileUnreadable(name, why).partsFor(AppText.language);
 
   /// Places the rows of [placing] — every file handed in that is placed:
   /// a picture where the window says, a sound on the track's SE rows —
@@ -2185,8 +2318,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return _placeThrough(into, path, kind, tally, fileReport);
     }
     final pieces = into.session.trimmedPieces;
-    // Named from its start, as what the piece is: a sound's or a page
-    // range's cut says nothing until it is done (F-494).
+    // Named from its start, as what the piece is (F-494).
     final cut = TrimmedPieces.pieceKindOf(kind, settings.movieParts);
     fileReport.cutting(0, cut);
     final pull = _fitted[path] ?? noPull;
@@ -2275,6 +2407,7 @@ class _ImportDialogState extends State<ImportDialog> {
         spot: into.spot,
         sourcePath: sourcePath,
         onCarrying: fileReport.carrying,
+        onReading: fileReport.reading,
       );
     }
     if (kind == MediaAssetKind.video) {
@@ -2303,6 +2436,7 @@ class _ImportDialogState extends State<ImportDialog> {
         spot: into.spot,
         sourcePath: sourcePath,
         onCarrying: fileReport.carrying,
+        onReading: fileReport.reading,
       );
     }
     return _placePicture(into, path, fileReport, sourcePath: sourcePath);
@@ -2343,10 +2477,9 @@ class _ImportDialogState extends State<ImportDialog> {
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
-    final folder = File(path).parent.path;
     final files = <({String path, String label})>[];
     for (final picture in _runKeptOf(path)!) {
-      final file = '$folder/${picture.file}';
+      final file = _runPicturePath(path, picture);
       // Every picture of the run reads before it is placed, the law the
       // picked one already went through ([_readsForPlacement]).
       if (!mounted) {
@@ -2393,6 +2526,7 @@ class _ImportDialogState extends State<ImportDialog> {
     spot: into.spot,
     sourcePath: sourcePath,
     onCarrying: fileReport.carrying,
+    onReading: fileReport.reading,
   );
 
   /// Why a placement of the file [name] that ran and answered `false` did
@@ -2541,9 +2675,10 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// [path] cut into its piece for the pool, [told] how far from the cut's
-  /// start on — a sound's or a page range's cut says nothing until it is
-  /// done, and the window names it all the same (F-494). The piece's path,
-  /// or null when it would not cut.
+  /// start on — named from its start (F-494): a sound's tells the frames it
+  /// has decoded of those to decode, a page range's and a picture's how far
+  /// the file is read ([TrimmedPieces.cut]). The piece's path, or null when
+  /// it would not cut.
   Future<String?> _cutForThePool(
     String path,
     MediaAssetKind kind,
@@ -2568,20 +2703,27 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// EXPAND, which reports its outcome as warnings-or-null rather than a
   /// bool: a flattened PSD has no stack, and that is not a failure worth
-  /// the word "could not".
+  /// the word "could not". A document that could not be read says why, as
+  /// every door that reads pictures does ([ImportWarning.celUnreadable]).
   Future<bool> _expandPsd(
     _Landing into,
     String path,
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
-    final expanded = await into.session.importDoors.importPsdExpanded(
-      path: path,
-      destination: into.settings.into,
-      fit: into.settings.fit,
-      spot: into.spot,
-      onReading: fileReport.reading,
-    );
+    final List<ImportWarning>? expanded;
+    try {
+      expanded = await into.session.importDoors.importPsdExpanded(
+        path: path,
+        destination: into.settings.into,
+        fit: into.settings.fit,
+        spot: into.spot,
+        onReading: fileReport.reading,
+      );
+    } on Object catch (error) {
+      tally.warnAll([ImportWarning.celUnreadable(_shownName(path), '$error')]);
+      return false;
+    }
     if (expanded == null) {
       _warnOf(tally, path, AppText.strings.imPsdNoLayers);
       return false;
@@ -2659,6 +2801,24 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
+  /// 「파일 추가」 and 「폴더 추가」, at the footer's left end as the export
+  /// window's 「큐에 추가」 (F-289): the source line beside a folder's
+  /// landing has no room for two more. A pool row's window has its source
+  /// decided — none.
+  List<AppWindowAction> get _adds => [
+    if (!widget.placeOnly)
+      for (final (key, label, open) in [
+        ('import-add-files', AppText.strings.imAddFiles, widget.openFiles),
+        ('import-add-folder', AppText.strings.imAddFolder, widget.openFolder),
+      ])
+        AppWindowAction(
+          label: label,
+          actionKey: ValueKey<String>(key),
+          emphasis: AppWindowActionEmphasis.quiet,
+          onPressed: _busy ? null : open,
+        ),
+  ];
+
   Widget _window(BuildContext context, Size room) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
@@ -2675,6 +2835,7 @@ class _ImportDialogState extends State<ImportDialog> {
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
       footerNote: _statusLineOf(context),
+      leadingActions: _adds,
       actions: [
         AppWindowAction(
           label: AppText.strings.commonCancel,

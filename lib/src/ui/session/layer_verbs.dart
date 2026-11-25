@@ -10,7 +10,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutsBeyondItsSync;
-import '../../services/commands/track_se_layer_commands.dart';
+import '../../services/commands/row_delete.dart';
 import '../../services/wait_window.dart' show drawingsOf;
 import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
@@ -90,15 +90,20 @@ class LayerVerbs {
     ];
   }
 
-  /// What a delete of [ids] takes BESIDES them, as the rail lists them —
-  /// top first: every row a folder among them holds (F-305: 「내용물도
+  /// What [ids] HOLD besides themselves, as the rail lists them — top
+  /// first: every row a folder among them holds (F-305: 「내용물도
   /// 삭제리스트에 보여지게」), and the attach rows and organizer folders that
   /// go with a base (the coordinator's cascade — 「neither can stand
-  /// alone」). A row named by [ids] itself is not repeated.
+  /// alone」): what a copy of them brings, and the rows a selection names
+  /// through them ([rowsNotTakenAlong]). A row named by [ids] itself is not
+  /// repeated.
   ///
   /// ↩️A base's attach rows were left out until F-303: the window listed
   /// only what a FOLDER held, so a base went and took rows the list never
   /// showed — and the hand-off stood on one of them ([_standAfterDeleting]).
+  /// ↩️The window read this until 11-23, and a delete takes more than its
+  /// rows hold — a row's link, a row of a track's conte in every cut: it
+  /// asks the delete now ([rowsADeleteTakes]).
   List<Layer> rowsHeldBy(Iterable<LayerId> ids) {
     final named = ids.toSet();
     final takenAlong = _takenAlongBy(named);
@@ -108,8 +113,8 @@ class LayerVerbs {
     ];
   }
 
-  /// The rows a delete of [ids] takes along, each by ANOTHER row that goes —
-  /// one of [ids] too, when another of them takes it: what a folder among
+  /// The rows [ids] hold, each by ANOTHER row among them or held by them —
+  /// one of [ids] too, when another of them holds it: what a folder among
   /// them holds, and the attach rows and organizer folders of a base that
   /// goes.
   Set<LayerId> _takenAlongBy(Iterable<LayerId> ids) {
@@ -569,16 +574,16 @@ class LayerVerbs {
       : (layer) => groupIsLinked(layer, cut);
 
   /// Where to stand once [ids] — top first, as they are deleted — are gone
-  /// with what they hold: [stableLayerIdAfterDeleting]'s hand-off from the
-  /// LOWEST of them, over the rows that stay.
+  /// with all they take ([rowsADeleteTakes]): [stableLayerIdAfterDeleting]'s
+  /// hand-off from the LOWEST of them, over the rows that stay.
   ///
   /// ↩️The hand-off was made over the whole stack, as if that one row were
   /// all that went. A folder takes its rows along now (F-305), and the row
-  /// next to it in the stack is one of them.
+  /// next to it in the stack is one of them — and so may a row's link be,
+  /// a copy pasted linked beside its source.
   LayerId? _standAfterDeleting(List<LayerId> ids) {
     final from = ids.last;
-    final gone = {...ids, for (final row in rowsHeldBy(ids)) row.id}
-      ..remove(from);
+    final gone = rowsADeleteTakes(ids)..remove(from);
     return stableLayerIdAfterDeleting(
       beforeLayers: [
         for (final layer in _project.requireActiveCut.layers)
@@ -588,34 +593,42 @@ class LayerVerbs {
     );
   }
 
-  /// One row's delete, where the row lives: an S row off its TRACK — while
-  /// the track keeps more than its floor of two, asked again at each one so
-  /// a multi-row delete stops there — any other row in [cutId], whose
-  /// floors the coordinator asks ([CutCommandCoordinator.deleteLayer]).
-  ///
-  /// 🗣️F-359 (유저 2026-10-14): 「s행은 삭제창통해 삭제해도 삭제가안됨」.
-  /// ↩️Only the active row's delete took an S row off its track; the
-  /// selection's — the one the delete window commits — handed it to the
-  /// cut's, which holds no S row and refused it.
-  void _deleteRow(CutId cutId, LayerId layerId) {
-    final track = _selection.activeTrack;
-    if (!track.seLayers.any((row) => row.id == layerId)) {
-      _project.cutCommandCoordinator.deleteLayer(
-        cutId: cutId,
-        layerId: layerId,
-      );
-      return;
+  /// Every row a delete of [ids] takes, in every cut — the rows named, what
+  /// they take along, and their selves elsewhere: read off the delete itself
+  /// ([rowsDeleteRowsTakes]), so the window, the hand-off and the effects
+  /// that stay are told what the delete does, by the delete.
+  Set<LayerId> rowsADeleteTakes(List<LayerId> ids) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return {};
     }
-    if (track.seLayers.length > 2) {
-      _project.historyManager.execute(
-        RemoveTrackSeLayerCommand(
-          repository: _project.repository,
-          trackId: _selection.selectedTrackId,
-          layerId: layerId,
-        ),
-      );
-    }
+    return {
+      ...rowsDeleteRowsTakes(
+        _project.repository.requireProject(),
+        cutId: cut.id,
+        trackId: _selection.selectedTrackId,
+        ids: _topFirst(cut, ids),
+      ),
+    };
   }
+
+  /// [ids] as a delete walks them: from the TOP down ([deleteLayers] says
+  /// why).
+  List<LayerId> _topFirst(Cut cut, List<LayerId> ids) {
+    final order = {
+      for (var index = 0; index < cut.layers.length; index += 1)
+        cut.layers[index].id: index,
+    };
+    return [...ids]
+      ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
+  }
+
+  void _deleteRow(CutId cutId, LayerId layerId) => deleteRow(
+    _project.cutCommandCoordinator,
+    cutId: cutId,
+    trackId: _selection.selectedTrackId,
+    layerId: layerId,
+  );
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
@@ -670,12 +683,13 @@ class LayerVerbs {
   /// taking a lower row out first would shift the ones above it under the
   /// loop's feet.
   ///
-  /// No row named here is one another of them takes along — the selection's
-  /// delete and a 잘라내기 both leave those out ([rowsNotTakenAlong]) — so
-  /// no removal finds its row already gone. ↩️The order was thought to
-  /// answer that too, for
-  /// an attach cascade; it did only while the attach rows stood above their
-  /// base (F-464).
+  /// No row named here is one another of them HOLDS — the selection's delete
+  /// and a 잘라내기 both leave those out ([rowsNotTakenAlong]). ↩️The order
+  /// was thought to answer that too, for an attach cascade; it did only
+  /// while the attach rows stood above their base (F-464). A row's LINK can
+  /// still take one named here — a row and the copy pasted linked beside
+  /// it, both selected — and [deleteRows] does not ask for a row an earlier
+  /// delete took.
   void deleteLayers(List<LayerId> ids, {required String step}) {
     if (ids.isEmpty) {
       return;
@@ -684,18 +698,18 @@ class LayerVerbs {
     if (cut == null) {
       return;
     }
-    final order = {
-      for (var index = 0; index < cut.layers.length; index += 1)
-        cut.layers[index].id: index,
-    };
-    final ordered = [...ids]
-      ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
+    final ordered = _topFirst(cut, ids);
     final nextActiveLayerId = _standAfterDeleting(ordered);
-    _project.historyManager.runAsOneStep(step, () {
-      for (final layerId in ordered) {
-        _deleteRow(cut.id, layerId);
-      }
-    });
+    final commands = _project.cutCommandCoordinator;
+    commands.historyManager.runAsOneStep(
+      step,
+      () => deleteRows(
+        commands,
+        cutId: cut.id,
+        trackId: _selection.selectedTrackId,
+        ids: ordered,
+      ),
+    );
     _selection.clearRowSelection();
     _changes.refreshAfterCutCommand(
       preferredActiveLayerId: nextActiveLayerId,

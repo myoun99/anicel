@@ -4,10 +4,14 @@
 //! Android `qa_os_open` until the connection round deleted it
 //! (connection-round-checklist H, 2026-11-08).
 //!
-//! A plain span opens by descriptor — `AMediaExtractor_setDataSourceFd`
-//! takes a RANGE, exactly the shape a container inside the project file
-//! needs; a FRAMED span, whose stored bytes are not the container, through
-//! the one serving of a span (`media::served_span`).
+//! The container is served to the extractor through the one serving of a
+//! span (`media::served_span`), plain or FRAMED alike, so what it reads is
+//! counted as every decoder's is (`container`'s [Reach](media::span::Reach)).
+//! ↩️A plain span opened by descriptor (`AMediaExtractor_setDataSourceFd`,
+//! which takes a range) till 2026-11-23, when the import window's percent
+//! came to count a decoder's reads (🗣️유저 decoder-reads-skip-the-percent-Q2
+//! 「디코더가 읽은 바이트를 센다」): a descriptor's reads are the OS's own,
+//! and nothing here sees them.
 //!
 //! 🚨★★★**A REQUIRED SYMBOL THE DEVICE LACKED ONCE COST EVERY AAC FILE.**
 //! The C's comment said the AMediaDataSource entry points were 「API 23+」.
@@ -32,8 +36,6 @@
 //! A). There is no Android run of these tests.
 
 use std::ffi::{CStr, c_char};
-use std::fs::File;
-use std::os::fd::AsRawFd;
 
 use media::ndk::{Codec, Extractor, Format, ok};
 use media::served_span::ServedSpan;
@@ -46,7 +48,7 @@ use ndk_sys::{
     AMediaCodec_queueInputBuffer, AMediaCodec_releaseOutputBuffer, AMediaCodec_start, AMediaCodecBufferInfo,
     AMediaExtractor_advance, AMediaExtractor_getSampleTime, AMediaExtractor_getTrackCount,
     AMediaExtractor_getTrackFormat, AMediaExtractor_new, AMediaExtractor_readSampleData, AMediaExtractor_selectTrack,
-    AMediaExtractor_setDataSourceCustom, AMediaExtractor_setDataSourceFd, AMediaFormat_getInt32,
+    AMediaExtractor_setDataSourceCustom, AMediaFormat_getInt32,
     AMediaFormat_getString,
 };
 
@@ -74,13 +76,12 @@ struct Said {
 
 /// ⚠️FIELDS DROP IN ORDER, and the order is the C's close: the codec, the
 /// track's format, the extractor — and only then what the extractor reads
-/// through for as long as it lives, the served span or the descriptor.
+/// through for as long as it lives, the served span.
 struct Ndk {
     codec: Codec,
     _track: Format,
     extractor: Extractor,
-    _served: Option<ServedSpan>,
-    _file: Option<File>,
+    _served: ServedSpan,
     said: Said,
     /// The channels and the rate the first block fixed (`Decode::shape`).
     fixed: Option<(usize, i32)>,
@@ -91,25 +92,14 @@ struct Ndk {
 /// The container read by the NDK, or None when it does not read it.
 pub(super) fn open(container: &Container) -> Option<Opened> {
     // ⚠️Before the extractor, so that on every way out it drops after it.
-    let mut served = None;
-    let mut file = None;
+    let served = ServedSpan::open(container.span_again()?)?;
     // SAFETY: no arguments.
     let extractor = Extractor(unsafe { AMediaExtractor_new() });
     if extractor.0.is_null() {
         return None;
     }
-    let (path, offset, length, framed) = container.stored();
-    if framed {
-        let source = ServedSpan::open(container.span_again()?)?;
-        // SAFETY: a live extractor and source; the source outlives it.
-        ok(unsafe { AMediaExtractor_setDataSourceCustom(extractor.0, source.source()) })?;
-        served = Some(source);
-    } else {
-        let opened = File::open(media::path::file(path)?).ok()?;
-        // SAFETY: a live extractor; the descriptor outlives it.
-        ok(unsafe { AMediaExtractor_setDataSourceFd(extractor.0, opened.as_raw_fd(), offset, length) })?;
-        file = Some(opened);
-    }
+    // SAFETY: a live extractor and source; the source outlives it.
+    ok(unsafe { AMediaExtractor_setDataSourceCustom(extractor.0, served.source()) })?;
     let (index, track, mime) = audio_track(&extractor)?;
     let mut said = Said { channels: 0, rate: 0, encoding: PCM_16BIT };
     // SAFETY: a live format; the keys are the NDK's own statics.
@@ -135,7 +125,6 @@ pub(super) fn open(container: &Container) -> Option<Opened> {
         _track: track,
         extractor,
         _served: served,
-        _file: file,
         said,
         fixed: None,
         input_done: false,

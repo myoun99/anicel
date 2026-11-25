@@ -20,13 +20,11 @@ use windows::{
     },
 };
 
-use super::{
-    compile_cache::{self, Made, Turn},
-    conv, descriptor, D3D12Lib,
-};
+use super::{conv, descriptor, D3D12Lib};
 use crate::{
     auxil::{
         self,
+        compile_cache::{self, Made, Turn},
         dxgi::{name::ObjectExt as _, result::HResult as _},
     },
     dx12::{
@@ -471,7 +469,7 @@ impl super::Device {
     /// ANICEL — not wgpu's: keeps what DXC and the driver make for this
     /// device in `folder` from now on, and hands what an earlier compile
     /// kept there to the driver instead of compiling it again — or nowhere
-    /// where `folder` is `None`, as wgpu-hal does (`super::compile_cache`).
+    /// where `folder` is `None`, as wgpu-hal does (`crate::auxil::compile_cache`).
     pub fn keep_shaders_in(&self, folder: Option<std::path::PathBuf>) {
         self.compile_cache.keep_in(folder);
     }
@@ -488,6 +486,14 @@ impl super::Device {
     /// another, and waited for it.
     pub fn dxil_waited(&self) -> u64 {
         self.compile_cache.waited(Made::Dxil)
+    }
+
+    /// ANICEL — not wgpu's: how many lines this device's compiles of DXIL
+    /// have said on stderr of waiting long for another's turn — one as each
+    /// such wait goes on, one as it ends (`crate::auxil::compile_cache`,
+    /// `TURN_SAID`).
+    pub fn dxil_said(&self) -> u64 {
+        self.compile_cache.said(Made::Dxil)
     }
 
     /// ANICEL — not wgpu's: how many pipelines of this device the folder

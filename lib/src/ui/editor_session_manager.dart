@@ -312,6 +312,10 @@ class EditorSessionManager extends ChangeNotifier
     addListener(cameraViewMode.read);
     opacityVerbs.dragPreview.addListener(cameraViewMode.read);
     cameraViewMode.read();
+    // H78: the conte's zoom is the open timeline's — read again on every
+    // change, which is what opens another (a pick, an undo).
+    addListener(panelViews.followTimeline);
+    panelViews.followTimeline();
     layerStack.attach();
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
@@ -1093,7 +1097,10 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Where this project's panels were left — the conte's zoom and each frame
   /// panel's scroll (F-267) — held here for the zoom's reason (I-7).
-  late final PanelViewMemory panelViews = PanelViewMemory();
+  late final PanelViewMemory panelViews = PanelViewMemory(
+    cut: () => activeCutId,
+    timeline: () => repository.currentProject?.currentTimelineId,
+  );
 
   /// The page and the framing each file was left at in the viewers (F-382)
   /// — held here, not on the window that holds the viewers, for the zoom's
@@ -1947,6 +1954,7 @@ class EditorSessionManager extends ChangeNotifier
     // F-363's two listeners come off before the slider's notifier goes.
     () => opacityVerbs.dragPreview.removeListener(cameraViewMode.read),
     () => removeListener(cameraViewMode.read),
+    () => removeListener(panelViews.followTimeline),
     cameraViewMode.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
@@ -3612,13 +3620,11 @@ class EditorSessionManager extends ChangeNotifier
   /// The effects the shared delete takes of the selected ROWS besides their
   /// layers: what their fx header rows name on rows that stay (F-476,
   /// [LaneVerbs.effectsNamedBySelectedRows]) — a row that goes takes its
-  /// chain with it.
+  /// chain with it, whatever takes the row ([LayerVerbs.rowsADeleteTakes]).
   List<({Layer row, List<EffectId> effects})> effectsToDeleteOfRows() {
-    final layers = layerVerbs.deletableSelectedLayerIds();
-    final going = {
-      ...layers,
-      for (final row in layerVerbs.rowsHeldBy(layers)) row.id,
-    };
+    final going = layerVerbs.rowsADeleteTakes(
+      layerVerbs.deletableSelectedLayerIds(),
+    );
     return [
       for (final named in laneVerbs.effectsNamedBySelectedRows)
         if (!going.contains(named.row.id)) named,
@@ -4161,6 +4167,7 @@ class EditorSessionManager extends ChangeNotifier
     timelineZoom: timelineZoom,
     panelViews: panelViews,
     laneGraphs: railView.laneGraphs,
+    hiddenSections: railView.hiddenSections,
     mediaFileViews: mediaFileViews,
   );
 

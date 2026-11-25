@@ -18,7 +18,9 @@
 //! - No release of the image to VK_QUEUE_FAMILY_FOREIGN_EXT: wgpu records
 //!   no such barrier and leaves it to its caller (wgpu-hal-30.0.1/src/
 //!   vulkan/device.rs:813-820). A LINEAR image has no compression for one
-//!   to resolve, and the engine waits for the GPU before Flutter reads.
+//!   to resolve, and the engine waits for the GPU before Flutter reads —
+//!   how this platform keeps the law of a screen's buffer
+//!   (platform/mod.rs).
 //! - Which GPU Flutter's EGL draws with is not handed to plugins, so the
 //!   engine opens only where Vulkan lists one device (device.rs,
 //!   `open_sole`); a PC with a GPU and Mesa's lavapipe lists two and opens
@@ -32,6 +34,8 @@ use wgpu::hal::api::Vulkan;
 
 /// Flutter on Linux draws with GL; the engine reaches it through Vulkan.
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
+
+pub use super::vulkan::{keep_shaders, pipelines_found};
 
 /// DRM_FORMAT_ABGR8888 (drm_fourcc.h): R, G, B, A in memory.
 const ABGR8888: u32 = u32::from_le_bytes(*b"AB24");
@@ -60,6 +64,18 @@ pub struct SharedHandle {
 impl SharedHandle {
     pub fn raw(&self) -> *mut c_void {
         (&raw const self.plane).cast_mut().cast()
+    }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
+
+    /// How the buffer was laid out, read back off it — where the platform
+    /// lets the engine say ([`super::Laid`]): never here.
+    pub fn laid_said(&self) -> String {
+        String::new()
     }
 }
 
@@ -188,6 +204,7 @@ pub fn create(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     if format != wgpu::TextureFormat::Rgba8Unorm {
         return Err(format!("{format:?} is not a format Flutter's GL texture shows"));
@@ -270,6 +287,11 @@ pub fn create(
     Ok((texture, SharedHandle { plane, _fd: fd }))
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "dma-buf linear".to_owned()
+}
+
 /// Vulkan names no adapter by LUID that Flutter's GL would match; Flutter
 /// is matched by there being one device (device.rs, `open_sole`).
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
@@ -285,9 +307,17 @@ pub fn device_went_by(_device: &wgpu::Device) -> u32 {
     super::WENT_UNSAID
 }
 
+/// What asks the device's driver whether it took the device — nothing:
+/// Vulkan says that a device is lost where a call fails by it, and no
+/// call asks.
+pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use crate::kernels::fill::Fill;
+    use crate::platform::Laid;
     use crate::testing::{assert_pinned, first_engine};
 
     // fill's own ledger row (kernels/fill/tests.rs): 70 x 45, so the
@@ -316,9 +346,14 @@ mod tests {
     #[test]
     fn flutter_is_handed_the_bytes_the_kernel_wrote() {
         let engine = first_engine();
-        let (texture, shared) =
-            super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8Unorm)
-                .expect("shared surface");
+        let (texture, shared) = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Rgba8Unorm,
+            Laid::ForTheCpuToo,
+        )
+        .expect("shared surface");
         Fill::new(engine).run(engine, &texture, 7).expect("fill");
         let plane = &shared.plane;
         let (offset, stride) = (plane.offset as usize, plane.stride as usize);
@@ -353,7 +388,13 @@ mod tests {
     #[test]
     fn a_bgra_surface_is_refused() {
         let engine = first_engine();
-        let made = super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Bgra8Unorm);
+        let made = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Bgra8Unorm,
+            Laid::ForTheCpuToo,
+        );
         assert!(made.is_err());
     }
 }

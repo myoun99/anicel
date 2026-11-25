@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 /// panel's copy of the rail, which the panel had not been given yet, and
 /// the room heard the stand alone.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   for (final opening in _Opening.values) {
     testWidgets('the group of the lane the fold stands on, opened by '
         '${opening.name} while folded, folds it to the lane in the same '

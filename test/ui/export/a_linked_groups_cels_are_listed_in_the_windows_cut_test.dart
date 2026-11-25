@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,6 +36,7 @@ import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🚨F-300 (유저 2026-10-05): 「출력창은 현재컷을 기준으로 생각하긴한다만
 /// 렌더에 현재컷 관련 로직 있는건 이상하니 근본/구조적으로 해결」.
@@ -46,6 +48,7 @@ import 'package:anicel/src/ui/export/export_cels_board.dart';
 /// plan's arithmetic is pinned in `export_cel_group_plan_test.dart`, the
 /// pixels in `a_linked_cel_wears_the_paper_of_the_cut_that_shows_it_test`.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -153,7 +156,7 @@ void main() {
     // rules stood 168 wide whatever their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1600, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -314,7 +317,7 @@ void main() {
       final session = linkedPair();
       addTearDown(session.dispose);
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       Future<void> openOn(double width) async {
         await tester.binding.setSurfaceSize(Size(width, 900));
         await tester.pumpWidget(

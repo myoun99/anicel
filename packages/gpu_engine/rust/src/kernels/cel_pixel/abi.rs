@@ -15,15 +15,15 @@
 #[cfg(test)]
 mod tests;
 
-use crate::device::{Engine, Sent, let_go};
+use crate::device::{Engine, let_go};
 use crate::fail;
 use crate::kernels::composite::abi::MaskPlane;
 use crate::kernels::composite::{Named, TileSet};
-use crate::kernels::dab::abi::{StampPicture, kept, reported};
+use crate::kernels::dab::abi::{StampPicture, kept, reported, told_body};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::pool::{Cel, Pool};
 
-use super::ink::Ink;
+use super::ink::{Ink, InkBox, TileInk};
 use super::lift::{Lift, Lifted};
 use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 
@@ -221,28 +221,27 @@ pub unsafe extern "C" fn gpu_engine_cel_pixels_lift_picture_unwaited(
     let (engine, pool) = unsafe { (&*engine, &*pool) };
     // SAFETY: see the function's contract.
     let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
-    let handed = Sent((engine.clone(), pool.pages().to_vec(), kernels, mask, out, cel));
-    engine.posted(move || {
-        let (engine, pages, kernels, mask, out, cel) = handed.taken();
+    let lift = move |engine: &Engine, pages: &[wgpu::Buffer], then: Box<dyn FnOnce(Option<_>) + Send>| {
         // SAFETY: each is let go of on this thread, after this (the
         // function's contract).
         let (kernels, mask) = unsafe { (&*kernels, (*mask).mask()) };
-        let (hands, out, size) = (engine.clone(), Sent(out), (mask.size.width, mask.size.height));
-        let then = move |lifted: Option<Lifted>| {
-            let ran = lifted.is_some();
-            let picture = match lifted {
-                Some(Lifted { rgba, anything: true }) => kept(&hands, Some(rgba), size),
-                _ => std::ptr::null_mut(),
-            };
-            // SAFETY: live till `told` is called (the function's contract).
-            unsafe { *out.taken() = picture };
-            told(number, ran);
+        let size = (mask.size.width, mask.size.height);
+        let sized = move |lifted: Option<Lifted>| then(lifted.map(|lifted| (lifted, size)));
+        kernels.lift.lifted_then(engine, pages, &cel, &mask, whole, sized);
+    };
+    let answer = move |engine: &Engine, lifted: Option<(Lifted, (u32, u32))>| {
+        let ran = lifted.is_some();
+        let picture = match lifted {
+            Some((Lifted { rgba, anything: true }, size)) => kept(engine, Some(rgba), size),
+            _ => std::ptr::null_mut(),
         };
-        kernels.lift.lifted_then(&engine, &pages, &cel, &mask, whole, then);
-        // ⛔Not a body that failed, whatever it lifted: its caller's next
-        // done would fail by it (`Engine::posted`). `told` says it.
-        Some(())
-    });
+        // SAFETY: live till `told` is called (the function's contract).
+        unsafe { *out = picture };
+        ran
+    };
+    // SAFETY: what `lift` holds is let go of on the engine's thread, after
+    // it; `out` and `told` are the function's contract.
+    engine.posted(unsafe { told_body(engine, pool, (told, number), lift, answer) });
 }
 
 /// Runs the verb `spec` states over the cel of `columns` × `rows` tiles
@@ -366,13 +365,14 @@ pub unsafe extern "C" fn gpu_engine_cel_passed_land(
     count: usize,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (passed, engine, pool) = unsafe { (&*passed, &*engine, &mut *pool) };
     engine.on_thread(|| {
         let landed = passed.land(engine, (pool, Cel(cel)), first..first + count);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -430,29 +430,47 @@ pub unsafe extern "C" fn gpu_engine_ink_run(
     engine.on_thread(|| {
         // SAFETY: see the function's contract.
         let cel = unsafe { cel_of(pool, (x0, y0, columns, rows), tiles) };
-        let walked = cel.tiles.iter().flatten().count();
-        if walked * TILE_INK_WORDS > capacity {
-            fail::<()>(format!(
-                "room for {capacity} words; the {walked} tiles walked put {}",
-                walked * TILE_INK_WORDS
-            ));
+        if !room_for(&cel, capacity) {
             return -1;
         }
         let Some(inks) = ink.run(engine, pool.pages(), &cel) else {
             return -1;
         };
-        if inks.is_empty() {
-            return 0;
-        }
-        // SAFETY: `out` holds `capacity` words, and the walk's are no more.
-        let out = unsafe { std::slice::from_raw_parts_mut(out, walked * TILE_INK_WORDS) };
-        for (tile, words) in inks.iter().zip(out.chunks_exact_mut(TILE_INK_WORDS)) {
-            let [left, top, right, bottom] =
-                tile.ink.map_or([0; 4], |ink| [ink.left, ink.top, ink.right, ink.bottom].map(|edge| edge as i32));
-            words.copy_from_slice(&[tile.column, tile.row, left, top, right, bottom]);
-        }
-        inks.len() as isize
+        // SAFETY: `out` holds `capacity` words, which the walk's fit.
+        unsafe { put_inks(&inks, out) }
     })
+}
+
+/// Whether `capacity` words hold the [`TILE_INK_WORDS`] of each tile
+/// `cel`'s walk takes — and the last error says why not where they do not.
+fn room_for(cel: &TileSet, capacity: usize) -> bool {
+    let walked = cel.tiles.iter().flatten().count();
+    if walked * TILE_INK_WORDS <= capacity {
+        return true;
+    }
+    fail::<()>(format!(
+        "room for {capacity} words; the {walked} tiles walked put {}",
+        walked * TILE_INK_WORDS
+    ));
+    false
+}
+
+/// Puts each of `inks`' [`TILE_INK_WORDS`] into `out`, in order: how many
+/// it put.
+///
+/// # Safety
+/// `out` holds as many words as `inks` take — none where it is null.
+unsafe fn put_inks(inks: &[TileInk], out: *mut i32) -> isize {
+    if inks.is_empty() {
+        return 0;
+    }
+    // SAFETY: see the function's contract.
+    let out = unsafe { std::slice::from_raw_parts_mut(out, inks.len() * TILE_INK_WORDS) };
+    for (tile, words) in inks.iter().zip(out.chunks_exact_mut(TILE_INK_WORDS)) {
+        let [left, top, right, bottom] = InkBox::words(tile.ink);
+        words.copy_from_slice(&[tile.column, tile.row, left, top, right, bottom]);
+    }
+    inks.len() as isize
 }
 
 /// The cel as the app names it — `tiles` row by row, `columns` × `rows`

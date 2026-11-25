@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/picture_up_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/debug/screen_asked.dart';
 import 'package:anicel/src/ui/engine_screen_texture.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -72,16 +73,16 @@ void main() {
 
     /// A screen on [surface] whose frames the GPU finishes as the test says
     /// — each frame's [gates] in order — and how it told it put one up.
-    ({ScreenTexture screen, List<Completer<void>> gates, List<bool> told})
+    ({ScreenTexture screen, List<Completer<GpuWaited?>> gates, List<bool> told})
     aScreen() {
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       final told = <bool>[];
       final screen = ScreenTexture.debugOnSurface(
         surface,
         id: before,
         nextId: after,
         done: () {
-          final gate = Completer<void>();
+          final gate = Completer<GpuWaited?>();
           gates.add(gate);
           return gate.future;
         },
@@ -166,6 +167,43 @@ void main() {
         expect(up.finish, greaterThanOrEqualTo(40000));
         expect(up.draw, lessThan(up.finish));
         expect(up.show, lessThan(up.finish));
+      });
+
+      // 🔬Its finish told apart (🗣️관제 2026-11-24, card the-galaxy-tab-
+      // canvas-went-slow-on-build-1095: 「FINISH 넷으로」): what the engine
+      // said its wait stood in turn and in the driver, what was left till
+      // this isolate heard, and the wait for the canvas's other pictures —
+      // the four the whole of it.
+      test('its finish is what its wait stood in turn and in the driver, '
+          'what was left till it was heard, and the wait for the others — '
+          'the four the whole of it', () async {
+        final (:screen, :gates, told: _) = aScreen();
+
+        screen.present((_) {});
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        gates.single.complete((queuedMicros: 7000, polledMicros: 20000));
+        await pumpEventQueue();
+
+        final up = ScreenTexture.upMicros.last;
+        final went = up.went!;
+        expect((went.queued, went.polled), (7000, 20000));
+        expect(went.heard, greaterThanOrEqualTo(60000 - 27000 - 1000));
+        expect(went.together, greaterThanOrEqualTo(0));
+        expect(
+          went.queued + went.polled + went.heard + went.together,
+          up.finish,
+        );
+      });
+
+      test('where the engine kept no word of its wait, its finish is told '
+          'apart into none', () async {
+        final (:screen, :gates, told: _) = aScreen();
+
+        screen.present((_) {});
+        gates.single.complete();
+        await pumpEventQueue();
+
+        expect(ScreenTexture.upMicros.last.went, isNull);
       });
 
       test('its show is what the hand to Flutter kept this thread '
@@ -313,6 +351,20 @@ void main() {
       await engine.done();
 
       expect(debugWaitsHere, waits);
+    });
+
+    // 🔬With how its wait went (`GpuWaited`): what it stood in turn on
+    // the engine's thread behind what was handed there before it — what a
+    // screen's finish says apart from the driver's poll (`ScreenFinish`).
+    test("with how its wait went: the turn it stood behind on the engine's "
+        'thread', () async {
+      engine.debugStandStill(const Duration(milliseconds: 300));
+
+      final waited = await engine.done();
+
+      expect(waited, isNotNull, reason: 'the engine keeps word of its wait');
+      expect(waited!.queuedMicros, greaterThanOrEqualTo(250000));
+      expect(waited.polledMicros, lessThan(waited.queuedMicros));
     });
 
     test('a device gone is told by name', () async {
@@ -510,7 +562,7 @@ void main() {
 
     /// Every screen the canvas opens is on a surface of its own, each frame
     /// drawn on it put up once [done] has ended — as the app's are.
-    void screensFinishedBy(Future<void> Function() done) {
+    void screensFinishedBy(Future<GpuWaited?> Function() done) {
       final opener = debugOpenEngineScreen;
       addTearDown(() => debugOpenEngineScreen = opener);
       debugOpenEngineScreen = (_, width, height) async {
@@ -542,14 +594,14 @@ void main() {
 
     /// The GPU finishing each frame at once till [hold] is called, then
     /// as the test opens each frame's gate, in order.
-    ({List<Completer<void>> gates, void Function() hold}) aGpuHeld() {
+    ({List<Completer<GpuWaited?>> gates, void Function() hold}) aGpuHeld() {
       var holding = false;
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       screensFinishedBy(() {
         if (!holding) {
           return Future.value();
         }
-        gates.add(Completer<void>());
+        gates.add(Completer<GpuWaited?>());
         return gates.last.future;
       });
       return (gates: gates, hold: () => holding = true);
@@ -570,6 +622,10 @@ void main() {
       final laid = layersLaid();
       await seenThrough(CanvasViewport());
       await tester.pump();
+      // Its pan's first step draws the rest of its texture (the pin after
+      // this one): from that frame on, the frame drawn last serves.
+      await seenThrough(CanvasViewport(panX: 1));
+      await tester.pump();
       // Where a frame drawn for the view as it stands is laid.
       final home = laid.last;
       expect(
@@ -585,7 +641,7 @@ void main() {
       hold();
 
       // Within what the screen spares of its box.
-      await seenThrough(CanvasViewport(panX: 10, panY: 6));
+      await seenThrough(CanvasViewport(panX: 11, panY: 6));
       expect(gates, isEmpty, reason: 'a pan the frame up serves drew one');
       expect(
         laid.last,
@@ -595,7 +651,7 @@ void main() {
 
       // Past it — as far as the frame up still holds the box's corner.
       final far = -home.left;
-      await seenThrough(CanvasViewport(panX: far, panY: 6));
+      await seenThrough(CanvasViewport(panX: 1 + far, panY: 6));
       expect(gates, hasLength(1), reason: 'the next frame is asked for');
       expect(
         laid.last,
@@ -603,7 +659,7 @@ void main() {
         reason: 'what is up moves on with the view meanwhile',
       );
 
-      await seenThrough(CanvasViewport(panX: far + 20, panY: 6));
+      await seenThrough(CanvasViewport(panX: 1 + far + 20, panY: 6));
       expect(gates, hasLength(1), reason: 'the frame on the GPU serves it');
       expect(laid.last, home.shift(Offset(far + 20, 6)));
 
@@ -616,6 +672,53 @@ void main() {
         home.shift(const Offset(20, 0)),
         reason: 'the frame drawn a step back stands a step from the view',
       );
+    });
+
+    // 🚨A FRAME THROUGH ANOTHER CAMERA DRAWS WHAT THE BOX HOLDS ALONE — the
+    // box and the margin a pan spares on every side
+    // (`EngineStackScreen.show`'s `holding`) —, so the frame drawn last
+    // serves no pan of it: the pan's first step asks for the frame that
+    // draws the rest, what is up moving on with the view within that
+    // margin meanwhile, and from that frame on the frame drawn last serves.
+    // 🔬A zoom's frame drew all of the Galaxy Tab's 3584 × 2560 texels for
+    // a view of 2960 × 1848 (card the-galaxy-tab-canvas-went-slow-on-
+    // build-1095).
+    testWidgets('a frame through another camera draws what the box holds '
+        'alone: the first step of a pan after it draws the rest, and the '
+        'frame drawn last serves the pan from that one on', (tester) async {
+      final (:gates, :hold) = aGpuHeld();
+      final float = SelectionFloatOverlay(null);
+      addTearDown(float.dispose);
+      addTearDown(ScreenAsked.debugForget);
+      final seenThrough = await standOver(tester, float);
+      final laid = layersLaid();
+      ScreenAsked.debugForget();
+      await seenThrough(CanvasViewport(zoom: 0.5));
+      await tester.pump();
+      final home = laid.last;
+      final (width, height) = (viewSize.width.ceil(), viewSize.height.ceil());
+      expect(
+        (ScreenAsked.last?.columns, ScreenAsked.last?.rows),
+        (width + 2 * 128, height + 2 * 128),
+        reason: 'the box and the margin a pan spares on every side alone',
+      );
+      hold();
+
+      await seenThrough(CanvasViewport(zoom: 0.5, panX: 10, panY: 6));
+      expect(gates, hasLength(1), reason: 'the rest is asked for');
+      expect(
+        laid.last,
+        home.shift(const Offset(10, 6)),
+        reason: 'what is up moves on with the view meanwhile',
+      );
+      gates.last.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(laid.last, home, reason: 'the frame that came up');
+
+      await seenThrough(CanvasViewport(zoom: 0.5, panX: 30, panY: 6));
+      expect(gates, hasLength(1), reason: 'the frame drawn last serves it');
+      expect(laid.last, home.shift(const Offset(20, 0)));
     });
 
     testWidgets('a view turned draws every step of a pan: it pans by parts '
@@ -760,14 +863,18 @@ void main() {
       final laid = layersLaid();
       await seenThrough(CanvasViewport());
       await tester.pump();
+      // On the frame its pan's first step drew, which holds all of its
+      // texture (`EngineStackScreen.show`'s `holding`).
+      await seenThrough(CanvasViewport(panX: 1));
+      await tester.pump();
       final home = laid.last;
       hold();
 
-      final panned = CanvasViewport(panX: 10.4, panY: 6);
+      final panned = CanvasViewport(panX: 11.4, panY: 6);
       await seenThrough(panned);
 
       expect(gates, isEmpty, reason: '⛔premise: the frame up serves it');
-      expect(canvas.view.standing(panned), CanvasViewport(panX: 10, panY: 6));
+      expect(canvas.view.standing(panned), CanvasViewport(panX: 11, panY: 6));
       expect(laid.last, home.shift(const Offset(10, 6)));
     });
 
@@ -784,10 +891,14 @@ void main() {
       final laid = layersLaid();
       await seenThrough(CanvasViewport());
       await tester.pump();
+      // On the frame its pan's first step drew, which holds all of its
+      // texture (`EngineStackScreen.show`'s `holding`).
+      await seenThrough(CanvasViewport(panX: 1));
+      await tester.pump();
       final home = laid.last;
       hold();
 
-      final panned = CanvasViewport(panX: 10, panY: 6);
+      final panned = CanvasViewport(panX: 11, panY: 6);
       await seenThrough(panned);
       expect(gates, isEmpty, reason: '⛔premise: the frame up serves the pan');
       expect(laid.last, home.shift(const Offset(10, 6)), reason: '⛔premise');
@@ -985,7 +1096,8 @@ void main() {
       await seenThrough(zoomed);
       expect(gates, hasLength(2), reason: '⛔premise: both are on the GPU');
 
-      gates.first.complete();
+      const waited = (queuedMicros: 0, polledMicros: 0);
+      gates.first.complete(waited);
       await tester.pump();
       expect(
         canvas.view.standing(zoomed),
@@ -993,9 +1105,18 @@ void main() {
         reason: 'the frame went up before the picture beside it',
       );
 
-      gates.last.complete();
+      gates.last.complete(waited);
       await tester.pump();
       expect(canvas.view.standing(zoomed), zoomed);
+      // Its finish says the wait for the other (`ScreenFinish.together`).
+      expect(
+        [
+          for (final up in ScreenTexture.upMicros.reversed.take(2))
+            up.went!.together,
+        ].any((together) => together > 0),
+        isTrue,
+        reason: 'the frame finished first waited for the one beside it',
+      );
 
       // Up, a frame drawn while it was on the GPU is drawn: what tells.
       float.value = redAt(0);
@@ -1042,12 +1163,12 @@ void main() {
         'nothing more', (tester) async {
       // The GPU finishes at once, till the test holds it.
       var holding = false;
-      final gates = <Completer<void>>[];
+      final gates = <Completer<GpuWaited?>>[];
       screensFinishedBy(() {
         if (!holding) {
           return Future.value();
         }
-        gates.add(Completer<void>());
+        gates.add(Completer<GpuWaited?>());
         return gates.last.future;
       });
       final float = SelectionFloatOverlay(null);

@@ -12,9 +12,11 @@ import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
-import '../theme/app_theme.dart' show AppColors, AppShapes;
-import '../widgets/ellipsis_text.dart';
+import '../theme/app_theme.dart' show AppColors;
+import '../widgets/content_scrollbar.dart';
 import 'key_trace.dart';
+import 'debug_type.dart';
+import 'measurement_mode.dart';
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
 ///
@@ -30,10 +32,11 @@ import 'key_trace.dart';
 /// platform, for any tablet brand — so it is both our development probe
 /// and the remote-diagnosis channel for user reports.
 abstract final class InputInspector {
-  /// Whether the overlay is shown (Settings ▸ Input Inspector). Static like
-  /// the other app-level input state ([AppColors.accentSettings] idiom);
-  /// tests flip it and MUST tearDown-reset via [reset].
-  static final ValueNotifier<bool> visible = ValueNotifier<bool>(false)
+  /// Whether the inspector watches — the debug window's one switch
+  /// ([MeasurementMode.debugWindow]; 유저 2026-11-24,
+  /// one-debug-window-shows-everything Q2), the same notifier, so the two
+  /// cannot disagree. Tests flip it and MUST tearDown-reset via [reset].
+  static final ValueNotifier<bool> visible = MeasurementMode.debugWindow
     ..addListener(_watchKeys);
 
   /// 🗣️F-241 (유저 2026-09-29): 「컨트롤 좌우 화살표 … 됏다가 안됏다가
@@ -79,8 +82,16 @@ abstract final class InputInspector {
   /// else rebuilds.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  /// Newest-last ring of recent events.
-  static final List<InputInspectorSample> samples = <InputInspectorSample>[];
+  /// The latest event of each kind and phase (`stylus move`, `touch
+  /// down`…), ONE SLOT EACH by the law of [notes] and by its code
+  /// ([_put]): the rows in the order their kind and phase first came.
+  ///
+  /// 🗣️유저 2026-11-24 (the-input-inspector-climbs-and-cuts-its-lines-Q1):
+  /// 종류·단계마다 한 칸. ↩️A ring of the last 120, its last ten on the
+  /// card: a stream of hovers pushed the one down the line was read for
+  /// out of sight, and every row moved up at every event.
+  static final Map<String, InputInspectorSample> events =
+      <String, InputInspectorSample>{};
 
   /// The highest RAW pressure seen since the last [clear] — the quickest
   /// "is pressure alive at all" check.
@@ -148,8 +159,6 @@ abstract final class InputInspector {
   /// the second would overwrite the first on every down and the absence
   /// could never be seen. A new emitter takes a word nobody else prints.
   static final Map<String, String> notes = <String, String>{};
-
-  static const int capacity = 120;
 
   /// 🚨★★★H21 — **THE FREEZE, AND IT WAS THIS.** (유저 2026-08-23, 스택
   /// 트레이스 첨부): 「인스펙터 키고 **터치하거나 키보드 조작하거나 마우스
@@ -223,7 +232,7 @@ abstract final class InputInspector {
 
   /// One slot per key, and a bump only when the slot's text changes — an
   /// emitter that repeats itself costs the card nothing.
-  static void _put(Map<String, String> slots, String key, String line) {
+  static void _put<T>(Map<String, T> slots, String key, T line) {
     if (!visible.value || slots[key] == line) {
       return;
     }
@@ -236,10 +245,8 @@ abstract final class InputInspector {
     if (phase == null) {
       return;
     }
-    samples.add(InputInspectorSample.of(event, phase));
-    if (samples.length > capacity) {
-      samples.removeRange(0, samples.length - capacity);
-    }
+    final sample = InputInspectorSample.of(event, phase);
+    _put(events, '${sample.kind.name} $phase', sample);
     // Peak tracks CONTACT pressure only — hovers idle at 0 by contract.
     if ((phase == 'down' || phase == 'move') && event.pressure > peakPressure) {
       peakPressure = event.pressure;
@@ -247,7 +254,6 @@ abstract final class InputInspector {
     if (phase == 'down' && event.kind == PointerDeviceKind.touch) {
       touchDownCount += 1;
     }
-    _bumpRevision();
   }
 
   static String? _phaseOf(PointerEvent event) => switch (event) {
@@ -262,9 +268,9 @@ abstract final class InputInspector {
     _ => null,
   };
 
-  /// Clears the ring + peak + counters/notes (the card's ⟲).
+  /// Clears the events + peak + counters/notes (the card's ⟲).
   static void clear() {
-    samples.clear();
+    events.clear();
     peakPressure = 0;
     touchDownCount = 0;
     arrivals = 0;
@@ -350,7 +356,8 @@ class InputInspectorSample {
 
 /// Wraps the editor body: invisible until [InputInspector.visible] — then
 /// a translucent listener records every pointer event passing anywhere
-/// through the app and the card renders bottom-right. The listener never
+/// through the app, for the panel the debug window shows
+/// ([InputInspectorPanel]). The listener never
 /// competes in any gesture arena (raw observation only), so recording
 /// changes NOTHING about input behavior.
 class InputInspectorHost extends StatelessWidget {
@@ -381,38 +388,24 @@ class InputInspectorHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // R26 #33: the tree SHAPE is constant — the listener and the card
-    // slot are always mounted, and visibility only decides whether the
-    // listener's events record and whether the card paints. The old
-    // build swapped `child` between wrapped and bare, remounting the
+    // R26 #33: the tree SHAPE is constant — the listener is always
+    // mounted, and visibility only decides whether its events record.
+    // The old build swapped `child` between wrapped and bare, remounting the
     // ENTIRE editor under it on every toggle — that remount's relayout
     // was the visible "layout jumps, then comes back". The gate lives in
     // the HOST's handlers (not in [InputInspector.record]) so the pen
     // sidecar services keep their direct-record contract.
-    return Stack(
-      children: [
-        Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: _observePointer,
-          onPointerMove: _observePointer,
-          onPointerUp: _observePointer,
-          onPointerCancel: _observePointer,
-          onPointerHover: _observePointer,
-          onPointerSignal: _observePointer,
-          onPointerPanZoomStart: _observePointer,
-          onPointerPanZoomUpdate: _observePointer,
-          child: child,
-        ),
-        Positioned(
-          right: 12,
-          bottom: 12,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: InputInspector.visible,
-            builder: (context, visible, _) =>
-                visible ? const _InspectorCard() : const SizedBox.shrink(),
-          ),
-        ),
-      ],
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _observePointer,
+      onPointerMove: _observePointer,
+      onPointerUp: _observePointer,
+      onPointerCancel: _observePointer,
+      onPointerHover: _observePointer,
+      onPointerSignal: _observePointer,
+      onPointerPanZoomStart: _observePointer,
+      onPointerPanZoomUpdate: _observePointer,
+      child: child,
     );
   }
 }
@@ -425,10 +418,36 @@ class InputInspectorHost extends StatelessWidget {
 /// consumer. A debug-only distinction does not earn a palette token.
 const Color _inspectorSecondInk = Color(0xFFD972A8);
 
-class _InspectorCard extends StatelessWidget {
-  const _InspectorCard();
+/// What the inspector shows — its lines, with no card around them: what a
+/// window holding it lays where it likes (card one-debug-window-shows-
+/// everything, 2026-11-24).
+///
+/// 🚨ITS SIZE IS ITS OWN, WHATEVER IT SAYS (card the-input-inspector-climbs-
+/// and-cuts-its-lines, 유저 2026-11-24 「입력인스펙터는 게다가 줄이 매번올라가서
+/// 보이지도않고 오른쪽부분 잘리고」): every line has its place before it has
+/// anything to say — the readouts say `-` — and what comes in numbers it
+/// cannot know (the events, a slot per kind and phase; the pins; the
+/// driver's start; the probes' notes) is laid in the panel's own scroll,
+/// a slot kept where it first came. No line is cut: a line too long for
+/// the panel wraps.
+/// ↩️A column as tall as what it held, on a card laid by its bottom edge —
+/// its top climbed at every note, pin and readout that came — and no wider
+/// than 340, every line cut to one with an ellipsis.
+class InputInspectorPanel extends StatelessWidget {
+  const InputInspectorPanel({super.key});
 
-  static const int _visibleRows = 10;
+  /// As wide as the longest line it writes (an event row with its tilt,
+  /// its orientation and its buttons) — and well inside the narrowest
+  /// window it is read on, a Galaxy Tab's 1579 logical pixels.
+  static const double width = 560;
+
+  /// Its height, in lines.
+  static const int lines = 26;
+
+  static TextStyle get _line => DebugType.line;
+
+  /// The height of one line it writes.
+  static double get lineHeight => _line.fontSize! * _line.height!;
 
   /// The HID switches currently declared down, or '-' for none.
   static String _rawPenLabel(QaPenRawState state) {
@@ -442,7 +461,7 @@ class _InspectorCard extends StatelessWidget {
     return parts.isEmpty ? '-' : parts.join('+');
   }
 
-  Color _kindColor(ColorScheme colorScheme, PointerDeviceKind kind) =>
+  static Color _kindColor(ColorScheme colorScheme, PointerDeviceKind kind) =>
       switch (kind) {
         PointerDeviceKind.stylus ||
         PointerDeviceKind.invertedStylus => AppColors.accent,
@@ -453,218 +472,237 @@ class _InspectorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    const rowStyle = TextStyle(fontSize: 10, fontFamily: 'monospace');
-    return Material(
-      key: const ValueKey<String>('input-inspector-card'),
-      elevation: 6,
-      shape: AppShapes.container(AppShapes.windowRadius),
-      color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.92),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 340),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 4, 4, 8),
-          child: ValueListenableBuilder<int>(
-            valueListenable: InputInspector.revision,
-            builder: (context, _, _) {
-              final samples = InputInspector.samples;
-              final start = samples.length > _visibleRows
-                  ? samples.length - _visibleRows
-                  : 0;
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+    return SizedBox(
+      key: const ValueKey<String>('input-inspector-panel'),
+      width: width,
+      height: lines * lineHeight,
+      child: ValueListenableBuilder<int>(
+        valueListenable: InputInspector.revision,
+        builder: (context, _, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _title(colorScheme),
+            _readouts(),
+            Expanded(
+              child: ContentScrollbar(
+                builder: (context, controller) => SingleChildScrollView(
+                  controller: controller,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: EllipsisText(
-                          'INPUT INSPECTOR',
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'peak p='
-                        '${InputInspector.peakPressure.toStringAsFixed(2)}',
-                        key: const ValueKey<String>('input-inspector-peak'),
-                        style: rowStyle.copyWith(color: AppColors.accent),
-                      ),
-                      // The DRIVER-side stream (PEN-2): visible exactly
-                      // while the Wintab sidecar delivers — pointer vs
-                      // driver pressure side by side is the whole
-                      // misreport diagnosis.
-                      ValueListenableBuilder<QaTabletPacket?>(
-                        valueListenable: WintabPenService.instance.latest,
-                        builder: (context, packet, _) => packet == null
-                            ? const SizedBox.shrink()
-                            : Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Text(
-                                  'wt p='
-                                  '${packet.pressure.toStringAsFixed(2)}',
-                                  key: const ValueKey<String>(
-                                    'input-inspector-wintab',
-                                  ),
-                                  style: rowStyle.copyWith(
-                                    color: _inspectorSecondInk,
-                                  ),
-                                ),
-                              ),
-                      ),
-                      // The RAW HID observer: the switches the PEN itself
-                      // declares. On Windows this is the only place the
-                      // tail end appears at all — Ink drops it and the
-                      // pointer stream calls both ends "stylus" — so this
-                      // line is what a tail-switch report is read from.
-                      ValueListenableBuilder<QaPenRawState?>(
-                        valueListenable: RawPenInputService.instance.latest,
-                        builder: (context, state, _) => state == null
-                            ? const SizedBox.shrink()
-                            : Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: Text(
-                                  'hid ${_rawPenLabel(state)}',
-                                  key: const ValueKey<String>(
-                                    'input-inspector-rawpen',
-                                  ),
-                                  style: rowStyle.copyWith(
-                                    color: _inspectorSecondInk,
-                                  ),
-                                ),
-                              ),
-                      ),
-                      // The macOS/Linux channel sidecars (PEN-4) — same
-                      // driver-vs-pointer diagnosis on those platforms.
-                      for (final service in PenSidecars.channelServices)
-                        ValueListenableBuilder<PenChannelSample?>(
-                          valueListenable: service.latest,
-                          builder: (context, sample, _) => sample == null
-                              ? const SizedBox.shrink()
-                              : Padding(
-                                  padding: const EdgeInsets.only(left: 6),
-                                  child: Text(
-                                    '${service.label} p='
-                                    '${sample.pressure.toStringAsFixed(2)}',
-                                    key: ValueKey<String>(
-                                      'input-inspector-${service.label}',
-                                    ),
-                                    style: rowStyle.copyWith(
-                                      color: _inspectorSecondInk,
-                                    ),
-                                  ),
-                                ),
-                        ),
-                      const SizedBox(width: 4),
-                      const AppIconButton(
-                        keyValue: 'input-inspector-clear',
-                        tooltip: 'Clear',
-                        size: AppIconButtonSize.micro,
-                        onPressed: InputInspector.clear,
-                        icon: Icon(Icons.refresh),
-                      ),
-                      AppIconButton(
-                        keyValue: 'input-inspector-close',
-                        tooltip: 'Close',
-                        size: AppIconButtonSize.micro,
-                        // 🚨H21 (유저 2026-08-23): 「터치 다운도 **껏다켜도
-                        // 리셋안되고**」 — and that was not a bug in the
-                        // counter. Closing only flipped [visible]; NOTHING
-                        // cleared, so re-opening showed the session before
-                        // last. A diagnosis surface you just re-opened is a
-                        // fresh one by every reasonable reading.
-                        onPressed: () {
-                          InputInspector.clear();
-                          InputInspector.visible.value = false;
-                        },
-                        icon: const Icon(Icons.close),
-                      ),
+                      _strip(),
+                      ..._comeAndGo(colorScheme),
                     ],
                   ),
-                  for (final entry in InputInspector.pinned.entries)
-                    EllipsisText(
-                      entry.value,
-                      key: ValueKey<String>('input-inspector-pin-${entry.key}'),
-                      maxLines: 1,
-                      style: rowStyle.copyWith(color: AppColors.accent),
-                    ),
-                  // How the tablet driver's stream started
-                  // (h61-wintab-sometimes-not-engaged-at-launch): the
-                  // service keeps it from launch, before this card opens,
-                  // and ⟲ does not clear it.
-                  for (final (i, step)
-                      in WintabPenService.instance.startRecord.indexed)
-                    EllipsisText(
-                      'wt $step',
-                      key: ValueKey<String>('input-inspector-wintab-start-$i'),
-                      maxLines: 1,
-                      style: rowStyle.copyWith(color: _inspectorSecondInk),
-                    ),
-                  if (samples.isEmpty)
-                    Text(
-                      'waiting for input…',
-                      style: rowStyle.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    )
-                  else
-                    for (var i = start; i < samples.length; i += 1)
-                      EllipsisText(
-                        samples[i].describe(),
-                        maxLines: 1,
-                        style: rowStyle.copyWith(
-                          color: _kindColor(colorScheme, samples[i].kind),
-                        ),
-                      ),
-                  // PEN-10 diagnosis strip: the touch-down counter (the
-                  // pen-hover palm-rejection check) + probe notes.
-                  Text(
-                    'touch downs=${InputInspector.touchDownCount}'
-                    // 🚨H21: `seen` is counted at the observer, ahead of
-                    // every gate. If it climbs while the rows above stand
-                    // still, the recorder is dropping events; if it stands
-                    // still too, delivery to this host has stopped. That
-                    // one distinction is what the card could not make
-                    // while it was the thing being diagnosed.
-                    ' seen=${InputInspector.arrivals}'
-                    // F-400: and what the binding kept out ahead of it.
-                    ' echo=${InputInspector.echoes}'
-                    // H56: and the messages whose points the OS saw
-                    // no datum took — each a stretch of a line lost.
-                    ' passed=${QaPenPoints.passed}'
-                    // H59 법 A: and those whose points did not all
-                    // reach the book, by why.
-                    ' lost=${_lostSaid(QaPenPoints.lost)}'
-                    // And while the tablet driver's stream is open, how far
-                    // its newest packet ran behind the mouse message and
-                    // the overflows its queue said: a pkTime on another
-                    // clock pairs no mouse point with the driver.
-                    '${_wintabHeard()}',
-                    key: const ValueKey<String>('input-inspector-touch-count'),
-                    style: rowStyle.copyWith(color: _inspectorSecondInk),
-                  ),
-                  for (final line in InputInspector.notes.values)
-                    EllipsisText(
-                      line,
-                      maxLines: 1,
-                      style: rowStyle.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  static const String _titleSaid = 'INPUT INSPECTOR';
+
+  Widget _title(ColorScheme colorScheme) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          _titleSaid,
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      const AppIconButton(
+        keyValue: 'input-inspector-clear',
+        tooltip: 'Clear',
+        size: AppIconButtonSize.micro,
+        onPressed: InputInspector.clear,
+        icon: Icon(Icons.refresh),
+      ),
+      AppIconButton(
+        keyValue: 'input-inspector-close',
+        tooltip: 'Close',
+        size: AppIconButtonSize.micro,
+        // 🚨H21 (유저 2026-08-23): 「터치 다운도 **껏다켜도 리셋안되고**」 —
+        // and that was not a bug in the counter. Closing only flipped
+        // [InputInspector.visible]; NOTHING cleared, so re-opening showed
+        // the session before last. A diagnosis surface you just re-opened
+        // is a fresh one by every reasonable reading.
+        onPressed: () {
+          InputInspector.clear();
+          InputInspector.visible.value = false;
+        },
+        icon: const Icon(Icons.close),
+      ),
+    ],
+  );
+
+  /// The pressures side by side, each in its place while it says nothing
+  /// (`-`): the pointer's peak, the tablet driver's (PEN-2 — pointer vs
+  /// driver pressure is the whole misreport diagnosis), the raw HID
+  /// switches the PEN itself declares (on Windows the only place its tail
+  /// end appears at all — Ink drops it and the pointer stream calls both
+  /// ends "stylus"), and the macOS/Linux channel sidecars' (PEN-4).
+  Widget _readouts() => Wrap(
+    spacing: 6,
+    children: [
+      Text(
+        _peakSaid(),
+        key: const ValueKey<String>('input-inspector-peak'),
+        style: _line.copyWith(color: AppColors.accent),
+      ),
+      ValueListenableBuilder<QaTabletPacket?>(
+        valueListenable: WintabPenService.instance.latest,
+        builder: (context, packet, _) => Text(
+          _wintabSaid(packet),
+          key: const ValueKey<String>('input-inspector-wintab'),
+          style: _line.copyWith(color: _inspectorSecondInk),
+        ),
+      ),
+      ValueListenableBuilder<QaPenRawState?>(
+        valueListenable: RawPenInputService.instance.latest,
+        builder: (context, state, _) => Text(
+          _rawPenSaid(state),
+          key: const ValueKey<String>('input-inspector-rawpen'),
+          style: _line.copyWith(color: _inspectorSecondInk),
+        ),
+      ),
+      for (final service in PenSidecars.channelServices)
+        ValueListenableBuilder<PenChannelSample?>(
+          valueListenable: service.latest,
+          builder: (context, sample, _) => Text(
+            _sidecarSaid(service.label, sample),
+            key: ValueKey<String>('input-inspector-${service.label}'),
+            style: _line.copyWith(color: _inspectorSecondInk),
+          ),
+        ),
+    ],
+  );
+
+  static String _peakSaid() =>
+      'peak p=${InputInspector.peakPressure.toStringAsFixed(2)}';
+
+  static String _wintabSaid(QaTabletPacket? packet) =>
+      'wt p=${packet?.pressure.toStringAsFixed(2) ?? '-'}';
+
+  static String _rawPenSaid(QaPenRawState? state) =>
+      'hid ${state == null ? '-' : _rawPenLabel(state)}';
+
+  static String _sidecarSaid(String label, PenChannelSample? sample) =>
+      '$label p=${sample?.pressure.toStringAsFixed(2) ?? '-'}';
+
+  /// The readouts as [_readouts] writes them, each of what its source says
+  /// now.
+  static List<String> _readoutsSaid() => [
+    _peakSaid(),
+    _wintabSaid(WintabPenService.instance.latest.value),
+    _rawPenSaid(RawPenInputService.instance.latest.value),
+    for (final service in PenSidecars.channelServices)
+      _sidecarSaid(service.label, service.latest.value),
+  ];
+
+  /// PEN-10 diagnosis strip: the touch-down counter (the pen-hover
+  /// palm-rejection check) and what the pointer stream lost on its way.
+  Widget _strip() => Text(
+    _stripSaid(),
+    key: const ValueKey<String>('input-inspector-touch-count'),
+    style: _line.copyWith(color: _inspectorSecondInk),
+  );
+
+  static String _stripSaid() =>
+      'touch downs=${InputInspector.touchDownCount}'
+      // 🚨H21: `seen` is counted at the observer, ahead of every gate. If it
+      // climbs while the rows above stand still, the recorder is dropping
+      // events; if it stands still too, delivery to this host has stopped.
+      // That one distinction is what the card could not make while it was
+      // the thing being diagnosed.
+      ' seen=${InputInspector.arrivals}'
+      // F-400: and what the binding kept out ahead of it.
+      ' echo=${InputInspector.echoes}'
+      // H56: and the messages whose points the OS saw no datum took — each
+      // a stretch of a line lost.
+      ' passed=${QaPenPoints.passed}'
+      // H59 법 A: and those whose points did not all reach the book, by why.
+      ' lost=${_lostSaid(QaPenPoints.lost)}'
+      // And while the tablet driver's stream is open, how far its newest
+      // packet ran behind the mouse message and the overflows its queue
+      // said: a pkTime on another clock pairs no mouse point with the driver.
+      '${_wintabHeard()}';
+
+  /// What comes in numbers the panel cannot know: the pins, how the
+  /// tablet driver's stream started (h61-wintab-sometimes-not-engaged-at-
+  /// launch — the service keeps it from launch, before the panel opens,
+  /// and ⟲ does not clear it), the events and the probes' notes, a line
+  /// each — what changes least first.
+  List<Widget> _comeAndGo(ColorScheme colorScheme) => [
+    for (final said in _comeAndGoSaid())
+      Text(
+        said.text,
+        key: said.key == null ? null : ValueKey<String>(said.key!),
+        style: _line.copyWith(color: said.ink(colorScheme)),
+      ),
+  ];
+
+  /// [_comeAndGo]'s lines, in its order: each one's words, its key and its
+  /// ink — and none of the events' while none came.
+  static List<_Said> _comeAndGoSaid() => [
+    for (final entry in InputInspector.pinned.entries)
+      (
+        text: entry.value,
+        key: 'input-inspector-pin-${entry.key}',
+        ink: (_) => AppColors.accent,
+      ),
+    for (final (i, step) in WintabPenService.instance.startRecord.indexed)
+      (
+        text: 'wt $step',
+        key: 'input-inspector-wintab-start-$i',
+        ink: (_) => _inspectorSecondInk,
+      ),
+    if (InputInspector.events.isEmpty)
+      (
+        text: 'waiting for input…',
+        key: null,
+        ink: (colorScheme) => colorScheme.onSurfaceVariant,
+      ),
+    for (final MapEntry(:key, value: sample) in InputInspector.events.entries)
+      (
+        text: sample.describe(),
+        key: 'input-inspector-event-$key',
+        ink: (colorScheme) => _kindColor(colorScheme, sample.kind),
+      ),
+    for (final line in InputInspector.notes.values)
+      (
+        text: line,
+        key: null,
+        ink: (colorScheme) => colorScheme.onSurfaceVariant,
+      ),
+  ];
+
+  /// What the panel writes, as text, in its order — the title, the
+  /// readouts, the strip, and what comes and goes: what the debug window's
+  /// copy takes. Its widgets take their words from the same functions.
+  static List<String> textLines() => [
+    _titleSaid,
+    ..._readoutsSaid(),
+    _stripSaid(),
+    for (final said in _comeAndGoSaid()) said.text,
+  ];
 }
+
+/// One line [InputInspectorPanel] writes in what comes and goes: its words,
+/// its key, and its ink on the panel's colours.
+typedef _Said = ({
+  String text,
+  String? key,
+  Color Function(ColorScheme colorScheme) ink,
+});
 
 /// What the tablet driver's queue said ([WintabPenService.heard]) — or,
 /// while its context is still being opened, the tries and why the last

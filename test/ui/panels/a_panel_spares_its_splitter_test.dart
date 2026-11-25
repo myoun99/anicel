@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +19,7 @@ import '../../helpers/rail_group_button.dart';
 /// 도구설정패널도 동일하게 … 스플리터가 생길때는 자리 안겹치게 공간 주도록.
 /// 패널들 기본 그런식이지만, 타임라인/콘티패널은 예외」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const band = DockEdgeSplitter.thickness;
 
   group('the tab group', () {

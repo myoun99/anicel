@@ -874,11 +874,7 @@ abstract final class EditorActionIds {
   /// 🗣️I-139 (유저 2026-10-28): 「의견 보내기」 under 「Anicel 정보」 — one row,
   /// a window that chooses between the two feedback forms (I-139-Q2).
   static const sendFeedback = 'help-send-feedback';
-  static const inputInspector = 'edit-input-inspector';
-  static const frameTimingOverlay = 'edit-frame-timing-overlay';
-  static const frameStats = 'edit-frame-stats';
-  static const engineStages = 'edit-engine-stages';
-  static const showRepaints = 'edit-show-repaints';
+  static const debugWindow = 'edit-debug-window';
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
 
@@ -2143,37 +2139,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+  // 🗣️유저 2026-11-24 (one-debug-window-shows-everything Q2): ONE switch
+  // where five stood — the input inspector, the frame-timing graphs, the
+  // frame statistics, the engine's stages and the repaint tint, which
+  // rides the window's head now.
   const EditorActionDefinition(
-    id: EditorActionIds.inputInspector,
-    label: 'Input Inspector',
-    shelf: ShortcutShelf.debug,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameTimingOverlay,
-    label: 'Frame Timing Overlay',
-    shelf: ShortcutShelf.debug,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameStats,
-    label: 'Frame Stats',
-    shelf: ShortcutShelf.debug,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.engineStages,
-    label: 'Engine Stages',
-    shelf: ShortcutShelf.debug,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.showRepaints,
-    label: 'Show Repaints',
+    id: EditorActionIds.debugWindow,
+    label: 'Debug Window',
     shelf: ShortcutShelf.debug,
     defaultActivators: [],
     menuRow: true,

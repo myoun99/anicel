@@ -180,6 +180,55 @@ void main() {
       );
     });
 
+    // 🗣️공통 · 보드/인프라 2026-11-24 (the-linux-platform-tests-do-not-
+    // compile): fe9f8155b broke tests behind cfg(target_os) that only that
+    // target's cargo compiles, and no gate asked any but Windows. Run by
+    // hand: a lane's `crate` compiled them for Android green, and with an
+    // Android test broken, red by name (2026-11-24).
+    test('🚨the crate\'s tests compile for Android too, with the NDK\'s '
+        'clang, whatever the profiles\' greens say', () {
+      final crate = codeOf('cmd_crate');
+      const asked =
+          r'crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \';
+      final whenGreen = at(crate, r'if [ -z "$todo" ]; then');
+      expect(
+        at(crate.sublist(whenGreen, whenGreen + 2), asked),
+        1,
+        reason: 'asked when the profiles\' greens end the gate',
+      );
+      final afterRuns = crate.lastIndexWhere((line) => line.contains(asked));
+      expect(afterRuns, greaterThan(at(crate, r'for profile in $todo; do')));
+      expect(
+        crate[afterRuns + 1],
+        contains(r'|| red="$red aarch64-linux-android(compile)"'),
+        reason: 'and after the profiles run, named in the one refusal',
+      );
+      expect(afterRuns, lessThan(at(crate, 'tests are red in')));
+      final check = codeOf('crate_compiles_for');
+      expect(
+        at(
+          check,
+          r'&& env "CC_$var=$cc" "AR_$var=$ar" bash "$ROOT/tool/cargo_turn.sh" \',
+        ),
+        isNot(-1),
+        reason: "wasmtime's build script compiles C for the target",
+      );
+      expect(
+        at(check, r'check --locked --offline --target "$target" --lib --tests)'),
+        isNot(-1),
+        reason: 'a check: no Android device is asked, and no download',
+      );
+      expect(
+        at(check, r'keep_crate_green "$input" "compile-$target" "compiled"'),
+        isNot(-1),
+      );
+      expect(
+        at(codeOf('ndk_tools'), r'"$p/android/app/build.gradle.kts"'),
+        isNot(-1),
+        reason: "the clang of the app's own minSdk",
+      );
+    });
+
     // 관제 2026-11-07: told `cargo fetch --locked`, the Surface fetched 29
     // crates for Linux, the Mac and Android that nobody had allowed.
     test('🚨a crate not downloaded is named, and fetched, for this '

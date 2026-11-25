@@ -9,11 +9,13 @@ import '../../core/one_pass_at_a_time.dart';
 import '../../core/pin_counts.dart';
 import '../../core/telling.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/fx_plugin_run.dart' show FxPluginRunsTold;
+import '../../models/layer_effect.dart'
+    show FxPluginRunsTold, ResolvedLayerEffect;
 import '../../native/app_gpu_engine.dart' show EnginePictures;
 import '../../native/engine_chain_holds.dart';
 import '../../native/engine_frame_tools.dart';
 import '../canvas/fx_plugin_stages.dart';
+import '../debug/picture_writes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 
@@ -43,26 +45,28 @@ class EngineFramePicture extends ChangeNotifier {
   bool get gone => _gone;
 
   /// The picture through [viewport] at [devicePixelRatio] onto [target] of
-  /// [size] texels, the view's corner on its texel [corner]
-  /// ([EngineStackScreen.show]).
+  /// [size] texels, the view's corner on its texel [corner], what it holds
+  /// on the texels [holding] ([EngineStackScreen.show]).
   void show(
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
     (int, int) corner = (0, 0),
+    (int, int, int, int)? holding,
   }) => _screen.show(
     target,
     size,
     viewport: viewport,
     devicePixelRatio: devicePixelRatio,
     corner: corner,
+    holding: holding,
   );
 
   /// 🚨WHAT ITS PLUG-INS' STEPS TOLD as it was made and as each was composed
-  /// in since — told again each time it is held to be shown ([hold]): a
-  /// picture handed back with no run tells how its steps went, as a step
-  /// kept past its recording does (`_Stage.takeKept`), card
+  /// in since — told again each time it is shown, as the frame it is shown
+  /// for ([tellAs]): a picture handed back with no run tells how its steps
+  /// went, as a step kept past its recording does (`_Stage.takeKept`), card
   /// a-cached-failed-picture-loses-its-mark's law (`FxPluginOutcomes`).
   /// ↩️Only its making told until 2026-11-12: a frame given back by an
   /// undo — a cel joined onto another and split again, an earlier
@@ -74,10 +78,27 @@ class EngineFramePicture extends ChangeNotifier {
   /// A hold on the picture by one that shows it; balanced by [release].
   EngineFramePicture hold() {
     _holds += 1;
-    for (final (:run, :failed) in _told.values) {
-      run.tell(failed: failed);
-    }
     return this;
+  }
+
+  /// Tells each of [steps] — the plug-in steps of the frame it is shown for
+  /// (`pluginStepsOf`), whose key is this picture's — how the step worn at
+  /// its place went here, where one did: its run, the frame's, is who hears
+  /// ([FxPluginRunsTold]).
+  ///
+  /// 🚨THE ONE IT IS SHOWN FOR, NOT THE ONE IT WAS MADE FOR (card the-first-
+  /// stroke-on-a-frame-come-to-runs-its-plugins-once ③, 2026-11-25): a run
+  /// equal to another makes one picture and fails alike, so a picture kept
+  /// from either is told to the one that asks ([FxPluginRun.==]). ↩️Told by
+  /// the runs that made it as it was held ([hold]), a picture of two frames
+  /// told the frame it was made at, and the header of the other never
+  /// greyed.
+  void tellAs(List<ResolvedLayerEffect> steps) {
+    for (final step in steps) {
+      if (_told[step.worn] case final failed?) {
+        step.run?.tell(failed: failed);
+      }
+    }
   }
 
   void release() {
@@ -410,9 +431,11 @@ class EngineFramePictureStore<K extends Object> {
     EngineChainHolds? holds,
   ) {
     if (from == to || !picture._shownByAnother) {
+      PictureWrites.wrote(PictureWrite.inPlace);
       _watched(picture, picture._composed(frame, changed: rect, holds: holds));
       return picture;
     }
+    PictureWrites.wrote(PictureWrite.copied);
     final copy = _aPicture().._told = picture._told;
     try {
       _watched(

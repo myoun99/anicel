@@ -4,15 +4,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 
 import '../../helpers/fake_tablet_bridge.dart';
+import '../../helpers/text_finders.dart';
+
+/// The app's own: the debug window over the app (`MaterialApp.builder`,
+/// as main.dart lays it), where the inspector's panel is shown.
+Widget _windowed(BuildContext context, Widget? child) =>
+    DebugWindowHost(child: child!);
 
 /// PEN-1: the input inspector — the pen program's diagnosis overlay.
 void main() {
   tearDown(InputInspector.reset);
 
   Widget harness() => MaterialApp(
+    builder: _windowed,
     home: Scaffold(
       body: InputInspectorHost(
         child: SizedBox.expand(
@@ -28,19 +36,19 @@ void main() {
   ) async {
     await tester.pumpWidget(harness());
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsNothing,
     );
     // While hidden, no listener records anything.
     await tester.tap(
       find.byKey(const ValueKey<String>('inspector-probe-area')),
     );
-    expect(InputInspector.samples, isEmpty);
+    expect(InputInspector.events, isEmpty);
 
     InputInspector.visible.value = true;
     await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsOneWidget,
     );
 
@@ -49,7 +57,7 @@ void main() {
     );
     await tester.pump();
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('input-inspector-panel')),
       findsNothing,
     );
     expect(InputInspector.visible.value, isFalse);
@@ -129,12 +137,13 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(InputInspector.samples, isNotEmpty);
-    expect(InputInspector.samples.map((sample) => sample.kind).toSet(), {
-      PointerDeviceKind.stylus,
-    });
+    expect(InputInspector.events, isNotEmpty);
     expect(
-      InputInspector.samples.map((sample) => sample.phase),
+      InputInspector.events.values.map((sample) => sample.kind).toSet(),
+      {PointerDeviceKind.stylus},
+    );
+    expect(
+      InputInspector.events.values.map((sample) => sample.phase),
       containsAll(<String>['down', 'move', 'up']),
     );
     // The card renders the rows (kind name visible in the readout).
@@ -156,14 +165,34 @@ void main() {
 
     InputInspector.clear();
     expect(InputInspector.peakPressure, 0);
-    expect(InputInspector.samples, isEmpty);
+    expect(InputInspector.events, isEmpty);
   });
 
-  test('the ring stays bounded', () {
-    for (var i = 0; i < InputInspector.capacity + 40; i += 1) {
-      InputInspector.record(const PointerHoverEvent());
+  test('one slot per kind and phase — the latest event of each, in the '
+      'order they first came', () {
+    InputInspector.visible.value = true;
+    InputInspector.record(
+      const PointerHoverEvent(
+        kind: PointerDeviceKind.stylus,
+        position: Offset(1, 0),
+      ),
+    );
+    InputInspector.record(const PointerDownEvent(position: Offset(2, 0)));
+    for (var i = 0; i < 40; i += 1) {
+      InputInspector.record(
+        PointerHoverEvent(
+          kind: PointerDeviceKind.stylus,
+          position: Offset(3 + i.toDouble(), 0),
+        ),
+      );
     }
-    expect(InputInspector.samples.length, InputInspector.capacity);
+    expect(
+      InputInspector.events.keys,
+      orderedEquals(['stylus hover', 'touch down']),
+    );
+    final events = InputInspector.events;
+    expect(events['stylus hover']!.position, const Offset(42, 0));
+    expect(events['touch down']!.position, const Offset(2, 0));
   });
 
   test('PEN-10: touch-down counter + probe notes — gated, one slot per '
@@ -209,7 +238,7 @@ void main() {
     InputInspector.reset();
   });
 
-  testWidgets('a PINNED line is state: on the card above the rows, and it '
+  testWidgets('a PINNED line is state: on the card, and it '
       'outlives the notes and the clear', (tester) async {
     // F-67 hands-on (2026-09-11): the layout probe went through `note`,
     // and the paint probes pushed it out of the ring (five lines then)
@@ -261,6 +290,32 @@ void main() {
     expect(line, contains('p=0.50'));
     expect(line, contains('btn=1'));
     expect(line, contains('(10,20)'));
+  });
+  testWidgets('its text is the lines on its screen, in their order — what '
+      'the debug window copies', (tester) async {
+    // 🗣️canvas base 2026-11-24: the panel's words come of the functions
+    // its text does, so the copy is the screen, and not a second writer of
+    // it.
+    InputInspector.visible.value = true;
+    await tester.pumpWidget(harness());
+    InputInspector.pin('grid', 'grid frac=(0.250, 0.000)');
+    InputInspector.record(
+      const PointerDownEvent(kind: PointerDeviceKind.stylus, pressure: 0.5),
+    );
+    InputInspector.note('a probe says');
+    await tester.pump();
+
+    final shown = [
+      for (final text in tester.widgetList<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('input-inspector-panel')),
+          matching: find.anyText(),
+        ),
+      ))
+        text.data!,
+    ];
+    expect(InputInspectorPanel.textLines(), shown);
+    expect(shown, contains('a probe says'), reason: 'fixture premise');
   });
 }
 

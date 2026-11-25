@@ -1,81 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 
-/// The frame-timing overlay is a measurement switch, so what is worth
-/// pinning is that it stays OFF unless asked for — an overlay left on
-/// ships two graphs across the user's canvas — and that the toggle
-/// actually reaches `MaterialApp`, which is the whole reason it is a
-/// notifier and not just a build-time constant.
+/// The debug window is ONE switch (유저 2026-11-24,
+/// one-debug-window-shows-everything Q2): what is worth pinning is that it
+/// stays OFF unless asked for — a window left on ships the instruments
+/// across the user's canvas —, that the inspector answers to it and no
+/// switch of its own, and that Flutter's own graphs, which the window's
+/// graph replaced, are never drawn.
 void main() {
   tearDown(MeasurementMode.reset);
 
-  test('off unless --dart-define=QA_PERF_OVERLAY=true seeds it', () {
+  test('off unless --dart-define=QA_DEBUG_WINDOW=true seeds it, and back '
+      'to that after a reset', () {
     expect(
-      MeasurementMode.startWithFrameTimingOverlay,
+      MeasurementMode.startWithDebugWindow,
       isFalse,
-      reason: 'default builds must not draw the frame-timing graphs',
+      reason: 'default builds must not draw the debug window',
     );
     expect(
-      MeasurementMode.frameTimingOverlay.value,
-      MeasurementMode.startWithFrameTimingOverlay,
-      reason: 'the notifier starts at the build default',
+      MeasurementMode.debugWindow.value,
+      MeasurementMode.startWithDebugWindow,
+    );
+    MeasurementMode.debugWindow.value = true;
+    MeasurementMode.reset();
+    expect(
+      MeasurementMode.debugWindow.value,
+      MeasurementMode.startWithDebugWindow,
     );
   });
 
-  testWidgets('toggling it reaches MaterialApp.showPerformanceOverlay', (
-    tester,
-  ) async {
-    // The app shell only — mounting HomePage would spin up the whole
-    // editor, and what is under test is that the notifier drives the
-    // MaterialApp property.
-    MaterialApp appOf(WidgetTester tester) =>
-        tester.widget<MaterialApp>(find.byType(MaterialApp));
+  test('the input inspector answers to the one switch', () {
+    expect(InputInspector.visible, same(MeasurementMode.debugWindow));
+  });
 
+  testWidgets('Flutter\'s frame-timing graphs are never drawn — the '
+      'window\'s graph stands in their place', (tester) async {
+    MeasurementMode.debugWindow.value = true;
     await tester.pumpWidget(const AnicelApp());
-    // HomePage is heavy; settle only what the shell needs.
-    await tester.pump();
-    expect(appOf(tester).showPerformanceOverlay, isFalse);
-
-    MeasurementMode.frameTimingOverlay.value = true;
     await tester.pump();
     expect(
-      appOf(tester).showPerformanceOverlay,
-      isTrue,
-      reason: 'the toggle must not need a rebuild of the app to take effect',
-    );
-
-    MeasurementMode.frameTimingOverlay.value = false;
-    await tester.pump();
-    expect(appOf(tester).showPerformanceOverlay, isFalse);
-  });
-
-  test('the engine\'s stages are off unless '
-      '--dart-define=QA_ENGINE_STAGES=true seeds them, and back off after '
-      'a reset', () {
-    // A timed engine waits out each submit where it makes it
-    // (rust/src/took.rs): left on, a build is slower for everyone.
-    expect(MeasurementMode.startWithEngineStages, isFalse);
-    expect(
-      MeasurementMode.engineStages.value,
-      MeasurementMode.startWithEngineStages,
-    );
-    MeasurementMode.engineStages.value = true;
-    MeasurementMode.reset();
-    expect(
-      MeasurementMode.engineStages.value,
-      MeasurementMode.startWithEngineStages,
+      tester.widget<MaterialApp>(find.byType(MaterialApp))
+          .showPerformanceOverlay,
+      isFalse,
     );
   });
-
-  test('reset returns it to the build default', () {
-    MeasurementMode.frameTimingOverlay.value = true;
-    MeasurementMode.reset();
-    expect(
-      MeasurementMode.frameTimingOverlay.value,
-      MeasurementMode.startWithFrameTimingOverlay,
-    );
-  });
-
 }

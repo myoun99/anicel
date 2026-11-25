@@ -14,6 +14,7 @@ use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::mask::tests::{Masked, masked};
 use crate::kernels::mask::{Mask, MaskBox};
+use crate::kernels::shared::le_words;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 pub(super) const SIDE: i32 = TILE as i32;
@@ -103,10 +104,7 @@ fn under(
         Some(cut) => pass.run_by(engine, &pages, &cel.set, mask, verb, cut),
         None => pass.run(engine, &pages, &cel.set, mask, verb),
     }?;
-    let out = read_buffer(engine, &passed.out)
-        .chunks_exact(4)
-        .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
-        .collect();
+    let out = le_words(&read_buffer(engine, &passed.out));
     Some((passed, out))
 }
 

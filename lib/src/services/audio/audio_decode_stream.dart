@@ -20,6 +20,17 @@ abstract interface class AudioDecodeStream {
   /// partway.
   Float32List read(int frames);
 
+  /// How much of the file the decoder has read through so far, 0–1 — the
+  /// furthest byte it read of the container's bytes, counted from where the
+  /// sound began (the engine's `Stream::read_through`).
+  ///
+  /// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+  /// 바이트를 센다」): what the import window's percent counts while a sound
+  /// is made (F-608-Q2: the bytes read of the bytes to read). ↩️The decoder
+  /// read the file where the window could not see it, and a movie on the
+  /// cloud stood 47 s at one number (🔬저장 11-23, 910 MB).
+  double get readThrough;
+
   /// Lets go of the decoder.
   void close();
 }

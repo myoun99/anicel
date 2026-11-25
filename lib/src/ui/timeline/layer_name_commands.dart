@@ -14,6 +14,7 @@ import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show LayerEffectWords;
+import '../text/place_lines.dart' show rowPlaceLinesElsewhere;
 
 /// The two LAYER dialogs the command bar's layer pill opens.
 ///
@@ -78,24 +79,28 @@ Future<void> deleteActiveLayerWithDialog(
 }
 
 /// The delete window for [ids]: every row that goes, listed under its one
-/// sentence as the rail lists them — the rows named and the rows they take
-/// along ([LayerVerbs.rowsHeldBy]: a folder's, F-305; a base's attach rows).
-/// One window for the selection's delete and the standing row's, for one
-/// row and for many (F-303).
+/// sentence — the delete's own answer ([LayerVerbs.rowsADeleteTakes]): this
+/// cut's as the rail lists them, the rows named and what they take along (a
+/// folder's, F-305; a base's attach rows; a row's link), then the rows it
+/// takes from other cuts, each by its cut ([rowPlaceLinesElsewhere]). One
+/// window for the selection's delete and the standing row's, for one row
+/// and for many (F-303).
 DeleteLayerDialog _deleteWindowFor(
   EditorSessionManager session,
   List<LayerId> ids, {
   List<({Layer row, List<EffectId> effects})> effects = const [],
 }) {
-  final going = {
-    ...ids,
-    for (final row in session.layerVerbs.rowsHeldBy(ids)) row.id,
-  };
+  final going = session.layerVerbs.rowsADeleteTakes(ids);
   final language = AppText.language;
   return DeleteLayerDialog(
     rows: [
       for (final row in session.layers.reversed)
         if (going.contains(row.id)) row.name,
+      ...rowPlaceLinesElsewhere(
+        session.repository.requireProject(),
+        going,
+        cutId: session.requireActiveCut.id,
+      ),
     ],
     // As the rail stacks them: the row, then its effect's header.
     effects: [

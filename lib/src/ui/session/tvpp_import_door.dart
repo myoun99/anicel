@@ -250,11 +250,7 @@ class TvppImportDoor {
     required PlannedCelBake bake,
   }) async {
     if (decoded is TvppRasterDecodeException) {
-      return ImportWarning(
-        'celUnreadable',
-        '{file}: the picture could not be read — {detail}',
-        {'file': bake.sourceFile, 'detail': '$decoded'},
-      );
+      return ImportWarning.celUnreadable(bake.sourceFile, '$decoded');
     }
     final laid = decoded as AnicelLaidCel;
     if (laid.tiles.isEmpty) {

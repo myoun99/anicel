@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,6 +113,7 @@ Future<void> _selectSpan(WidgetTester tester) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(TimelineDoubleTapGate.reset);
 
   testWidgets('a REAL mouse drag starting INSIDE the selection MOVES the '

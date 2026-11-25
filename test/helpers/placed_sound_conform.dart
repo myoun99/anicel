@@ -16,9 +16,11 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 /// [secondsOf] answers instead, from the request — which says whose bytes
 /// it is of ([ConformRequest.effectiveSource]) — and [resolveByteSource]
 /// and [resolveCarry] are the session's, for a test that asks which bytes
-/// a sound is read from.
+/// a sound is read from. Each of [reads] is told as how far the conform
+/// has read before it answers ([ConformRequest.onReading]).
 AudioConformStore soundConformStore({
   double seconds = 1,
+  List<double> reads = const [],
   double Function(ConformRequest request)? secondsOf,
   MediaByteSource Function(String path)? resolveByteSource,
   MediaCarry? Function(String path)? resolveCarry,
@@ -28,21 +30,31 @@ AudioConformStore soundConformStore({
     resolveConformPath: (_) => null,
     resolveByteSource: resolveByteSource,
     resolveCarry: resolveCarry,
-    runner: (request) async => ConformResult(
-      outcome: ConformOutcome.built,
-      peaks: AudioPeaks(
-        bucketsPerSecond: bucketsPerSecond,
-        peaks: Float32List(
-          (bucketsPerSecond * (secondsOf?.call(request) ?? seconds)).round(),
-        ),
-      ),
-      samples: Float32List(4),
-      channels: 1,
-      sampleRate: request.projectSampleRate,
-      frames: 4,
-      speedNumerator: request.speedNumerator,
-      speedDenominator: request.speedDenominator,
-    ),
+    runner: (request) async {
+      reads.forEach(request.onReading ?? (_) {});
+      return _aSecondOf(request, bucketsPerSecond, secondsOf, seconds);
+    },
     log: (_) {},
   );
 }
+
+ConformResult _aSecondOf(
+  ConformRequest request,
+  int bucketsPerSecond,
+  double Function(ConformRequest request)? secondsOf,
+  double seconds,
+) => ConformResult(
+  outcome: ConformOutcome.built,
+  peaks: AudioPeaks(
+    bucketsPerSecond: bucketsPerSecond,
+    peaks: Float32List(
+      (bucketsPerSecond * (secondsOf?.call(request) ?? seconds)).round(),
+    ),
+  ),
+  samples: Float32List(4),
+  channels: 1,
+  sampleRate: request.projectSampleRate,
+  frames: 4,
+  speedNumerator: request.speedNumerator,
+  speedDenominator: request.speedDenominator,
+);

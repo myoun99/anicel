@@ -1,0 +1,471 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/picture_up_view.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/stroke_steps.dart';
+
+import '../brush_canvas_test_helpers.dart';
+
+/// 🚨★★★ONE STEP OF A STROKE A FRAME SHOWN, NOT ONE A FRAME BUILT
+/// (`_BrushEditOverlay.stepPendingOverlayDabs`; card
+/// the-galaxy-tab-canvas-went-slow-on-build-1095, 2026-11-23): while a frame
+/// of the canvas's pictures is being drawn, the pen's samples wait, and go
+/// on the stroke as ONE step once it is up — the same dabs, in the same
+/// order. 🗣️유저 (build 1101, Galaxy Tab) 「그을수록 같은선안에서 점점 느려지고
+/// … 선떼고 5초뒤에 그은게 한번에 나오는정도」: a step went to the engine at
+/// every frame the app built, the screen drawing one at a time, and the
+/// steps piled up behind it without end.
+void main() {
+  setUp(() {
+    CanvasTouchContacts.reset();
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+  });
+  tearDown(() {
+    CanvasTouchContacts.reset();
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+  });
+
+  /// A pen pressed on a canvas whose pictures go up [together] — on none
+  /// where null — drawn on [overlay], its line steadied by [correction];
+  /// and how it moves, a sample a call, 8 ms apart.
+  Future<({void Function(Offset at) move, void Function(Offset at) lift})>
+  aPenOn(
+    WidgetTester tester, {
+    required ActiveStrokeOverlayModel overlay,
+    required PicturesUpTogether? together,
+    BrushCorrection? correction,
+  }) async {
+    final cel = BitmapSurface(
+      canvasSize: const CanvasSize(width: 400, height: 40),
+      tileSize: 128,
+    );
+    final brush = InteractiveBrushEditCanvasView(
+      celNow: () => cel,
+      layerId: const LayerId('layer-a'),
+      frameId: const FrameId('frame-a'),
+      viewport: CanvasViewport(),
+      inputSettings: () => BrushEditCanvasInputSettings(
+        size: 4,
+        correction: correction ?? BrushCorrection.none,
+      ),
+      overlayModel: overlay,
+      onSourceStrokeCommitted: (_) {},
+    );
+    final view = PictureUpView();
+    addTearDown(view.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: together == null
+                ? brush
+                : PictureUpViewScope(
+                    view: view,
+                    together: together,
+                    child: brush,
+                  ),
+          ),
+        ),
+      ),
+    );
+    var time = Duration.zero;
+    const kind = PointerDeviceKind.stylus;
+    tester.binding.handlePointerEvent(
+      PointerAddedEvent(
+        kind: kind,
+        position: canvasGlobalOffset(tester, const Offset(10, 20)),
+      ),
+    );
+    tester.binding.handlePointerEvent(
+      PointerDownEvent(
+        pointer: 1,
+        kind: kind,
+        buttons: kPrimaryButton,
+        position: canvasGlobalOffset(tester, const Offset(10, 20)),
+        timeStamp: time,
+        pressure: 1,
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    await tester.pump();
+    return (
+      move: (Offset at) {
+        time += const Duration(milliseconds: 8);
+        tester.binding.handlePointerEvent(
+          PointerMoveEvent(
+            pointer: 1,
+            kind: kind,
+            buttons: kPrimaryButton,
+            position: canvasGlobalOffset(tester, at),
+            timeStamp: time,
+            pressure: 1,
+            pressureMin: 0,
+            pressureMax: 1,
+          ),
+        );
+      },
+      lift: (Offset at) {
+        time += const Duration(milliseconds: 8);
+        tester.binding.handlePointerEvent(
+          PointerUpEvent(
+            pointer: 1,
+            kind: kind,
+            position: canvasGlobalOffset(tester, at),
+            timeStamp: time,
+          ),
+        );
+      },
+    );
+  }
+
+  for (final (line, correction) in [
+    ('a line as the pen went', BrushCorrection.none),
+    ('a steadied line', const BrushCorrection()),
+    // Behind the pen, the frames move it on (`_steadyOneFrame`).
+    (
+      'a line steadied far behind the pen',
+      const BrushCorrection(stabilization: 100),
+    ),
+  ]) {
+    testWidgets('🚨the samples of the frames built while one is drawn go on '
+        'the stroke as one step once it is up ($line)', (tester) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(
+        tester,
+        overlay: overlay,
+        together: together,
+        correction: correction,
+      );
+      pen.move(const Offset(40, 20));
+      await tester.pump();
+      final before = overlay.dabs.length;
+      expect(before, greaterThan(0), reason: 'no frame drawn: a step');
+
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      final stepsBefore = overlay.moveMark.count;
+      for (final x in const [80.0, 120.0, 160.0, 200.0]) {
+        pen.move(Offset(x, 20));
+        // A frame's time goes by: a line behind the pen moves on in it.
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      // The pen rests: from the second frame after its last sample, a line
+      // behind it is moved on by the frames alone (StrokeStabilizer.lookAtFrame).
+      for (var frame = 0; frame < 3; frame++) {
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      expect(
+        overlay.dabs.length,
+        before,
+        reason: 'nothing goes on the stroke while a frame is drawn',
+      );
+      expect(overlay.moveMark.count, stepsBefore);
+
+      // Up: the held dabs wait for the next frame, and a sample come before
+      // it goes with them.
+      drawn.complete();
+      await tester.idle();
+      expect(
+        [overlay.dabs.length, overlay.moveMark.count],
+        [before, stepsBefore],
+        reason: 'laid at the frame after the up, not as it goes up',
+      );
+      pen.move(const Offset(240, 20));
+      await tester.pump(const Duration(milliseconds: 8));
+      expect(
+        overlay.dabs.length,
+        greaterThan(before),
+        reason: 'on the stroke at the frame after the up',
+      );
+      expect(
+        overlay.moveMark.count,
+        stepsBefore + 1,
+        reason: 'the four frames\' samples and the one between, one step',
+      );
+      if (correction == BrushCorrection.none) {
+        expect(
+          overlay.dabs.last.center.x,
+          closeTo(240, 4),
+          reason: 'the sample come between the up and the frame, in it',
+        );
+      }
+
+      pen.lift(const Offset(240, 20));
+      await tester.pump();
+      await tester.pump();
+    });
+
+    testWidgets('🚨a frame lays one step, the pen\'s samples and what the '
+        'frame moves a steadied line on together ($line)', (tester) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final pen = await aPenOn(
+        tester,
+        overlay: overlay,
+        together: PicturesUpTogether(),
+        correction: correction,
+      );
+      final start = overlay.moveMark.count;
+      var steps = start;
+      for (final x in const [40.0, 80.0, 120.0, 160.0, 200.0]) {
+        pen.move(Offset(x, 20));
+        await tester.pump(const Duration(milliseconds: 8));
+        expect(
+          overlay.moveMark.count,
+          lessThanOrEqualTo(steps + 1),
+          reason: 'one step a frame, at $x',
+        );
+        steps = overlay.moveMark.count;
+      }
+      expect(steps, greaterThan(start), reason: '⛔premise: the line moved');
+      pen.lift(const Offset(200, 20));
+      await tester.pump();
+      await tester.pump();
+    });
+
+    testWidgets('🚨the frame after a held step\'s frame is up lays it as one '
+        'step with what that frame moves a resting pen\'s line on ($line)', (
+      tester,
+    ) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(
+        tester,
+        overlay: overlay,
+        together: together,
+        correction: correction,
+      );
+      pen.move(const Offset(200, 20));
+      await tester.pump(const Duration(milliseconds: 8));
+      // The pen rests while a frame is drawn: a line behind it is moved on
+      // by the frames, held — the step each lays asks for the next frame's
+      // own, before that frame's steadying does.
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      for (var frame = 0; frame < 4; frame++) {
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      final steps = overlay.moveMark.count;
+      drawn.complete();
+      await tester.idle();
+      await tester.pump(const Duration(milliseconds: 8));
+      expect(
+        overlay.moveMark.count,
+        lessThanOrEqualTo(steps + 1),
+        reason: 'what was held and what the frame moved on, one step',
+      );
+      pen.lift(const Offset(200, 20));
+      await tester.pump();
+      await tester.pump();
+    });
+
+    testWidgets('🚨a pen lifted while a frame is drawn lays every sample it '
+        'held before the stroke lands ($line)', (tester) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(
+        tester,
+        overlay: overlay,
+        together: together,
+        correction: correction,
+      );
+      pen.move(const Offset(40, 20));
+      await tester.pump();
+
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      pen.move(const Offset(120, 20));
+      await tester.pump();
+      pen.move(const Offset(200, 20));
+      await tester.pump();
+      final held = overlay.dabs.length;
+      // The stroke lands at the lift and the overlay is let go of there:
+      // what it took before that is read as it takes it.
+      var most = held;
+      void took() => most = overlay.dabs.length > most
+          ? overlay.dabs.length
+          : most;
+      overlay.addListener(took);
+      addTearDown(() => overlay.removeListener(took));
+      pen.lift(const Offset(200, 20));
+      await tester.pump();
+
+      expect(
+        most,
+        greaterThan(held),
+        reason: 'the samples held went on the stroke at the lift, the frame '
+            'still being drawn',
+      );
+      drawn.complete();
+      await tester.pump();
+      await tester.pump();
+    });
+  }
+
+  // 🔬What the frame statistics count of it (`StrokeSteps`): each step as
+  // it goes, with the dabs it carried.
+  group('the frame statistics', () {
+    setUp(() {
+      MeasurementMode.debugWindow.value = true;
+      StrokeSteps.forget();
+    });
+    tearDown(() {
+      MeasurementMode.reset();
+      StrokeSteps.forget();
+    });
+
+    testWidgets('count each step as it goes, with every dab it carried — the '
+        'samples held while a frame is drawn as one', (tester) async {
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(tester, overlay: overlay, together: together);
+      pen.move(const Offset(40, 20));
+      await tester.pump();
+      final steps = StrokeSteps.stepsCounted;
+      expect(steps, greaterThan(0));
+      expect(
+        StrokeSteps.dabsCounted,
+        overlay.dabs.length,
+        reason: 'every dab on the stroke, of a step counted',
+      );
+
+      final drawn = Completer<void>();
+      unawaited(together.joined(drawn.future));
+      final before = overlay.dabs.length;
+      final ups = StrokeSteps.upMicros.length;
+      for (final x in const [80.0, 120.0, 160.0]) {
+        pen.move(Offset(x, 20));
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      expect(StrokeSteps.stepsCounted, steps, reason: 'none goes meanwhile');
+
+      drawn.complete();
+      await tester.idle();
+      expect(StrokeSteps.stepsCounted, steps, reason: 'out at the next frame');
+      // The paint of the frame that lays it puts up the frame of the
+      // canvas's that shows it — after the step, before it is told up.
+      final shown = Completer<void>();
+      SchedulerBinding.instance.addPostFrameCallback(
+        (_) => unawaited(together.joined(shown.future)),
+      );
+      await tester.pump();
+      expect(
+        StrokeSteps.stepsCounted,
+        steps + 1,
+        reason: 'the frames\' samples, one step',
+      );
+      expect(StrokeSteps.dabsKept.last, overlay.dabs.length - before);
+      expect(
+        StrokeSteps.upMicros,
+        hasLength(ups),
+        reason: 'not up till the frame that shows it is',
+      );
+      shown.complete();
+      await tester.idle();
+      expect(StrokeSteps.upMicros, hasLength(ups + 1));
+      expect(
+        StrokeSteps.upMicros.last,
+        greaterThanOrEqualTo(StrokeSteps.heldMicros.last),
+        reason: 'up once out, timed from the same dab',
+      );
+
+      pen.lift(const Offset(160, 20));
+      await tester.pump();
+      await tester.pump();
+    });
+
+    testWidgets('tell a stroke\'s first step from its press — its dab queued '
+        'as the press is handled, out after — and its landing from its '
+        'lift', (tester) async {
+      // Each reading of the clock a microsecond on from the one before.
+      var reads = 0;
+      StrokeSteps.debugMicros = () => reads += 1;
+      addTearDown(() => StrokeSteps.debugMicros = null);
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final together = PicturesUpTogether();
+      final pen = await aPenOn(tester, overlay: overlay, together: together);
+      final first = StrokeSteps.firstStep!;
+      expect(first.dab, lessThan(first.armed), reason: 'queued in its press');
+      expect(
+        first.armed,
+        lessThan(first.dab + first.held),
+        reason: 'armed before the step went out',
+      );
+      expect(first.up, isNotNull, reason: 'up at the frame painted');
+      expect(StrokeSteps.landing, isNull);
+
+      pen.move(const Offset(60, 20));
+      await tester.pump();
+      expect(StrokeSteps.firstStep, first, reason: 'a step, not the first');
+      pen.lift(const Offset(60, 20));
+      final landing = StrokeSteps.landing!;
+      expect(landing.up, isNull, reason: 'landed, not up');
+      expect(landing.commit, greaterThan(0), reason: 'from the lift');
+      // The paint after it puts up the frame of the canvas's that shows it.
+      final shown = Completer<void>();
+      unawaited(together.joined(shown.future));
+      await tester.pump();
+      expect(StrokeSteps.landing?.up, isNull, reason: 'not up till it is');
+      shown.complete();
+      await tester.idle();
+      expect(StrokeSteps.landing?.up, greaterThan(landing.commit));
+      await tester.pump();
+    });
+
+    testWidgets('count nothing while they are off', (tester) async {
+      MeasurementMode.debugWindow.value = false;
+      final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+      addTearDown(overlay.dispose);
+      final pen = await aPenOn(tester, overlay: overlay, together: null);
+      pen.move(const Offset(60, 20));
+      await tester.pump();
+      expect(overlay.moveMark.count, greaterThan(0), reason: 'a stroke drawn');
+      pen.lift(const Offset(60, 20));
+      await tester.pump();
+      await tester.pump();
+      expect([StrokeSteps.stepsCounted, StrokeSteps.dabsKept], [0, isEmpty]);
+    });
+  });
+
+  testWidgets('a stroke under no canvas\'s pictures steps at every frame', (
+    tester,
+  ) async {
+    // A host of the view alone: no canvas's pictures to wait for.
+    final overlay = ActiveStrokeOverlayModel(tileSize: 128);
+    addTearDown(overlay.dispose);
+    final pen = await aPenOn(tester, overlay: overlay, together: null);
+    var steps = overlay.moveMark.count;
+    for (final x in const [60.0, 110.0, 160.0]) {
+      pen.move(Offset(x, 20));
+      await tester.pump();
+      expect(overlay.moveMark.count, steps + 1);
+      steps = overlay.moveMark.count;
+    }
+    pen.lift(const Offset(160, 20));
+    await tester.pump();
+    await tester.pump();
+  });
+}

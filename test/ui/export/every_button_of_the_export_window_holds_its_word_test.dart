@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +33,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-486 (유저 2026-10-27): 「출력창 셀 탭, 콘티같은거 일본어에서 빈
 /// 버튼되는데 아마 길어서 문제생기는듯. 일단 출력창 버튼들 자동맞춤해서
@@ -43,6 +45,7 @@ import '../../helpers/text_finders.dart';
 /// 168 wide in every language: 「絵コンテ」 got 22 of its 43 px, 「ディレクション」
 /// 22 of its 71.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -136,7 +139,7 @@ void main() {
       // joined the documents' strip (I-151) and French outgrew it.
       await tester.binding.setSurfaceSize(const Size(1400, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),

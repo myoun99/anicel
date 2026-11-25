@@ -171,5 +171,6 @@ class DrawingCursorRow extends StatelessWidget {
     DrawingCursor.brush => AppText.strings.drawingCursorBrush,
     DrawingCursor.pen => AppText.strings.drawingCursorPen,
     DrawingCursor.crosshair => AppText.strings.drawingCursorCrosshair,
+    DrawingCursor.none => AppText.strings.commonNone,
   };
 }

@@ -4,6 +4,7 @@
 // document its memo handed back unchanged, and the conte and the envelope
 // their whole hosts, 107 and 108 — for a guide picked on the canvas or the
 // onion switched on.
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -37,6 +38,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_strata.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<EditorSessionManager> pumpSheet(
     WidgetTester tester, {
     Project? project,

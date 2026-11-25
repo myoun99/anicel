@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/live_sheet.dart';
 import '../widgets/still_raster.dart';
 import '../widgets/superellipse_clip.dart';
 
@@ -34,6 +35,19 @@ import '../widgets/superellipse_clip.dart';
 /// never come from an image, so its dock holds none, but a capsule is
 /// chrome lying on the canvas, and every frame of a stroke drew all of
 /// them for nothing. [StillRaster]'s class doc has the run.
+///
+/// 🚨ITS GROUND IS PAINTED AROUND ITS REGION, AND A SHEET LIES ON IT
+/// ([LiveSheet]) — the tool strips' law (card a-hover-in-a-capsule-or-a-
+/// dock-takes-the-regions-image-again, 2026-11-23): what a pointer lights
+/// on its faces is drawn live on the sheet, and the region keeps its one
+/// image. ⛔Not the ground in the region with the sheet over it: the sheet
+/// cuts the region's image into two parts, the ground's and the rows', and
+/// every frame the canvas under it moves draws both — the ground's part a
+/// draw of the image the capsule's whole size, where the ground painted
+/// around it is two fills of one colour in the picture that holds the
+/// capsule. One law with the strips, and no part of the image for what is
+/// one colour. ↩️The ground was in the region, so a pointer passing over
+/// the view pill took its image again at each face it lit.
 ///
 /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림 안의
 /// 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」): so what it
@@ -80,19 +94,19 @@ class CanvasCapsule extends StatelessWidget {
         ? AppShapes.control(short)
         : AppShapes.container(AppShapes.wellRadius);
     final held = SizedBox(width: width, height: height, child: child);
-    return StillRaster(
-      debugLabel: 'capsule:$keyValue',
-      child: DecoratedBox(
-        key: ValueKey<String>(keyValue),
-        decoration: SuperellipseFace(
-          color: Theme.of(context).colorScheme.surface,
-          edge: shape.copyWith(
-            side: BorderSide(color: AppColors.backdrop),
-          ),
+    return DecoratedBox(
+      key: ValueKey<String>(keyValue),
+      decoration: SuperellipseFace(
+        color: Theme.of(context).colorScheme.surface,
+        edge: shape.copyWith(side: BorderSide(color: AppColors.backdrop)),
+      ),
+      child: StillRaster(
+        debugLabel: 'capsule:$keyValue',
+        child: LiveSheet(
+          child: clipped
+              ? SuperellipseClip(shape: shape, child: held)
+              : SuperellipseHit(shape: shape, child: held),
         ),
-        child: clipped
-            ? SuperellipseClip(shape: shape, child: held)
-            : SuperellipseHit(shape: shape, child: held),
       ),
     );
   }

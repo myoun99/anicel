@@ -29,12 +29,13 @@ import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/debug/engine_stages.dart';
 import 'src/ui/debug/frame_stats.dart';
-import 'src/ui/debug/frame_stats_readout.dart';
+import 'src/ui/debug/debug_window.dart';
 import 'src/ui/debug/repaint_cause.dart';
-import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
+import 'src/ui/raster_watch.dart';
+import 'src/ui/screen_canary.dart';
 import 'src/ui/shortcuts/keyboard_ime_switch.dart';
 import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
@@ -222,6 +223,15 @@ Future<void> main(List<String> handedAtLaunch) async {
   // first frame (a-lost-gpu-leaves-the-window-unpainted): what the shell
   // does then reads it whenever the shell is up to.
   LostScreen.listen();
+  // And the thread that draws the screen standing in the driver, which no
+  // device says (a-real-gpu-reset-went-unheard-on-the-main-pc): every
+  // frame handed over is watched from the first. HERE for the reason of
+  // the installs above — its frame callback cannot be removed.
+  RasterWatch.install();
+  // And the screen's own context, asked for a pixel while the screen rests
+  // (Q1 of that card): what stops with no frame handed over is heard by
+  // neither of the two above.
+  ScreenCanary.install();
   // AWAITED, unlike every other settings restore. The rest land late and
   // the app repaints; this one decides how large the window's contents are
   // laid out, so restoring it after the first frame would show 100% and
@@ -329,11 +339,6 @@ class AnicelApp extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([
         AppColors.accentSettings,
-        // Settings ▸ Frame Timing Overlay: a MaterialApp property, so the
-        // toggle has to reach this build — that is what makes it usable
-        // on a tablet, where a --dart-define costs a rebuild and an
-        // install.
-        MeasurementMode.frameTimingOverlay,
         // The UI scale has TWO halves and this is the widget one: the
         // binding rescales the root matrix, and this rebuild carries the
         // matching MediaQuery down (see
@@ -359,7 +364,6 @@ class AnicelApp extends StatelessWidget {
         // overlay rather than of [HomePage], and most of the surfaces that
         // had no bar of their own live exactly there.
         scrollBehavior: const AppScrollBehavior(),
-        showPerformanceOverlay: MeasurementMode.frameTimingOverlay.value,
         // Above every route and below the Navigator: the measurement
         // readouts have to outrank dialogs and popovers, which are the
         // Navigator's children.
@@ -376,7 +380,7 @@ class AnicelApp extends StatelessWidget {
         // BELOW the Navigator is not.
         builder: (context, child) => EffectiveDevicePixelRatioScope(
           uiScale: AppUiScale.value.value,
-          child: MeasurementReadoutHost(
+          child: DebugWindowHost(
             child: child ?? const SizedBox.shrink(),
           ),
         ),

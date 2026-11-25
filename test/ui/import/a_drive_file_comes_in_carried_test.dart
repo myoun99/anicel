@@ -18,6 +18,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/text_finders.dart';
 import '../../helpers/wait_window.dart';
 
 /// PICK-7 in the import window: a file picked from Google Drive on Android —
@@ -96,7 +97,10 @@ void main() {
   /// window opened on what it handed over, as the media panel's ＋ opens
   /// it — then the pick, and any copy it starts, given their turn to
   /// answer.
-  Future<EditorSessionManager> openPicked(WidgetTester tester) async {
+  Future<EditorSessionManager> openPicked(
+    WidgetTester tester, {
+    bool poolOnly = true,
+  }) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     await tester.pumpWidget(
@@ -111,8 +115,11 @@ void main() {
                 }
                 await showDialog<void>(
                   context: context,
-                  builder: (_) =>
-                      ImportDialog(session: s, poolOnly: true, picked: picked),
+                  builder: (_) => ImportDialog(
+                    session: s,
+                    poolOnly: poolOnly,
+                    picked: picked,
+                  ),
                 );
               },
               child: const Text('import'),
@@ -443,5 +450,139 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  // 🗣️H71 (유저 2026-11-24): 「안드 파일임포트시 a1만열리고 그 뒤 a2부터
+  // a18까지 연결임포트가 안됨. 파일은 구글드라이브에 있는 png파일염」 —
+  // each copy is in a folder of its own, so no copy's folder lists the rest.
+  group('a numbered run picked from Drive (H71)', () {
+    /// The documents A1..A[count] on Drive, the same picture each, picked
+    /// together — every one but those [local] names, which are picked as
+    /// files on the device, in one folder.
+    Future<List<FolderGrant>> picks(
+      WidgetTester tester,
+      int count, {
+      Set<int> local = const {},
+    }) async => (await tester.runAsync(() async {
+      return [
+        for (var at = 1; at <= count; at += 1)
+          if (local.contains(at))
+            FolderGrant.granted(
+              path: await writeSolidPng(
+                await Directory('${temp.path}/device').create(),
+                'A$at.png',
+              ),
+              kind: GrantKind.file,
+            )
+          else
+            FolderGrant.providerDocument(
+              ProviderDocument(
+                uri: 'content://drive/doc/a$at',
+                name: 'A$at.png',
+              ),
+            ),
+      ];
+    }))!;
+
+    Future<void> drive(WidgetTester tester, List<FolderGrant> grants) async {
+      final bytes = await tester.runAsync(() => writeSolidPng(temp, 'a.png'));
+      for (final grant in grants) {
+        if (grant.document case final document?) {
+          documents[document.uri] = bytes!;
+        }
+      }
+      pickerAnswers(grants);
+    }
+
+    String pathOf(FolderGrant grant) =>
+        grant.path ?? ProviderDocuments.workingCopyOf(grant.document!.uri)!;
+
+    /// What [path]'s row says of its run, once it says A1–A[count] — or
+    /// what it says when it never does.
+    Future<String?> says(WidgetTester tester, String path, int count) async {
+      String? option() {
+        final text = find.descendant(
+          of: find.byKey(ValueKey<String>('import-cell-option-$path')),
+          matching: find.anyText(),
+        );
+        return text.evaluate().isEmpty
+            ? null
+            : tester.widget<Text>(text.first).data;
+      }
+
+      final span = AppText.strings.imRunSpan('A1', 'A$count', count);
+      await settleAsync(
+        tester,
+        () => option() == span,
+        step: const Duration(milliseconds: 50),
+      );
+      return option();
+    }
+
+    /// Whether the first of [grants]' row says the run of them all once
+    /// measured, and no other picture of it stands as a row of its own.
+    Future<void> oneRow(
+      WidgetTester tester,
+      List<FolderGrant> grants,
+    ) async {
+      final paths = [for (final grant in grants) pathOf(grant)];
+      expect(
+        await says(tester, paths.first, paths.length),
+        AppText.strings.imRunSpan('A1', 'A${paths.length}', paths.length),
+      );
+      for (final brought in paths.skip(1)) {
+        expect(
+          find.byKey(ValueKey<String>('import-cell-option-$brought')),
+          findsNothing,
+          reason: '$brought is A1\'s row\'s — no row of its own',
+        );
+      }
+    }
+
+    testWidgets('🚨A1..A4 picked together come as one row of the run', (
+      tester,
+    ) async {
+      final grants = await picks(tester, 4);
+      await drive(tester, grants);
+      await openPicked(tester, poolOnly: false);
+
+      await oneRow(tester, grants);
+    });
+
+    testWidgets('A1 on the device and A2..A3 from Drive, picked together: '
+        'the copies that come after A1 is read still run with it', (
+      tester,
+    ) async {
+      final grants = await picks(tester, 3, local: {1});
+      await drive(tester, grants);
+      await openPicked(tester, poolOnly: false);
+
+      await oneRow(tester, grants);
+    });
+
+    testWidgets('A1 and A2 on the device, measured as their run, then A3 '
+        'from Drive: the run they were measured as takes it in', (
+      tester,
+    ) async {
+      final grants = await picks(tester, 3, local: {1, 2});
+      await drive(tester, grants);
+      holdCopy = Completer<bool>();
+      await openPicked(tester, poolOnly: false);
+      expect(
+        await says(tester, grants.first.path!, 2),
+        AppText.strings.imRunSpan('A1', 'A2', 2),
+        reason: 'premise: the device\'s two are measured as a run',
+      );
+
+      holdCopy!.complete(true);
+      final copied = await settleAsync(
+        tester,
+        () =>
+            ProviderDocuments.workingCopyOf(grants.last.document!.uri) != null,
+      );
+      expect(copied, isTrue, reason: 'premise: A3\'s copy came');
+
+      await oneRow(tester, grants);
+    });
   });
 }

@@ -10,15 +10,19 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
+import '../../helpers/the_apps_engine_let_go.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// BEFORE THE APP'S ENGINE IS OPEN THE TILE STORE STANDS DOWN ENTIRELY
 /// ([appGpuEngineOpen]): it answers no span and asks for none, and its
 /// rows keep the classic paint — as every row does in a file that opens
-/// no engine. A file of its own: an engine once open stays open.
+/// no engine.
 void main() {
   test('a span asked for before the engine opens is none, and nothing is '
       'rastered for it', () async {
+    // An engine once open stays open, and bundled a file ahead of this one
+    // may have opened it.
+    theAppHasNoEngineYet();
     final store = TimelineGridTileStore.instance;
     final revisionBefore = store.revision.value;
     expect(appGpuEngineOpen.value, isNull, reason: 'premise');

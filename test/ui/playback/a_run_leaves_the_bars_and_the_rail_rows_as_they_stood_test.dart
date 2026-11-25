@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -110,6 +111,7 @@ bool _standsInABarOrARow(Element element) {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// The editor, a drawing on [drawnAt] of its one cut, standing there.
   Future<EditorSessionManager> pumpEditor(
     WidgetTester tester, {

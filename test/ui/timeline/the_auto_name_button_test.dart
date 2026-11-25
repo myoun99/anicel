@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -20,6 +21,7 @@ import '../../helpers/text_finders.dart';
 /// 지정이고, 누르면 숫자 편집하는 창 나와서 숫자만 입력가능」 — the button on
 /// both panels' shared pill, its window, and the link notice behind it.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const button = ValueKey<String>('shared-auto-name-button');
   const notice = ValueKey<String>('frame-name-conflict-dialog');
 

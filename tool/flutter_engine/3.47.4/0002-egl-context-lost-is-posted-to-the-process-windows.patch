@@ -1,0 +1,77 @@
+Anicel's own, step one of "the screen comes back": the Windows embedder
+says that the EGL context its screen is drawn with is lost.
+
+As shipped, a failed EGL call logs a line (LogEGLError) and returns
+false: nothing tells the app, and the window stays on its last picture
+(board a-real-gpu-reset-went-unheard-on-the-main-pc; the user's release
+app, 2026-11-16, 11-18, 11-22). Every failed EGL call of the embedder
+passes LogEGLError, so the loss is said there, once a process: each
+top-level window of the process is posted the window message registered
+by the name "FlutterWindowsEglContextLost", its WPARAM the EGL error.
+The app's runner registers the same name and says it to Dart where it
+says its own watch's word (windows/runner/flutter_window.cpp).
+
+One file, no header and no ABI changed: what an upgrade of Flutter costs
+is this hunk laid again. Base blob 85af46f6858a3 = this tree's file at
+3.47.4.
+
+diff --git a/engine/src/flutter/shell/platform/windows/egl/egl.cc b/engine/src/flutter/shell/platform/windows/egl/egl.cc
+index 85af46f..f08f3c5 100644
+--- a/engine/src/flutter/shell/platform/windows/egl/egl.cc
++++ b/engine/src/flutter/shell/platform/windows/egl/egl.cc
+@@ -4,8 +4,12 @@
+ 
+ #include "flutter/shell/platform/windows/egl/egl.h"
+ 
++#include <windows.h>
++
+ #include <EGL/egl.h>
+ 
++#include <atomic>
++
+ #include "flutter/fml/logging.h"
+ 
+ namespace flutter {
+@@ -50,10 +54,42 @@ const char* EGLErrorToString(EGLint error) {
+   return "Unknown";
+ }
+ 
++// [anicel 0002] The embedder never hears that the context its screen is
++// drawn with is lost: a call fails, a line is logged, and the window stays
++// on its last picture. Every failed EGL call of this embedder passes
++// LogEGLError, so the loss is said there, once a process: each top-level
++// window of the process is posted the message registered by this name,
++// its WPARAM the EGL error. A runner hears it by registering the same
++// name; one that does not is posted a message it has no handler for.
++constexpr wchar_t kContextLostMessageName[] = L"FlutterWindowsEglContextLost";
++
++BOOL CALLBACK PostContextLost(HWND window, LPARAM message) {
++  DWORD process = 0;
++  ::GetWindowThreadProcessId(window, &process);
++  if (process == ::GetCurrentProcessId()) {
++    ::PostMessageW(window, static_cast<UINT>(message), EGL_CONTEXT_LOST, 0);
++  }
++  return TRUE;
++}
++
++void TellContextLost() {
++  static std::atomic<bool> told{false};
++  if (told.exchange(true)) {
++    return;
++  }
++  const UINT message = ::RegisterWindowMessageW(kContextLostMessageName);
++  if (message != 0) {
++    ::EnumWindows(PostContextLost, static_cast<LPARAM>(message));
++  }
++}
++
+ }  // namespace
+ 
+ void LogEGLError(std::string_view message) {
+   const EGLint error = ::eglGetError();
++  if (error == EGL_CONTEXT_LOST) {
++    TellContextLost();
++  }
+   return FML_LOG(ERROR) << "EGL Error: " << EGLErrorToString(error) << " ("
+                         << error << ") " << message;
+ }

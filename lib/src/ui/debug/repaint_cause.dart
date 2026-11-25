@@ -31,7 +31,7 @@ abstract final class RepaintCause {
   /// Marks are only collected while Frame Stats is up. Everything here
   /// is one comparison and one string assignment on that path, and
   /// nothing at all otherwise.
-  static bool get collecting => MeasurementMode.frameStats.value;
+  static bool get collecting => MeasurementMode.debugWindow.value;
 
   static String? _cause;
   static Duration? _causeFrame;
@@ -139,6 +139,34 @@ abstract final class RepaintCause {
     });
   }
 
+  /// Every surface's bakes by their cause, since the window was last
+  /// reset — what the debug window says. `pointer` appearing here at all
+  /// is the finding: a panel re-baked because the mouse moved somewhere
+  /// else entirely, the cost this whole thing exists to remove and
+  /// invisible by every other means. 🗣️관제 2026-11-24
+  /// (one-debug-window-shows-everything): 「RepaintCause 는 보이거나 지운다」
+  /// — it was counted on each surface and read by nothing but tests.
+  static final Map<String, int> _bakes = <String, int>{};
+
+  /// The bakes by cause.
+  static Map<String, int> get bakes => Map.unmodifiable(_bakes);
+
+  /// Counts one bake to its [cause].
+  static void tally(String cause) => _bakes[cause] = (_bakes[cause] ?? 0) + 1;
+
+  /// The bakes by cause, the most first: `bakes  pointer 3  unknown 12`,
+  /// `bakes  none` while nothing baked.
+  static String bakeLine() {
+    final causes = _bakes.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return causes.isEmpty
+        ? 'bakes  none'
+        : 'bakes  ${causes.map((c) => '${c.key} ${c.value}').join('  ')}';
+  }
+
+  /// Forgets the bakes counted — the window's reset.
+  static void forget() => _bakes.clear();
+
   @visibleForTesting
   static int debugRegistrations = 0;
 
@@ -163,6 +191,7 @@ abstract final class RepaintCause {
 
   @visibleForTesting
   static void reset() {
+    forget();
     _cause = null;
     _causeFrame = null;
     _pending = false;

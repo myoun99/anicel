@@ -188,10 +188,23 @@ class EngineTileLedger implements TilePixelsOnEngine, CelShells {
   /// of the store that needs it among them (관제 2026-11-15,
   /// a-picture-lay-holds-the-raster-thread), which the pool's own `bytes`
   /// leaves to its budget.
-  static int get appPoolBytes => switch (opened?.pool) {
-    null => 0,
-    final pool => pool.bytes + pool.aheadBytes,
-  };
+  static int get appPoolBytes {
+    final (:pages, :folded, :ahead) = appPoolParts;
+    return pages + folded + ahead;
+  }
+
+  /// [appPoolBytes] parted: the pages of tiles, the pages of folded tiles,
+  /// and the page made ahead — the debug window's memory shows each (card
+  /// one-debug-window-shows-everything).
+  static ({int pages, int folded, int ahead}) get appPoolParts =>
+      switch (opened?.pool) {
+        null => (pages: 0, folded: 0, ahead: 0),
+        final pool => (
+          pages: pool.bytes - pool.foldedBytes,
+          folded: pool.foldedBytes,
+          ahead: pool.aheadBytes,
+        ),
+      };
 
   /// The most a pool is told it may make: past any device.
   static const int _unbounded = 0x7fffffffffffffff;
@@ -520,17 +533,8 @@ final GpuEngine _engine;
   /// then nothing but its collection or [retire] lets it go — and till then
   /// it keeps [under], the tile it landed on ([_Slot.under]), and [made],
   /// how its landing is made again ([_Slot.made]).
-  BitmapTile _adopted(
-    GpuTile at, {
-    bool? hasInk,
-    BitmapTile? under,
-    _Made? made,
-  }) {
-    final tile = BitmapTile.onEngine(
-      size: gpuTileSide,
-      on: this,
-      hasInk: hasInk,
-    );
+  BitmapTile _adopted(GpuTile at, {BitmapTile? under, _Made? made}) {
+    final tile = BitmapTile.onEngine(size: gpuTileSide, on: this);
     _give(tile, at)
       ..under = under
       ..made = made;
@@ -584,8 +588,8 @@ final GpuEngine _engine;
 
   /// What [by] makes of the tiles [asks] — `GpuStroke.land`,
   /// `GpuStampLanding.land` —, each result a tile of its own, on the pages
-  /// of what lands ([landedCel]); [compared], [by]'s, says the results' ink
-  /// is known. A full pool has room made as [_store]'s is
+  /// of what lands ([landedCel]); [compared], [by]'s, says it told each
+  /// result the box its ink fills ([GpuLanded]). A full pool has room made as [_store]'s is
   /// ([_shortAsRoomIsMade]): what is on the way to the screen has no
   /// fallback.
   ///
@@ -667,30 +671,40 @@ final GpuEngine _engine;
   }
 
   /// What [landed] made of [asks], in their order: a tile of its own
-  /// where one landed ([_adopted]) — its ink known where the landing
-  /// [compared] —, which keeps the tile it landed on and, where [again]
-  /// says how, the way its landing is made again.
+  /// where one landed ([_adopted]) — the box its ink fills known where the
+  /// landing [compared], as it was told it —, which keeps the tile it
+  /// landed on and, where [again] says how, the way its landing is made
+  /// again.
+  ///
+  /// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  /// places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): what [toldOf]
+  /// is told a stroke's tiles, every landing that compares is told — a
+  /// blur's, a fill's, a stamp's, a plug-in's —, so the move tool's box
+  /// asks no scan of a tile they landed. ↩️Till then such a tile knew it
+  /// held ink, and not where.
   List<LandedTile> _adoptedOf(
     List<TileAsk> asks,
     List<GpuLanded> landed, {
     required bool compared,
     LandsAgain? again,
-  }) => [
-    for (final (at, (:change, :tile)) in landed.indexed)
-      (
-        change: change,
-        tile: tile == null
-            ? null
-            : _adopted(
-                tile,
-                hasInk: compared ? true : null,
-                under: asks[at].under,
-                made: again == null
-                    ? null
-                    : (by: again, column: asks[at].column, row: asks[at].row),
-              ),
-      ),
-  ];
+  }) {
+    final adopted = <LandedTile>[];
+    for (final (at, (:change, :tile, :box)) in landed.indexed) {
+      final ask = asks[at];
+      final made = again == null
+          ? null
+          : (by: again, column: ask.column, row: ask.row);
+      final one = tile == null
+          ? null
+          : _adopted(tile, under: ask.under, made: made);
+      if (compared) {
+        one?.rememberInkBounds(_boundsOf(box));
+      }
+      adopted.add((change: change, tile: one));
+    }
+    return adopted;
+  }
+
 
   /// [land] compared, with no wait for the GPU: [by] —
   /// `GpuStampLanding.finished`, `finishedMask` — is asked what it makes
@@ -743,15 +757,157 @@ final GpuEngine _engine;
       _foldBeforeLong();
       var next = 0;
       return _adoptedOf(asks, [
-        for (final change in finished.changes)
+        for (final (at, change) in finished.changes.indexed)
           (
             change: change,
             tile: change == GpuChange.inked ? places[next++] : null,
+            box: finished.inks[at],
           ),
       ], compared: true);
     } finally {
       finished.free();
     }
+  }
+
+  /// [tiles] — each the engine's alone, landed here at its [column] and
+  /// [row] — made again by [by] should the device go with them: what a
+  /// landing handed [land]'s `again` keeps of each it made ([_Slot.made]).
+  void makesAgain(
+    List<({BitmapTile tile, int column, int row})> tiles,
+    LandsAgain by,
+  ) {
+    for (final (:tile, :column, :row) in tiles) {
+      final slot = _slotNow(tile);
+      if (slot != null && tile.isOnlyOnEngine) {
+        slot.made = (by: by, column: column, row: row);
+      }
+    }
+  }
+
+  /// What each of [tiles] — tiles landed here, each at its [column] and
+  /// [row] — is beside the tile it landed on ([_Slot.under]), asked by [by]
+  /// with no wait for the GPU (`GpuStroke.toldOf`) and told once it has
+  /// said: each one's ink, its own from then on ([BitmapTile.toldInk]),
+  /// and the box it fills ([BitmapTile.rememberInkBounds]).
+  /// Till then each shows what its stroke showed under the pen
+  /// ([BitmapTile.showsInkNow]): ink, or where [erases], what the tile it
+  /// landed on showed — an eraser adds no ink. Where the engine
+  /// could not tell (a tile that lies folded), each is read as
+  /// it would have been ([BitmapTile.hasInk]). Done once all are told.
+  ///
+  /// Asked of the tiles the engine alone holds: one whose bytes are here
+  /// reads its ink for nothing, and one with no slot here was not landed
+  /// here.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-2): pen-up hands the cel the tiles the stroke's steps put on
+  /// their way ([land], uncompared — their ink not known), where it laid
+  /// the stroke again compared, the UI's thread waiting for the GPU to say
+  /// what each is. 「모름 → 아는 것으로 그리고, 답이 오면 고침」: what [land]
+  /// compared waits for, this is told — as a cut ahead is ([landOnceTold]).
+  ///
+  /// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  /// places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): the move
+  /// tool's box (`bitmapSurfaceContentBounds`) scanned a stroke's tiles for
+  /// their ink the moment it was asked, waiting for the GPU on the UI's
+  /// thread — and a box drawn wide while that was told would open Ctrl+T on
+  /// the wrong centre. The test that tells what each tile is tells its box
+  /// too, so it is remembered here, before anything asks. ↩️Till then a tile
+  /// told the same was told the ink of the tile under it, unknown where
+  /// that one's was: the box is the one answer now — a tile the same holds
+  /// the bytes it was compared with, and the box is of those.
+  Future<void> toldOf(
+    List<({BitmapTile tile, int column, int row})> tiles, {
+    required ToldBy by,
+    required bool erases,
+  }) async {
+    final told = Completer<void>();
+    final asked = <({BitmapTile tile, BitmapTile? under})>[];
+    final asks = <TileAsk>[];
+    for (final (:tile, :column, :row) in tiles) {
+      final slot = _slotNow(tile);
+      if (slot == null || !tile.isOnlyOnEngine) {
+        continue;
+      }
+      final under = slot.under;
+      tile.inkToBeTold(
+        told.future,
+        showsInk: !erases || (under?.showsInkNow ?? false),
+      );
+      asked.add((tile: tile, under: under));
+      asks.add((column: column, row: row, under: under));
+    }
+    ({List<GpuChange> changes, List<GpuInkBox?> inks})? said;
+    try {
+      if (asked.isNotEmpty) {
+        final finished = await held(
+          (hold) => by(pool, [
+            for (final (at, ask) in _askedOf(hold, asks).indexed)
+              (_slotNow(asked[at].tile)!.at, ask),
+          ]),
+        );
+        try {
+          said = (changes: finished.changes, inks: finished.inks);
+        } finally {
+          finished.free();
+        }
+      }
+    } on GpuRefused {
+      said = null;
+    } finally {
+      _tell(asked, said);
+      told.complete();
+    }
+  }
+
+  /// Each of [asked] told what [said] — null where the engine could not
+  /// tell — says of it, as [toldOf] has it.
+  void _tell(
+    List<({BitmapTile tile, BitmapTile? under})> asked,
+    ({List<GpuChange> changes, List<GpuInkBox?> inks})? said,
+  ) {
+    for (final (at, (:tile, :under)) in asked.indexed) {
+      final change = said?.changes[at];
+      if (said != null) {
+        final box = _boundsOf(said.inks[at]);
+        tile.rememberInkBounds(box);
+        // 🗣️브러시/렌더링 2026-11-24: a tile told the same is the tile
+        // under it in the cel from here on ([toldInPlaceOf] · the commit's
+        // `toldTidied`), and the box goes with it — it is that tile's
+        // bytes the test read.
+        if (change == GpuChange.same) {
+          under?.rememberInkBounds(box);
+        }
+      }
+      tile.toldInk(null);
+      // ⚠️Only while its bytes are still the engine's alone: one whose
+      // bytes came here meanwhile has let the tile it landed on go
+      // ([_Slot.keepsNothing]), and told the same then it would read as
+      // told the same as none.
+      final slot = _slotNow(tile);
+      if (slot != null && tile.isOnlyOnEngine) {
+        slot.told = change;
+      }
+    }
+  }
+
+  /// What a compared landing would have left where [tile] lies, as [toldOf]
+  /// was told it: the tile it landed on where told the same as that, a blank
+  /// one where told no ink is left or the same as none — null where [tile]
+  /// stays: told ink of its own, not told, or its bytes here.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-1): the tiles pen-up hands over are the cel's whatever they turn
+  /// out to be, and a tile told the same as the one under it is that tile's
+  /// pixels held twice — 「Same → 원래 객체 · Cleared → 버림」, where the cel
+  /// still holds it (`toldTidied`).
+  BitmapTile? toldInPlaceOf(BitmapTile tile) {
+    final slot = _slotNow(tile);
+    return switch (slot?.told) {
+      GpuChange.same => slot!.under ?? BitmapTile.blank(size: tile.size),
+      GpuChange.cleared => BitmapTile.blank(size: tile.size),
+      GpuChange.inked || null => null,
+    };
   }
 
   /// Every tile of [rect] — a rectangle of tiles on the canvas's grid: its
@@ -945,19 +1101,20 @@ final GpuEngine _engine;
     debugInkScans += 1;
     final slots = hold.slotsOf(cel, tiles);
     for (final walked in _ink.run(pool, 0, 0, tiles.length, 1, slots)) {
-      final box = walked.box;
-      tiles[walked.column].rememberInkBounds(
-        box == null
-            ? null
-            : (
-                left: box.left,
-                top: box.top,
-                rightExclusive: box.right,
-                bottomExclusive: box.bottom,
-              ),
-      );
+      tiles[walked.column].rememberInkBounds(_boundsOf(walked.box));
     }
   });
+
+  /// The engine's [box] of a tile's ink as the app keeps one — none where
+  /// it holds none.
+  static TileInkBounds? _boundsOf(GpuInkBox? box) => box == null
+      ? null
+      : (
+          left: box.left,
+          top: box.top,
+          rightExclusive: box.right,
+          bottomExclusive: box.bottom,
+        );
 
   /// The scans [rememberInk] asked of the engine — each a wait of the
   /// GPU's: what a walk over many pictures asks once.
@@ -1655,6 +1812,15 @@ typedef LandedBy =
 typedef FinishedBy =
     Future<GpuFinished> Function(GpuPool pool, List<GpuTileAsk> asked);
 
+/// What asks the engine what tiles landed are, each beside the tile it
+/// landed on, on a pool, and is told it ([EngineTileLedger.toldOf]):
+/// `GpuStroke.toldOf`.
+typedef ToldBy =
+    Future<GpuFinished> Function(
+      GpuPool pool,
+      List<(GpuTile, GpuTileAsk)> tiles,
+    );
+
 /// How a landing is made again once the engine it was made on is gone:
 /// what it laid, as values — nothing of that engine's, which a [LandedBy]
 /// holds.
@@ -1733,10 +1899,17 @@ final class _Slot {
   /// let go as [under] is.
   _Made? made;
 
-  /// Its tile's bytes are here: neither is its to keep any longer.
+  /// What [onlyOnEngine] was told it is beside [under]
+  /// (`EngineTileLedger.toldOf`) — what a compared landing would have left
+  /// in its place (`EngineTileLedger.toldInPlaceOf`). Kept and let go as
+  /// [under] is: the tile it was told the same as is [under].
+  GpuChange? told;
+
+  /// Its tile's bytes are here: none of them is its to keep any longer.
   void keepsNothing() {
     under = null;
     made = null;
+    told = null;
   }
 
   /// Let go already — by its key's finalizer, a full pool or a give-back.

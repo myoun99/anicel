@@ -254,10 +254,14 @@ class BitmapSurface {
   /// every reader of this question — the row's image, the block's tint, the
   /// pixel buttons — counts it without being told about texts. A sheet's
   /// photo is kept with its picture the same way (I-97).
-  bool get showsSomething =>
-      texts.isNotEmpty ||
-      photos.isNotEmpty ||
-      _tiles.values.any((tile) => tile.hasInk);
+  bool get showsSomething => _shows((tile) => tile.hasInk);
+
+  /// [showsSomething] said now, with no wait for the GPU
+  /// ([BitmapTile.showsInkNow]): what a cel's block is tinted by.
+  bool get showsSomethingNow => _shows((tile) => tile.showsInkNow);
+
+  bool _shows(bool Function(BitmapTile tile) inked) =>
+      texts.isNotEmpty || photos.isNotEmpty || _tiles.values.any(inked);
 
   /// How many tiles this picture keeps in memory: the drawing's, and every
   /// text's plate.
@@ -485,10 +489,12 @@ class BitmapSurface {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     // ⚠️Only what is actually STORED is checked. A blank tile is dropped,
     // and the storability law is about what a surface holds.
+    // 🚨Kept where its ink is not known with no wait: to know is to wait
+    // for the GPU (관제 2026-11-24 ③-2 — pen-up hands its tiles over).
     final kept = <PlacedTile>[];
     for (final placed in tilesToPut) {
       final tile = placed.tile;
-      if (tile.hasInk) {
+      if (tile.inkWithNoWait ?? true) {
         updated[placed.coord] = tile;
         kept.add(placed);
       } else {

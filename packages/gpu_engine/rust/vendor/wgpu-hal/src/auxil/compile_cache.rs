@@ -16,15 +16,30 @@
 //! root signature and the shader — so a hash that two askings share hands
 //! neither the other's, and a file a crash cut short or a disk changed is a
 //! miss, not what was made. The driver checks both besides.
+//!
+//! ⚖️ONE LAW, EVERY BACKEND THAT KEEPS (🗣️유저 2026-11-13 「디스크 캐시」;
+//! card the-galaxy-tab-canvas-went-slow-on-build-1095, 2026-11-24): what
+//! the driver made of a pipeline is kept and handed back by this one code
+//! — on D3D12 the pipeline's cached blob (`GetCachedBlob` → `CachedPSO`),
+//! on Vulkan what a pipeline cache of that pipeline alone holds
+//! (`vkGetPipelineCacheData` → `VkPipelineCacheCreateInfo::pInitialData`,
+//! vulkan/device.rs). ↩️Till 2026-11-24 this was dx12/'s alone, and the
+//! Galaxy Tab (Adreno 740, Vulkan) compiled every kernel again at every
+//! launch — the law kept on Windows only, by no one's word. ⚠️A blob a
+//! Vulkan driver is handed and does not take is a compile there, not a
+//! fault: a driver takes from a pipeline cache only what all the pipeline
+//! is made of matches, so a key here that two pipelines share costs a
+//! miss, never a wrong pipeline.
 
 use alloc::vec::Vec;
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt as _;
 use std::{
     fs,
     io::{ErrorKind, Write as _},
-    os::windows::fs::OpenOptionsExt as _,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use parking_lot::RwLock;
@@ -63,17 +78,35 @@ const TURN_STANDS: Duration = Duration::from_secs(30);
 /// How long a compile waits between two looks at another's turn.
 const TURN_LOOK: Duration = Duration::from_millis(10);
 
+/// How long a compile waits for another's turn before it says so on stderr
+/// ([`CompileCache::say_waiting`]) — once a turn, and again as the wait
+/// ends.
+///
+/// 🧭an-engine-setup-hangs-in-a-batch (2026-11-23): an engine test's setUpAll
+/// stood twelve minutes in a bundled run, its own CPU next to idle while
+/// other test processes kept the machine busy, and never stood alone. A
+/// test opens and compiles on its own isolate, so a wait here holds that
+/// isolate inside the call and no Dart timeout speaks: what the process
+/// writes to stderr is what such a run leaves. ⚠️Said, not changed: how
+/// long a turn is waited for is [`TURN_STANDS`]'s, as before.
+const TURN_SAID: Duration = Duration::from_secs(10);
+
 /// `FILE_FLAG_DELETE_ON_CLOSE`: a turn's file goes when its holder lets go
-/// of it — closing it, or ending, however it ends.
+/// of it — closing it, or ending, however it ends. Elsewhere a turn's file
+/// goes as its holder lets go of it ([`Held`]), and one whose holder ended
+/// without is past once that process is gone ([`held_for`]).
+#[cfg(windows)]
 const GOES_WITH_ITS_HOLDER: u32 = 0x0400_0000;
 
 /// What a kept file holds.
 #[derive(Clone, Copy)]
-pub(super) enum Made {
-    /// What DXC made of a shader.
+pub(crate) enum Made {
+    /// What DXC made of a shader — D3D12's alone.
+    #[cfg_attr(not(dx12), allow(dead_code))]
     Dxil,
-    /// What the driver made of a compute pipeline (`GetCachedBlob`), to be
-    /// handed back to it (`CachedPSO`).
+    /// What the driver made of a compute pipeline — D3D12's
+    /// `GetCachedBlob`, handed back as `CachedPSO`; Vulkan's pipeline cache
+    /// of that pipeline alone, handed back as a new one's initial data.
     ///
     /// 🔬Main PC, 18 test suites at once (timeline/conte, 11-18, board
     /// two-tests-spend-the-wait-windows-minute-under-load): NVIDIA's own
@@ -97,18 +130,51 @@ impl Made {
 }
 
 /// What a compile of what was asked comes to ([`CompileCache::turn`]).
-pub(super) enum Turn {
+pub(crate) enum Turn {
     /// What was made of it before — in this process or in another.
     Kept(Vec<u8>),
     /// Compiled here — and by no other process that keeps what it makes in
     /// the same folder, where this holds the turn: till it is let go, after
     /// what was made is kept.
-    Compile(Option<fs::File>),
+    Compile(Option<Held>),
+}
+
+/// A turn held ([`Turn::Compile`]): its file, gone as it is let go —
+/// Windows lets go of the file itself ([`GOES_WITH_ITS_HOLDER`]), elsewhere
+/// it is removed here.
+pub(crate) struct Held {
+    _file: fs::File,
+    #[cfg(not(windows))]
+    path: PathBuf,
+}
+
+#[cfg(not(windows))]
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// The turn at `path`, taken where none is: a file made new, which says
+/// whose it is.
+fn take_turn(path: &Path) -> std::io::Result<Held> {
+    let mut options = fs::File::options();
+    options.write(true).create_new(true);
+    #[cfg(windows)]
+    options.custom_flags(GOES_WITH_ITS_HOLDER);
+    let mut file = options.open(path)?;
+    // Whose it is, for whoever waits on it (`Self::say_waiting`).
+    let _ = file.write_all(alloc::format!("{}", std::process::id()).as_bytes());
+    Ok(Held {
+        _file: file,
+        #[cfg(not(windows))]
+        path: path.to_path_buf(),
+    })
 }
 
 /// A device's folder for what its compiles made — none till one is named.
 #[derive(Default)]
-pub(super) struct CompileCache {
+pub(crate) struct CompileCache {
     folder: RwLock<Option<PathBuf>>,
     /// How many compiles of each [`Made`] the folder has answered
     /// ([`Self::used`]).
@@ -116,13 +182,16 @@ pub(super) struct CompileCache {
     /// How many looks of a compile of each [`Made`] found another's turn
     /// held and waited ([`Self::turn`]).
     waited: [AtomicU64; 2],
+    /// How many lines a compile of each [`Made`] has said on stderr of its
+    /// wait for another's turn ([`Self::say_waiting`]).
+    said: [AtomicU64; 2],
 }
 
 impl CompileCache {
     /// Keeps what is made in `folder` from now on — made where it is not
     /// there, its oldest let go past [`MOST_BYTES`] — or nowhere where
     /// `folder` is `None`.
-    pub(super) fn keep_in(&self, folder: Option<PathBuf>) {
+    pub(crate) fn keep_in(&self, folder: Option<PathBuf>) {
         if let Some(folder) = &folder {
             if let Err(error) = fs::create_dir_all(folder) {
                 log::warn!("compile cache {folder:?}: {error}");
@@ -130,6 +199,12 @@ impl CompileCache {
             let_go_past(folder, MOST_BYTES);
         }
         *self.folder.write() = folder;
+    }
+
+    /// Whether a folder is named: what is made is kept, and looked for.
+    #[cfg(vulkan)]
+    pub(crate) fn keeps(&self) -> bool {
+        self.folder.read().is_some()
     }
 
     /// What was made of `asked` before, if it is in the folder whole.
@@ -175,25 +250,27 @@ impl CompileCache {
     /// made compiled again — and so had one whose turn was going as it was
     /// asked for. Under load the two steps stand apart: the pin of a kernel
     /// waited for found it compiled twice, in two lanes' gates that day.
-    pub(super) fn turn(&self, made: Made, asked: &[u8]) -> Turn {
+    pub(crate) fn turn(&self, made: Made, asked: &[u8]) -> Turn {
         let Some(turn) = self.path(made, asked).map(|path| path.with_extension("turn")) else {
             return Turn::Compile(None);
         };
         if let Some(kept) = self.read(made, asked) {
             return Turn::Kept(kept);
         }
+        let started = Instant::now();
+        let mut said = false;
         let held = loop {
-            let taken = fs::File::options()
-                .write(true)
-                .create_new(true)
-                .custom_flags(GOES_WITH_ITS_HOLDER)
-                .open(&turn);
-            match taken {
+            match take_turn(&turn) {
                 Ok(held) => break Some(held),
                 Err(error)
                     if error.kind() == ErrorKind::AlreadyExists && held_for(&turn, TURN_STANDS) =>
                 {
                     self.waited[made as usize].fetch_add(1, Ordering::Relaxed);
+                    if !said && started.elapsed() >= TURN_SAID {
+                        said = true;
+                        let how = alloc::format!("{}, and waits on", whose(&turn));
+                        self.say_waiting(made, &turn, started.elapsed(), &how);
+                    }
                     std::thread::sleep(TURN_LOOK);
                 }
                 // A turn its holder never let go of, a turn going this very
@@ -204,6 +281,11 @@ impl CompileCache {
                 Err(_) => break None,
             }
         };
+        if said {
+            // ⛔Not whose it is again: a turn taken is this one's own by now.
+            let how = if held.is_some() { "and took it" } else { "and compiles past it" };
+            self.say_waiting(made, &turn, started.elapsed(), how);
+        }
         // Kept by the turn's last holder: handed, and the turn let go here.
         match self.read(made, asked) {
             Some(kept) => Turn::Kept(kept),
@@ -213,14 +295,14 @@ impl CompileCache {
 
     /// Counts a compile of `made` the folder answered: what [`Self::turn`]
     /// handed was used.
-    pub(super) fn used(&self, made: Made) {
+    pub(crate) fn used(&self, made: Made) {
         self.found[made as usize].fetch_add(1, Ordering::Relaxed);
     }
 
     /// Keeps `bytes`, what was made of `asked`, for the next to ask —
     /// written beside its name and then renamed to it, so that no reader
     /// meets half of it. A failure leaves the folder as it was.
-    pub(super) fn write(&self, made: Made, asked: &[u8], bytes: &[u8]) {
+    pub(crate) fn write(&self, made: Made, asked: &[u8], bytes: &[u8]) {
         let Some(path) = self.path(made, asked) else {
             return;
         };
@@ -249,14 +331,33 @@ impl CompileCache {
 
     /// How many compiles of `made` the folder has answered since the device
     /// opened.
-    pub(super) fn found(&self, made: Made) -> u64 {
+    pub(crate) fn found(&self, made: Made) -> u64 {
         self.found[made as usize].load(Ordering::Relaxed)
     }
 
     /// How many looks of a compile of `made` have found another's turn
     /// held, since the device opened.
-    pub(super) fn waited(&self, made: Made) -> u64 {
+    pub(crate) fn waited(&self, made: Made) -> u64 {
         self.waited[made as usize].load(Ordering::Relaxed)
+    }
+
+    /// Says on stderr that this process has waited `waited` for the turn at
+    /// `path`, and `how` it stands ([`TURN_SAID`]).
+    fn say_waiting(&self, made: Made, path: &Path, waited: Duration, how: &str) {
+        std::eprintln!(
+            "anicel compile cache: process {} waited {:.1} s for the turn {:?}, {how}",
+            std::process::id(),
+            waited.as_secs_f64(),
+            path.file_name().unwrap_or_default(),
+        );
+        self.said[made as usize].fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many lines compiles of `made` have said on stderr of their waits
+    /// for another's turn, since the device opened.
+    #[cfg_attr(not(dx12), allow(dead_code))]
+    pub(crate) fn said(&self, made: Made) -> u64 {
+        self.said[made as usize].load(Ordering::Relaxed)
     }
 }
 
@@ -286,13 +387,42 @@ fn kept<'a>(file: &'a [u8], asked: &[u8]) -> Option<&'a [u8]> {
     (kept_asked == asked && fnv1a(made) == word(24)).then_some(made)
 }
 
-/// Whether the turn at `path` was taken less than `stands` ago — or is
-/// gone already, which the next look finds.
+/// Whether the turn at `path` was taken less than `stands` ago by a
+/// holder still running — or is gone already, which the next look finds.
 fn held_for(path: &Path, stands: Duration) -> bool {
     let Ok(taken) = fs::metadata(path).and_then(|meta| meta.modified()) else {
         return true;
     };
-    taken.elapsed().map_or(true, |age| age < stands)
+    taken.elapsed().map_or(true, |age| age < stands) && !holder_gone(path)
+}
+
+/// Whether the process the turn at `path` names has ended: an app killed
+/// as it compiled left its turn, and its next launch is a new process —
+/// ⛔not one to wait out [`TURN_STANDS`] for at its first kernel. Windows
+/// lets go of such a file itself ([`GOES_WITH_ITS_HOLDER`]).
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn holder_gone(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|holder| holder.trim().parse::<u32>().ok())
+        .is_some_and(|pid| !Path::new(&alloc::format!("/proc/{pid}")).exists())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn holder_gone(_path: &Path) -> bool {
+    false
+}
+
+/// Whose the turn at `path` is, as its holder wrote it, and how long ago
+/// it was taken.
+fn whose(path: &Path) -> alloc::string::String {
+    let holder = fs::read_to_string(path).unwrap_or_default();
+    let holder = if holder.trim().is_empty() { "unsaid" } else { holder.trim() };
+    let taken = fs::metadata(path).and_then(|meta| meta.modified()).ok();
+    match taken.and_then(|taken| taken.elapsed().ok()) {
+        Some(age) => alloc::format!("held by process {holder}, taken {:.1} s ago", age.as_secs_f64()),
+        None => alloc::format!("held by process {holder}"),
+    }
 }
 
 /// Deletes the files of `folder` used longest ago till it holds no more
@@ -330,7 +460,7 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 
 /// What was asked of a compile, as a key: each part its length and its
 /// bytes, so that no two askings run together into one.
-pub(super) fn asked<'a>(parts: impl IntoIterator<Item = &'a [u8]>) -> Vec<u8> {
+pub(crate) fn asked<'a>(parts: impl IntoIterator<Item = &'a [u8]>) -> Vec<u8> {
     let mut asked = Vec::new();
     for part in parts {
         asked.extend_from_slice(&(part.len() as u64).to_le_bytes());

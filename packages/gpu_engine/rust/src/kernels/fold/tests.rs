@@ -61,7 +61,7 @@ fn colour(seed: u32, block: u32, index: u32) -> u32 {
 
 /// A tile whose block `block` holds `counts(block)` colours of its own
 /// ([`colour`]): each once in its first pixels, then as they fall.
-pub(super) fn tile_of(seed: u32, counts: impl Fn(u32) -> u32) -> Vec<u32> {
+pub(crate) fn tile_of(seed: u32, counts: impl Fn(u32) -> u32) -> Vec<u32> {
     let mut words = vec![0; TILE_TEXELS as usize];
     for block in 0..BLOCKS {
         let count = counts(block);
@@ -209,7 +209,7 @@ fn beside(pages: &[wgpu::Buffer], tiles: &[Vec<u32>], places: &[TileAt]) -> Vec<
     let engine = rig().engine;
     let put = words_buffer(engine, "tiles put", &tiles.concat(), wgpu::BufferUsages::STORAGE);
     let places: Vec<Option<TileAt>> = places.iter().copied().map(Some).collect();
-    kernels().write.changed(engine, pages, &put, &places).expect("the write path's test")
+    kernels().write.changed(engine, pages, &put, &places).expect("the write path's test").changes
 }
 
 /// A row of the tiles at `places`, a column each, laid by `step`.

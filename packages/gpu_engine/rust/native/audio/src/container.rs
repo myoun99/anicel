@@ -6,12 +6,18 @@
 //! archive's — which for a carried sound is thousands of bytes earlier, and
 //! reads as a corrupt file rather than as the arithmetic bug it is. The span
 //! reader is where that arithmetic lives, once.
+//!
+//! 🚨EVERY READ OF IT IS COUNTED IN ONE [Reach] — the span's own, the
+//! cursors' (they read through it) and each span opened again for an OS
+//! stage ([Container::span_again]): how far the decoder has read, whichever
+//! decoder it is (🗣️유저 11-23, decoder-reads-skip-the-percent-Q2 「디코더가
+//! 읽은 바이트를 센다」).
 
 use std::ffi::{CStr, CString};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use media::span::Span;
+use media::span::{Reach, Span};
 use symphonia::core::io::MediaSource;
 
 /// Where a container is stored: `[offset, offset + length)` of `path`, as it
@@ -35,7 +41,8 @@ impl Stored {
 pub(crate) struct Container {
     span: Arc<Mutex<Span>>,
     size: i64,
-    /// Read only by the OS stages that open the file their own way (Media
+    reach: Reach,
+    /// Read only by the OS stages that read on threads of their own (Media
     /// Foundation's, the NDK's); AudioToolbox reads through the span.
     #[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
     stored: Arc<Stored>,
@@ -48,24 +55,22 @@ impl Container {
         let stored = Stored { path: path.to_owned(), offset, length, framed };
         let span = stored.open()?;
         let size = span.size();
-        Some(Container { span: Arc::new(Mutex::new(span)), size, stored: Arc::new(stored) })
+        let reach = span.reach();
+        Some(Container { span: Arc::new(Mutex::new(span)), size, reach, stored: Arc::new(stored) })
     }
 
     /// The container's span opened once more, for a decoder that reads it
     /// on threads of its own (the OS stage's): its own file handle and
-    /// position, never this container's.
+    /// position, never this container's — and its reads counted as this
+    /// container's ([Container::reach]).
     #[cfg(any(windows, target_os = "android"))]
     pub(crate) fn span_again(&self) -> Option<Span> {
-        self.stored.open()
+        Some(self.stored.open()?.reaching(self.reach.clone()))
     }
 
-    /// Where the container is stored — the path, the offset and length of
-    /// its span, whether it is framed — for a decoder that opens the file its
-    /// own way: the NDK's extractor takes a descriptor and a range.
-    #[cfg(target_os = "android")]
-    pub(crate) fn stored(&self) -> (&CStr, i64, i64, bool) {
-        let stored = &*self.stored;
-        (&stored.path, stored.offset, stored.length, stored.framed)
+    /// How far into the container its decoder has read ([Reach]).
+    pub(crate) fn reach(&self) -> &Reach {
+        &self.reach
     }
 
     /// How many bytes the container has — for a framed span, decoded.

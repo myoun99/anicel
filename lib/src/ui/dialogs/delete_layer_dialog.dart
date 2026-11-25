@@ -12,7 +12,8 @@ class DeleteLayerDialog extends StatelessWidget {
   });
 
   /// Every row that goes, by name, as the rail lists them — top first: the
-  /// rows the delete names, and what they take along.
+  /// rows the delete names, and what they take along — then the rows it
+  /// takes from other cuts, each by its cut.
   ///
   /// 🗣️F-303 (유저 2026-10-06): 「ui 공용 리스트화 사용안하는거 연결. 지금
   /// 레이어 삭제시 아직도 하나하나 묻고있음. 여러 프레임 링크하는 창에서 쓰는

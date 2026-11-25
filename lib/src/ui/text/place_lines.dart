@@ -32,9 +32,10 @@ String ownerLine(PlaceOwner owner) => switch (owner.away) {
 
 /// A ROW as one line: what holds it — its cut, or its track — and its name.
 ///
-/// Four lists name a row — a frame's place (its first two parts), a media
-/// pool file's row uses, a link badge's partners and a lane key's link
-/// notice — so a row reads the same wherever it is listed.
+/// Five lists name a row — a frame's place (its first two parts), a media
+/// pool file's row uses, a link badge's partners, a lane key's link notice
+/// and the rows a delete takes from other cuts ([rowPlaceLinesElsewhere])
+/// — so a row reads the same wherever it is listed.
 String rowPlaceLine({required PlaceOwner owner, required String layerName}) =>
     '${ownerLine(owner)} · $layerName';
 
@@ -121,12 +122,39 @@ List<String> drawingPlaceLines(
 /// What a lane KEY's link notice lists: the keys a join re-values sit on
 /// that row's lanes, and a key has no drawing of its own to name.
 List<String> rowPlaceLines(Project project, LayerId layerId) => [
-  if (_rowOf(project, layerId) case final owned?)
-    rowPlaceLine(
-      owner: placeOwnerOf(project, track: owned.track, cut: owned.cut),
-      layerName: owned.layer.name,
-    ),
+  if (_rowOf(project, layerId) case final owned?) _placeLineOf(project, owned),
 ];
+
+/// The rows of [rows] that stand in cuts other than [cutId], each as
+/// [rowPlaceLine] names it — its timeline first where that is not the open
+/// one: cut by cut as the timelines hold them, each cut's rows top first.
+///
+/// What a delete window lists under the rows of the cut it is asked in:
+/// the rows the delete takes from the other cuts a row stands in too.
+/// 07-21 「완전 링크」 said a linked row's delete goes to every cut WITH a
+/// notice — 「컷 X에서도 함께 사라집니다」 — and no window said it.
+List<String> rowPlaceLinesElsewhere(
+  Project project,
+  Set<LayerId> rows, {
+  required CutId cutId,
+}) {
+  final byCut = <CutId, List<String>>{};
+  for (final owned in projectLayersWithOwners(project)) {
+    final cut = owned.cut;
+    if (cut != null && cut.id != cutId && rows.contains(owned.layer.id)) {
+      (byCut[cut.id] ??= []).add(_placeLineOf(project, owned));
+    }
+  }
+  return [for (final lines in byCut.values) ...lines.reversed];
+}
+
+String _placeLineOf(
+  Project project,
+  ({Track track, Cut? cut, Layer layer}) owned,
+) => rowPlaceLine(
+  owner: placeOwnerOf(project, track: owned.track, cut: owned.cut),
+  layerName: owned.layer.name,
+);
 
 /// [layerId]'s row in [project] with what holds it, wherever it lives.
 ({Track track, Cut? cut, Layer layer})? _rowOf(
@@ -203,16 +231,5 @@ String? cutPlaceLine(Project project, CutId cutId) =>
     };
 
 /// [member] as [rowPlaceLine] names it; null for a member whose row is gone.
-String? _memberLine(Project project, LayerLinkMember member) {
-  final position = cutPositionOf(project, member.cutId);
-  final layer = position?.cut.layers.firstWhereOrNull(
-    (layer) => layer.id == member.layerId,
-  );
-  if (position == null || layer == null) {
-    return null;
-  }
-  return rowPlaceLine(
-    owner: placeOwnerOf(project, track: position.track, cut: position.cut),
-    layerName: layer.name,
-  );
-}
+String? _memberLine(Project project, LayerLinkMember member) =>
+    rowPlaceLines(project, member.layerId).firstOrNull;

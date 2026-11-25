@@ -188,6 +188,38 @@ Future<void> _dragGrip(WidgetTester tester, String id, int frames) async {
 }
 
 void main() {
+  // 🗣️H75 (유저 2026-11-24): 「콘티레이어도 동일하게 싱크어태치랑 블록
+  // 그림교체라던가 가능하게 … 통일」 — a sweep from the conte up onto the row
+  // synced on it is one band over both, the session's, as on the timeline.
+  testWidgets('🎯a sweep on the panels from the conte up onto its synced row '
+      'selects both rows (H75)', (tester) async {
+    final s = await _openStoryboard(tester);
+    final conteRow = conteRowRect(tester, _trackId.value);
+    final riderRow = conteRowRect(tester, _riderRow);
+    final ppf = _panel(tester).pixelsPerFrame;
+    // Cut 2 covers [10,20): its rider is the synced one.
+    final gesture = await tester.startGesture(
+      Offset(conteRow.left + 12 * ppf + ppf / 2, conteRow.center.dy),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(Offset(4 * ppf, 0));
+    await tester.pump();
+    await gesture.moveBy(Offset(0, riderRow.center.dy - conteRow.center.dy));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final selection = s.frameRangeSelection.value;
+    expect(selection, isNotNull);
+    expect(selection!.coversLayer(const LayerId('cut-2-conte')), isTrue);
+    expect(
+      selection.coversLayer(const LayerId('cut-2-over')),
+      isTrue,
+      reason: 'the hand ended on the synced row',
+    );
+  });
+
   testWidgets('🚨each block of a row riding the conte hangs its two edges on '
       'that row — none where the row owns no timing, and none on an edge '
       'the cut\'s end cuts off', (tester) async {

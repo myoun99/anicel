@@ -113,6 +113,10 @@
 #    🆕AND NOT TWICE (same day): a profile green on this machine with the
 #    same input is not run again — by `crate`, or by a land after it
 #    (cmd_crate says what the same input is).
+#    🆕AND ITS TESTS COMPILE FOR ANDROID TOO (2026-11-24): tests behind
+#    cfg(target_os) compile on that target's cargo only, and none was asked
+#    for — crate_compiles_for says why, and how the other targets keep the
+#    same law.
 #
 # ⚠️WHAT THIS CANNOT DO FOR YOU: judge a LAW COLLISION. Two lanes that never
 # touch the same file still invent the same law under two names — seven times in
@@ -925,8 +929,79 @@ crate_green() {
 keep_crate_green() {
   [ -n "$1" ] || return 0
   mkdir -p "$MACHINE_FOLDER"
-  printf '%s %s\t%s, %s passed\n' "$1" "$2" "$(date '+%Y-%m-%d %H:%M')" "$3" \
+  printf '%s %s\t%s, %s\n' "$1" "$2" "$(date '+%Y-%m-%d %H:%M')" "$3" \
     >>"$(crate_greens)"
+}
+
+# The Android NDK's clang for the target $2 at the app's minSdk, then its
+# llvm-ar, a line each — or nothing when this machine has no NDK. The SDK
+# is the one Android Studio and Flutter name (ANDROID_HOME, or the trunk's
+# android/local.properties — a lane has none of its own), its newest NDK.
+ndk_tools() {
+  local p="$1" target="$2" sdk ndk bin api cc ar
+  sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  [ -n "$sdk" ] || sdk="$(sed -n 's/^sdk\.dir=//p' "$ROOT/android/local.properties" \
+    2>/dev/null | sed 's/\\:/:/g; s/\\\\/\//g; s/\\/\//g' | tr -d '\r')"
+  ndk="$(ls -d "$sdk"/ndk/*/ 2>/dev/null | sort -V | tail -n 1)"
+  bin="$(ls -d "$ndk"toolchains/llvm/prebuilt/*/bin 2>/dev/null | head -n 1)"
+  api="$(sed -n 's/^ *minSdk = \([0-9][0-9]*\).*/\1/p' \
+    "$p/android/app/build.gradle.kts" | head -n 1)"
+  for cc in "$bin/$target$api-clang.cmd" "$bin/$target$api-clang"; do
+    [ -f "$cc" ] && break
+  done
+  for ar in "$bin/llvm-ar.exe" "$bin/llvm-ar"; do
+    [ -f "$ar" ] && break
+  done
+  [ -n "$bin" ] && [ -f "$cc" ] && [ -f "$ar" ] || return 0
+  printf '%s\n%s\n' "$cc" "$ar"
+}
+
+# Whether the crate's library and tests compile for the target $4 — run in
+# the lane $1, green kept by the input $2, written to the log $3.
+# 🗣️ONE LAW, EACH TARGET ITS WAY OF KEEPING IT (공통 · 보드/인프라
+# 2026-11-24, card the-linux-platform-tests-do-not-compile; 유저 11-24
+# 「전플랫폼 최대한 통일하는방향으로」): the crate's tests compile for every
+# target the engine ships on. fe9f8155b broke four tests behind
+# cfg(target_os = "linux") and "macos", which compile on that target's cargo
+# only — and no gate, CI or land asked any but Windows, so 브러시 found them
+# by hand in WSL. Android is kept here: a check builds the build scripts,
+# and wasmtime's (a dev-dependency) compiles C for the target, so the NDK's
+# clang and llvm-ar are handed over (🔬공통 07:2x: NDK 29, exit 0) — a
+# check, never a run: no Android device is asked. Linux and Apple cannot be:
+# the NDK's clang has Bionic's headers, not glibc's or the SDK's — theirs is
+# a CI runner of their own OS (the card's (A) and (B)).
+crate_compiles_for() {
+  local p="$1" input="$2" log="$3" target="$4" green tools cc ar var from kept
+  green="$(crate_green "$input" "compile-$target")"
+  if [ -n "$green" ]; then
+    echo "lane: crate — the tests compiled for $target here with the same input ($green) — not asked again"
+    return 0
+  fi
+  tools="$(ndk_tools "$p" "$target")"
+  cc="$(echo "$tools" | sed -n 1p)"
+  ar="$(echo "$tools" | sed -n 2p)"
+  if [ -z "$cc" ]; then
+    echo "lane: crate — no Android NDK here to compile the tests for $target with" \
+      "(ANDROID_HOME, or sdk.dir in $ROOT/android/local.properties, and its ndk/ —" \
+      "Android Studio's SDK Manager installs one)" >&2
+    return 1
+  fi
+  var="$(echo "$target" | tr '-' '_')"
+  echo "lane: crate — the tests compile for $target"
+  from=$(wc -l <"$log")
+  (cd "$p/packages/gpu_engine/rust" \
+    && env "CC_$var=$cc" "AR_$var=$ar" bash "$ROOT/tool/cargo_turn.sh" \
+      check --locked --offline --target "$target" --lib --tests) >>"$log" 2>&1 || {
+    tail -n +$((from + 1)) "$log" | grep -aqE 'offline mode|--offline was specified' \
+      && echo "lane: crate — this machine has not downloaded every crate $target takes" \
+        "(the engine's Android build fetches them; a download is the user's to allow)" >&2
+    tail -n +$((from + 1)) "$log" | grep -aE -A4 '^error' | head -20 >&2
+    kept="$p/build/lane-crate-$target-red-$(date +%Y%m%d-%H%M%S).log"
+    tail -n +$((from + 1)) "$log" >"$kept"
+    echo "lane: crate — the tests do not compile for $target (kept: $kept)" >&2
+    return 1
+  }
+  keep_crate_green "$input" "compile-$target" "compiled"
 }
 
 # Refusal 8, runnable on its own. The header says why it is there.
@@ -963,7 +1038,12 @@ cmd_crate() {
       todo="$todo $profile"
     fi
   done
-  [ -n "$todo" ] || return 0
+  # Both profiles green here: what is left to ask is the Android build.
+  if [ -z "$todo" ]; then
+    crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \
+      || die "the GPU engine crate's tests do not compile for aarch64-linux-android — this is refusal 8; the whole log: $log"
+    return 0
+  fi
   # The fx SDK example as WebAssembly, the module the fx tests open on each
   # WebAssembly host (native/fx_sdk_example/Cargo.toml says why it is a
   # crate of its own) — built once, release, for both runs to read (유저
@@ -1040,8 +1120,10 @@ cmd_crate() {
     [ "$passed" -gt 0 ] \
       || die "the GPU engine crate ran no test in $profile — this is refusal 8; the whole log: $log"
     echo "lane: crate — $profile green ($passed passed)"
-    keep_crate_green "$input" "$profile" "$passed"
+    keep_crate_green "$input" "$profile" "$passed passed"
   done
+  crate_compiles_for "$p" "$input" "$log" aarch64-linux-android \
+    || red="$red aarch64-linux-android(compile)"
   [ -z "$red" ] \
     || die "the GPU engine crate's tests are red in$red — this is refusal 8; the whole log: $log"
 }

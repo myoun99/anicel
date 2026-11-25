@@ -193,7 +193,24 @@ fn wide128_fits(p: Wide128) -> bool {
 // 절대명령 1): ⌊2^e / d⌋'s and a 64-bit dividend's were two walks of their
 // own until the lens blur's mean, a 128-bit dividend, made the third
 // (11-05) — every division below is this one.
+//
+// 🚨A QUOTIENT UNDER 2^16 IS GUESSED AND CHECKED (card
+// the-galaxy-tab-canvas-went-slow-on-build-1095, 2026-11-25): Blend divides
+// four times a pixel, for eight bits each, and walked them a bit at a
+// time — of a screen drawn whole under 100%, the walks and what they made
+// the pass hold were the most of it. Now n / d is guessed in f32 — the
+// RTX 4080's screen at ×0.63 went from 3.77 ms to 3.01, fifteen turns
+// each (composite/show_cost.rs) — a few ulps out, so under a
+// tenth of a unit off a quotient under 2^16 — and its floor moved by one
+// where q · d, worked exactly, says it is one out: the same quotient.
+// `bits` is a constant where every kernel calls it, so a call keeps one of
+// the two ways.
+const WIDE_GUESSED_BITS: u32 = 16u;
+
 fn wide128_div(n: Wide128, d: Wide, bits: u32) -> Wide {
+  if (bits <= WIDE_GUESSED_BITS) {
+    return Wide(wide128_div_guessed(n, d), 0u);
+  }
   var rest = n.zw;
   if (bits < 64u) {
     rest = wide128_shr(n, bits).xy;
@@ -209,6 +226,39 @@ fn wide128_div(n: Wide128, d: Wide, bits: u32) -> Wide {
     }
   }
   return quotient;
+}
+
+// wide128_div's quotient below 2^16 (WIDE_GUESSED_BITS): the guess's
+// floor, then one up or down where q · d says so — n under q · d, or not
+// under q · d + d.
+fn wide128_div_guessed(n: Wide128, d: Wide) -> u32 {
+  var q = u32(wide128_f32(n) / wide128_f32(Wide128(d, 0u, 0u)));
+  let product = wide_times_u32(d, q);
+  if (wide128_below(n, product)) {
+    q = q - 1u;
+  } else if (!wide128_below(n, wide128_add(product, Wide128(d, 0u, 0u)))) {
+    q = q + 1u;
+  }
+  return q;
+}
+
+// An unsigned 128-bit value as an f32, its words from the top.
+fn wide128_f32(n: Wide128) -> f32 {
+  let word = 4294967296.0;
+  return ((f32(n.w) * word + f32(n.z)) * word + f32(n.y)) * word + f32(n.x);
+}
+
+// a < b with both read as unsigned 128-bit values.
+fn wide128_below(a: Wide128, b: Wide128) -> bool {
+  return a.w < b.w || (a.w == b.w && (a.z < b.z || (a.z == b.z && wide_below(a.xy, b.xy))));
+}
+
+// d · q of a word q, all 96 bits of it.
+fn wide_times_u32(d: Wide, q: u32) -> Wide128 {
+  let low = wide_mul_u32(d.x, q);
+  let high = wide_mul_u32(d.y, q);
+  let middle = low.y + high.x;
+  return Wide128(low.x, middle, high.y + select(0u, 1u, middle < low.y), 0u);
 }
 
 // divr(n, d) = ⌊(2n + d) / (2d)⌋ for n >= 0 and 0 < d < 2^62, when the

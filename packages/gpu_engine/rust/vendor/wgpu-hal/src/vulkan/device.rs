@@ -253,6 +253,10 @@ struct CompiledStage {
     create_info: vk::PipelineShaderStageCreateInfo<'static>,
     _entry_point: CString,
     temp_raw_module: Option<vk::ShaderModule>,
+    /// ANICEL — not wgpu's: the SPIR-V the module was made of, where it
+    /// was made here — what a kept pipeline is named by
+    /// ([`super::Device::kept_compute_pipeline`]).
+    spv: Option<Vec<u32>>,
 }
 
 struct MemoryProperties {
@@ -703,8 +707,8 @@ impl super::Device {
         binding_map: &naga::back::spv::BindingMap,
     ) -> Result<CompiledStage, crate::PipelineError> {
         let stage_flags = crate::auxil::map_naga_stage(naga_stage);
-        let vk_module = match *stage.module {
-            super::ShaderModule::Raw(raw) => raw,
+        let (vk_module, spv) = match *stage.module {
+            super::ShaderModule::Raw(raw) => (raw, None),
             super::ShaderModule::Intermediate {
                 ref naga_shader,
                 runtime_checks,
@@ -782,7 +786,7 @@ impl super::Device {
                     naga::back::spv::write_vec(&module, &info, options, Some(&pipeline_options))
                 }
                 .map_err(|e| crate::PipelineError::Linkage(stage_flags, format!("{e}")))?;
-                self.create_shader_module_impl(&spv, &None)?
+                (self.create_shader_module_impl(&spv, &None)?, Some(spv))
             }
         };
 
@@ -807,7 +811,124 @@ impl super::Device {
                 super::ShaderModule::Raw(_) => None,
                 super::ShaderModule::Intermediate { .. } => Some(vk_module),
             },
+            spv,
         })
+    }
+
+    /// ANICEL — not wgpu's: keeps what the driver makes of this device's
+    /// pipelines in `folder` from now on, and hands what an earlier compile
+    /// kept there to the driver instead of compiling it again — or nowhere
+    /// where `folder` is `None`, as wgpu-hal does
+    /// (`crate::auxil::compile_cache` — D3D12's by the same code).
+    pub fn keep_shaders_in(&self, folder: Option<std::path::PathBuf>) {
+        self.compile_cache.keep_in(folder);
+    }
+
+    /// ANICEL — not wgpu's: how many pipelines of this device the folder
+    /// [`Self::keep_shaders_in`] names has answered — what an earlier
+    /// compile kept handed to the driver, and taken by it where it says so
+    /// (`VkPipelineCreationFeedback`): a driver passes over data it cannot
+    /// use without a word, so what was handed is not what was taken.
+    pub fn pipelines_found(&self) -> u64 {
+        self.compile_cache.found(crate::auxil::compile_cache::Made::Pipeline)
+    }
+
+    /// ANICEL — not wgpu's: how many looks of this device's pipeline
+    /// compiles found the turn of one in [`Self::keep_shaders_in`]'s folder
+    /// held by another, and waited for it.
+    pub fn pipelines_waited(&self) -> u64 {
+        self.compile_cache.waited(crate::auxil::compile_cache::Made::Pipeline)
+    }
+
+    /// ANICEL — not wgpu's: the compute pipeline of `info`, its module made
+    /// of `spv` — what the driver made of it before handed back, where all
+    /// it was made of is the same ([`Made::Pipeline`]), waiting for it
+    /// where another process makes it now; else made here, and kept. What
+    /// the driver made of one pipeline is what a pipeline cache of that
+    /// pipeline alone holds, so each has a cache of its own for as long as
+    /// it is made — the file D3D12 keeps a pipeline's blob in, by one code.
+    ///
+    /// Where the driver says what it took ([`Self::pipelines_found`]) and
+    /// did not take what was kept — data it cannot use, which it passes over
+    /// without a word — it made the pipeline here, and that is kept over it
+    /// (D3D12's driver refuses such a blob out loud, and the same follows).
+    ///
+    /// [`Made::Pipeline`]: crate::auxil::compile_cache::Made::Pipeline
+    fn kept_compute_pipeline(
+        &self,
+        info: vk::ComputePipelineCreateInfo<'_>,
+        spv: &[u32],
+    ) -> Result<vk::Pipeline, crate::PipelineError> {
+        use crate::auxil::compile_cache::{self, Made, Turn};
+        // What the driver made of `info` with a cache of its own handed
+        // `initial`, and whether it says it took it from there — true where
+        // it says nothing.
+        let make = |initial: Option<&[u8]>| -> Result<(vk::Pipeline, vk::PipelineCache, bool), crate::PipelineError> {
+            let mut cache_info = vk::PipelineCacheCreateInfo::default();
+            if let Some(initial) = initial {
+                cache_info = cache_info.initial_data(initial);
+            }
+            let cache = unsafe { self.shared.raw.create_pipeline_cache(&cache_info, None) }
+                .map_err(super::map_host_device_oom_err)?;
+            let mut said = vk::PipelineCreationFeedback::default();
+            let mut feedback = vk::PipelineCreationFeedbackCreateInfo::default().pipeline_creation_feedback(&mut said);
+            let info = if self.says_what_it_took { info.push_next(&mut feedback) } else { info };
+            profiling::scope!("vkCreateComputePipelines");
+            let made = unsafe { self.shared.raw.create_compute_pipelines(cache, &[info], None) };
+            let took = !said.flags.contains(vk::PipelineCreationFeedbackFlags::VALID)
+                || said.flags.contains(vk::PipelineCreationFeedbackFlags::APPLICATION_PIPELINE_CACHE_HIT);
+            match made {
+                Ok(mut made) => Ok((made.pop().unwrap(), cache, took)),
+                Err((_, error)) => {
+                    unsafe { self.shared.raw.destroy_pipeline_cache(cache, None) };
+                    Err(super::map_pipeline_err(error).into())
+                }
+            }
+        };
+        let let_go = |cache: vk::PipelineCache| unsafe {
+            self.shared.raw.destroy_pipeline_cache(cache, None)
+        };
+        let shader: Vec<u8> = spv.iter().flat_map(|word| word.to_le_bytes()).collect();
+        let asked = compile_cache::asked([
+            self.adapter_named.as_slice(),
+            &info.stage.flags.as_raw().to_le_bytes(),
+            &shader,
+        ]);
+        let kept = &self.compile_cache;
+        let keep = |cache: vk::PipelineCache| {
+            match unsafe { self.shared.raw.get_pipeline_cache_data(cache) } {
+                Ok(made) => kept.write(Made::Pipeline, &asked, &made),
+                Err(error) => log::warn!("compile cache: vkGetPipelineCacheData: {error}"),
+            }
+            let_go(cache);
+        };
+        // Held till what the driver made is kept, or the pipeline fails.
+        let _turn = match kept.turn(Made::Pipeline, &asked) {
+            Turn::Kept(blob) => match make(Some(&blob)) {
+                Ok((raw, cache, true)) => {
+                    let_go(cache);
+                    kept.used(Made::Pipeline);
+                    return Ok(raw);
+                }
+                // Made here, what was kept passed over: kept over it.
+                Ok((raw, cache, false)) => {
+                    log::warn!("compile cache: the driver passed over a kept pipeline");
+                    keep(cache);
+                    return Ok(raw);
+                }
+                // A driver takes what it cannot use as no data at all; one
+                // that refused it instead is asked again with none, and
+                // what it makes kept over it.
+                Err(refused) => {
+                    log::warn!("compile cache: a kept pipeline refused: {refused}");
+                    None
+                }
+            },
+            Turn::Compile(turn) => turn,
+        };
+        let (raw, cache, _) = make(None)?;
+        keep(cache);
+        Ok(raw)
     }
 
     /// Returns the queue family index of the device's internal queue.
@@ -2244,22 +2365,31 @@ impl crate::Device for super::Device {
                 .stage(compiled.create_info)
         }];
 
-        let pipeline_cache = desc
-            .cache
-            .map(|it| it.raw)
-            .unwrap_or(vk::PipelineCache::null());
+        // ANICEL: kept and handed back where a folder is named and wgpu's
+        // own cache is not asked for (`Self::kept_compute_pipeline`).
+        let raw = match (desc.cache, compiled.spv.as_deref()) {
+            (None, Some(spv)) if self.compile_cache.keeps() => {
+                self.kept_compute_pipeline(vk_infos[0], spv)?
+            }
+            _ => {
+                let pipeline_cache = desc
+                    .cache
+                    .map(|it| it.raw)
+                    .unwrap_or(vk::PipelineCache::null());
 
-        let mut raw_vec = {
-            profiling::scope!("vkCreateComputePipelines");
-            unsafe {
-                self.shared
-                    .raw
-                    .create_compute_pipelines(pipeline_cache, &vk_infos, None)
-                    .map_err(|(_, e)| super::map_pipeline_err(e))
-            }?
+                let mut raw_vec = {
+                    profiling::scope!("vkCreateComputePipelines");
+                    unsafe {
+                        self.shared
+                            .raw
+                            .create_compute_pipelines(pipeline_cache, &vk_infos, None)
+                            .map_err(|(_, e)| super::map_pipeline_err(e))
+                    }?
+                };
+
+                raw_vec.pop().unwrap()
+            }
         };
-
-        let raw = raw_vec.pop().unwrap();
         if let Some(label) = desc.label {
             unsafe { self.shared.set_object_name(raw, label) };
         }

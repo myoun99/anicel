@@ -32,22 +32,75 @@ class UndoSurfacePair {
     required this.key,
     required BitmapSurface before,
     required BitmapSurface after,
-  }) : before = UndoSurfaceSnapshot(
-         key: key,
-         snapshot: before,
-         sharedWith: after,
-       ),
-       after = UndoSurfaceSnapshot(
-         key: key,
-         snapshot: after,
-         sharedWith: before,
-       );
+  }) {
+    _measure(before, after);
+  }
 
   /// The cel both pictures are of.
   final BrushFrameKey key;
 
-  final UndoSurfaceSnapshot before;
-  final UndoSurfaceSnapshot after;
+  UndoSurfaceSnapshot get before => _before;
+  UndoSurfaceSnapshot get after => _after;
+  late UndoSurfaceSnapshot _before;
+  late UndoSurfaceSnapshot _after;
+
+  /// Each half measured against the other — the one measure of a pair, as
+  /// it is made and as its after is taken again ([afterBecomes]).
+  void _measure(BitmapSurface before, BitmapSurface after) {
+    _before = UndoSurfaceSnapshot(
+      key: key,
+      snapshot: before,
+      sharedWith: after,
+    );
+    _after = UndoSurfaceSnapshot(
+      key: key,
+      snapshot: after,
+      sharedWith: before,
+    );
+  }
+
+  /// [after]'s picture while both halves are here and nothing moves either
+  /// out ([UndoSurfaceSnapshot.heldHere]) — what a told picture may take the
+  /// place of ([afterBecomes]). Null otherwise.
+  BitmapSurface? get afterHeldHere =>
+      before.heldHere == null ? null : after.heldHere;
+
+  /// When the tiles of [after] whose ink is still to be told are told
+  /// ([BitmapTile.inkTold]) — null where none is, or [after] is not here.
+  ///
+  /// ⚠️The second walk for it, beside `BrushFrameStore._askAgainOnceTold`'s
+  /// of the cel: a third is where the two become one.
+  Future<void>? get afterTold {
+    final told = [
+      for (final tile
+          in after.heldHere?.tiles.values ?? const <BitmapTile>[])
+        ?tile.inkTold,
+    ];
+    return told.isEmpty ? null : Future.wait(told);
+  }
+
+  /// [after] taken again as [told] — [after]'s pixels held by other objects
+  /// (`BrushFrameEditingCoordinator.takeToldTidied`) — and [before]
+  /// measured against it, as the pair was measured when it was made: what
+  /// [before] shares with [told] is somebody else's from here on, and the
+  /// bill drops by it. Only of a pair [afterHeldHere] answers for.
+  ///
+  /// 🗣️관제 2026-11-24 (card the-start-of-every-stroke-stalls-on-the-galaxy-
+  /// tab ③-1): the step whose after the cel is takes the cel's picture with
+  /// the cel, or the tiles pen-up handed over stay in that after alone —
+  /// held, and billed by no one. ⛔Never a parked pair: its file was written
+  /// of the pictures it holds.
+  void afterBecomes(BitmapSurface told) {
+    final was = before.heldHere;
+    assert(
+      was != null && after.heldHere != null,
+      'a pair takes a picture only while both halves are here',
+    );
+    if (was == null || after.heldHere == null) {
+      return;
+    }
+    _measure(was, told);
+  }
 
   /// The half the cel is NOT currently showing — see
   /// [RetainedBytesCommand.estimatedRetainedBytes] for why the question
@@ -271,6 +324,12 @@ class UndoSurfaceSnapshot {
   _ahead;
 
   bool get isParked => _letGo;
+
+  /// Its picture while it is here and nothing moves it out — not dropped,
+  /// no [park] under way: a park is writing what it holds. Null otherwise,
+  /// and once parked: a park lets the picture go ([_releaseTiles]).
+  BitmapSurface? get heldHere =>
+      _dropped || _parking != null ? null : _surface;
 
   /// RAM this snapshot is holding on its own: zero once parked, because
   /// the bytes are then a file — unless a read-ahead brought them back

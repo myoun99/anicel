@@ -1148,8 +1148,25 @@ class TimelineGridTileStore {
   // painter's exact ink per cell.
 
   static const int _glyphCapacity = 1024;
-  final BakeOnceLru<String, BakedWordCoverage?> _glyphs =
+  BakeOnceLru<String, BakedWordCoverage?> _glyphs = _wordBakes();
+
+  static BakeOnceLru<String, BakedWordCoverage?> _wordBakes() =>
       BakeOnceLru<String, BakedWordCoverage?>(capacity: _glyphCapacity);
+
+  /// Every word bake forgotten — landed and in flight — as a new process
+  /// would have none. ⛔Not [clear]'s to do: a project closing calls that,
+  /// and the next project sets the same words.
+  ///
+  /// 🚨ONE PER PROCESS, as the tiles are and the words a screen bakes
+  /// ([BakedWords.debugForgetEveryBake], which this is the second of — a
+  /// third is [BakeOnceLru]'s to hold): a word a test baked stood baked in
+  /// every later test of the process, where a span that was to WAIT for
+  /// its word was baked in its ask — 🔬11-23 (board
+  /// bundled-files-find-stores-left-behind): a file naming its cel as the
+  /// file run before it had found a cold store's premise false, green
+  /// alone. A test ends with none (`flutter_test_config.dart`).
+  @visibleForTesting
+  void debugForgetEveryWord() => _glyphs = _wordBakes();
 
   /// ⚠️The narrowing is part of the glyph (B, 유저 2026-09-24): a word that
   /// runs past its block is baked narrow, and [wordCondensation] quantises

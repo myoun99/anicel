@@ -313,6 +313,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_made_land(
     count: usize,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (engine, made, pool) = unsafe { (&*engine, &*made, &mut *pool) };
@@ -328,7 +329,7 @@ pub unsafe extern "C" fn gpu_engine_plugin_made_land(
                 placed(engine, (pool, Cel(cel)), &made.tiles, inked)
             });
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 

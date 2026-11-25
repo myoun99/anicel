@@ -592,11 +592,13 @@ class StoryboardStripSelectCallbacks {
   /// answer whether a frame is inside it.
   final ValueListenable<TimelineFrameRangeSelection?> selection;
 
-  /// A select-drag step in the anchor cut's LOCAL frames.
+  /// A select-drag step in the anchor cut's LOCAL frames — over its rows
+  /// from [layerId]'s to [headLayerId]'s, where the hand left the row.
   final void Function({
     required LayerId layerId,
     required int anchorIndex,
     required int headIndex,
+    LayerId? headLayerId,
   })
   onDrag;
   final VoidCallback onClear;
@@ -1764,22 +1766,21 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   int get _countingFps => widget.projectFrameRate.countingBase;
 
   /// The host's record of the layer axis ([StoryboardPanel.layerAxisOffset])
-  /// — read ONCE, as the frame axis's is.
-  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
+  /// followed — the place's the conte shows now, as the frame axis's is.
+  late final KeptAxisFollow _keptRows;
 
   /// The rows, born where the project left them (F-267). The rows and the
   /// frames are the storyboard: one sheet, dragged both ways at once
   /// (F-351).
   late final TwoAxisScrollController _verticalController =
-      TwoAxisScrollController(bornAt: _keptLayerAxis);
-
-  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
-  late final VoidCallback _letGoOfKeptRows;
+      TwoAxisScrollController(bornAt: widget.layerAxisOffset);
 
   /// Born where the axis stands ([TwoAxisScrollController.bornAt]), as the
   /// timeline grids' controllers are.
   late final TwoAxisScrollController _horizontalController =
-      TwoAxisScrollController(bornAt: _horizontalScrollOffset);
+      TwoAxisScrollController(
+        bornAt: widget.frameAxisOffset ?? _ownedHorizontalScrollOffset,
+      );
 
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
@@ -1845,10 +1846,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// setState.
   ///
   /// The host's when it keeps one ([StoryboardPanel.frameAxisOffset]) —
-  /// read ONCE, as in the timeline grids.
-  late final ValueNotifier<double> _horizontalScrollOffset =
-      widget.frameAxisOffset ?? _ownedHorizontalScrollOffset;
-
+  /// the place's the conte shows now, as in the timeline grids
+  /// ([TimelineFrameAxisFollower.standOn]).
   /// The fallback frame-axis offset for hosts that keep none of their own.
   final ValueNotifier<double> _ownedHorizontalScrollOffset =
       ValueNotifier<double>(0);
@@ -1863,7 +1862,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// watch for its lazy shrink, and the two notifiers above.
   late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
     controller: _horizontalController,
-    frameAxisOffset: _horizontalScrollOffset,
+    frameAxisOffset: widget.frameAxisOffset ?? _ownedHorizontalScrollOffset,
     frameWindowBucket: _horizontalWindowBucket,
     cellExtent: () => _scale.pixelsPerFrame,
     baseFrameCount: () => _restingFramesOf(
@@ -1924,9 +1923,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalController.addListener(_frameAxis.handleScroll);
     _horizontalWindowBucket.addListener(_rewindowRows);
     _verticalController.addListener(_rowsWindow.handleScroll);
-    _letGoOfKeptRows = followKeptAxis(
+    _keptRows = KeptAxisFollow(
       _verticalController,
-      _keptLayerAxis,
+      widget.layerAxisOffset,
       isMounted: () => mounted,
     );
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
@@ -2016,6 +2015,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       oldWidget.rowsChannel?.unbind(this);
       _bindSheet(widget.rowsChannel);
     }
+    // 🗣️H78 (유저 2026-11-24 「타임라인별로 스크롤상태, 줌상태 별도기억」):
+    // another timeline's axes are another place, as on the timeline grids.
+    _frameAxis.standOn(widget.frameAxisOffset ?? _ownedHorizontalScrollOffset);
+    _keptRows.standOn(widget.layerAxisOffset);
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
     // anchors — unless a notch or a pinch held its own point. ⛔The
@@ -2024,9 +2027,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // hear the fold rule the grids' call keeps.
     applyZoomAnchoredScroll(
       _horizontalController,
-      oldPixelsPerFrame: oldWidget.pixelsPerFrame,
-      newPixelsPerFrame: widget.pixelsPerFrame,
+      pixelsPerFrame: (
+        from: oldWidget.pixelsPerFrame,
+        to: widget.pixelsPerFrame,
+      ),
       anchorFrame: widget.playheadFrame?.value,
+      anotherPlace: !identical(
+        widget.frameAxisOffset,
+        oldWidget.frameAxisOffset,
+      ),
     );
   }
 
@@ -2046,7 +2055,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _verticalController.removeListener(_rowsWindow.handleScroll);
     _rowsWindow.dispose();
     _frameAxis.dispose();
-    _letGoOfKeptRows();
+    _keptRows.letGo();
     _standing.dispose();
     _verticalController.dispose();
     _horizontalController.dispose();

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,7 @@ import '../../helpers/home_page_probes.dart';
 /// 독립붙여넣기도 동일」 — pressed as the user presses it: the conte
 /// panel's pill, then the app's undo and redo.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const v = TrackId('v');
 
   Project twoCuts({bool conte = false}) => Project(

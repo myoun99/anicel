@@ -24,6 +24,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart' show EnginePictures;
 import 'package:anicel/src/native/engine_frame_tools.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/picture_writes.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -380,6 +382,18 @@ void main() {
   });
 
   group('a step on its way to another key', () {
+    // How each went, as the frame statistics count it (PictureWrites, H67).
+    setUp(() => MeasurementMode.debugWindow.value = true);
+    tearDown(MeasurementMode.reset);
+    PictureWritesCounted since(PictureWritesCounted before) {
+      final now = PictureWrites.counted;
+      return (
+        inPlace: now.inPlace - before.inPlace,
+        copied: now.copied - before.copied,
+        whole: now.whole - before.whole,
+      );
+    }
+
     const marked = (-20, 10, 40, 50);
     const rect = Rect.fromLTRB(-20, 10, 40, 50);
     final routes = <String, Future<bool> Function(
@@ -408,9 +422,11 @@ void main() {
         var told = 0;
         laid.addListener(() => told += 1);
         final changed = cel(5, marked: marked);
+        final before = PictureWrites.counted;
 
         expect(await write(store, frameOf(changed)), isTrue);
 
+        expect(since(before), (inPlace: 0, copied: 1, whole: 0));
         expect(store.peek('a'), same(laid), reason: 'the other screen\'s');
         expect(shownBy(laid), want);
         expect(told, 0, reason: 'what it shows did not change');
@@ -429,9 +445,11 @@ void main() {
         var told = 0;
         laid.addListener(() => told += 1);
         final changed = cel(5, marked: marked);
+        final before = PictureWrites.counted;
 
         expect(await write(store, frameOf(changed)), isTrue);
 
+        expect(since(before), (inPlace: 1, copied: 0, whole: 0));
         expect(store.holds('a'), isFalse);
         expect(store.peek('b'), same(laid));
         expect(shownBy(laid), laidBy(changed));
@@ -462,7 +480,8 @@ void main() {
   });
 
   group('🚨what its plug-ins\' steps told, a picture tells again each time '
-      'it is held to be shown (EngineFramePicture.hold)', () {
+      'it is shown, as the frame it is shown for (EngineFramePicture.tellAs)',
+      () {
     const rect = Rect.fromLTRB(-20, 10, 40, 50);
     const far = BrushFrameKey(
       projectId: ProjectId('p'),
@@ -487,6 +506,11 @@ void main() {
             kind: EffectKind.plugin,
             plugin: shiftingFxPluginDescription,
             values: const [],
+            worn: (
+              owner: at.layerId,
+              effect: const EffectId('shift'),
+              wearer: at.layerId,
+            ),
             run: fxPluginRunOf(runner, told: told),
           ),
         ],
@@ -508,9 +532,11 @@ void main() {
     );
 
     test('a patch through steps that drew, into a picture they failed on, '
-        'leaves it telling that they drew', () async {
+        'leaves it telling that they drew — to the frame it is shown for, '
+        'another of its key\'s as well', () async {
       final heard = <bool>[];
       void told({required bool failed}) => heard.add(failed);
+      final drew = ShiftingFxPlugin(by: 1, readsTheMoment: false);
       final store = storeOf();
       final laid = (await store.lay(
         'a',
@@ -526,7 +552,7 @@ void main() {
           to: 'b',
           rect: rect,
           frame: frameOfRows([
-            runOf(key, ShiftingFxPlugin(by: 1), told),
+            runOf(key, drew, told),
           ], (_) => cel(5, marked: (-20, 10, 40, 50))),
           stands: () => true,
         ),
@@ -536,11 +562,16 @@ void main() {
       expect(heard.last, isFalse, reason: '⛔premise: the step drew');
 
       heard.clear();
-      laid.hold();
-      expect(heard, [false], reason: 'held again, it tells what it holds');
-      laid
-        ..release()
-        ..release();
+      final atAnother = <bool>[];
+      laid.tellAs(
+        pluginStepsOf([
+          runOf(key, drew, ({required failed}) => atAnother.add(failed)),
+        ]),
+      );
+      expect(heard, isEmpty, reason: 'not the frame it was made for');
+      expect(atAnother, [false], reason: 'shown again, it tells what it '
+          'holds — to the one it is shown for');
+      laid.release();
     });
 
     test('a step another screen\'s picture is copied for tells, held, what '
@@ -553,14 +584,15 @@ void main() {
       // where the step changes it.
       BitmapSurface surfaceOf(BrushFrameKey at, BitmapSurface nearOne) =>
           at == far ? cel(7, over: const [1]) : nearOne;
+      final rows = [
+        runOf(key, ShiftingFxPlugin(by: 1), near),
+        runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
+      ];
       final store = storeOf();
       final laid = (await store.lay(
         'a',
         frameOfRows(
-          [
-            runOf(key, ShiftingFxPlugin(by: 1), near),
-            runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
-          ],
+          rows,
           (at) => surfaceOf(at, cel(5, over: const [-1, 0])),
         ),
       ))!
@@ -575,10 +607,7 @@ void main() {
           to: 'b',
           rect: rect,
           frame: frameOfRows(
-            [
-              runOf(key, ShiftingFxPlugin(by: 1), near),
-              runOf(far, ShiftingFxPlugin(by: 1, fails: true), farOff),
-            ],
+            rows,
             (at) => surfaceOf(
               at,
               cel(5, marked: (-20, 10, 40, 50), over: const [-1, 0]),
@@ -593,7 +622,9 @@ void main() {
       final metFar = heard.containsKey('far');
 
       heard.clear();
-      copy.hold();
+      copy
+        ..hold()
+        ..tellAs(pluginStepsOf(rows));
       expect(
         heard,
         {'near': false, 'far': true},

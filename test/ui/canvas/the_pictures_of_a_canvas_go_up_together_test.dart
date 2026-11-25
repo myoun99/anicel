@@ -61,6 +61,72 @@ void main() {
     expect(told, isA<StateError>());
   });
 
+  group('the frames being drawn, as one (what a stroke\'s step waits for)', () {
+    test('are none where no frame is being drawn', () async {
+      final together = PicturesUpTogether();
+      expect(together.beingDrawn, isNull);
+
+      final done = Completer<void>();
+      unawaited(together.joined(done.future));
+      expect(together.beingDrawn, isNotNull);
+      done.complete();
+      await pumpEventQueue();
+
+      expect(together.beingDrawn, isNull, reason: 'none once it is up');
+    });
+
+    test('🚨end once every frame drawn is up — after each has gone '
+        'up', () async {
+      final together = PicturesUpTogether();
+      final (frame, ghosts) = (Completer<void>(), Completer<void>());
+      final order = <String>[];
+      unawaited(together.joined(frame.future).then((_) => order.add('frame')));
+      unawaited(
+        together.joined(ghosts.future).then((_) => order.add('ghosts')),
+      );
+      final drawn = together.beingDrawn!;
+      unawaited(drawn.then((_) => order.add('all')));
+
+      frame.complete();
+      expect(await isUp(drawn), isFalse, reason: 'the ghosts still drawn');
+      ghosts.complete();
+
+      expect(await isUp(drawn), isTrue);
+      expect(order, ['frame', 'ghosts', 'all']);
+    });
+
+    test('end where the last of them fails', () async {
+      final together = PicturesUpTogether();
+      final (frame, ghosts) = (Completer<void>(), Completer<void>());
+      unawaited(together.joined(frame.future));
+      unawaited(together.joined(ghosts.future).catchError((Object _) {}));
+      final drawn = together.beingDrawn!;
+
+      frame.complete();
+      ghosts.completeError(StateError('the GPU past its limit'));
+
+      expect(await isUp(drawn), isTrue);
+      expect(together.beingDrawn, isNull);
+    });
+
+    test('are the next frames\' alone once those are up', () async {
+      final together = PicturesUpTogether();
+      final first = Completer<void>();
+      unawaited(together.joined(first.future));
+      final drawnFirst = together.beingDrawn!;
+      first.complete();
+      expect(await isUp(drawnFirst), isTrue);
+
+      final next = Completer<void>();
+      unawaited(together.joined(next.future));
+      final drawnNext = together.beingDrawn!;
+
+      expect(await isUp(drawnNext), isFalse);
+      next.complete();
+      expect(await isUp(drawnNext), isTrue);
+    });
+  });
+
   test('once up, the next frame waits for none of those', () async {
     final together = PicturesUpTogether();
     final (frame, ghosts) = (Completer<void>(), Completer<void>());

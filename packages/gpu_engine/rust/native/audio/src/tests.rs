@@ -109,6 +109,7 @@ pub(crate) fn decode(span: &Span, first: i64, count: i64) -> Decoded {
             &mut frames,
             &mut channels,
             &mut rate,
+            None,
         )
     };
     let held = if samples.is_null() {
@@ -404,6 +405,47 @@ fn stream_in_pieces(span: &Span, piece: i64) -> (Decoded, Vec<i64>, [i64; 3]) {
     }
 }
 
+/// How far a stream of `span` says its decoder has read through its
+/// container, through the export the app asks: once it opens, then after
+/// each read of `piece` frames to the sound's end. Empty where it does not
+/// open.
+pub(crate) fn read_through_in_pieces(span: &Span, piece: i64) -> Vec<f64> {
+    use crate::{
+        qa_audio_stream_close as close, qa_audio_stream_open as open, qa_audio_stream_read as read,
+        qa_audio_stream_read_through as read_through,
+    };
+    let path = CString::new(span.path.to_str().expect("a UTF-8 path")).expect("no NUL");
+    let (mut format, mut channels, mut rate) = (0, 0, 0);
+    // SAFETY: a NUL-terminated path, out pointers to locals; the stream read
+    // into a buffer of the frames asked for, and closed once.
+    unsafe {
+        let stream = open(path.as_ptr(), span.offset, span.length, i32::from(span.framed), &mut format, &mut channels, &mut rate);
+        if stream.is_null() {
+            return Vec::new();
+        }
+        let mut said = vec![read_through(stream)];
+        let mut buffer = vec![0f32; piece as usize * channels as usize];
+        while read(stream, buffer.as_mut_ptr(), piece) > 0 {
+            said.push(read_through(stream));
+        }
+        close(stream);
+        said
+    }
+}
+
+/// 🚨HOW FAR THE DECODER HAS READ rises as the sound comes, never back, to
+/// the container's end — a stream that is not there has read nothing.
+#[test]
+fn how_far_a_stream_has_read_rises_to_its_end_as_the_sound_comes() {
+    let flac = fixture("tone.flac");
+    let said = read_through_in_pieces(&Span::whole(&flac), 2000);
+    assert!(said.windows(2).all(|two| two[0] <= two[1]), "{said:?}");
+    assert!(said[0] < 0.5, "{said:?}: opened, not read through");
+    assert!(*said.last().expect("read") > 0.95, "{said:?}: read to its end");
+    // SAFETY: a null stream, as the contract allows.
+    assert_eq!(unsafe { crate::qa_audio_stream_read_through(std::ptr::null()) }, 0.0);
+}
+
 // Each read a whole piece until what is left, then nothing — the C's
 // answers, which the tests held this crate's to until the connection round
 // deleted it (connection-round-checklist H, 2026-11-08).
@@ -438,6 +480,58 @@ fn a_window_holds_the_frames_a_whole_decode_has_there() {
     }
     // A window cannot start before the sound.
     assert_eq!(decode(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
+}
+
+thread_local! {
+    static TOLD: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+unsafe extern "C" fn hear(fraction: f64) {
+    TOLD.with(|told| told.borrow_mut().push(fraction));
+}
+
+/// What a window tells of how far it has come, through the door the app
+/// asks it at: the frames it handed `told` of a window of tone.flac.
+fn told_of(first: i64, count: i64) -> Vec<f64> {
+    let flac = CString::new(fixture("tone.flac").to_str().expect("a UTF-8 path")).expect("no NUL");
+    let length = std::fs::metadata(fixture("tone.flac")).expect("the fixture").len() as i64;
+    let mut samples = std::ptr::null_mut();
+    let (mut frames, mut channels, mut rate) = (0i64, 0i32, 0i32);
+    TOLD.with(|told| told.borrow_mut().clear());
+    // SAFETY: a NUL-terminated path, out pointers to locals, and a hearer
+    // that lives as long as the process.
+    unsafe {
+        crate::qa_audio_decode_span_window(
+            flac.as_ptr(),
+            0,
+            length,
+            0,
+            first,
+            count,
+            &mut samples,
+            &mut frames,
+            &mut channels,
+            &mut rate,
+            Some(hear),
+        );
+        crate::qa_audio_decode_free(samples);
+    }
+    TOLD.with(|told| told.borrow().clone())
+}
+
+/// 🚨HOW FAR A WINDOW HAS COME is the frames decoded of the frames to
+/// decode — those before it as well, which are decoded to pass them
+/// (🗣️유저 11-24, decoder-reads-skip-the-percent-Q3 「풀어 낸 프레임 ÷ 풀
+/// 프레임」): it rises to the whole as the window ends.
+#[test]
+fn how_far_a_window_has_come_is_its_frames_decoded_of_those_to_decode() {
+    let said = told_of(30_000, 10_000);
+    assert!(said.len() >= 2, "{said:?}: told along the way, not once");
+    assert!(said.windows(2).all(|two| two[0] < two[1]), "{said:?}");
+    assert_eq!(said[0], 0.75, "{said:?}: the 30,000 frames before the window, decoded to pass them");
+    assert_eq!(*said.last().expect("told"), 1.0, "{said:?}: the whole, at its end");
+    assert!(told_of(0, 0).is_empty(), "nothing to decode, nothing told");
+    assert!(told_of(10_000, -1).is_empty(), "to the end: no whole to tell of");
 }
 
 #[test]

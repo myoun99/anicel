@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/app_support_path.dart';
 
 import '../../tool/machine_cache.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/the_apps_engine_let_go.dart';
 
 /// 🚨A TEST RUN'S ENGINE KEEPS ITS SHADERS WHERE THE NEXT RUN FINDS THEM:
 /// the config names one folder of the machine's for every run
@@ -17,7 +18,8 @@ import '../helpers/project_scratch_folder.dart';
 ///
 /// ⚠️One process, and the order is the tests': the first reads what the
 /// config named before the second names a folder of its own, and the second
-/// is this file's first asking for the engine.
+/// asks for the engine as a launch finds the app — with none asked for yet
+/// ([theAppHasNoEngineYet]), wherever the file runs.
 void main() {
   // What the config named, before a test here names another.
   final named = debugAppShaderFolder;
@@ -52,6 +54,7 @@ void main() {
     'an engine a test opens by asking for it keeps what it compiles in the '
     'folder named',
     () {
+      theAppHasNoEngineYet();
       final own = Directory.systemTemp.createTempSync('qa_shaders_');
       deleteAfterSessionEnds(own);
       debugAppShaderFolder = own.path;

@@ -21,13 +21,14 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::blur::{Blurs, Cover};
-use super::landing::{self, Asked, Finished, Laid, Over};
+use super::landing::{self, Asked, Finished, Laid, Landed, Over};
 use super::mix::{Ground, Step, ground_of};
 use super::stamp::{Gradient, Paint, Shape as GradientShape, Source, StampLanding};
 use super::stroke::{Stroke, ground_of_rubs};
 use super::{Dab, Edge, Paper, RoundProfile, Shape, Texture, Turn};
 use crate::device::{Engine, Sent, hands_bytes, let_go, let_go_bytes, let_go_unwaited, on_thread_of};
 use crate::{fail, take_last_error};
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::kernels::composite::abi::{MaskPlane, sampling};
 use crate::kernels::composite::{Composite, NO_TILE, Named, TileAt};
 use crate::kernels::mesh::MeshGrid;
@@ -750,6 +751,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
     compared: bool,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (stroke, engine, blurs, composite, pool) =
@@ -763,7 +765,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur(
         let kit = (blurs, composite, pool, Cel(cel));
         let landed = stroke.land_blur(engine, kit, &asked, cover, compared);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -800,6 +802,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur_unwaited(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
     told: extern "C" fn(u64, bool),
     number: u64,
 ) -> isize {
@@ -819,9 +822,9 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_blur_unwaited(
     // SAFETY: what `put` holds is let go of on the engine's thread, after
     // it; `told` is one any thread may call (the function's contract).
     let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
-    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at), None)).collect();
     // SAFETY: see the function's contract.
-    unsafe { reported(Some(landed), places, changes) }
+    unsafe { reported(Some(landed), places, changes, inks) }
 }
 
 /// Lays `stroke` on the `count` tiles asked — `asks` their column and row,
@@ -851,6 +854,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
     compared: bool,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (stroke, engine, composite, pool) =
@@ -863,7 +867,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land(
         let laid = Laid { opacity, mode, mask: mask.as_ref() };
         let landed = stroke.land(engine, (composite, pool, Cel(cel)), &asked, &laid, compared);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -899,6 +903,7 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
     told: extern "C" fn(u64, bool),
     number: u64,
 ) -> isize {
@@ -918,9 +923,68 @@ pub unsafe extern "C" fn gpu_engine_stroke_land_unwaited(
     // SAFETY: what `put` holds is let go of on the engine's thread, after
     // it; `told` is one any thread may call (the function's contract).
     let given = unsafe { pool.lands_unwaited(engine, (Cel(cel), count), (told, number), put) };
-    let landed = given.into_iter().map(|at| (Change::Inked, Some(at))).collect();
+    let landed = given.into_iter().map(|at| (Change::Inked, Some(at), None)).collect();
     // SAFETY: see the function's contract.
-    unsafe { reported(Some(landed), places, changes) }
+    unsafe { reported(Some(landed), places, changes, inks) }
+}
+
+/// What each of the `count` tiles a stroke's landings put — `tiles`, each
+/// as a tile set names one — is beside the cel's tile under it (`asks`
+/// their column and row, `under` the cel's tile at each), asked with no
+/// wait for its caller and no slot taken: their bytes copied side by side
+/// on the engine's thread, behind every put handed over before this, and
+/// asked what a finished landing's are (`Stroke::told_then`). `told` is
+/// called with `number` from a thread of the engine's once the GPU has
+/// said, `out` written first: what it finished — its changes read
+/// ([`gpu_engine_finished_changes`]), it freed, and its tiles landed by
+/// none —, or null, and `told` false, where a tile names none or lies
+/// folded, none is asked or the test failed.
+///
+/// 🚨WHY (card the-start-of-every-stroke-stalls-on-the-galaxy-tab, 관제
+/// 2026-11-24): pen-up hands the cel the tiles the stroke's last steps put
+/// on their way, as they were shown (유저 09-17) — where the commit laid
+/// the stroke again, compared, and waited for the GPU on the UI's thread
+/// for what each tile is. What each is is told.
+///
+/// # Safety
+/// `stroke`, `engine` and `pool` are live, on `engine`, and `stroke`
+/// let go of after this; `tiles`, `under` hold `count` and `asks`
+/// `2 × count`; `out` is live till `told` is called, and `told` is one
+/// any thread may call.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_stroke_tiles_told_unwaited(
+    stroke: *const Stroke,
+    engine: *const Engine,
+    pool: *const Pool,
+    tiles: *const u32,
+    asks: *const i32,
+    under: *const u32,
+    count: usize,
+    out: *mut *mut Finished,
+    told: extern "C" fn(u64, bool),
+    number: u64,
+) {
+    // SAFETY: see the function's contract.
+    let (engine, pool) = unsafe { (&*engine, &*pool) };
+    // SAFETY: see the function's contract.
+    let asked = unsafe { asked_of(asks, under, count, pool) };
+    let lying = pool.lying();
+    // SAFETY: see the function's contract.
+    let words = unsafe { std::slice::from_raw_parts(tiles, count) };
+    let places: Option<Vec<TileAt>> = words.iter().map(|&word| lying.of_word(word)).collect();
+    let finish = move |engine: &Engine, pages: &[wgpu::Buffer], then: Then| {
+        let Some(places) = places else {
+            return then(None);
+        };
+        // SAFETY: let go of on this thread, after this (the function's
+        // contract).
+        let stroke = unsafe { &*stroke };
+        stroke.told_then(engine, pages, &places, &asked, then);
+    };
+    // SAFETY: what `finish` holds is let go of on the engine's thread,
+    // after it; `out` and `told` are the function's contract.
+    engine.posted(unsafe { told_body(engine, pool, (told, number), finish, handed_to(out)) });
 }
 
 /// Lays the pool's tile set of `columns` × `rows` canvas tiles whose
@@ -962,6 +1026,7 @@ pub unsafe extern "C" fn gpu_engine_tiles_land(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (engine, composite, pool, words) = unsafe {
@@ -984,7 +1049,7 @@ pub unsafe extern "C" fn gpu_engine_tiles_land(
             landing::land(engine, (composite, pool, Cel(cel)), over, &asked, &laid, None)
         };
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
@@ -1007,24 +1072,28 @@ unsafe fn asked_of(asks: *const i32, under: *const u32, count: usize, pool: &Poo
         .collect()
 }
 
-/// Writes each landed tile's `places` and `changes`, and returns how many
-/// landed; -1 where the landing failed.
+/// Writes each landed tile's `places`, `changes` and `inks` — four words
+/// a tile, as [`InkBox::words`] gives them —, and returns how many landed;
+/// -1 where the landing failed.
 ///
 /// # Safety
-/// `places` and `changes` hold as many as were asked, and no more land.
+/// `places` and `changes` hold as many as were asked, `inks` four times
+/// as many, and no more land.
 pub(crate) unsafe fn reported(
-    landed: Option<Vec<(Change, Option<TileAt>)>>,
+    landed: Option<Vec<Landed>>,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     let Some(landed) = landed else {
         return -1;
     };
-    for (at, (change, place)) in landed.iter().enumerate() {
+    for (at, (change, place, ink)) in landed.iter().enumerate() {
         // SAFETY: see the function's contract.
         unsafe {
             *places.add(at) = place.map_or(NO_TILE, TileAt::word);
             *changes.add(at) = byte_of(*change);
+            std::ptr::copy_nonoverlapping(InkBox::words(*ink).as_ptr(), inks.add(4 * at), 4);
         }
     }
     landed.len() as isize
@@ -1290,6 +1359,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (landing, engine, composite, pool, picture, within) = unsafe {
@@ -1305,48 +1375,67 @@ pub unsafe extern "C" fn gpu_engine_stamp_land(
         let source = Source::Picture { picture: &boxed, at: (left, top), within };
         let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }
 
 /// What a finish is told by: its landing finished, or nothing.
 type Then = Box<dyn FnOnce(Option<Finished>) + Send>;
 
-/// The body a finish hands the engine's thread: `finish` run there on
-/// `pool`'s pages as they stand now — where the cel's tiles lay as it was
-/// asked, whatever a store or a fold makes of the pool meanwhile —, and
-/// what it is told handed out by `engine` to `out`, then `told` called
-/// with `number` and whether there is one.
+/// The body a verb with no wait for its caller hands the engine's thread:
+/// `work` run there on `pool`'s pages as they stand now — where the cel's
+/// tiles lay as it was asked, whatever a store or a fold makes of the pool
+/// meanwhile —, and what it is told `answer`ed on the thread of the
+/// engine's that tells it — put where its caller reads it, saying whether
+/// there is one —, then `told` called with `number` and that.
 ///
-/// ⛔Not a body that failed, whatever it finished: its caller's next done
+/// 🚨ONE BODY (rule of three, 공통 2026-11-24, card
+/// the-ui-isolate-still-waits-for-the-gpu-in-places W3 — 관제: 「합칠 때
+/// 두 기존 문도 그 한 문으로 옮겨 사본을 남기지 말 것」): a finish's
+/// (`gpu_engine_stamp_finish_unwaited`), a lift's
+/// (`gpu_engine_cel_pixels_lift_picture_unwaited`) and an ink scan's
+/// (`gpu_engine_ink_run_unwaited`) each spelled it — the third came.
+///
+/// ⛔Not a body that failed, whatever it made: its caller's next done
 /// would fail by it (`Engine::posted`) — a screen's frame, for a cut
 /// ahead that landed nothing. `told` says it.
 ///
 /// # Safety
-/// What `finish` holds is alive, and in no other thread's hands, till it
-/// has run; `out` is live till `told` is called, and `told` is one any
-/// thread may call.
-unsafe fn finishing<Finish>(
+/// What `work` and `answer` hold is alive, and in no other thread's
+/// hands, till each has run; `told` is one any thread may call.
+pub(crate) unsafe fn told_body<Made, Work, Answer>(
     engine: &Engine,
     pool: &Pool,
-    (out, told, number): (*mut *mut Finished, extern "C" fn(u64, bool), u64),
-    finish: Finish,
-) -> impl FnOnce() -> Option<()> + Send + 'static + use<Finish>
+    (told, number): (extern "C" fn(u64, bool), u64),
+    work: Work,
+    answer: Answer,
+) -> impl FnOnce() -> Option<()> + Send + 'static + use<Made, Work, Answer>
 where
-    Finish: FnOnce(&Engine, &[wgpu::Buffer], Then) + 'static,
+    Made: 'static,
+    Work: FnOnce(&Engine, &[wgpu::Buffer], Box<dyn FnOnce(Option<Made>) + Send>) + 'static,
+    Answer: FnOnce(&Engine, Option<Made>) -> bool + 'static,
 {
-    let handed = Sent((engine.clone(), pool.pages().to_vec(), out, finish));
+    let handed = Sent((engine.clone(), pool.pages().to_vec(), work, answer));
     move || {
-        let (engine, pages, out, finish) = handed.taken();
-        let (hands, out) = (engine.clone(), Sent(out));
-        let then = move |finished: Option<Finished>| {
-            let finished = finished.map(|finished| hands.hands(finished));
-            // SAFETY: live till `told` is called (the function's contract).
-            unsafe { *out.taken() = finished.unwrap_or(std::ptr::null_mut()) };
-            told(number, finished.is_some());
-        };
-        finish(&engine, &pages, Box::new(then));
+        let (engine, pages, work, answer) = handed.taken();
+        let (hands, answer) = (engine.clone(), Sent(answer));
+        let then = move |made: Option<Made>| told(number, answer.taken()(&hands, made));
+        work(&engine, &pages, Box::new(then));
         Some(())
+    }
+}
+
+/// What puts a finish where its caller reads it ([`told_body`]): handed
+/// out by the engine to `out`, or null where there is none.
+///
+/// # Safety
+/// `out` is live till the answer is given.
+unsafe fn handed_to(out: *mut *mut Finished) -> impl FnOnce(&Engine, Option<Finished>) -> bool {
+    move |engine, finished| {
+        let finished = finished.map(|finished| engine.hands(finished));
+        // SAFETY: see the function's contract.
+        unsafe { *out = finished.unwrap_or(std::ptr::null_mut()) };
+        finished.is_some()
     }
 }
 
@@ -1408,7 +1497,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_finish_unwaited(
     };
     // SAFETY: what `finish` holds is let go of on the engine's thread,
     // after it; `out` and `told` are the function's contract.
-    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+    engine.posted(unsafe { told_body(engine, pool, (told, number), finish, handed_to(out)) });
 }
 
 /// [`gpu_engine_stamp_finish_unwaited`] of `coverage` under `paint`, as
@@ -1462,7 +1551,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_finish_mask_unwaited(
     };
     // SAFETY: what `finish` holds is let go of on the engine's thread,
     // after it; `out` and `told` are the function's contract.
-    engine.posted(unsafe { finishing(engine, pool, (out, told, number), finish) });
+    engine.posted(unsafe { told_body(engine, pool, (told, number), finish, handed_to(out)) });
     true
 }
 
@@ -1481,6 +1570,29 @@ pub unsafe extern "C" fn gpu_engine_finished_changes(finished: *const Finished, 
             // SAFETY: see the function's contract.
             unsafe { *changes.add(at) = byte_of(change) };
         }
+    }
+    said.len()
+}
+
+/// Writes the box each tile of `finished`'s ink fills to `inks` — four
+/// words each, its left, top, right and bottom ([`InkBox::words`]: four 0s
+/// where it holds none), in the order they were asked — and returns how
+/// many tiles.
+///
+/// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-places-
+/// Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): the box a stroke's
+/// tile frames is told with what it is, so the move tool's box asks no scan.
+///
+/// # Safety
+/// `finished` is live, and `inks` holds four words for each tile asked.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_finished_inks(finished: *const Finished, inks: *mut i32) -> usize {
+    // SAFETY: see the function's contract.
+    let said = unsafe { &*finished }.inks();
+    // SAFETY: see the function's contract.
+    let out = unsafe { std::slice::from_raw_parts_mut(inks, said.len() * 4) };
+    for (&ink, words) in said.iter().zip(out.chunks_exact_mut(4)) {
+        words.copy_from_slice(&InkBox::words(ink));
     }
     said.len()
 }
@@ -1644,6 +1756,7 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
     mask: *const MaskPlane,
     places: *mut u32,
     changes: *mut u8,
+    inks: *mut i32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (landing, engine, composite, pool, coverage) =
@@ -1663,6 +1776,6 @@ pub unsafe extern "C" fn gpu_engine_stamp_land_mask(
         let source = Source::Mask { mask: &coverage, paint: &paint, whole };
         let landed = landing.land(engine, (composite, pool, Cel(cel)), &source, &asked, &laid);
         // SAFETY: see the function's contract.
-        unsafe { reported(landed, places, changes) }
+        unsafe { reported(landed, places, changes, inks) }
     })
 }

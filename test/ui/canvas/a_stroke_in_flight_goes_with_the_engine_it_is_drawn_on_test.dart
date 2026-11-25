@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 
 import '../../helpers/blank_cel.dart';
 import '../../helpers/the_apps_engine_let_go.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「장치를 잃으면 앱은 꺼지지
 /// 않고 새 장치를 열어 사본으로 되살린다. 잃는 것은 그리던 획 정도다」 — a
@@ -132,6 +133,7 @@ void main() {
     // A host's model outlives the view it lends it to.
     final hosts = ActiveStrokeOverlayModel();
     addTearDown(hosts.dispose);
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(view(hostsOverlay: hosts));
     final gesture = await beginStroke(tester);
     // The pen rests: its line has come up to it, and no frame is on its

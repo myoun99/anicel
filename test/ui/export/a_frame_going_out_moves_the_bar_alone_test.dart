@@ -263,4 +263,72 @@ void main() {
     expect(bar(tester).value, isNull);
     await ended(tester, run, next);
   });
+
+  // 🗣️검증/서피스 2026-11-25 (the-export-sound-blocks-the-ui-isolate): the
+  // queue's row said 「0/0」 with no bar while a 46 s sound was mixed.
+  group('a queued job\'s row', () {
+    final row = find.byKey(const ValueKey<String>('export-queue-job-1'));
+    final rowBar = find.byKey(const ValueKey<String>('export-queue-bar-1'));
+    final remove = find.byKey(const ValueKey<String>('export-queue-remove-1'));
+
+    /// The window over [run], on a screen whose half is room for the queue
+    /// beside the least the preview takes (as `export_dialog_queue_test`'s,
+    /// F-337 · F-578-Q4) so its column stands open — and one job queued.
+    Future<ExportDialogState> queuedOne(
+      WidgetTester tester,
+      _HeldVideoRun run,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(2040, 860));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final state = await open(tester, run);
+      await tester.runAsync(state.addToQueue);
+      await tester.pump();
+      expect(row, findsOneWidget, reason: 'premise: the queue stands open');
+      return state;
+    }
+
+    testWidgets('🚨keeps its size, and a bar moves in it from the moment '
+        'the job runs — before it has said how much it makes', (
+      tester,
+    ) async {
+      final run = _HeldVideoRun();
+      final state = await queuedOne(tester, run);
+      final queued = tester.getSize(row);
+      expect(rowBar, findsNothing, reason: 'no bar before the job runs');
+      expect(remove, findsOneWidget);
+
+      final (whole: running) = await begun(tester, run, state.runQueue);
+      expect(tester.getSize(row), queued, reason: 'the row kept its size');
+      expect(
+        tester.widget<LinearProgressIndicator>(rowBar).value,
+        isNull,
+        reason: 'getting ready: a bar with no end, moving',
+      );
+      expect(remove, findsOneWidget, reason: 'the ✕ keeps its place');
+
+      run.report!(1, 4);
+      await tester.pump();
+      expect(
+        tester.widget<LinearProgressIndicator>(rowBar).value,
+        closeTo(0.25, 0.01),
+      );
+      expect(tester.getSize(row), queued);
+
+      await ended(tester, run, running);
+      expect(tester.getSize(row), queued, reason: 'finished, the same size');
+      expect(rowBar, findsNothing);
+    });
+
+    testWidgets('its ✕ takes nothing off while the job runs', (tester) async {
+      final run = _HeldVideoRun();
+      final state = await queuedOne(tester, run);
+      final (whole: running) = await begun(tester, run, state.runQueue);
+
+      await tester.tap(remove, warnIfMissed: false);
+      await tester.pump();
+      expect(row, findsOneWidget, reason: 'the running job stays queued');
+
+      await ended(tester, run, running);
+    });
+  });
 }

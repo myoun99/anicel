@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/fixed_label.dart' show FixedLabel;
+import '../widgets/live_sheet.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/rail_glyph_button.dart' show RailPlateButton;
 import '../widgets/tick_layer.dart';
@@ -594,95 +595,102 @@ class TimelineLayerControlsHeader extends KeptPiece {
         color: AppColors.washUp,
         border: Border.all(color: colorScheme.outlineVariant),
       ),
+      // 🚨A SHEET ON THE PLATE ([LiveSheet], as a panel header's): what its
+      // headings light is laid on it, over the plate, and the dock keeps its
+      // image (card a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-
+      // again, 2026-11-24). ↩️Each heading painted its hover in its own
+      // picture.
       // The legend is laid out WHOLE, always. Cutting it to a short panel
       // is the rail window's job, and it cuts the rows beside it at the
       // same line — which is exactly what the two mechanisms this replaces
       // could not promise (R6a clipped the legend while scaling the
       // headers, and below 494px they parted visibly).
-      child: Flex(
-        direction: axis,
-        children: [
-          Expanded(
-            child: Padding(
-              // The rail's trailing breathing room. Stood up there is none
-              // to give: the sheet's header block is sized to exactly this
-              // list of slots, so any padding is that much overflow.
-              padding: isVertical
-                  ? EdgeInsets.zero
-                  : const EdgeInsets.only(right: layerRailEndPadding),
-              child: Flex(
-                direction: axis,
-                children: [
-                  // The rows' own column skeleton, so every legend icon
-                  // sits over the column it names (R9 #22). The sections
-                  // cell rides the reserved band slot (UI-R5/R6 #5).
-                  ...layerRailLeadingCells(
-                    axis: axis,
-                    // Over the rows' inline section band (UI-R5/R6 #5):
-                    // the sections flyout.
-                    sectionBand: _buildSectionBand(menus, colorScheme),
-                    laneToggle: _buildLaneToggle(restColor),
-                    timesheet: _buildTimesheet(menus, restColor),
-                    mark: _buildMark(menus, restColor),
-                    // Kind-solo flyout over the rows' TYPE BUTTON column
-                    // (R4 #8): solo one layer TYPE like the mark colors.
-                    typeButton: _buildTypeButton(menus, restColor),
-                  ),
-                  Expanded(
-                    child: _legendHeading(
-                      context,
-                      isVertical: isVertical,
-                      heading: heading,
-                      rowHeight: metrics.layerRowHeight,
-                      ink: colorScheme.onSurfaceVariant,
+      child: LiveSheet(
+        child: Flex(
+          direction: axis,
+          children: [
+            Expanded(
+              child: Padding(
+                // The rail's trailing breathing room. Stood up there is none
+                // to give: the sheet's header block is sized to exactly this
+                // list of slots, so any padding is that much overflow.
+                padding: isVertical
+                    ? EdgeInsets.zero
+                    : const EdgeInsets.only(right: layerRailEndPadding),
+                child: Flex(
+                  direction: axis,
+                  children: [
+                    // The rows' own column skeleton, so every legend icon
+                    // sits over the column it names (R9 #22). The sections
+                    // cell rides the reserved band slot (UI-R5/R6 #5).
+                    ...layerRailLeadingCells(
+                      axis: axis,
+                      // Over the rows' inline section band (UI-R5/R6 #5):
+                      // the sections flyout.
+                      sectionBand: _buildSectionBand(menus, colorScheme),
+                      laneToggle: _buildLaneToggle(restColor),
+                      timesheet: _buildTimesheet(menus, restColor),
+                      mark: _buildMark(menus, restColor),
+                      // Kind-solo flyout over the rows' TYPE BUTTON column
+                      // (R4 #8): solo one layer TYPE like the mark colors.
+                      typeButton: _buildTypeButton(menus, restColor),
                     ),
-                  ),
-                  ...layerRailTrailingCells(
-                    axis: axis,
-                    columns: metrics.railColumns,
-                    optionalColumns: optional,
-                    clip: _buildClip(menus, restColor),
-                    fx: _buildFx(context, menus),
-                    // Onion legend (UI-R17 #5): bulk apply/clear over the
-                    // displayed layers + the panel reveal. A host that
-                    // carries no onion column skips the CELL so its row
-                    // columns stay aligned.
-                    //
-                    // The HEADING follows the COLUMN, and only the flyout
-                    // follows the callbacks. It used to be the other way
-                    // round, which is why the x-sheet — whose rows carry
-                    // onion but which passed no legend bulk commands then —
-                    // reserved the slot and left it blank: the one column
-                    // on that surface with no heading over it.
-                    onion: _buildOnion(menus, optional.onion, restColor),
-                    visibility: _buildVisibility(menus, restColor),
-                    // MASTER opacity bar (R4 #6): drags every DISPLAYED
-                    // row's opacity (filter-passing — solo a color/kind
-                    // first to scope it). Gray at rest on the LAST
-                    // committed value (UI-R6 #2); accent + live % while
-                    // adjusting; preview per move, ONE write on release.
-                    // ↩️Stood up, the bar stood down (R10 R6, 08-01): a
-                    // 28px-wide column was no slider, and a rotated one
-                    // lost the arena. A bar runs down a column now, as the
-                    // x-sheet's own rows' bars do ([FieldSlider.axis]), and
-                    // the corner opens what the rail's header opens
-                    // (F-408 ②).
-                    opacity: _buildOpacity(context, legend, colorScheme),
-                    // R27 #6: the BLEND column header — one pick applies
-                    // the mode to every displayed compositing row, the
-                    // master opacity bar's logic in a flyout. A host that
-                    // does not carry the column skips it, so its row
-                    // columns stay aligned (the onion precedent).
-                    //
-                    // Heading follows the COLUMN, flyout follows the bulk
-                    // callback — see the onion cell above.
-                    blend: _buildBlend(menus, optional.blend, colorScheme),
-                  ),
-                ],
+                    Expanded(
+                      child: _legendHeading(
+                        context,
+                        isVertical: isVertical,
+                        heading: heading,
+                        rowHeight: metrics.layerRowHeight,
+                        ink: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    ...layerRailTrailingCells(
+                      axis: axis,
+                      columns: metrics.railColumns,
+                      optionalColumns: optional,
+                      clip: _buildClip(menus, restColor),
+                      fx: _buildFx(context, menus),
+                      // Onion legend (UI-R17 #5): bulk apply/clear over the
+                      // displayed layers + the panel reveal. A host that
+                      // carries no onion column skips the CELL so its row
+                      // columns stay aligned.
+                      //
+                      // The HEADING follows the COLUMN, and only the flyout
+                      // follows the callbacks. It used to be the other way
+                      // round, which is why the x-sheet — whose rows carry
+                      // onion but which passed no legend bulk commands then —
+                      // reserved the slot and left it blank: the one column
+                      // on that surface with no heading over it.
+                      onion: _buildOnion(menus, optional.onion, restColor),
+                      visibility: _buildVisibility(menus, restColor),
+                      // MASTER opacity bar (R4 #6): drags every DISPLAYED
+                      // row's opacity (filter-passing — solo a color/kind
+                      // first to scope it). Gray at rest on the LAST
+                      // committed value (UI-R6 #2); accent + live % while
+                      // adjusting; preview per move, ONE write on release.
+                      // ↩️Stood up, the bar stood down (R10 R6, 08-01): a
+                      // 28px-wide column was no slider, and a rotated one
+                      // lost the arena. A bar runs down a column now, as the
+                      // x-sheet's own rows' bars do ([FieldSlider.axis]), and
+                      // the corner opens what the rail's header opens
+                      // (F-408 ②).
+                      opacity: _buildOpacity(context, legend, colorScheme),
+                      // R27 #6: the BLEND column header — one pick applies
+                      // the mode to every displayed compositing row, the
+                      // master opacity bar's logic in a flyout. A host that
+                      // does not carry the column skips it, so its row
+                      // columns stay aligned (the onion precedent).
+                      //
+                      // Heading follows the COLUMN, flyout follows the bulk
+                      // callback — see the onion cell above.
+                      blend: _buildBlend(menus, optional.blend, colorScheme),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

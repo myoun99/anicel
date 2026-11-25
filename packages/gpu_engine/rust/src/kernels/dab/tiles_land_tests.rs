@@ -49,6 +49,7 @@ fn landed_over(
     let coordinates: Vec<i32> = asks.iter().flat_map(|&(column, row)| [column, row]).collect();
     let mut places = vec![0u32; asks.len()];
     let mut changes = vec![9u8; asks.len()];
+    let mut inks = vec![0i32; 4 * asks.len()];
     // SAFETY: every pointer is live on the rig's engine, and each list holds
     // as many as its count says.
     let count = unsafe {
@@ -70,6 +71,7 @@ fn landed_over(
             mask,
             places.as_mut_ptr(),
             changes.as_mut_ptr(),
+            inks.as_mut_ptr(),
         )
     };
     assert!(count >= 0, "{}", last_error());

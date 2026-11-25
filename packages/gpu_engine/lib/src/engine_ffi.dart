@@ -11,8 +11,6 @@ final class Fill extends Opaque {}
 /// The texture a kernel writes: a surface's, or a window's next image.
 final class Texture extends Opaque {}
 
-final class Window extends Opaque {}
-
 final class Pool extends Opaque {}
 
 final class Planned extends Opaque {}
@@ -259,6 +257,9 @@ external bool engineGone(Pointer<Engine> engine);
 @Native<Uint32 Function(Pointer<Engine>)>(symbol: 'gpu_engine_went_by')
 external int engineWentBy(Pointer<Engine> engine);
 
+@Native<Uint32 Function(Pointer<Engine>)>(symbol: 'gpu_engine_late')
+external int engineLate(Pointer<Engine> engine);
+
 @Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
   symbol: 'gpu_engine_noted',
 )
@@ -276,6 +277,17 @@ external int engineUnfinished(
   Pointer<Uint8> buffer,
   int capacity,
 );
+
+@Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_submits_behind')
+external int engineSubmitsBehind(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Engine>, Pointer<Uint64>)>(
+  symbol: 'gpu_engine_compiles',
+)
+external void engineCompiles(Pointer<Engine> engine, Pointer<Uint64> into);
+
+@Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_clocked')
+external bool engineClocked(Pointer<Engine> engine);
 
 @Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_timed')
 external void engineTimed(Pointer<Engine> engine, bool timed);
@@ -302,6 +314,15 @@ external void doneThen(
   int wait,
 );
 
+@Native<Bool Function(Pointer<Engine>, Uint64, Pointer<Uint64>)>(
+  symbol: 'gpu_engine_done_waited',
+)
+external bool doneWaited(
+  Pointer<Engine> engine,
+  int wait,
+  Pointer<Uint64> into,
+);
+
 @Native<Size Function(Pointer<Engine>, Uint64, Pointer<Uint8>, Size)>(
   symbol: 'gpu_engine_done_failure',
 )
@@ -315,12 +336,30 @@ external int doneFailure(
 @Native<Void Function(Pointer<Engine>, Bool)>(symbol: 'gpu_engine_lose')
 external void engineLose(Pointer<Engine> engine, bool forMemory);
 
+@Native<Bool Function(Pointer<Engine>)>(symbol: 'gpu_engine_wait_late')
+external bool engineWaitLate(Pointer<Engine> engine);
+
 @Native<Void Function(Pointer<Engine>, Uint32)>(
   symbol: 'gpu_engine_stand_still',
 )
 external void engineStandStill(Pointer<Engine> engine, int millis);
 
-@Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool)>(
+/// What Flutter tells of a texture's paints — submitted (0) or read (1)
+/// through a count —, by Anicel's Flutter, patch 0007
+/// (rust/src/screen_reads.rs): the function the texture is handed.
+@Native<Void Function(Int64, Int32, Uint64)>(symbol: 'gpu_engine_screen_read')
+external void screenRead(int texture, int kind, int count);
+
+@Native<Void Function(Int64)>(symbol: 'gpu_engine_screen_reads_keep')
+external void screenReadsKeep(int texture);
+
+@Native<Void Function(Int64)>(symbol: 'gpu_engine_screen_reads_forget')
+external void screenReadsForget(int texture);
+
+@Native<Uint64 Function(Int64)>(symbol: 'gpu_engine_screen_unread')
+external int screenUnread(int texture);
+
+@Native<Pointer<Surface> Function(Pointer<Engine>, Uint32, Uint32, Bool, Bool)>(
   symbol: 'gpu_engine_surface_new',
 )
 external Pointer<Surface> surfaceNew(
@@ -328,6 +367,16 @@ external Pointer<Surface> surfaceNew(
   int width,
   int height,
   bool bgra,
+  bool forTheCpuToo,
+);
+
+@Native<Size Function(Pointer<Surface>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_surface_laid_said',
+)
+external int surfaceLaidSaid(
+  Pointer<Surface> surface,
+  Pointer<Uint8> buffer,
+  int capacity,
 );
 
 @Native<Void Function(Pointer<Surface>)>(symbol: 'gpu_engine_surface_free')
@@ -343,37 +392,23 @@ external Pointer<Void> surfaceHandle(Pointer<Surface> surface);
 )
 external Pointer<Texture> surfaceTexture(Pointer<Surface> surface);
 
-@Native<
-  Pointer<Window> Function(Pointer<Engine>, Pointer<Void>, Uint32, Uint32)
->(symbol: 'gpu_engine_window_new')
-external Pointer<Window> windowNew(
+@Native<Void Function(Pointer<Engine>, Pointer<Surface>, Pointer<Uint32>)>(
+  symbol: 'gpu_engine_surface_settle',
+)
+external void surfaceSettle(
   Pointer<Engine> engine,
-  Pointer<Void> native,
-  int width,
-  int height,
+  Pointer<Surface> surface,
+  Pointer<Uint32> rect,
 );
 
-@Native<Pointer<Texture> Function(Pointer<Window>)>(
-  symbol: 'gpu_engine_window_target',
+@Native<Size Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_screen_said',
 )
-external Pointer<Texture> windowTarget(Pointer<Window> window);
-
-@Native<Void Function(Pointer<Engine>, Pointer<Window>)>(
-  symbol: 'gpu_engine_window_present',
-)
-external void windowPresent(Pointer<Engine> engine, Pointer<Window> window);
-
-@Native<Size Function(Pointer<Window>, Pointer<Uint8>, Size)>(
-  symbol: 'gpu_engine_window_said',
-)
-external int windowSaid(
-  Pointer<Window> window,
+external int screenSaid(
+  Pointer<Engine> engine,
   Pointer<Uint8> buffer,
   int capacity,
 );
-
-@Native<Void Function(Pointer<Window>)>(symbol: 'gpu_engine_window_free')
-external void windowFree(Pointer<Window> window);
 
 @Native<Pointer<Fill> Function(Pointer<Engine>)>(symbol: 'gpu_engine_fill_new')
 external Pointer<Fill> fillNew(Pointer<Engine> engine);
@@ -559,6 +594,9 @@ external int poolBytes(Pointer<Pool> pool);
 
 @Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_ahead_bytes')
 external int poolAheadBytes(Pointer<Pool> pool);
+
+@Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_folded_bytes')
+external int poolFoldedBytes(Pointer<Pool> pool);
 
 @Native<Pointer<Planned> Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_plan_new',
@@ -1247,6 +1285,23 @@ external int compositeShow(
   Pointer<Uint32> rect,
 );
 
+@Native<
+  Void Function(
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Texture>,
+    Int32,
+    Int32,
+  )
+>(symbol: 'gpu_engine_composite_move')
+external void compositeMove(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Texture> target,
+  int dx,
+  int dy,
+);
+
 @Native<Pointer<Screen> Function(Pointer<Engine>, Pointer<Int32>, Double)>(
   symbol: 'gpu_engine_screen_new',
 )
@@ -1269,6 +1324,9 @@ external int keptBytes();
   symbol: 'gpu_engine_pictures_idle_bytes',
 )
 external int picturesIdleBytes(Pointer<Engine> engine);
+
+@Native<Uint64 Function(Pointer<Engine>)>(symbol: 'gpu_engine_pictures_bytes')
+external int picturesBytes(Pointer<Engine> engine);
 
 @Native<Uint64 Function(Pointer<Engine>)>(
   symbol: 'gpu_engine_pictures_unowned_bytes',
@@ -1865,6 +1923,7 @@ external void celPassedRuns(Pointer<CelPassed> passed, Pointer<Uint32> out);
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_cel_passed_land')
 external int celPassedLand(
@@ -1876,6 +1935,7 @@ external int celPassedLand(
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<Pointer<Floods> Function(Pointer<Engine>)>(
@@ -1990,16 +2050,26 @@ external void facesFile(
   int length,
 );
 
-/// [path] is the file's, UTF-8: the engine maps it, and false is a file it
-/// cannot map — opened, so not a leaf.
-@Native<Bool Function(Pointer<FacesHanded>, Uint32, Pointer<Uint8>, Size)>(
-  symbol: 'gpu_engine_faces_file_at',
-)
+/// [path] is the file's, UTF-8: the engine maps the [span] bytes at
+/// [offset] of it, and false is a span it cannot map — opened, so not a
+/// leaf.
+@Native<
+  Bool Function(
+    Pointer<FacesHanded>,
+    Uint32,
+    Pointer<Uint8>,
+    Size,
+    Uint64,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_faces_file_at')
 external bool facesFileAt(
   Pointer<FacesHanded> handed,
   int family,
   Pointer<Uint8> path,
   int length,
+  int offset,
+  int span,
 );
 
 @Native<Pointer<Faces> Function(Pointer<FacesHanded>)>(
@@ -2152,6 +2222,7 @@ external bool lettersCover(
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
     Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
@@ -2166,6 +2237,7 @@ external int lettersLand(
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
   int number,
 );
@@ -2246,6 +2318,7 @@ external Pointer<PluginMade> pluginRenderRead(
     Size,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_plugin_made_land')
 external int pluginMadeLand(
@@ -2257,6 +2330,7 @@ external int pluginMadeLand(
   int count,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<Void Function(Pointer<PluginMade>)>(
@@ -2540,6 +2614,7 @@ external bool strokeMixed(
     Bool,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stroke_land')
 external int strokeLand(
@@ -2557,6 +2632,7 @@ external int strokeLand(
   bool compared,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<
@@ -2574,6 +2650,7 @@ external int strokeLand(
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
     Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
@@ -2592,6 +2669,34 @@ external int strokeLandUnwaited(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
+  Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
+  int number,
+);
+
+@Native<
+  Void Function(
+    Pointer<Stroke>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Pointer<Finished>>,
+    Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_stroke_tiles_told_unwaited')
+external void strokeTilesToldUnwaited(
+  Pointer<Stroke> stroke,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Uint32> tiles,
+  Pointer<Int32> asks,
+  Pointer<Uint32> under,
+  int count,
+  Pointer<Pointer<Finished>> out,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
   int number,
 );
@@ -2615,6 +2720,7 @@ external int strokeLandUnwaited(
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_tiles_land')
 external int tilesLand(
@@ -2635,6 +2741,7 @@ external int tilesLand(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 final class Blurs extends Opaque {}
@@ -2729,6 +2836,7 @@ external void strokeRub(
     Bool,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stroke_land_blur')
 external int strokeLandBlur(
@@ -2746,6 +2854,7 @@ external int strokeLandBlur(
   bool compared,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<
@@ -2763,6 +2872,7 @@ external int strokeLandBlur(
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
     Pointer<NativeFunction<Void Function(Uint64, Bool)>>,
     Uint64,
   )
@@ -2781,6 +2891,7 @@ external int strokeLandBlurUnwaited(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
   Pointer<NativeFunction<Void Function(Uint64, Bool)>> told,
   int number,
 );
@@ -2909,6 +3020,7 @@ external void stampLandingFree(Pointer<StampLanding> landing);
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stamp_land')
 external int stampLand(
@@ -2929,6 +3041,7 @@ external int stampLand(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );
 
 @Native<
@@ -3019,6 +3132,11 @@ external int finishedChanges(
   Pointer<Uint8> changes,
 );
 
+@Native<UintPtr Function(Pointer<Finished>, Pointer<Int32>)>(
+  symbol: 'gpu_engine_finished_inks',
+)
+external int finishedInks(Pointer<Finished> finished, Pointer<Int32> inks);
+
 @Native<
   UintPtr Function(
     Pointer<Finished>,
@@ -3063,6 +3181,7 @@ external void finishedFree(Pointer<Finished> finished);
     Pointer<MaskPlane>,
     Pointer<Uint32>,
     Pointer<Uint8>,
+    Pointer<Int32>,
   )
 >(symbol: 'gpu_engine_stamp_land_mask')
 external int stampLandMask(
@@ -3082,4 +3201,5 @@ external int stampLandMask(
   Pointer<MaskPlane> mask,
   Pointer<Uint32> places,
   Pointer<Uint8> changes,
+  Pointer<Int32> inks,
 );

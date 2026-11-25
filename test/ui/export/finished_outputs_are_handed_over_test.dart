@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -35,6 +36,7 @@ import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// WHERE AN EXPORT GOES IS ASKED WHEN IT IS PRESSED (F-221, 유저 2026-10-06:
 /// 「어차피 내보내기누르면 OS창 뜨게하는 최종통일안으로 통일할거니
@@ -50,6 +52,7 @@ import '../../helpers/temp_dir.dart';
 /// answer, and the line that says which order this export takes. Every
 /// OS's road is driven from the Windows workstation through the OS seam.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// What a hand-over's window is asked when it is backed out of
   /// (`a_backed_out_hand_over_is_asked_about_test` has the law).
   const question = ValueKey<String>('hand-over-pending-dialog');
@@ -135,7 +138,7 @@ void main() {
     FolderPicker.debugOperatingSystem = operatingSystem;
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -246,11 +246,12 @@ Set<String> _typesHandedOutAsBytes(String ffi, Map<String, String> verbs) {
 }
 
 /// The names of the pointers the package's objects hold: each field and
-/// getter of a `Pointer<rust.…>` — but the engine's own, which are what a
-/// job is ON, not what one names.
+/// getter of a `Pointer<rust.…>` — a getter of a body too, as the pool's
+/// that refuses a freed pool (`GpuPool._pool`) — but the engine's own,
+/// which are what a job is ON, not what one names.
 Set<String> _pointersOf(String code) => {
   for (final held in RegExp(
-    r'Pointer<rust\.\w+>\??\s+(?:get\s+)?(_\w+)\s*(?:;|=>|=[^=])',
+    r'Pointer<rust\.\w+>\??\s+(?:get\s+)?(_\w+)\s*(?:;|=>|=[^=]|\{)',
   ).allMatches(code))
     held[1]!,
 }..removeAll(const {'_engine', '_fill', '_fillKernel'});

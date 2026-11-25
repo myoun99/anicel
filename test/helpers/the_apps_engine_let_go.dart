@@ -29,3 +29,18 @@ GpuEngine theAppsEngineLostAndLetGo() {
   letTheGoneAppGpuEngineGo();
   return gone;
 }
+
+/// The app with no engine asked for yet, as a launch finds it — and so
+/// nothing made on one: the engine it has, if anything has asked for one,
+/// lost and let go ([theAppsEngineLostAndLetGo]), as a loss leaves the app.
+/// What a test of the first ask, the first compile or the first opening
+/// stands on, wherever its file runs in its process: 🔬seven files went
+/// red bundled behind files that had opened the engine and compiled on it,
+/// green alone (card bundled-files-find-the-engine-already-open,
+/// 2026-11-23).
+void theAppHasNoEngineYet() {
+  if (debugAppGpuEngineAskedFor) {
+    theAppsEngineLostAndLetGo();
+  }
+  expect(debugAppGpuEngineAskedFor, isFalse, reason: '⛔premise: none asked');
+}

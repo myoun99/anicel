@@ -29,14 +29,14 @@ import 'timeline_frame_window.dart';
 class TimelineFrameAxisFollower {
   TimelineFrameAxisFollower({
     required this.controller,
-    required this.frameAxisOffset,
+    required ValueNotifier<double> frameAxisOffset,
     required this.frameWindowBucket,
     required this.cellExtent,
     required this.baseFrameCount,
     required this.viewportFillFrames,
     required this.rebuild,
     required this.isMounted,
-  }) {
+  }) : _frameAxisOffset = frameAxisOffset {
     frameAxisOffset.addListener(_followTheAxis);
     _stoodAt = frameAxisOffset.value;
     _standUnread();
@@ -62,8 +62,28 @@ class TimelineFrameAxisFollower {
 
   final ScrollController controller;
 
-  /// The frame-axis pixel offset, for the surfaces that window and count.
-  final ValueNotifier<double> frameAxisOffset;
+  /// The frame-axis pixel offset, for the surfaces that window and count —
+  /// the place's the panel shows now ([standOn]).
+  ValueNotifier<double> get frameAxisOffset => _frameAxisOffset;
+  ValueNotifier<double> _frameAxisOffset;
+
+  /// [axis] followed from here on — another place's: a cut or a timeline
+  /// opened (H78), each keeping its own scroll. The scrollable stands where
+  /// that place was left at once, not after the frame, so no layout of the
+  /// place it leaves can clamp its position into the record of the place
+  /// it opens.
+  void standOn(ValueNotifier<double> axis) {
+    if (identical(axis, _frameAxisOffset)) {
+      return;
+    }
+    _frameAxisOffset.removeListener(_followTheAxis);
+    _frameAxisOffset = axis..addListener(_followTheAxis);
+    if (!controller.hasClients) {
+      _standUnread();
+      return;
+    }
+    _jumpToTheAxis(controller.position);
+  }
 
   /// The quantized span bucket — the painters' repaint trigger.
   final ValueNotifier<int> frameWindowBucket;
@@ -287,6 +307,10 @@ class TimelineFrameAxisFollower {
     // it ([jumpToReveal]) — and the scrollable goes there too, the cells
     // grown under it below ([_standAt]). ↩️It was held to the built end, so
     // the grid opened on a page the row had already left.
+    _jumpToTheAxis(position);
+  }
+
+  void _jumpToTheAxis(ScrollPosition position) {
     final target = math.max(position.minScrollExtent, frameAxisOffset.value);
     if (target == position.pixels) {
       return;

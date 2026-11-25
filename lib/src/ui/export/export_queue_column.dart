@@ -144,6 +144,48 @@ class _JobCard extends StatelessWidget {
     ExportJobStatus.cancelled => AppText.strings.exJobCancelled,
   };
 
+  /// The bar's place, held whatever the job is doing; the bar stands in it
+  /// while the job runs, as the footer's does (유저 2026-10-06: 「출력때만
+  /// 보이게」) — moving with no end while the job has not yet said how much
+  /// it makes, as it gets ready (its sound mix comes before its first
+  /// frame).
+  ///
+  /// 🗣️검증/서피스 2026-11-25 (the-export-sound-blocks-the-ui-isolate): for
+  /// the 1.3 s of a 46 s sound mix the row said 「0/0」 with no bar, and
+  /// whether the window was alive could not be told.
+  Widget get _bar => SizedBox(
+    height: _barHeight,
+    child: job.status == ExportJobStatus.running
+        ? LinearProgressIndicator(
+            key: ValueKey<String>('export-queue-bar-${job.id}'),
+            value: job.total > 0 ? job.completed / job.total : null,
+            minHeight: _barHeight,
+          )
+        : null,
+  );
+
+  static const double _barHeight = 3;
+
+  /// The ✕ that takes the job off the queue — in its place, dimmed, while
+  /// the queue runs (as a tool's setting it does not take stays, 10-10).
+  Widget _removeButton(ThemeData theme, {required bool removable}) =>
+      ControlPressClaim(
+        onPressed: removable ? () => onRemove!(job) : null,
+        child: InkWell(
+          mouseCursor: removable ? AppCursors.press : null,
+          key: ValueKey<String>('export-queue-remove-${job.id}'),
+          onTap: silentPress(removable ? () => onRemove!(job) : null),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Icon(
+              Icons.close,
+              size: 11,
+              color: removable ? null : theme.disabledColor,
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -191,39 +233,29 @@ class _JobCard extends StatelessWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  if (!running && onRemove != null)
-                    ControlPressClaim(
-                      onPressed: enabled ? () => onRemove!(job) : null,
-                      child: InkWell(
-                        mouseCursor: AppCursors.press,
-                        key: ValueKey<String>('export-queue-remove-${job.id}'),
-                        onTap: silentPress(
-                          enabled ? () => onRemove!(job) : null,
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(2),
-                          child: Icon(Icons.close, size: 11),
-                        ),
-                      ),
-                    ),
+                  if (onRemove != null)
+                    _removeButton(theme, removable: enabled),
                 ],
               ),
-              if (job.message != null)
-                EllipsisText(
-                  job.message!,
-                  maxLines: 1,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 9.5,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              // Every line the row can say has its place from the first
+              // frame (⛔없다가 생기는 UI): the message once it is finished,
+              // the bar while it runs.
+              EllipsisText(
+                job.message ?? '',
+                maxLines: 1,
+                // One line's height whatever it says: an empty line and one
+                // in a fallback face stood a pixel apart.
+                strutStyle: const StrutStyle(
+                  fontSize: 9.5,
+                  forceStrutHeight: true,
                 ),
-              if (running && job.total > 0) ...[
-                const SizedBox(height: 3),
-                LinearProgressIndicator(
-                  value: job.completed / job.total,
-                  minHeight: 3,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 9.5,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-              ],
+              ),
+              const SizedBox(height: 3),
+              _bar,
             ],
           ),
         ),

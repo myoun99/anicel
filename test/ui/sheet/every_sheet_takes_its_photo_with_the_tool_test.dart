@@ -39,6 +39,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// I-97-Q3 on every sheet that takes the pen: a photo dropped on the
 /// timesheet's page, a conte block's band or a box of the 봉투, the brush
@@ -74,7 +75,7 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1000, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

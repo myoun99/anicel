@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +23,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의
 /// 절반정도로」 — by area (F-337-Q1, 유저 2026-10-13: 「면적얘기야」), and
@@ -31,6 +33,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart';
 /// (유저 2026-09-16 · F-282-Q7), and the import window stood at 760 × 520
 /// before that, whatever the screen.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<void> screenOf(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
@@ -114,7 +117,7 @@ void main() {
       await screenOf(tester, screen);
       final session = film();
       addTearDown(session.dispose);
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

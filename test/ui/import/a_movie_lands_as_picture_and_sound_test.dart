@@ -39,10 +39,10 @@ void main() {
 
   /// A session whose conform answers every file as a second of sound — the
   /// movie's soundtrack, without the isolate a widget test cannot run.
-  EditorSessionManager session() {
+  EditorSessionManager session({List<double> reads = const []}) {
     final s = EditorSessionManager(
       initialProject: createDefaultProject(),
-      audioConformStore: soundConformStore(),
+      audioConformStore: soundConformStore(reads: reads),
     );
     addTearDown(s.dispose);
     return s;
@@ -61,6 +61,7 @@ void main() {
     int inFrame = 0,
     int? outFrame,
     ImportLayerSpot? spot,
+    void Function(double fraction)? onReading,
   }) async => (await tester.runAsync(
     () => s.importDoors.importVideoFile(
       path: moviePath,
@@ -72,6 +73,7 @@ void main() {
         outFrame: outFrame,
       ),
       spot: spot,
+      onReading: onReading,
     ),
   ))!;
 
@@ -260,6 +262,27 @@ void main() {
       isEmpty,
       reason: 'an SE row holds sound only — no picture came with it',
     );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets("🗣️decoder-reads-skip-the-percent-Q2: a movie's sound tells "
+      'how far its conform has read the movie — with the picture, and alone '
+      '(「디코더가 읽은 바이트를 센다」)', (tester) async {
+    for (final parts in [MovieParts.pictureAndSound, MovieParts.sound]) {
+      debugVideoDecodeBackend = FakeVideoBackend(frameCount: 24);
+      final s = session(reads: [0.25, 0.5, 1]);
+      final heard = <double>[];
+
+      expect(
+        await place(tester, s, parts: parts, onReading: heard.add),
+        isTrue,
+      );
+
+      // The conform began before the door waited on it: the door hears the
+      // last word at once (AudioConformStore.ensurePeaksFor).
+      expect(heard, isNotEmpty, reason: '$parts');
+      expect(heard.last, 1, reason: '$parts');
+    }
     await tester.pumpAndSettle();
   });
 }

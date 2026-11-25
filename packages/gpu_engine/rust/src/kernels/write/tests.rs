@@ -6,11 +6,12 @@
 use std::sync::OnceLock;
 
 use super::Change::{Cleared, Inked, Same};
-use super::{Change, Write};
+use super::{Change, Write, Written};
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::device::Engine;
 use crate::kernels::composite::tests::{Pool, mix};
 use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
-use crate::kernels::shared::{plane, words_buffer};
+use crate::kernels::shared::{le_words, plane, words_buffer};
 use crate::testing::{first_engine, read_buffer};
 
 struct Rig {
@@ -62,14 +63,15 @@ fn put(tiles: &[Vec<u32>]) -> wgpu::Buffer {
     words_buffer(rig().engine, "tiles put", &words, usage)
 }
 
-/// Whether each of `tiles` differs from what `set` stores where it goes,
-/// the passes cut at `cut`'s pages and tiles or as the device cuts them.
-fn changed(
+/// What the test says of each of `tiles` beside what `set` stores where it
+/// goes, the passes cut at `cut`'s pages and tiles or as the device cuts
+/// them.
+fn written(
     pool: &Pool,
     set: &TileSet,
     tiles: &[Vec<u32>],
     cut: Option<(usize, usize)>,
-) -> Option<Vec<Change>> {
+) -> Option<Written> {
     let Rig { engine, write } = rig();
     let pages = pool.upload(engine);
     let put = put(tiles);
@@ -79,11 +81,15 @@ fn changed(
     }
 }
 
-fn words(bytes: &[u8]) -> Vec<u32> {
-    bytes
-        .chunks_exact(4)
-        .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
-        .collect()
+/// Whether each of `tiles` differs from what `set` stores where it goes
+/// ([`written`]'s changes).
+fn changed(
+    pool: &Pool,
+    set: &TileSet,
+    tiles: &[Vec<u32>],
+    cut: Option<(usize, usize)>,
+) -> Option<Vec<Change>> {
+    written(pool, set, tiles, cut).map(|written| written.changes)
 }
 
 /// Four tiles, two to a page: the first and the last as stored, the second
@@ -189,13 +195,69 @@ fn a_write_cut_into_passes_says_what_one_pass_says() {
     }
 }
 
+/// A tile of ink at `points` alone — each a word of alpha 255 —, nothing
+/// elsewhere.
+fn inked_at(points: &[(u32, u32)]) -> Vec<u32> {
+    let mut tile = vec![0; TILE_TEXELS as usize];
+    for &(x, y) in points {
+        tile[(y * TILE + x) as usize] = 0xff00_00ff;
+    }
+    tile
+}
+
+/// The box from (`left`, `top`) to past (`right`, `bottom`).
+fn ink_box(left: u32, top: u32, right: u32, bottom: u32) -> Option<InkBox> {
+    Some(InkBox { left, top, right, bottom })
+}
+
+/// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-places-
+/// Q1): the test tells each tile's box with what it is — the box of a tile
+/// inked, of one the same as the stored, of one at the tile's corners (the
+/// words the first lane and the last take), and none of a tile cleared.
+#[test]
+fn each_tile_is_told_the_box_its_ink_fills() {
+    // The second tile's (7, 9), on the canvas.
+    let stored = |x: i32, y: i32| if (x, y) == (TILE as i32 + 7, 9) { 0xff00_00ff } else { 0 };
+    let mut pool = Pool::default();
+    let set = pool.drawn(stored, (0, 0), (4, 1), |_, _| Some(0));
+    let last = TILE - 1;
+    let tiles = [
+        inked_at(&[(3, 40), (90, 5)]),
+        inked_at(&[(7, 9)]),
+        inked_at(&[(0, 0), (last, last)]),
+        only(12, 0x0000_ffff),
+    ];
+    let told = written(&pool, &set, &tiles, None).expect("written");
+    assert_eq!(told.changes, [Inked, Same, Inked, Cleared]);
+    assert_eq!(
+        told.inks,
+        [ink_box(3, 5, 91, 41), ink_box(7, 9, 8, 10), ink_box(0, 0, TILE, TILE), None]
+    );
+}
+
+/// Each tile's box is where its pass's tiles are among the write's, the
+/// passes cut every way: a pass writes its boxes past every tile's word,
+/// not past its own tiles'.
+#[test]
+fn a_tiles_box_is_its_own_in_a_write_cut_into_passes() {
+    let pages = [None, Some(0), Some(1), None, Some(2)];
+    let mut pool = Pool::default();
+    let set = pool.drawn(|_, _| 0, (0, 0), (5, 1), |column, _| pages[column as usize]);
+    let tiles: Vec<Vec<u32>> = (0..5).map(|k| inked_at(&[(k * 20, 100 - k)])).collect();
+    let wanted: Vec<Option<InkBox>> = (0..5).map(|k| ink_box(k * 20, 100 - k, k * 20 + 1, 101 - k)).collect();
+    assert_eq!(written(&pool, &set, &tiles, None).expect("written").inks, wanted);
+    for cut in [(1, 1), (1, 2), (2, 2), (3, 2), (1, 5)] {
+        assert_eq!(written(&pool, &set, &tiles, Some(cut)).expect("cut").inks, wanted, "{cut:?}");
+    }
+}
+
 /// A write of no tiles says nothing, and binds nothing.
 #[test]
 fn a_write_of_no_tiles_says_nothing() {
     let Rig { engine, write } = rig();
     let pages = Pool::default().upload(engine);
     let none = plane(engine, "no tiles", 4);
-    assert_eq!(write.changed(engine, &pages, &none, &[]).expect("none"), Vec::<Change>::new());
+    assert_eq!(write.changed(engine, &pages, &none, &[]).expect("none"), Written::default());
 }
 
 /// Each tile named lands whole in its slot, over what was there or in a
@@ -211,11 +273,11 @@ fn a_put_copies_each_tile_named_to_its_slot() {
     let writes = [(2, TileAt { page: 0, slot: 1 }), (0, TileAt { page: 1, slot: 2 })];
     Write::put(engine, &pages, &put(&tiles), &writes).expect("put");
     assert_eq!(
-        words(&read_buffer(engine, &pages[0])),
+        le_words(&read_buffer(engine, &pages[0])),
         [tile(0, 0), tiles[2].clone(), tile(2, 0)].concat()
     );
     assert_eq!(
-        words(&read_buffer(engine, &pages[1])),
+        le_words(&read_buffer(engine, &pages[1])),
         [tile(0, 1), tile(1, 1), tiles[0].clone()].concat()
     );
 }
@@ -242,9 +304,9 @@ fn a_write_refuses_what_is_not_there() {
     assert!(Write::put(engine, &pages, &two, &[(0, to(2))]).is_none());
     assert!(Write::put(engine, &pages, &two, &[(0, TileAt { page: 1, slot: 0 })]).is_none());
     // Each in a test of its own with a good one first: nothing is copied.
-    let before = words(&read_buffer(engine, &pages[0]));
+    let before = le_words(&read_buffer(engine, &pages[0]));
     assert!(Write::put(engine, &pages, &two, &[(1, to(0)), (2, to(1))]).is_none());
-    assert_eq!(words(&read_buffer(engine, &pages[0])), before);
+    assert_eq!(le_words(&read_buffer(engine, &pages[0])), before);
 }
 
 /// A put copies only from tiles a copy may read, to pages a copy may

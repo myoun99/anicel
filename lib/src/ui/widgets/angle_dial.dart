@@ -8,6 +8,7 @@ import '../../services/transform_box_law.dart';
 import '../input/control_press_claim.dart';
 import '../repaint_props.dart';
 import '../theme/disabled_ink.dart';
+import 'axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 import 'owning_axis_grip.dart';
 import 'setting_source_button.dart' show settingGlyphPaint;
 
@@ -110,6 +111,10 @@ class _AngleDialState extends State<AngleDial> {
         axis: null,
         configure: widget.enabled
             ? (recognizer) {
+                // A grip of no axis is the pan twin; the turn counts its
+                // windings ([TransformBoxLaw.turn]).
+                (recognizer as OwningPanGestureRecognizer).takesEveryPoint =
+                    true;
                 recognizer.dragStartBehavior = DragStartBehavior.down;
                 recognizer.onStart = _started;
                 recognizer.onUpdate = _moved;

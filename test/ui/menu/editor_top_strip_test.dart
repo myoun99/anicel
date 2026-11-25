@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/brush_values_on_strip.dart';
@@ -5,7 +6,7 @@ import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
-import 'package:anicel/src/ui/debug/input_inspector.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -26,6 +27,7 @@ import '../../helpers/rail_group_button.dart';
 /// what belongs to no surface in particular: the project file, and the
 /// app's own switches.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
@@ -377,12 +379,12 @@ void main() {
     );
   });
 
-  testWidgets('Settings: the diagnosis switches live under DEBUG, and only '
-      'there', (tester) async {
+  testWidgets('Settings: the debug window is the one switch, under DEBUG '
+      'and only there', (tester) async {
     // 🗣️유저 2026-09-16 (F-146): 「입력 인스펙터같은건 **디버그라는? 거기다**
-    // 넣기」. Five measurement switches used to sit in the settings list
-    // beside the panel switchboard.
-    addTearDown(InputInspector.reset);
+    // 넣기」 — and 2026-11-24 (one-debug-window-shows-everything Q2): the
+    // five switches there are one window now.
+    addTearDown(MeasurementMode.reset);
     await pumpHome(tester);
 
     await openStrip(tester, 'top-strip-settings-button');
@@ -390,60 +392,55 @@ void main() {
       find.byKey(const ValueKey<String>('menu-edit-debug')),
       findsOneWidget,
     );
-    for (final id in const [
-      'menu-edit-input-inspector',
-      'menu-edit-frame-timing-overlay',
-      'menu-edit-frame-stats',
-      'menu-edit-engine-stages',
-      'menu-edit-show-repaints',
-    ]) {
-      expect(
-        find.byKey(ValueKey<String>(id)),
-        findsNothing,
-        reason: '⛔$id 는 첫 겹에 없다 — 그게 겹이 둘인 이유다',
-      );
-    }
-
-    await hoverEntry(tester, 'menu-edit-debug');
-    for (final id in const [
-      'menu-edit-input-inspector',
-      'menu-edit-frame-timing-overlay',
-      'menu-edit-frame-stats',
-      'menu-edit-engine-stages',
-      'menu-edit-show-repaints',
-    ]) {
-      expect(find.byKey(ValueKey<String>(id)), findsOneWidget, reason: id);
-    }
     expect(
-      find.byKey(const ValueKey<String>('menu-edit-bake-panels')),
+      find.byKey(const ValueKey<String>('menu-edit-debug-window')),
       findsNothing,
-      reason:
-          '↩️the bakes have no off switch — off is only ever a loss '
-          '(유저 2026-10-23, F-448)',
+      reason: '⛔첫 겹에 없다 — 그게 겹이 둘인 이유다',
     );
-  });
 
-  testWidgets('Settings: Input Inspector toggles the diagnosis overlay', (
-    tester,
-  ) async {
-    addTearDown(InputInspector.reset);
-    await pumpHome(tester);
-
-    await openStrip(tester, 'top-strip-settings-button');
     await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-input-inspector');
     expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
+      find.byKey(const ValueKey<String>('menu-edit-debug-window')),
       findsOneWidget,
     );
+    for (final id in const [
+      'menu-edit-input-inspector',
+      'menu-edit-frame-timing-overlay',
+      'menu-edit-frame-stats',
+      'menu-edit-engine-stages',
+      'menu-edit-show-repaints',
+      // ↩️the bakes have no off switch — off is only ever a loss
+      // (유저 2026-10-23, F-448).
+      'menu-edit-bake-panels',
+    ]) {
+      expect(find.byKey(ValueKey<String>(id)), findsNothing, reason: id);
+    }
+  });
+
+  testWidgets('Settings: Debug Window opens the window and closes it', (
+    tester,
+  ) async {
+    addTearDown(MeasurementMode.reset);
+    // The window over the app, as main.dart lays it (MaterialApp.builder).
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => DebugWindowHost(child: child!),
+        home: const HomePage(),
+      ),
+    );
+    await tester.pumpAndSettle();
 
     await openStrip(tester, 'top-strip-settings-button');
     await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-input-inspector');
-    expect(
-      find.byKey(const ValueKey<String>('input-inspector-card')),
-      findsNothing,
-    );
+    await tapEntry(tester, 'menu-edit-debug-window');
+    expect(find.byKey(const ValueKey<String>('debug-window')), findsOneWidget);
+    expect(MeasurementMode.debugWindow.value, isTrue);
+
+    // Its head's close, which no menu under the window can cover.
+    await tester.tap(find.byKey(const ValueKey<String>('debug-window-close')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey<String>('debug-window')), findsNothing);
+    expect(MeasurementMode.debugWindow.value, isFalse);
   });
 
   testWidgets('the size and opacity bars ride the right end', (tester) async {
@@ -851,54 +848,6 @@ void main() {
     await pumpHome(tester);
 
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Settings: Frame Timing Overlay drives the measurement switch', (
-    tester,
-  ) async {
-    addTearDown(MeasurementMode.reset);
-    await pumpHome(tester);
-    expect(MeasurementMode.frameTimingOverlay.value, isFalse);
-
-    await openStrip(tester, 'top-strip-settings-button');
-    await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-frame-timing-overlay');
-    expect(
-      MeasurementMode.frameTimingOverlay.value,
-      isTrue,
-      reason: 'the entry drives the switch MaterialApp reads',
-    );
-
-    await openStrip(tester, 'top-strip-settings-button');
-    await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-frame-timing-overlay');
-    expect(MeasurementMode.frameTimingOverlay.value, isFalse);
-  });
-
-  testWidgets('Settings: Engine Stages brings the statistics up with it, and '
-      'turned off leaves them up', (tester) async {
-    // The stages are lines of the statistics' readout and show nowhere
-    // else (`EngineStages`): one switch asked for, both are on.
-    addTearDown(MeasurementMode.reset);
-    await pumpHome(tester);
-    expect(MeasurementMode.engineStages.value, isFalse);
-    expect(MeasurementMode.frameStats.value, isFalse);
-
-    await openStrip(tester, 'top-strip-settings-button');
-    await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-engine-stages');
-    expect(MeasurementMode.engineStages.value, isTrue);
-    expect(MeasurementMode.frameStats.value, isTrue);
-
-    await openStrip(tester, 'top-strip-settings-button');
-    await hoverEntry(tester, 'menu-edit-debug');
-    await tapEntry(tester, 'menu-edit-engine-stages');
-    expect(MeasurementMode.engineStages.value, isFalse);
-    expect(
-      MeasurementMode.frameStats.value,
-      isTrue,
-      reason: 'the statistics have a switch of their own to go by',
-    );
   });
 
   // 🚨The bars and the blend button move with what they SHOW (2026-09-26):

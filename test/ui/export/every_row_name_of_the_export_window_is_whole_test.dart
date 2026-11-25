@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-486-Q1 (유저 2026-10-27): 「칸 이름만 맞춘다」.
 ///
@@ -23,6 +25,7 @@ import '../../helpers/app_faces.dart';
 /// starts at one x and no name gives its end up. ↩️The column stood 54 in
 /// every language: 「ビットレート」 had 54 of its 60 px, 「Channels」 54 of 61.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -78,7 +81,7 @@ void main() {
       addTearDown(session.dispose);
       await tester.binding.setSurfaceSize(const Size(1300, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),

@@ -447,6 +447,9 @@ class _StillLayer extends OffsetLayer {
   /// moved alone unless the region changed in it too ([_moving]).
   final List<TickSceneLayer> _changedTicks = [];
 
+  /// The ticks the last walk of the region passed ([_signatureOf]).
+  final List<TickSceneLayer> _seenTicks = [];
+
   /// The frame its current image was taken, for the back-off.
   int? _capturedAt;
   int _stillFramesNeeded = StillRaster.stillFrames;
@@ -491,6 +494,18 @@ class _StillLayer extends OffsetLayer {
     if (strata != null && _stillShows(strata)) {
       _drawFrom(strata, builder);
       _noteWhoMovedAlone();
+      // A tick drawn live has stood still: taken back into its stratum in
+      // a gap in the frames ([_takeInAGap]), never in one. 🚨Asked only in
+      // a frame — a scene is built between frames too (an ancestor's
+      // `toImage`, a picture of the screen), and the gap asked there ran on
+      // a clock no frame keeps: a conte pin took a picture under eighteen
+      // suites and read a row taken in its own wait (11-23). [StaticRaster]
+      // counts its capture streak by the same law.
+      if (!strata.live.every(_moving) &&
+          SchedulerBinding.instance.schedulerPhase ==
+              SchedulerPhase.persistentCallbacks) {
+        _FrameGap.wait(this);
+      }
       return;
     }
     final dropped = strata != null;
@@ -659,25 +674,42 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Whether [strata] still show the region: the gate is open, the region
-  /// sits on the same device pixels, the layer tree under it is the one
-  /// they were taken of, its live ticks aside — and every tick drawn live
-  /// still moves: one that stood still for [_movingFor] frames is taken
-  /// into its stratum with the next strata.
+  /// sits on the same device pixels and the layer tree under it is the one
+  /// they were taken of, its live ticks aside.
+  ///
+  /// 🚨A LIVE TICK THAT STOOD STILL DOES NOT UNDO THE STRATA (card
+  /// a-frame-pick-recuts-and-rebakes-the-docks-ticks, 11-22): drawn live it
+  /// is drawn right, and it is taken back into its stratum in a gap in the
+  /// frames ([_takeInAGap]) — with whatever else stood still by then, in
+  /// one image.
+  /// ↩️「…and every tick drawn live still moves」: the strata were thrown
+  /// away in the frame a tick's [TickSceneLayer._movingFor] ran out and
+  /// taken again in it (F-244-drag-start) — each tick by its own count, so
+  /// a frame picked on the timeline took the dock's image four times, all
+  /// in frames: the pointer coming over the dock (its tab strip's tick),
+  /// the pick (the ruler's ticks, the cursor's), and one more as each of
+  /// the two ran out while the pointer hovered over the canvas. 🔬The real
+  /// app, the main PC, S5_BA cut 352, 144 Hz, laws walked in turn inside
+  /// one run: images of the bottom dock taken in a frame, a cycle of pick →
+  /// hover / pick → rest / pick → stroke — 4.9 / 5.9 / 8.4, and 4.1 / 2.4 /
+  /// 0.5 with the taking back left to a gap; frames over 6.94 ms 300
+  /// against 181. The law as it is written here (a tick's own stay with it,
+  /// [TickSceneLayer._movedAloneIn]), the same way on 11-23: 6.9 / 5.6 /
+  /// 8.1 and 3.2 / 1.6 / 1.0; frames over 6.94 ms 653 against 260, the
+  /// median frame of pick → hover 2.49 → 2.69 ms. ⚠️No weak device was
+  /// measured: a tick stays live while the frames flow, and what a frame
+  /// pays for that there is not known.
   bool _stillShows(_Strata strata) =>
       _owner._gate() == StillStandDown.none &&
       _owner._gridFit() == strata.fit &&
-      listEquals(_signatureOf(strata.live.contains), _imageSignature) &&
-      strata.live.every(_moving);
+      listEquals(_signatureOf(strata.live.contains), _imageSignature);
 
-  /// How long a tick that changed stays one that moves: a film frame's
-  /// tick changes every few refreshes, a row's tile landing once.
-  static const int _movingFor = StillRaster.maxStillFrames;
-
-  /// Whether [tick] changed what it holds in the last [_movingFor] frames
-  /// WHILE THE REST OF THE REGION STOOD STILL — in a frame the region had
-  /// no change of its own in. One that changes only with the region moves
-  /// with it, and is taken with the rest: a playing timeline's rows each
-  /// hold a tick that a page turn moves with the page, and nothing else.
+  /// Whether [tick] changed what it holds lately WHILE THE REST OF THE
+  /// REGION STOOD STILL — in a frame the region had no change of its own
+  /// in ([TickSceneLayer._movingIn]). One that changes only with the
+  /// region moves with it, and is taken with the rest: a playing
+  /// timeline's rows each hold a tick that a page turn moves with the
+  /// page, and nothing else.
   /// ↩️Read live for the 48 frames after every page, they were taken into
   /// the strata in an image of their own when those ran out — two images a
   /// page (10-12, cut 302). ↩️Asked as "changed after the region's own
@@ -685,20 +717,29 @@ class _StillLayer extends OffsetLayer {
   /// turn read as standing still: taken into the strata, which the next
   /// film frame threw away — two images a page again, and the first film
   /// frame after every turn drawn live (10-12, cut 302: 55 of 55).
-  bool _moving(TickSceneLayer tick) =>
-      tick.alwaysLive || _frame - tick._movedAloneAt <= _movingFor;
+  bool _moving(TickSceneLayer tick) => tick._movingIn(_frame);
 
-  /// Marks the ticks that changed in this frame as moved alone, unless the
-  /// region changed in it too. A tick looked at for the first time is a
-  /// layer new to the region, which is a change of the region's: a tick
-  /// never moves alone on its first look.
+  /// Marks the ticks that changed in this frame as moved alone
+  /// ([TickSceneLayer._movedAloneIn]), unless the region changed in it
+  /// too. A tick looked at for the first time is a layer new to the
+  /// region, which is a change of the region's: a tick never moves alone
+  /// on its first look.
   void _noteWhoMovedAlone() {
     if (_changedAt != _frame) {
       for (final tick in _changedTicks) {
-        tick._movedAloneAt = _frame;
+        tick._movedAloneIn(_frame);
       }
     }
     _changedTicks.clear();
+  }
+
+  /// Tells each of the ticks the strata just taken were walked for
+  /// ([_seenTicks]) whether they draw it [live]
+  /// ([TickSceneLayer._takenIn]).
+  void _noteWhoWasTakenBack(Set<TickSceneLayer> live) {
+    for (final tick in _seenTicks) {
+      tick._takenIn(_frame, live: live.contains(tick));
+    }
   }
 
   /// The frames the region stands still before its image is taken.
@@ -812,9 +853,24 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Takes the region in a gap in the frames ([_FrameGap]), for the next
-  /// frame that comes anyway.
+  /// frame that comes anyway: one owed its image, or one drawn from strata
+  /// in which a live tick has stood still — taken again with that tick in
+  /// its stratum ([_stillShows]).
   void _takeInAGap() {
-    if (_owedAnImage && _capture()) {
+    final strata = _strata;
+    if (strata == null) {
+      if (_owedAnImage && _capture()) {
+        markNeedsAddToScene();
+      }
+      return;
+    }
+    if (attached &&
+        _owner._gate() == StillStandDown.none &&
+        !strata.live.every(_moving) &&
+        _capture()) {
+      // The strata it replaces: thrown away for no change of the region's,
+      // so the wait learns nothing from them ([_drop]).
+      strata.dispose();
       markNeedsAddToScene();
     }
   }
@@ -861,6 +917,7 @@ class _StillLayer extends OffsetLayer {
       }
       _imageSignature = signature;
       _capturedAt = _frame;
+      _noteWhoWasTakenBack(layout.live);
       StillRaster._capturesEver += 1;
       _FrameGap.leave(this);
     } on Object catch (error, stack) {
@@ -904,6 +961,7 @@ class _StillLayer extends OffsetLayer {
   /// read as moved whenever two walks asked with different ticks live.
   List<Object?>? _signatureOf(bool Function(TickSceneLayer tick) live) {
     final region = <Object?>[];
+    _seenTicks.clear();
     // [own]: what the nearest tick around [layer] draws itself.
     bool walk(Layer layer, List<Object?> out, List<Object?>? own) {
       own?.add(layer);
@@ -912,6 +970,7 @@ class _StillLayer extends OffsetLayer {
         if (layer.alwaysLive) {
           return true;
         }
+        _seenTicks.add(layer);
         final held = <Object?>[offset];
         final itsOwn = <Object?>[offset];
         for (var child = layer.firstChild;
@@ -1028,9 +1087,14 @@ typedef _Layout = ({
   List<String> refusals,
 });
 
-/// Where each stratum's part sits in the one image — null for a stratum
-/// that reaches nothing — and the image's size, in device pixels.
-typedef _Packing = ({List<Offset?> at, Size size});
+/// Where each stratum's part sits in the one image, in the pieces it was
+/// cut into — none for a stratum that reaches nothing — and the image's
+/// size, in device pixels.
+typedef _Packing = ({List<List<_Piece>> pieces, Size size});
+
+/// A piece of a stratum's part: the device pixels [from] it holds, put at
+/// [at] in the one image.
+typedef _Piece = ({Rect from, Offset at});
 
 /// The regions owed an image, for the gap when the frames stop.
 ///
@@ -1113,6 +1177,184 @@ abstract final class _FrameGap {
 /// the next, each a part of ONE image — and the ticks drawn live between
 /// them: how they are taken and handed to the scene. [_StillLayer] says
 /// when.
+/// How a still region's strata are laid in its one image ([_Strata.take]).
+abstract final class _StrataPacking {
+  /// Where each of [parts] goes in the one image, and the image's size: the
+  /// parts tallest first, each where its top ends lowest along the skyline
+  /// the ones before it left ([_skyline]), at whichever of a few widths
+  /// leaves the image smallest — the widest part's, and that with the
+  /// tallest of the others beside it, one more at a time — whole, or with
+  /// every part wider than the room beside the widest cut in two where its
+  /// halves fit that room ([_cut]).
+  ///
+  /// ↩️Each went beside the parts before it or under all of them, whichever
+  /// left the image smaller, and a band a sheet lays its row in (card a-
+  /// drag-holds-more-than-the-dock-once-on-master, 11-25) went under the
+  /// region's whole part, the image as wide as the region and the grid's
+  /// screen together: the timeline dock's image in a drag was 7.84M pixels
+  /// for 6.72M of parts, 10.3M in a comma's. ↩️Before 10-27 each went under
+  /// the one before, and a narrow stratum stacked under a wide one took the
+  /// wide one's whole width.
+  static _Packing packed(List<Rect?> parts) {
+    final whole = [
+      for (var i = 0; i < parts.length; i += 1)
+        if (parts[i] case final part?) (stratum: i, from: part),
+    ]..sort((a, b) => _taller(a.from, b.from));
+    if (whole.isEmpty) {
+      return (
+        pieces: List<List<_Piece>>.generate(parts.length, (_) => []),
+        size: Size.zero,
+      );
+    }
+    final widest = whole.reduce((a, b) => b.from.width > a.from.width ? b : a);
+    final widths = <double>{widest.from.width};
+    var beside = widest.from.width;
+    for (final part in whole) {
+      if (!identical(part, widest)) {
+        beside += part.from.width;
+        widths.add(beside);
+      }
+    }
+    _Packing? best;
+    for (final width in widths) {
+      final room = width - widest.from.width;
+      for (final pieces in [whole, _cut(whole, widest, room)]) {
+        final packing = _skyline(parts.length, pieces, width);
+        if (best == null ||
+            packing.size.width * packing.size.height <
+                best.size.width * best.size.height) {
+          best = packing;
+        }
+      }
+    }
+    return best!;
+  }
+
+  /// [parts] with each but [widest] that is wider than [room] cut into its
+  /// two halves where they fit it — tallest first still.
+  static List<({int stratum, Rect from})> _cut(
+    List<({int stratum, Rect from})> parts,
+    ({int stratum, Rect from}) widest,
+    double room,
+  ) => [
+    for (final part in parts)
+      if (identical(part, widest) ||
+          part.from.width <= room ||
+          (part.from.width / 2).ceilToDouble() > room)
+        part
+      else ...[
+        (
+          stratum: part.stratum,
+          from: Rect.fromLTRB(
+            part.from.left,
+            part.from.top,
+            part.from.left + (part.from.width / 2).ceilToDouble(),
+            part.from.bottom,
+          ),
+        ),
+        (
+          stratum: part.stratum,
+          from: Rect.fromLTRB(
+            part.from.left + (part.from.width / 2).ceilToDouble(),
+            part.from.top,
+            part.from.right,
+            part.from.bottom,
+          ),
+        ),
+      ],
+  ];
+
+  /// The taller of two parts first, the wider of two as tall.
+  static int _taller(Rect a, Rect b) {
+    final height = b.height.compareTo(a.height);
+    return height != 0 ? height : b.width.compareTo(a.width);
+  }
+
+  /// [pieces] of [strata] strata packed in turn into an image [width]
+  /// wide: each where its top ends lowest over the tops the pieces before
+  /// it left (the skyline), the lowest such place, then the leftmost.
+  static _Packing _skyline(
+    int strata,
+    List<({int stratum, Rect from})> pieces,
+    double width,
+  ) {
+    // The skyline as steps, left to right: where each starts and how far
+    // down it stands.
+    var steps = <({double x, double y})>[(x: 0, y: 0)];
+    final placed = List<List<_Piece>>.generate(strata, (_) => []);
+    var used = 0.0;
+    var height = 0.0;
+    for (final (:stratum, :from) in pieces) {
+      Offset? place;
+      for (final step in steps) {
+        if (step.x + from.width > width) {
+          break;
+        }
+        final y = _floorUnder(steps, step.x, step.x + from.width, width);
+        if (place == null ||
+            y < place.dy ||
+            (y == place.dy && step.x < place.dx)) {
+          place = Offset(step.x, y);
+        }
+      }
+      placed[stratum].add((from: from, at: place!));
+      final right = place.dx + from.width;
+      final bottom = place.dy + from.height;
+      used = used > right ? used : right;
+      height = height > bottom ? height : bottom;
+      steps = _raised(steps, place.dx, right, bottom);
+    }
+    return (pieces: placed, size: Size(used, height));
+  }
+
+  /// How far down the skyline [steps] stand anywhere from [left] to [right].
+  static double _floorUnder(
+    List<({double x, double y})> steps,
+    double left,
+    double right,
+    double width,
+  ) {
+    var floor = 0.0;
+    for (var i = 0; i < steps.length; i += 1) {
+      final end = i + 1 < steps.length ? steps[i + 1].x : width;
+      if (end > left && steps[i].x < right && steps[i].y > floor) {
+        floor = steps[i].y;
+      }
+    }
+    return floor;
+  }
+
+  /// [steps] with [left] to [right] raised to [bottom], the step after it
+  /// standing where it stood.
+  static List<({double x, double y})> _raised(
+    List<({double x, double y})> steps,
+    double left,
+    double right,
+    double bottom,
+  ) {
+    var after = 0.0;
+    final raised = <({double x, double y})>[];
+    for (final step in steps) {
+      if (step.x < left) {
+        raised.add(step);
+      }
+      if (step.x <= right) {
+        after = step.y;
+      }
+    }
+    raised.add((x: left, y: bottom));
+    if (steps.every((step) => step.x != right)) {
+      raised.add((x: right, y: after));
+    }
+    for (final step in steps) {
+      if (step.x >= right) {
+        raised.add(step);
+      }
+    }
+    return raised;
+  }
+}
+
 class _Strata {
   _Strata._({
     required this.image,
@@ -1318,9 +1560,10 @@ class _Strata {
       !a.isEmpty && !b.isEmpty && a.overlaps(b);
 
   /// [layout]'s strata drawn into ONE image — each its own part of it, cut
-  /// to the device pixels its pictures reach ([_packed] says where) — and a
-  /// picture per stratum that puts its part back where it was taken, 1:1
-  /// ([fit]), with [tint] over each where the repaints are shown.
+  /// to the device pixels its pictures reach ([_StrataPacking.packed] says
+  /// where) — and a picture per stratum that puts its part back where it
+  /// was taken, 1:1 ([fit]), with [tint] over each where the repaints are
+  /// shown.
   ///
   /// ⛔One image, not one a stratum: a snapshot costs a price of its own on
   /// the raster thread besides its pixels (1.6–2.0 ms on the real Windows
@@ -1342,20 +1585,26 @@ class _Strata {
     Color? tint,
   }) {
     final parts = _partsOf(layout.strata, size, fit);
-    final packing = _packed(parts);
+    final packing = _StrataPacking.packed(parts);
     final image = _imageOf(layout.strata, parts, packing, fit);
     final pictures = <ui.Picture?>[];
     for (var i = 0; i < parts.length; i += 1) {
       final device = parts[i];
-      final at = packing.at[i];
-      if (device == null || at == null) {
+      if (device == null) {
         pictures.add(null);
         continue;
       }
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      fit.blitPart(canvas, image, at & device.size, fit.logicalOf(device));
+      for (final (:from, :at) in packing.pieces[i]) {
+        fit.blitPart(canvas, image, at & from.size, fit.logicalOf(from));
+      }
       if (tint != null) {
+        // 🗣️유저 11-22 (a-docks-repaint-tint-covers-its-rows-own-Q1):
+        // 「지금대로 — 독이 다시 뜨면 독 안 전부가 그 색」 — the rows a dock
+        // holds are tinted with it, not spared: they were rastered again
+        // with it. Which row took its own picture is the probe's to say
+        // (StillRaster.census), not the tint's.
         canvas.drawRect(fit.logicalOf(device), Paint()..color = tint);
       }
       pictures.add(recorder.endRecording());
@@ -1393,34 +1642,6 @@ class _Strata {
     return parts;
   }
 
-  /// Where each of [parts] goes in the one image, and the image's size:
-  /// beside the parts before it or under them, whichever leaves the image
-  /// smaller. ↩️Each went under the one before, and a narrow stratum
-  /// stacked under a wide one took the wide one's whole width (10-27).
-  static _Packing _packed(List<Rect?> parts) {
-    var width = 0.0;
-    var height = 0.0;
-    final at = <Offset?>[];
-    for (final device in parts) {
-      if (device == null) {
-        at.add(null);
-        continue;
-      }
-      final wider = width < device.width ? device.width : width;
-      final taller = height < device.height ? device.height : height;
-      if ((width + device.width) * taller < wider * (height + device.height)) {
-        at.add(Offset(width, 0));
-        width += device.width;
-        height = taller;
-      } else {
-        at.add(Offset(0, height));
-        height += device.height;
-        width = wider;
-      }
-    }
-    return (at: at, size: Size(width, height));
-  }
-
   /// [strata] drawn into their [parts], each where [packing] puts it in one
   /// image.
   static ui.Image _imageOf(
@@ -1431,26 +1652,19 @@ class _Strata {
   ) {
     final builder = ui.SceneBuilder();
     for (var i = 0; i < strata.length; i += 1) {
-      final device = parts[i];
-      final at = packing.at[i];
-      if (device == null || at == null) {
-        continue;
+      for (final (:from, :at) in packing.pieces[i]) {
+        final place =
+            Matrix4.translationValues(at.dx - from.left, at.dy - from.top, 0)
+              ..scaleByDouble(fit.scale, fit.scale, 1, 1)
+              ..translateByDouble(fit.shift.dx, fit.shift.dy, 0, 1);
+        builder
+          ..pushTransform(place.storage)
+          ..pushClipRect(fit.logicalOf(from));
+        _addLeaves(builder, strata[i]);
+        builder
+          ..pop()
+          ..pop();
       }
-      final place =
-          Matrix4.translationValues(
-              at.dx - device.left,
-              at.dy - device.top,
-              0,
-            )
-            ..scaleByDouble(fit.scale, fit.scale, 1, 1)
-            ..translateByDouble(fit.shift.dx, fit.shift.dy, 0, 1);
-      builder
-        ..pushTransform(place.storage)
-        ..pushClipRect(fit.logicalOf(device));
-      _addLeaves(builder, strata[i]);
-      builder
-        ..pop()
-        ..pop();
     }
     final scene = builder.build();
     try {
@@ -1630,7 +1844,83 @@ class TickSceneLayer extends OffsetLayer {
   /// whenever anything under it changes, and a region drawing it live adds
   /// it on every frame itself.
   List<Object?>? _held;
-  int _movedAloneAt = -_StillLayer._movingFor - 1;
+  int _movedAloneAt = -_movingFor - 1;
+
+  /// How long a tick that changed stays one that moves: a film frame's
+  /// tick changes every few refreshes, a row's tile landing once.
+  static const int _movingFor = StillRaster.maxStillFrames;
+
+  /// The longest a tick stays one that moves, having learned
+  /// ([_movedAloneIn]) — as far past the shortest as a region's wait goes
+  /// past its own ([StillRaster.maxStillFrames]).
+  static const int _movingForMost =
+      _movingFor * (StillRaster.maxStillFrames ~/ StillRaster.stillFrames);
+
+  /// How long the tick stays one that moves after it moved alone — longer
+  /// where it was taken back and moved again before that paid
+  /// ([_movedAloneIn]).
+  int _staysMovingFor = _movingFor;
+
+  /// Whether the strata last taken draw the tick live, and the frame they
+  /// took it back into its stratum — null while it is drawn live, and for
+  /// one that never was ([_takenIn]).
+  bool _drawnLive = false;
+  int? _takenBackAt;
+
+  /// Whether the tick moved alone in the frames it stays one that moves
+  /// for, counted back from [frame] — or is one always drawn live.
+  bool _movingIn(int frame) =>
+      alwaysLive || frame - _movedAloneAt <= _staysMovingFor;
+
+  /// [frame] is one the tick changed in ALONE, the rest of its region
+  /// standing still ([_StillLayer._noteWhoMovedAlone]).
+  ///
+  /// 🚨A TICK TAKEN BACK THAT MOVES AGAIN BEFORE THAT PAID STAYS LIVE TWICE
+  /// AS LONG THE NEXT TIME; ONE THAT PAID, THE SHORTEST AGAIN (card
+  /// a-frame-pick-recuts-and-rebakes-the-docks-ticks, 11-22) — the law a
+  /// region's own image goes by (`_StillLayer._drop`), a tick at a time.
+  /// Taken back into its stratum, a tick's next move is a change of the
+  /// region's: the strata are thrown away and taken again in that frame
+  /// (F-244-drag-start). The ruler's ticks and the cursor's move at every
+  /// pick, the dock's tab strip's whenever the pointer comes over the dock
+  /// — taken back in the rest after one pick, they cost the next pick an
+  /// image in its frame, each. 🔬The real app, the main PC, S5_BA cut 352,
+  /// 144 Hz, pick → 0.6 s hover → 1.5 s rest: 2.4 images of the bottom dock
+  /// a cycle taken in a frame with the taking back left to a gap alone, 1.1
+  /// with a tick's stay doubled each time it moved again. The law as it is
+  /// written here, the same way on 11-23, 28 cycles a law, pick → hover /
+  /// rest / stroke: 3.7 / 2.3 / 1.5 with the gap alone and 3.2 / 1.6 / 1.0
+  /// with this; frames over 6.94 ms 365 against 260; no median frame
+  /// longer but the rest's (2.60 → 2.68 ms). A stay changed 25 times in
+  /// 120 cycles, and stood for cycles each time: the tab strip's, at 192
+  /// frames, was not taken back in the rest at all.
+  /// ⛔Not weight to take out for how seldom it changes: the gap alone was
+  /// measured beside it, and takes more images.
+  /// ⛔Not doubled alone: a stay that only grows ends with every tick drawn
+  /// live in every frame (🔬the same run, every tick live: the raster's
+  /// median 0.93 → 2.71 ms a frame, frames over 6.94 ms 300 → 663).
+  void _movedAloneIn(int frame) {
+    final takenBackAt = _takenBackAt;
+    if (takenBackAt != null) {
+      _staysMovingFor = frame - takenBackAt < StillRaster.framesToPay
+          ? (_staysMovingFor * 2).clamp(_movingFor, _movingForMost)
+          : _movingFor;
+      _takenBackAt = null;
+    }
+    _movedAloneAt = frame;
+  }
+
+  /// The strata taken in [frame] draw the tick [live] — or take it back
+  /// into its stratum, where they drew it live until now.
+  void _takenIn(int frame, {required bool live}) {
+    if (live) {
+      _drawnLive = true;
+      _takenBackAt = null;
+    } else if (_drawnLive) {
+      _drawnLive = false;
+      _takenBackAt = frame;
+    }
+  }
 
   /// Whether what the tick holds changed since its region last looked.
   bool _looked(List<Object?> held) {

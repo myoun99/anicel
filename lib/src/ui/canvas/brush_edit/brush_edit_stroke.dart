@@ -22,6 +22,7 @@ class _BrushEditStroke {
     CanvasPoint pressed, {
     required bool mappedErase,
   }) {
+    StrokeSteps.pressed();
     _state._activeDrawingPointer = event.pointer;
     // The press at the time the OS saw it ([PenPath]): every point of
     // the line is on the clock its moves are, and its first too.
@@ -72,6 +73,7 @@ class _BrushEditStroke {
       at: press.timeStamp,
       position: canvasPosition,
     );
+    StrokeSteps.armed();
   }
 
   /// The stroke's settings snapshot — every downstream dab reads it, so
@@ -395,8 +397,8 @@ class _BrushEditStroke {
     final moved = stabilizer.lookAtFrame(frameAt);
     if (moved.isNotEmpty) {
       _paintSteadied(moved);
-      // On screen THIS frame: the queue's own flush may have run already.
-      _state._overlay.flushPendingOverlayDabs();
+      // On screen THIS frame, in the one step the frame lays.
+      _state._overlay.stepPendingOverlayDabs();
     }
     _keepSteadying();
   }
@@ -742,12 +744,15 @@ class _BrushEditStroke {
       _state._overlay.resetOverlay();
       return;
     }
-    _state._overlay._overlayModel.pictureOwed();
     final promoted = rasterizer.promoteStrokeTiles(
       base: base,
       mode: blendMode,
       erase: erase,
       dabs: sourceDabs,
+      // What each step put, as shown — handed over where it is the
+      // stroke's newest ([ActiveStrokeOverlayModel.landedTiles], which
+      // pictures what it still owes first).
+      shown: _state._overlay._overlayModel.landedTiles,
     );
     rasterizer.clear();
     landPromoted(
@@ -803,6 +808,7 @@ class _BrushEditStroke {
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
+        landing: entry.tile,
       );
       if (image != null) {
         // ★The tile the coordinate SHOWS once this lands — the committed

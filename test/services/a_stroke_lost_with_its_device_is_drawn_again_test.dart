@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
@@ -73,28 +74,48 @@ void main() {
   );
 
   /// The stroke as a pen draws it: its dabs piled a few at a time, as a
-  /// pointer's moves come, and landed at pen-up over [base].
+  /// pointer's moves come, and landed at pen-up over [base] — or, where
+  /// [shownAsItGoes], each pile's tiles shown as the overlay shows them and
+  /// handed over at pen-up (`ActiveStrokeOverlayModel.landedTiles`).
   Map<TileCoord, PromotedStrokeTile> drawn(
     List<BrushDab> dabs,
     BitmapSurface base,
     BrushBlendMode mode, {
     SelectionClip? selection,
     double opacity = 1,
+    bool shownAsItGoes = false,
   }) {
     final stroke = rasterizer()
       ..selectionClip = selection
       ..strokeOpacity = opacity;
+    final erase = mode == BrushBlendMode.erase;
+    final shown = <TileCoord, ({BitmapTile tile, int revision})>{};
     for (var from = 0; from < dabs.length; from += 7) {
-      stroke.blendFrom(
+      final region = stroke.blendFrom(
         dabs.sublist(0, math.min(dabs.length, from + 7)),
         from: from,
       );
+      for (final coord in shownAsItGoes && region != null
+          ? region.toTileCoords(tileSize: tileSize)
+          : const <TileCoord>{}) {
+        final tile = stroke.preBlendedOverlayTile(
+          tileX: coord.x,
+          tileY: coord.y,
+          base: base,
+          mode: mode,
+          erase: erase,
+        );
+        if (tile != null) {
+          shown[coord] = (tile: tile.landed, revision: tile.revision);
+        }
+      }
     }
     final promoted = stroke.promoteStrokeTiles(
       base: base,
       mode: mode,
-      erase: mode == BrushBlendMode.erase,
+      erase: erase,
       dabs: dabs,
+      shown: shown,
     );
     stroke.clear();
     return {for (final tile in promoted) tile.coord: tile};
@@ -143,6 +164,32 @@ void main() {
         reason: '⛔premise: the stroke changes the tile at $coord',
       );
     }
+  });
+
+  // 🚨Pen-up hands the cel the tiles its steps put (관제 2026-11-24, card
+  // the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2): each keeps how
+  // it is made again, as a tile the stroke landed at pen-up does.
+  test('a stroke handed over as it was shown is drawn again as the pen '
+      'showed it', () {
+    final base = paint();
+    final handed = drawn(
+      loopBack(),
+      base,
+      BrushBlendMode.color,
+      shownAsItGoes: true,
+    );
+    expect(
+      [
+        for (final tile in handed.values)
+          EngineTileLedger.instance.madeBy(tile.tile),
+      ],
+      everyElement(isNotNull),
+      reason: 'each handed tile keeps how it is made again',
+    );
+
+    expectDrawnAgain(
+      () => drawn(loopBack(), base, BrushBlendMode.color, shownAsItGoes: true),
+    );
   });
 
   test('an eraser\'s stroke is drawn again', () {

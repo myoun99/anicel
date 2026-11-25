@@ -575,8 +575,11 @@ class ProjectImportDoors {
   ///
   /// Returns the warnings (colour conversions, blends we have no
   /// equivalent for, adjustment layers left behind), or null when the
-  /// import did not happen — including a FLATTENED document, which has no
-  /// stack to expand and which merge reads perfectly.
+  /// import did not happen — the destination refused it, or a FLATTENED
+  /// document, which has no stack to expand and which merge reads
+  /// perfectly. A document that could not be READ throws what kept it:
+  /// ↩️it answered null too, and the window said 「no layers to expand」
+  /// of a file it never read (H72, 2026-11-25).
   Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
@@ -594,31 +597,25 @@ class ProjectImportDoors {
     if (gate == null) {
       return null;
     }
-    final Uint8List bytes;
-    try {
-      bytes = await readHeldMediaBytes(_holdBytes, path, onRead: onReading);
-    } on Object {
-      return null;
-    }
+    final bytes = await readHeldMediaBytes(
+      _holdBytes,
+      path,
+      onRead: onReading,
+    );
     final cutId = gate.cutId;
     final duration = gate.stillDuration(lengthFrames: lengthFrames);
     final newCut = gate.targetCut == null;
 
-    final PsdExpansion? expansion;
-    try {
-      expansion = await readPsdExpansion(
-        bytes: bytes,
-        displayName: gate.displayName,
-        cutId: cutId,
-        duration: duration,
-        canvas: gate.canvasSize,
-        newCut: newCut,
-        fit: fit,
-        mint: gate.mint,
-      );
-    } on Object {
-      return null;
-    }
+    final expansion = await readPsdExpansion(
+      bytes: bytes,
+      displayName: gate.displayName,
+      cutId: cutId,
+      duration: duration,
+      canvas: gate.canvasSize,
+      newCut: newCut,
+      fit: fit,
+      mint: gate.mint,
+    );
     if (expansion == null || expansion.layers.isEmpty) {
       return null;
     }
@@ -651,7 +648,7 @@ class ProjectImportDoors {
     // PICTURE is what the hand should land on.
     final picture = expansion.layers.lastWhere(
       (layer) => layer.kind != LayerKind.folder,
-      orElse: () => expansion!.layers.last,
+      orElse: () => expansion.layers.last,
     );
     _changes.refreshAfterCutCommand(preferredActiveLayerId: picture.id);
     _changes.notifyChanged();
@@ -687,6 +684,10 @@ class ProjectImportDoors {
 
     /// See [importImageFile]'s.
     void Function(double fraction)? onCarrying,
+
+    /// How far PDFium has read the file while it opens it
+    /// ([PdfOpeningReads]) — see [importImageFile]'s.
+    void Function(double fraction)? onReading,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
@@ -697,7 +698,7 @@ class ProjectImportDoors {
     final document = await openHeldViewerDocument(
       _holdBytes,
       path,
-      PdfRenderService.open,
+      (source) => PdfRenderService.open(source, onRead: onReading),
     );
     if (document == null) {
       return false; // Renderer absent — the honest-absence state.
@@ -868,9 +869,21 @@ class ProjectImportDoors {
 
     /// See [importImageFile]'s.
     void Function(double fraction)? onCarrying,
+
+    /// How much of the movie its sound's conform has read of what it reads
+    /// ([AudioConformStore.ensurePeaksFor]) — the movie's bytes come down
+    /// from the cloud inside it (decoder-reads-skip-the-percent-Q2).
+    void Function(double fraction)? onReading,
   }) async {
     if (settings.movieParts == MovieParts.sound) {
-      return _movieSoundAlone(path, settings, spot, sourcePath, onCarrying);
+      return _movieSoundAlone(
+        path,
+        settings,
+        spot,
+        sourcePath,
+        onCarrying: onCarrying,
+        onReading: onReading,
+      );
     }
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
@@ -896,8 +909,11 @@ class ProjectImportDoors {
       // sound's playback will read.
       final withMovieSound =
           settings.movieParts == MovieParts.pictureAndSound &&
-          await _conforms.ensurePeaksFor(_pool.importSoundOf(source)) !=
-              null;
+          await _conforms.ensurePeaksFor(
+            _pool.importSoundOf(source),
+            onReading: onReading,
+          ) !=
+          null;
       // A baked picture leaves the file nothing to be for — unless its
       // sound lands beside it, which reads the file ([placementRegisters]).
       final assets = [
@@ -936,9 +952,10 @@ class ProjectImportDoors {
     String path,
     ImportFileSettings settings,
     ImportLayerSpot? spot,
-    String? sourcePath,
+    String? sourcePath, {
     void Function(double fraction)? onCarrying,
-  ) => importSoundFile(
+    void Function(double fraction)? onReading,
+  }) => importSoundFile(
     path: path,
     copyIntoProject: settings.mode == ImportFileMode.keepInside,
     inFrame: settings.inFrame,
@@ -946,6 +963,7 @@ class ProjectImportDoors {
     spot: spot,
     sourcePath: sourcePath,
     onCarrying: onCarrying,
+    onReading: onReading,
   );
 
   /// What a placed movie LANDS AS: the span it covers on the sound's clock,
@@ -1212,9 +1230,16 @@ class ProjectImportDoors {
   }
 
   /// Whether a use [way] was asked of has changed since — what a door that
-  /// reads before it lets go owes the uses it found ([referenceLetGo]).
+  /// reads before it lets go owes the uses it found ([referenceLetGo]) —
+  /// each looked up in ITS cut. ↩️Each was looked up in the active cut: a
+  /// 겸용 cut's use, which shows the row apart from the cut pressed in
+  /// (🗣️I-120-Q22), was never the active cut's row, so it read as changed
+  /// and the door did nothing (card a-linked-still-reference-bake-does-
+  /// nothing-when-its-cuts-show-it-apart, 2026-11-25).
   bool _changedSince(ReferenceMoveCarried way) => way.uses.any(
-    (use) => _project.layerById(use.use.layer.id) != use.use.layer,
+    (use) =>
+        _project.cutById(use.use.cut.id)?.layers.byId(use.use.layer.id) !=
+        use.use.layer,
   );
 
   /// RASTERIZE a STILL reference whose move a transform cannot carry
@@ -1969,13 +1994,19 @@ class ProjectImportDoors {
 
     /// See [importImageFile]'s.
     void Function(double fraction)? onCarrying,
+
+    /// See [importVideoFile]'s: the sound's conform reads the file.
+    void Function(double fraction)? onReading,
   }) async {
     final gate = _landing.arriveOnSeRows(path: path, spot: spot);
     if (gate == null) {
       return false;
     }
     final source = _pool.importSoundOf(path);
-    final peaks = await _conforms.ensurePeaksFor(source);
+    final peaks = await _conforms.ensurePeaksFor(
+      source,
+      onReading: onReading,
+    );
     if (peaks == null) {
       return false;
     }

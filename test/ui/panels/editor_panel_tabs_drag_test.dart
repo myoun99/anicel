@@ -329,7 +329,9 @@ void main() {
     expect(tab.height, EditorPanelTabs.stripHeight);
 
     final body = tester.getRect(
-      find.descendant(of: _tab('a'), matching: find.byType(Container)).first,
+      find
+          .descendant(of: _tab('a'), matching: find.byType(DecoratedBox))
+          .first,
     );
     expect(
       body.height,

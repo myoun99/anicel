@@ -17,6 +17,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/a_word_that_waits.dart';
 import '../../helpers/exposure_of.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -61,6 +62,7 @@ void main() {
     required int frames,
     TimelineGridTileStore? tileStore,
     bool blockFrameLines = false,
+    String word = 'ABCD',
   }) {
     final asked = <int, int>{};
     return (
@@ -77,7 +79,7 @@ void main() {
         },
         // A word in every covered cell that starts one, wider than the
         // cell at a narrow zoom — so it grows into its block.
-        frameNameForLayer: (layer, frame) => 'ABCD',
+        frameNameForLayer: (layer, frame) => word,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
         tileStore: tileStore,
@@ -202,6 +204,12 @@ void main() {
       frames: 40,
       tileStore: store,
       blockFrameLines: true,
+      // A word its tile WAITS for, whatever ran in this process before:
+      // the engine sets a word of its own faces in the ask once they
+      // are read — once a process — and no raster is sent off the paint
+      // then. ↩️'ABCD' waited only where this file was the first to ask
+      // (red in a bundle behind a file that read the faces, 11-21).
+      word: 'ABCD$aLetterNoBundledFaceHas',
     );
 
     Map<int, int> twice() => {
@@ -210,7 +218,7 @@ void main() {
     };
 
     // One span, asked for directly: the ask is a pass — inside a paint, the
-    // paint's — and so is the raster its word, baked the first time, sends
+    // paint's — and so is the raster its word, Flutter's to bake, sends
     // off the paint.
     const span = (start: 0, end: 24);
     expect(
@@ -221,7 +229,7 @@ void main() {
         devicePixelRatio: 1,
       ),
       isNull,
-      reason: 'premise: its word is baked the first time',
+      reason: 'premise: its word waits for its bake',
     );
     expect(asked, isNotEmpty, reason: 'premise: the ask read the row');
     expect(twice(), isEmpty, reason: 'the ask');

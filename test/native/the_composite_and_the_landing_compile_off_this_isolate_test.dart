@@ -6,6 +6,8 @@ import 'package:gpu_engine/gpu_engine.dart' show debugKernelsCompiledHere;
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/engine_frame_tools.dart';
 
+import '../helpers/the_apps_engine_let_go.dart';
+
 /// THE FIRST PICTURE OF A LAUNCH WAITS FOR NOTHING: the composite pass and
 /// what lands a stamp are compiled off this isolate once the engine is
 /// open, as the blur brush's and the colour verbs' kernels are.
@@ -13,8 +15,9 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() => AppKernels.debugCompileHere = false);
 
-  // First in the file: nothing has compiled the pass yet.
   test('the first picture does not compile the pass on this isolate', () async {
+    // Nothing has compiled the pass yet: no engine is asked for yet.
+    theAppHasNoEngineYet();
     await openAppGpuEngine();
     final tools = appEngineFrameTools;
 
@@ -26,7 +29,16 @@ void main() {
   });
 
   test('asked for while the pass compiles, the app keeps one', () async {
-    appGpuCompositeKernels.debugForget();
+    // 🐞bundled-files-find-the-engine-already-open ③ (2026-11-23): from no
+    // engine, as the first test is — not with the pass forgotten. The frame
+    // tools the first test opened keep the pass they were opened with
+    // (`appEngineFrameTools`), and forgotten it was freed under them: the
+    // next file's first frame was laid with it, and the engine's thread
+    // waited for good on a lock in freed memory (🔬cdb on the stuck
+    // tester: `Fulls::cell` under `Composite::walk_here`, the UI thread in
+    // `gpu_engine_surface_read` waiting for it).
+    theAppHasNoEngineYet();
+    await openAppGpuEngine();
 
     final opening = appGpuCompositeKernels.warm();
     final asked = appGpuComposite;

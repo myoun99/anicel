@@ -1,0 +1,813 @@
+[anicel 0003] impeller/gles: stand again in an OpenGL context made anew
+
+Board a-real-gpu-reset-went-unheard-on-the-main-pc, step two: the screen
+comes back after a GPU reset without the app starting again. The embedder
+makes a new OpenGL context; Impeller's ContextGLES is kept and stands on
+into it.
+
+- ReactorGLES::GLContextWasReplaced, called once the new context is
+  current: every handle is stamped with the generation of the context it
+  was named in, and one of a replaced generation names nothing and deletes
+  nothing. The work waiting for the old context is let go of.
+- A texture of the old context stands again empty, with a name of the new
+  one; one that wraps another's object binds none and still binds (a pass
+  whose textures do not bind ends the process).
+- A buffer of the old context stands again whole: its bytes never left
+  the backing store.
+- The pipeline library forgets its pipelines and programs: a pipeline asked
+  for from then on is linked anew.
+
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/BUILD.gn b/engine/src/flutter/impeller/renderer/backend/gles/BUILD.gn
+index deec3f1c2fd..50b10d1f4e0 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/BUILD.gn
++++ b/engine/src/flutter/impeller/renderer/backend/gles/BUILD.gn
+@@ -21,6 +21,7 @@ impeller_component("gles_unittests") {
+     "render_pass_gles_unittests.cc",
+     "test/capabilities_unittests.cc",
+     "test/formats_gles_unittests.cc",
++    "test/gl_context_replaced_unittests.cc",
+     "test/gpu_tracer_gles_unittests.cc",
+     "test/mock_gles.cc",
+     "test/mock_gles.h",
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/context_gles.cc b/engine/src/flutter/impeller/renderer/backend/gles/context_gles.cc
+index 849e574cce7..2571b2b90c0 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/context_gles.cc
++++ b/engine/src/flutter/impeller/renderer/backend/gles/context_gles.cc
+@@ -109,6 +109,14 @@ bool ContextGLES::IsValid() const {
+   return is_valid_;
+ }
+ 
++void ContextGLES::GLContextWasReplaced() {
++  if (!IsValid()) {
++    return;
++  }
++  reactor_->GLContextWasReplaced();
++  pipeline_library_->GLContextWasReplaced();
++}
++
+ void ContextGLES::Shutdown() {}
+ 
+ // |Context|
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/context_gles.h b/engine/src/flutter/impeller/renderer/backend/gles/context_gles.h
+index 1f23b762a11..9913ee519ae 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/context_gles.h
++++ b/engine/src/flutter/impeller/renderer/backend/gles/context_gles.h
+@@ -43,6 +43,28 @@ class ContextGLES final : public Context,
+ 
+   bool RemoveReactorWorker(ReactorGLES::WorkerID id);
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0003] The OpenGL context this context draws through
++  ///             was lost and another stands in its place — made by whoever
++  ///             made the first, of the same driver.
++  ///
++  ///             THE CONTEXT IS NOT MADE ANEW: IT STANDS ON. Whoever holds it
++  ///             — the rasterizer, the IO manager, the image decoder, every
++  ///             image already handed to Dart — holds it for as long as the
++  ///             shell lives and has no door to be given another. So the
++  ///             context counts the OpenGL contexts it has stood on
++  ///             (`ReactorGLES::GLContextWasReplaced`), and what was made
++  ///             under an earlier one is known by it: collecting it deletes
++  ///             nothing, a buffer uploads itself again, a texture stands
++  ///             again empty, and a program is linked anew when its pipeline
++  ///             is next asked for.
++  ///
++  ///             Called with the new OpenGL context current on the calling
++  ///             thread, where pipelines are asked for (the raster thread),
++  ///             before anything reacts in it.
++  ///
++  void GLContextWasReplaced();
++
+   std::shared_ptr<GPUTracerGLES> GetGPUTracer() const { return gpu_tracer_; }
+ 
+  private:
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/device_buffer_gles.cc b/engine/src/flutter/impeller/renderer/backend/gles/device_buffer_gles.cc
+index 0f2ca541698..de3c27f5c20 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/device_buffer_gles.cc
++++ b/engine/src/flutter/impeller/renderer/backend/gles/device_buffer_gles.cc
+@@ -93,6 +93,17 @@ bool DeviceBufferGLES::BindAndUploadDataIfNecessary(BindingType type) const {
+     return false;
+   }
+ 
++  // [anicel 0003] A buffer whose OpenGL context was replaced
++  // (ReactorGLES::GLContextWasReplaced) stands again whole in the new one:
++  // its bytes never left the backing store, so it takes a name of the new
++  // context and uploads all of them again. Its old name is let go of and
++  // deletes nothing.
++  if (handle_.has_value() && reactor_->IsOfReplacedContext(*handle_)) {
++    handle_.reset();
++    initialized_ = false;
++    Flush();
++  }
++
+   if (!handle_.has_value()) {
+     handle_ = reactor_->CreateUntrackedHandle(HandleType::kBuffer);
+ #ifdef IMPELLER_DEBUG
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/handle_gles.h b/engine/src/flutter/impeller/renderer/backend/gles/handle_gles.h
+index a6234ebc147..a669b121eda 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/handle_gles.h
++++ b/engine/src/flutter/impeller/renderer/backend/gles/handle_gles.h
+@@ -86,6 +86,10 @@ class HandleGLES {
+   std::size_t hash_;
+   std::optional<uint64_t> untracked_id_;
+   std::optional<std::thread::id> owner_thread_;
++  // [anicel 0003] Which of its reactor's OpenGL contexts this handle was made
++  // under: the reactor counts them (ReactorGLES::GLContextWasReplaced), and
++  // a handle of an earlier one names nothing.
++  uint64_t context_generation_ = 0;
+ 
+   friend class ReactorGLES;
+ 
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.cc b/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.cc
+index 240891dfc4b..2f0f2b6ece8 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.cc
++++ b/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.cc
+@@ -366,6 +366,12 @@ std::shared_ptr<UniqueHandleGLES> PipelineLibraryGLES::GetProgramForKey(
+   return nullptr;
+ }
+ 
++void PipelineLibraryGLES::GLContextWasReplaced() {
++  pipelines_.clear();
++  Lock lock(programs_mutex_);
++  programs_.clear();
++}
++
+ void PipelineLibraryGLES::SetProgramForKey(
+     const ProgramKey& key,
+     std::shared_ptr<UniqueHandleGLES> program) {
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.h b/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.h
+index 25c51c8113d..3ed4a517940 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.h
++++ b/engine/src/flutter/impeller/renderer/backend/gles/pipeline_library_gles.h
+@@ -127,6 +127,12 @@ class PipelineLibraryGLES final
+ 
+   void SetProgramForKey(const ProgramKey& key,
+                         std::shared_ptr<UniqueHandleGLES> program);
++
++  // [anicel 0003] The programs linked so far went with the OpenGL context
++  // they were linked in (ReactorGLES::GLContextWasReplaced): none is handed
++  // out again, and a pipeline asked for from here on is linked anew. Called
++  // where pipelines are asked for — nothing guards `pipelines_`.
++  void GLContextWasReplaced();
+ };
+ 
+ }  // namespace impeller
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.cc b/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.cc
+index 009b1e4ba74..13125d41ccb 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.cc
++++ b/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.cc
+@@ -124,8 +124,36 @@ const ProcTableGLES& ReactorGLES::GetProcTable() const {
+   return *proc_table_;
+ }
+ 
++void ReactorGLES::GLContextWasReplaced() {
++  // Let go of outside the locks: a handle's cleanup callback and what an
++  // operation captured may come back to the reactor as they go.
++  LiveHandles handles_of_the_old_context;
++  decltype(ops_) ops_for_the_old_context;
++  {
++    WriterLock handles_lock(handles_mutex_);
++    // Nothing is deleted: the names went with the context they were made in.
++    std::swap(handles_of_the_old_context, handles_);
++    handles_to_collect_count_ = 0;
++    context_generation_ += 1;
++  }
++  {
++    Lock ops_lock(ops_mutex_);
++    std::swap(ops_for_the_old_context, ops_);
++  }
++}
++
++bool ReactorGLES::IsOfReplacedContext(const HandleGLES& handle) const {
++  return !handle.IsDead() &&
++         handle.context_generation_ != context_generation_.load();
++}
++
+ std::optional<ReactorGLES::GLStorage> ReactorGLES::GetHandle(
+     const HandleGLES& handle) const {
++  // [anicel 0003] Its number names nothing in the context that stands now —
++  // or, worse, another object of it.
++  if (IsOfReplacedContext(handle)) {
++    return std::nullopt;
++  }
+   if (handle.untracked_id_.has_value()) {
+     return ReactorGLES::GLStorage{.integer = handle.untracked_id_.value()};
+   }
+@@ -203,6 +231,7 @@ bool ReactorGLES::RegisterCleanupCallback(const HandleGLES& handle,
+ HandleGLES ReactorGLES::CreateUntrackedHandle(HandleType type) const {
+   FML_DCHECK(CanReactOnCurrentThread());
+   auto new_handle = HandleGLES::Create(type);
++  new_handle.context_generation_ = context_generation_.load();
+   std::optional<ReactorGLES::GLStorage> gl_handle =
+       CreateGLHandle(GetProcTable(), type);
+   if (gl_handle.has_value()) {
+@@ -219,6 +248,7 @@ HandleGLES ReactorGLES::CreateHandle(HandleType type, GLuint external_handle) {
+   if (new_handle.IsDead()) {
+     return HandleGLES::DeadHandle();
+   }
++  new_handle.context_generation_ = context_generation_.load();
+ 
+   std::optional<ReactorGLES::GLStorage> gl_handle;
+   if (external_handle != GL_NONE) {
+@@ -236,6 +266,12 @@ void ReactorGLES::CollectHandle(HandleGLES handle) {
+   if (handle.IsDead()) {
+     return;
+   }
++  // [anicel 0003] Nothing of a replaced context is deleted: the object went
++  // with its context, and its number may name one of the context that stands
++  // now.
++  if (IsOfReplacedContext(handle)) {
++    return;
++  }
+   if (handle.untracked_id_.has_value()) {
+     LiveHandle live_handle(GLStorage{.integer = handle.untracked_id_.value()});
+     live_handle.pending_collection = true;
+@@ -405,7 +441,7 @@ void ReactorGLES::SetDebugLabel(const HandleGLES& handle,
+   if (!can_set_debug_labels_) {
+     return;
+   }
+-  if (handle.IsDead()) {
++  if (handle.IsDead() || IsOfReplacedContext(handle)) {
+     return;
+   }
+   if (handle.untracked_id_.has_value()) {
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.h b/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.h
+index 12e3d217fce..923eead734c 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.h
++++ b/engine/src/flutter/impeller/renderer/backend/gles/reactor_gles.h
+@@ -5,6 +5,7 @@
+ #ifndef FLUTTER_IMPELLER_RENDERER_BACKEND_GLES_REACTOR_GLES_H_
+ #define FLUTTER_IMPELLER_RENDERER_BACKEND_GLES_REACTOR_GLES_H_
+ 
++#include <atomic>
+ #include <functional>
+ #include <memory>
+ #include <vector>
+@@ -266,6 +267,29 @@ class ReactorGLES {
+   ///
+   [[nodiscard]] bool React();
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0003] The OpenGL context the workers make current was
++  ///             lost and another stands in its place: every OpenGL object made
++  ///             so far died with the old one.
++  ///
++  ///             From here on a handle made before this call names nothing.
++  ///             `GetGLHandle` and `GetGLFence` give `std::nullopt` for it, and
++  ///             collecting it deletes nothing — its number may by now name an
++  ///             object of the new context. Operations added before this call
++  ///             are dropped unrun: what they were to write is gone.
++  ///
++  ///             Called with the new context current on the calling thread,
++  ///             before anything reacts in it.
++  ///
++  void GLContextWasReplaced();
++
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0003] Whether `handle` was made under a context that
++  ///             has since been replaced (`GLContextWasReplaced`). A dead
++  ///             handle is of no context.
++  ///
++  bool IsOfReplacedContext(const HandleGLES& handle) const;
++
+  private:
+   /// @brief Storage for either a GL handle or sync fence.
+   struct GLStorage {
+@@ -303,6 +327,9 @@ class ReactorGLES {
+   mutable RWMutex handles_mutex_;
+   LiveHandles handles_ IPLR_GUARDED_BY(handles_mutex_);
+   int32_t handles_to_collect_count_ IPLR_GUARDED_BY(handles_mutex_) = 0;
++  // [anicel 0003] Counts the OpenGL contexts this reactor has stood on. Read
++  // without the lock: a handle is stamped and asked about on any thread.
++  std::atomic<uint64_t> context_generation_ = 0;
+ 
+   mutable Mutex workers_mutex_;
+   mutable std::map<WorkerID, std::weak_ptr<Worker>> workers_
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/test/gl_context_replaced_unittests.cc b/engine/src/flutter/impeller/renderer/backend/gles/test/gl_context_replaced_unittests.cc
+new file mode 100644
+index 00000000000..bc9c96d2c94
+--- /dev/null
++++ b/engine/src/flutter/impeller/renderer/backend/gles/test/gl_context_replaced_unittests.cc
+@@ -0,0 +1,326 @@
++// Copyright 2013 The Flutter Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++// [anicel 0003] The OpenGL context under a reactor was lost and another
++// stands in its place (ReactorGLES::GLContextWasReplaced): what was made
++// under the old one names nothing and deletes nothing, a buffer stands again
++// whole, and a texture stands again empty.
++
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <utility>
++#include <vector>
++
++#include "flutter/testing/testing.h"  // IWYU pragma: keep
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++#include "impeller/base/allocation.h"
++#include "impeller/core/formats.h"
++#include "impeller/core/texture_descriptor.h"
++#include "impeller/renderer/backend/gles/device_buffer_gles.h"
++#include "impeller/renderer/backend/gles/handle_gles.h"
++#include "impeller/renderer/backend/gles/proc_table_gles.h"
++#include "impeller/renderer/backend/gles/reactor_gles.h"
++#include "impeller/renderer/backend/gles/test/mock_gles.h"
++#include "impeller/renderer/backend/gles/texture_gles.h"
++
++namespace impeller {
++namespace testing {
++
++using ::testing::_;
++using ::testing::AnyNumber;
++using ::testing::NiceMock;
++using ::testing::Pointee;
++
++namespace {
++
++// A thread its OpenGL context is current on, until told it is not.
++class TestWorker : public ReactorGLES::Worker {
++ public:
++  bool CanReactorReactOnCurrentThreadNow(
++      const ReactorGLES& reactor) const override {
++    return can_react;
++  }
++
++  bool can_react = true;
++};
++
++struct Rig {
++  // Owned by `mock`.
++  NiceMock<MockGLESImpl>* gl = nullptr;
++  std::shared_ptr<MockGLES> mock;
++  std::shared_ptr<TestWorker> worker;
++  std::shared_ptr<ReactorGLES> reactor;
++};
++
++Rig MakeRig() {
++  Rig rig;
++  auto gl = std::make_unique<NiceMock<MockGLESImpl>>();
++  rig.gl = gl.get();
++  rig.mock = MockGLES::Init(std::move(gl));
++  ProcTableGLES::Resolver resolver = kMockResolverGLES;
++  rig.worker = std::make_shared<TestWorker>();
++  rig.reactor =
++      std::make_shared<ReactorGLES>(std::make_unique<ProcTableGLES>(resolver));
++  rig.reactor->AddWorker(rig.worker);
++  return rig;
++}
++
++// Runs what the reactor has pending, deletions among it.
++void React(const Rig& rig) {
++  ASSERT_TRUE(rig.reactor->AddOperation([](const ReactorGLES&) {}));
++  ASSERT_TRUE(rig.reactor->React());
++}
++
++TextureDescriptor FourByTwo() {
++  TextureDescriptor desc;
++  desc.storage_mode = StorageMode::kDevicePrivate;
++  desc.format = PixelFormat::kR8G8B8A8UNormInt;
++  desc.size = {4, 2};
++  return desc;
++}
++
++// What a texture's storage was given with.
++enum class Given { kNoData, kZeros, kOtherData };
++
++}  // namespace
++
++TEST(GLContextReplacedTest,
++     AHandleOfTheOldContextNamesNothingAndDeletesNothing) {
++  Rig rig = MakeRig();
++  GLuint next = 100;
++  ON_CALL(*rig.gl, GenTextures(1, _))
++      .WillByDefault([&](GLsizei, GLuint* textures) { textures[0] = next++; });
++  // Until the handle made in the new context is collected, below.
++  EXPECT_CALL(*rig.gl, DeleteTextures(_, _)).Times(0);
++
++  HandleGLES tracked = rig.reactor->CreateHandle(HandleType::kTexture);
++  HandleGLES untracked =
++      rig.reactor->CreateUntrackedHandle(HandleType::kTexture);
++  ASSERT_EQ(rig.reactor->GetGLHandle(tracked), std::optional<GLuint>(100u));
++  ASSERT_EQ(rig.reactor->GetGLHandle(untracked), std::optional<GLuint>(101u));
++  EXPECT_FALSE(rig.reactor->IsOfReplacedContext(tracked));
++  EXPECT_FALSE(rig.reactor->IsOfReplacedContext(untracked));
++  bool ran = false;
++  ASSERT_TRUE(rig.reactor->AddOperation(
++      [&](const ReactorGLES&) { ran = true; }, /*defer=*/true));
++
++  // The new context numbers its objects from where the old one began: the
++  // old numbers name its objects now.
++  next = 100;
++  rig.reactor->GLContextWasReplaced();
++
++  EXPECT_TRUE(rig.reactor->IsOfReplacedContext(tracked));
++  EXPECT_TRUE(rig.reactor->IsOfReplacedContext(untracked));
++  EXPECT_FALSE(rig.reactor->GetGLHandle(tracked).has_value());
++  EXPECT_FALSE(rig.reactor->GetGLHandle(untracked).has_value());
++
++  HandleGLES made_after =
++      rig.reactor->CreateUntrackedHandle(HandleType::kTexture);
++  EXPECT_FALSE(rig.reactor->IsOfReplacedContext(made_after));
++  EXPECT_EQ(rig.reactor->GetGLHandle(made_after), std::optional<GLuint>(100u));
++
++  // Collected, the old two delete nothing — 100 is the new context's.
++  rig.reactor->CollectHandle(tracked);
++  rig.reactor->CollectHandle(untracked);
++  React(rig);
++  EXPECT_FALSE(ran) << "an operation for the old context ran in the new one";
++  ::testing::Mock::VerifyAndClearExpectations(rig.gl);
++
++  // And a handle of the context that stands deletes its own, as ever.
++  EXPECT_CALL(*rig.gl, DeleteTextures(1, Pointee(100u))).Times(1);
++  rig.reactor->CollectHandle(made_after);
++  React(rig);
++}
++
++TEST(GLContextReplacedTest, ADeadHandleIsOfNoContext) {
++  Rig rig = MakeRig();
++  rig.reactor->GLContextWasReplaced();
++  EXPECT_FALSE(rig.reactor->IsOfReplacedContext(HandleGLES::DeadHandle()));
++}
++
++TEST(GLContextReplacedTest, ACleanupCallbackRunsAsItsHandleGoesWithTheContext) {
++  Rig rig = MakeRig();
++  int ran = 0;
++  HandleGLES handle = rig.reactor->CreateHandle(HandleType::kTexture, 1123);
++  ASSERT_TRUE(rig.reactor->RegisterCleanupCallback(handle, [&]() { ran++; }));
++
++  rig.reactor->GLContextWasReplaced();
++
++  EXPECT_EQ(ran, 1);
++}
++
++TEST(GLContextReplacedTest, ABufferStandsAgainWholeInTheNewContext) {
++  Rig rig = MakeRig();
++  GLuint next = 7;
++  ON_CALL(*rig.gl, GenBuffers(1, _))
++      .WillByDefault([&](GLsizei, GLuint* buffers) { buffers[0] = next++; });
++  std::vector<std::pair<GLintptr, GLsizeiptr>> uploads;
++  ON_CALL(*rig.gl, BufferSubData(_, _, _, _))
++      .WillByDefault(
++          [&](GLenum, GLintptr offset, GLsizeiptr size, const void*) {
++            uploads.emplace_back(offset, size);
++          });
++  EXPECT_CALL(*rig.gl, DeleteBuffers(_, _)).Times(AnyNumber());
++  // The old context's: never deleted in the new one.
++  EXPECT_CALL(*rig.gl, DeleteBuffers(1, Pointee(7u))).Times(0);
++
++  auto backing_store = std::make_unique<Allocation>();
++  ASSERT_TRUE(backing_store->Truncate(Bytes{16}));
++  auto buffer = std::make_unique<DeviceBufferGLES>(
++      DeviceBufferDescriptor{.size = 16}, rig.reactor,
++      std::move(backing_store));
++  buffer->Flush(Range{0, 4});
++  ASSERT_TRUE(buffer->BindAndUploadDataIfNecessary(
++      DeviceBufferGLES::BindingType::kArrayBuffer));
++  ASSERT_EQ(buffer->GetHandle(), std::optional<GLuint>(7u));
++  ASSERT_EQ(uploads,
++            (std::vector<std::pair<GLintptr, GLsizeiptr>>{{0, 4}}));
++  uploads.clear();
++
++  rig.reactor->GLContextWasReplaced();
++
++  EXPECT_FALSE(buffer->GetHandle().has_value());
++  ASSERT_TRUE(buffer->BindAndUploadDataIfNecessary(
++      DeviceBufferGLES::BindingType::kArrayBuffer));
++  EXPECT_EQ(buffer->GetHandle(), std::optional<GLuint>(8u));
++  // All sixteen bytes, though none was written since the first upload.
++  EXPECT_EQ(uploads,
++            (std::vector<std::pair<GLintptr, GLsizeiptr>>{{0, 16}}));
++
++  buffer.reset();
++  React(rig);
++}
++
++TEST(GLContextReplacedTest, ATextureStandsAgainEmptyInTheNewContext) {
++  Rig rig = MakeRig();
++  GLuint next = 40;
++  ON_CALL(*rig.gl, GenTextures(1, _))
++      .WillByDefault([&](GLsizei, GLuint* textures) { textures[0] = next++; });
++  std::vector<GLuint> bound;
++  ON_CALL(*rig.gl, BindTexture(_, _))
++      .WillByDefault([&](GLenum, GLuint texture) { bound.push_back(texture); });
++  std::vector<std::pair<GLuint, Given>> storage;
++  ON_CALL(*rig.gl, TexImage2D(_, _, _, _, _, _, _, _, _))
++      .WillByDefault([&](GLenum, GLint, GLint, GLsizei width, GLsizei height,
++                         GLint, GLenum, GLenum, const void* pixels) {
++        Given given = Given::kNoData;
++        if (pixels != nullptr) {
++          given = Given::kZeros;
++          const auto* bytes = static_cast<const uint8_t*>(pixels);
++          for (GLsizei i = 0; i < width * height * 4; i++) {
++            if (bytes[i] != 0) {
++              given = Given::kOtherData;
++            }
++          }
++        }
++        storage.emplace_back(bound.empty() ? 0u : bound.back(), given);
++      });
++  EXPECT_CALL(*rig.gl, DeleteTextures(_, _)).Times(AnyNumber());
++  // The old context's: never deleted in the new one.
++  EXPECT_CALL(*rig.gl, DeleteTextures(1, Pointee(40u))).Times(0);
++
++  auto texture = std::make_shared<TextureGLES>(rig.reactor, FourByTwo());
++  ASSERT_TRUE(texture->IsValid());
++  ASSERT_TRUE(texture->Bind());
++  ASSERT_EQ(texture->GetGLHandle(), std::optional<GLuint>(40u));
++  ASSERT_EQ(storage,
++            (std::vector<std::pair<GLuint, Given>>{{40u, Given::kNoData}}));
++  bound.clear();
++  storage.clear();
++
++  next = 90;
++  rig.reactor->GLContextWasReplaced();
++
++  ASSERT_TRUE(texture->Bind());
++  EXPECT_EQ(texture->GetGLHandle(), std::optional<GLuint>(90u));
++  for (GLuint name : bound) {
++    EXPECT_EQ(name, 90u) << "a name of the old context was bound";
++  }
++  EXPECT_FALSE(bound.empty());
++  EXPECT_EQ(storage,
++            (std::vector<std::pair<GLuint, Given>>{{90u, Given::kZeros}}));
++
++  // Once: from here on it is a texture of the context that stands.
++  storage.clear();
++  ASSERT_TRUE(texture->Bind());
++  EXPECT_TRUE(storage.empty());
++
++  texture.reset();
++  React(rig);
++}
++
++TEST(GLContextReplacedTest,
++     ATextureReachedForWhereNoContextIsCurrentStandsAgainAtTheNextReaction) {
++  Rig rig = MakeRig();
++  GLuint next = 40;
++  ON_CALL(*rig.gl, GenTextures(1, _))
++      .WillByDefault([&](GLsizei, GLuint* textures) { textures[0] = next++; });
++
++  auto texture = std::make_shared<TextureGLES>(rig.reactor, FourByTwo());
++  ASSERT_EQ(texture->GetGLHandle(), std::optional<GLuint>(40u));
++
++  next = 90;
++  rig.reactor->GLContextWasReplaced();
++
++  // The UI thread, say: it holds the image and no OpenGL context. The
++  // texture takes a handle there, and its name at the next reaction.
++  rig.worker->can_react = false;
++  EXPECT_FALSE(texture->IsSliceInitialized(0));
++  rig.worker->can_react = true;
++  React(rig);
++  EXPECT_EQ(texture->GetGLHandle(), std::optional<GLuint>(90u));
++}
++
++TEST(GLContextReplacedTest, WhatHungOnATextureOfTheOldContextGoesWithIt) {
++  Rig rig = MakeRig();
++  EXPECT_CALL(*rig.gl, DeleteFramebuffers(_, _)).Times(0);
++
++  auto texture = std::make_shared<TextureGLES>(rig.reactor, FourByTwo());
++  texture->SetCachedFBO(
++      rig.reactor->CreateUntrackedHandle(HandleType::kFrameBuffer));
++  texture->MarkSliceInitialized(0);
++  ASSERT_FALSE(texture->GetCachedFBO().IsDead());
++  ASSERT_TRUE(texture->IsSliceInitialized(0));
++
++  rig.reactor->GLContextWasReplaced();
++
++  // No framebuffer of the old context is handed to a pass of the new one,
++  // and none is deleted in it; and its storage is to be given again.
++  EXPECT_TRUE(texture->GetCachedFBO().IsDead());
++  EXPECT_FALSE(texture->IsSliceInitialized(0));
++  React(rig);
++  ::testing::Mock::VerifyAndClearExpectations(rig.gl);
++}
++
++TEST(GLContextReplacedTest,
++     WhatWrapsAnothersTextureOfTheOldContextBindsNoneAndStillBinds) {
++  Rig rig = MakeRig();
++  std::vector<GLuint> bound;
++  ON_CALL(*rig.gl, BindTexture(_, _))
++      .WillByDefault([&](GLenum, GLuint texture) { bound.push_back(texture); });
++  EXPECT_CALL(*rig.gl, DeleteTextures(_, _)).Times(0);
++
++  TextureDescriptor desc = FourByTwo();
++  auto wrapper = TextureGLES::WrapTexture(
++      rig.reactor, desc, rig.reactor->CreateHandle(HandleType::kTexture, 555));
++  ASSERT_TRUE(wrapper);
++  ASSERT_TRUE(wrapper->Bind());
++  ASSERT_EQ(bound, std::vector<GLuint>{555u});
++  bound.clear();
++
++  rig.reactor->GLContextWasReplaced();
++
++  // ⛔Not a failed bind: a pass whose textures do not bind ends the process.
++  EXPECT_TRUE(wrapper->Bind());
++  EXPECT_EQ(bound, std::vector<GLuint>{0u});
++
++  wrapper.reset();
++  React(rig);
++  ::testing::Mock::VerifyAndClearExpectations(rig.gl);
++}
++
++}  // namespace testing
++}  // namespace impeller
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.cc b/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.cc
+index 4c008886834..68652669f5d 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.cc
++++ b/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.cc
+@@ -7,6 +7,7 @@
+ #include <format>
+ #include <optional>
+ #include <utility>
++#include <vector>
+ 
+ #include "flutter/fml/logging.h"
+ #include "flutter/fml/mapping.h"
+@@ -180,6 +181,27 @@ void TextureGLES::Leak() {
+   handle_.Release();
+ }
+ 
++void TextureGLES::StandAgainIfContextWasReplaced() const {
++  if (is_wrapped_ || !reactor_->IsOfReplacedContext(handle_.Get())) {
++    return;
++  }
++  auto& self = const_cast<TextureGLES&>(*this);
++  // A name of the context that stands now: made here where this thread can
++  // react, and at the next reaction where it cannot. The old one is let go
++  // of and deletes nothing (ReactorGLES::CollectHandle).
++  self.handle_ =
++      reactor_->CanReactOnCurrentThread()
++          ? UniqueHandleGLES::MakeUntracked(reactor_, ToHandleType(type_))
++          : UniqueHandleGLES(reactor_, ToHandleType(type_));
++  // What hung on the old name went with it.
++  self.fence_.Reset();
++  self.cached_fbo_.Reset();
++  self.cached_fbo_mip_level_ = 0;
++  self.cached_fbo_slice_ = 0;
++  self.slice_mip_initialized_ = {};
++  self.stands_again_empty_ = true;
++}
++
+ // |Texture|
+ bool TextureGLES::IsValid() const {
+   return is_valid_;
+@@ -235,6 +257,8 @@ bool TextureGLES::OnSetContents(std::shared_ptr<const fml::Mapping> mapping,
+     return false;
+   }
+ 
++  StandAgainIfContextWasReplaced();
++
+   const auto& tex_descriptor = GetTextureDescriptor();
+ 
+   if (tex_descriptor.size.IsEmpty()) {
+@@ -432,6 +456,16 @@ void TextureGLES::InitializeContentsIfNecessary() {
+         VALIDATION_LOG << "Invalid format for texture image.";
+         return;
+       }
++      // [anicel 0003] Standing again in a context that replaced its own, the
++      // texture is given zeros — transparent — where storage given no data
++      // shows whatever the driver left there.
++      std::vector<uint8_t> zeros;
++      const GLvoid* pixels = nullptr;
++      if (stands_again_empty_ && !gles_format->is_compressed) {
++        zeros.resize(desc.GetByteSizeOfBaseMipLevel());
++        pixels = zeros.data();
++        gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
++      }
+       TRACE_EVENT0("impeller", "TexImage2DInitialization");
+       if (desc.type == TextureType::kTextureCube) {
+         // Cubemap handles must be bound to GL_TEXTURE_CUBE_MAP and each face
+@@ -449,7 +483,7 @@ void TextureGLES::InitializeContentsIfNecessary() {
+                         0u,                                     // border
+                         gles_format->external_format,           // format
+                         gles_format->type,                      // type
+-                        nullptr                                 // data
++                        pixels                                  // data
+           );
+           MarkSliceMipLevelInitialized(face, 0);
+         }
+@@ -469,10 +503,16 @@ void TextureGLES::InitializeContentsIfNecessary() {
+                       0u,                            // border
+                       gles_format->external_format,  // format
+                       gles_format->type,             // type
+-                      nullptr                        // data
++                      pixels                         // data
+         );
+         MarkSliceMipLevelInitialized(0, 0);
+       }
++      // [anicel 0003] And the levels it was sampled through stand again with
++      // it: a sampler that asks for them finds no texture where they are
++      // missing.
++      if (stands_again_empty_ && mipmap_generated_ && desc.mip_count > 1) {
++        gl.GenerateMipmap(ToTextureType(desc.type));
++      }
+     } break;
+     case Type::kRenderBuffer:
+     case Type::kRenderBufferMultisampled: {
+@@ -520,18 +560,35 @@ void TextureGLES::InitializeContentsIfNecessary() {
+       MarkSliceMipLevelInitialized(0, 0);
+     } break;
+   }
++  stands_again_empty_ = false;
+ }
+ 
+ std::optional<GLuint> TextureGLES::GetGLHandle() const {
+   if (!IsValid()) {
+     return std::nullopt;
+   }
++  StandAgainIfContextWasReplaced();
+   return reactor_->GetGLHandle(handle_.Get());
+ }
+ 
+ bool TextureGLES::Bind() {
+   auto handle = GetGLHandle();
+   if (!handle.has_value()) {
++    // [anicel 0003] What wraps another's object of a replaced context has
++    // nothing to bind and cannot stand again by itself
++    // (StandAgainIfContextWasReplaced): none is bound, and what samples it
++    // draws nothing. ⛔Not `false`: a pass that cannot bind its textures is
++    // a pass that could not be encoded, and that ends the process
++    // (RenderPassGLES::OnEncodeCommands).
++    if (IsValid() && is_wrapped_ &&
++        reactor_->IsOfReplacedContext(handle_.Get())) {
++      const auto target = ToTextureTarget(GetTextureDescriptor().type);
++      if (target.has_value() &&
++          (type_ == Type::kTexture || type_ == Type::kTextureMultisampled)) {
++        reactor_->GetProcTable().BindTexture(target.value(), GL_NONE);
++        return true;
++      }
++    }
+     return false;
+   }
+   const auto& gl = reactor_->GetProcTable();
+@@ -587,6 +644,7 @@ void TextureGLES::MarkSliceMipLevelInitialized(size_t slice, size_t mip_level) {
+ 
+ bool TextureGLES::IsSliceMipLevelInitialized(size_t slice,
+                                              size_t mip_level) const {
++  StandAgainIfContextWasReplaced();
+   if (slice >= slice_mip_initialized_.size() ||
+       mip_level >= kMaxTrackedMipLevels) {
+     return false;
+@@ -757,20 +815,24 @@ std::optional<GLuint> TextureGLES::GetFBO() const {
+ }
+ 
+ void TextureGLES::SetFence(HandleGLES fence) {
++  StandAgainIfContextWasReplaced();
+   FML_DCHECK(!fence_.IsValid());
+   fence_ = UniqueHandleGLES(reactor_, fence);
+ }
+ 
+ // Visible for testing.
+ std::optional<HandleGLES> TextureGLES::GetSyncFence() const {
++  StandAgainIfContextWasReplaced();
+   return fence_.IsValid() ? std::optional(fence_.Get()) : std::nullopt;
+ }
+ 
+ void TextureGLES::SetCachedFBO(HandleGLES fbo) {
++  StandAgainIfContextWasReplaced();
+   cached_fbo_ = UniqueHandleGLES(reactor_, fbo);
+ }
+ 
+ const HandleGLES& TextureGLES::GetCachedFBO() const {
++  StandAgainIfContextWasReplaced();
+   return cached_fbo_.Get();
+ }
+ 
+diff --git a/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.h b/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.h
+index c1a52f0946a..eee6f9a89cc 100644
+--- a/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.h
++++ b/engine/src/flutter/impeller/renderer/backend/gles/texture_gles.h
+@@ -198,6 +198,29 @@ class TextureGLES final : public Texture,
+   uint32_t cached_fbo_mip_level_ = 0;
+   uint32_t cached_fbo_slice_ = 0;
+   bool is_valid_ = false;
++  // [anicel 0003] Set as the texture stands again in a context that replaced
++  // its own, until its storage is given: that storage is given filled with
++  // zeros, not left as the driver finds it.
++  bool stands_again_empty_ = false;
++
++  // [anicel 0003] A TEXTURE WHOSE OPENGL CONTEXT WAS REPLACED STANDS AGAIN IN
++  // THE NEW ONE, AS AN EMPTY TEXTURE OF THE SAME SHAPE
++  // (ReactorGLES::GLContextWasReplaced).
++  //
++  // Its pixels went with the old context and nothing here kept them. What
++  // holds it — a picture the framework drew, an image the app decoded —
++  // cannot know: so the texture takes a name of the new context the first
++  // time anything reaches for its OpenGL state, transparent until whoever
++  // owns the picture draws it again. A name of the old context is never
++  // bound: in the new one it names nothing, or another texture.
++  //
++  // Every way into the texture's OpenGL state passes here first. What wraps
++  // another's object (`is_wrapped_`) cannot stand again by itself and is left
++  // as it is: `Bind` binds none for it.
++  //
++  // Const, by one cast inside: lazy bookkeeping of this backend, which
++  // nothing above it sees — as `Bind`'s is.
++  void StandAgainIfContextWasReplaced() const;
+ 
+   TextureGLES(std::shared_ptr<ReactorGLES> reactor,
+               TextureDescriptor desc,

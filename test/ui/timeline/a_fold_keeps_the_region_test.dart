@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +33,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// with the fold, while the storyboard's panel stays for the rows it hands
 /// the folded row and the walk, and builds no body.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Project longCut() {
     final project = createDefaultProject();
     final track = project.tracks.first;

@@ -40,6 +40,8 @@ mod one_maths;
 #[cfg(test)]
 mod a_page_is_let_go_on_its_thread;
 #[cfg(test)]
+mod one_le_words;
+#[cfg(test)]
 mod one_name_to_a_place;
 #[cfg(test)]
 mod one_ndk_table;
@@ -70,7 +72,7 @@ use crate::device::{CompilerTurn, Engine, KernelSource};
 
 pub(crate) use counted::Counted;
 pub(crate) use dispatch::{
-    Encoded, aligned, bands, buffer_holds, encode, encode_cleared, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room,
+    Encoded, aligned, bands, buffer_holds, chunks, encode, encode_cleared, encode_on, fits, flat, land_storage_writes, le_bytes, le_words, plane, range, room,
     rows_a_binding, tiles_a_page, tiles_a_pass, whole, words_bound, words_buffer,
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
@@ -88,6 +90,9 @@ pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 /// export kernels' frame (`kernels/export/frame.wgsl`) and the composite's
 /// rows and output tiles.
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
+/// The box a tile's ink fills, folded by a workgroup a tile — after
+/// [`TILE_WGSL`]: the ink scan's and the write test's, the one fold.
+pub(crate) const INK_BOX_WGSL: &str = include_str!("ink_box.wgsl");
 /// `premultiply8` — a straight word as a surface Flutter shows holds it,
 /// and as the export lays it over a ground — and its rounding,
 /// `div255_round`, which the cel pixel blend takes too. `one_premultiply.rs`
@@ -318,30 +323,33 @@ pub extern "C" fn gpu_engine_kernels_built_here() -> u64 {
 }
 
 /// The module and the pipeline of `source`, on the thread that asks — which
-/// has the compiler to itself, by the turn it shows.
+/// has the compiler to itself, by the turn it shows, which counts it
+/// (`CompilerTurn::counted`).
 fn compiled(
-    _turn: &CompilerTurn,
+    turn: &CompilerTurn,
     device: &wgpu::Device,
     source: String,
     entry: &str,
     constants: &[(&str, f64)],
     zeroed: bool,
 ) -> wgpu::ComputePipeline {
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(entry),
-        source: wgpu::ShaderSource::Wgsl(source.into()),
-    });
-    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some(entry),
-        layout: None,
-        module: &module,
-        entry_point: Some(entry),
-        compilation_options: wgpu::PipelineCompilationOptions {
-            constants,
-            zero_initialize_workgroup_memory: zeroed,
-            ..Default::default()
-        },
-        cache: None,
+    turn.counted(device, || {
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(entry),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(entry),
+            layout: None,
+            module: &module,
+            entry_point: Some(entry),
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants,
+                zero_initialize_workgroup_memory: zeroed,
+                ..Default::default()
+            },
+            cache: None,
+        })
     })
 }
 

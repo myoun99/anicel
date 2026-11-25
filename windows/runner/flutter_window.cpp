@@ -163,7 +163,9 @@ constexpr char kOpenHanded[] = "open";
 // gave and the moment the watch saw it, [int32, int64 ms since 1970 UTC]
 // (H63 ③) — and Dart asks the user with Windows' own windows and has the
 // runner start Anicel again for the files it saved
-// (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5).
+// (a-lost-gpu-leaves-the-window-unpainted-Q1), or end it unsaved (Q5). And
+// Dart asks whether the watch's device stands, now, before it draws a pixel
+// of its own to read back (a-real-gpu-reset-went-unheard-on-the-main-pc-Q1).
 // test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
 // these literals.
 constexpr char kScreenChannel[] = "anicel/screen";
@@ -171,8 +173,66 @@ constexpr char kScreenWent[] = "went";
 constexpr char kAskWithWindows[] = "askWithWindows";
 constexpr char kStartAgain[] = "startAgain";
 constexpr char kEnd[] = "end";
+constexpr char kScreenStands[] = "stands";
+// 🚨★★★THE PIXEL THE SCREEN DID NOT SAY BACK IS A WORD OF A LOSS TOO.
+// 🗣️a-real-gpu-reset-went-unheard-on-the-main-pc-Q1 (유저 2026-11-22), the
+// option chosen: 「처음엔 기록만 … 실제 사고 한 번이 그 기록으로 맞다고
+// 확인되면 저장 · 다시 시작 창에 잇는다」 — and 2026-11-23 20:40 (검증, main
+// PC) was that one: two nvlddmkm 153s, the watch and the app's engine said
+// nothing, and the pixel Dart drew on the screen's own context failed to
+// bind it. Dart says so here [int64 ms since 1970 UTC, when it asked], and
+// it goes through the one door the watch's word and the engine's go
+// through (HearTheScreenGo): one loss, whoever says it first, and where the
+// engine restores, the engine is told.
+constexpr char kScreenPixelNotSaid[] = "pixelNotSaid";
 // Posted by the watch's thread: the channel speaks on this one.
 constexpr UINT kScreenWentMessage = WM_APP + 0x153;
+// 🚨THE ENGINE'S OWN WORD THAT ITS SCREEN'S CONTEXT IS LOST, heard where the
+// engine is the one Anicel builds (tool/flutter_engine/3.47.4, patch 0002):
+// an EGL call of the embedder's that fails by EGL_CONTEXT_LOST posts every
+// top-level window of the process the message registered by this name, its
+// WPARAM the EGL error. Flutter's own engine posts none, and the watch above
+// is all that speaks. Said on the channel as the engine's
+// (kScreenContextLost) with the moment the runner heard it: the app does by
+// it what it does by the watch's word, and writes who said it.
+// 🗣️유저 2026-11-22 (board a-real-gpu-reset-went-unheard-on-the-main-pc):
+// 「그게 젤 근본해결이고 버전고정되고 올릴때마다 신경써야하는건
+// 이해하고있고」 — the engine is mended, and this is its first step.
+// test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
+// the name here and in the patch.
+constexpr char kScreenContextLost[] = "contextLost";
+constexpr wchar_t kEngineContextLostMessage[] =
+    L"FlutterWindowsEglContextLost";
+
+// 🚨★★★WHERE THE ENGINE RESTORES, THE WORD OF A LOSS WAITS FOR ITS ANSWER.
+// 🗣️유저 2026-11-22 (board a-real-gpu-reset-went-unheard-on-the-main-pc,
+// relayed): 「Flutter 윈도 엔진을 고쳐 화면이 돌아오게 한다」 — step two, the
+// screen comes back without Anicel starting again. The engine Anicel builds
+// (patch 0005) makes its context anew once it hears a loss, and posts every
+// top-level window of the process the message registered by this name: its
+// WPARAM 1 where it renders again, 0 where not. A library that exports
+// kEngineToldOfALoss is such an engine (the patch says so of it).
+//
+// So, where the engine restores, the first word of a loss — the watch's or
+// the engine's own — is not said to Dart but held (HearTheScreenGo); the
+// watch's word is passed to the engine, which may not have heard of the
+// loss at all (an app that draws nothing makes no EGL call that fails). The
+// answer decides: it stands again, and Dart hears kScreenContextRestored
+// with the word held and the moment it stood; it does not, or says nothing
+// within kEngineAnswersWithin, and Dart hears the word held, as it is said
+// where the engine is Flutter's own — the ask, the save and the start again
+// stand as they are. ⏳The time is 공통's (11-23), not measured: the engine
+// itself waits at most 2 s twice for its raster thread, then makes the
+// display anew and draws.
+// test/architecture/a_lost_screen_is_heard_from_the_runner_test.dart reads
+// these literals, and the names in the patch.
+constexpr char kScreenContextRestored[] = "contextRestored";
+constexpr wchar_t kEngineContextRestoredMessage[] =
+    L"FlutterWindowsEglContextRestored";
+constexpr char kEngineToldOfALoss[] = "FlutterDesktopGLContextWasLost";
+constexpr UINT kEngineAnswersWithin = 8000;
+// The timer that waits for the answer.
+constexpr UINT_PTR kEngineAnswerTimer = 0x154;
 
 // 🚨★★★F-411 — A MODIFIER WINDOWS LET GO OF IS LET GO OF IN THE ENGINE TOO.
 //
@@ -237,6 +297,76 @@ int ModifierAskedOf(WPARAM key) {
 bool IsKeyMessage(UINT message) {
   return message == WM_KEYDOWN || message == WM_SYSKEYDOWN ||
          message == WM_KEYUP || message == WM_SYSKEYUP;
+}
+
+// The id Windows gives the engine's message (kEngineContextLostMessage) this
+// session — the same to every caller that registers the name. Zero where it
+// would not register.
+UINT EngineContextLostMessage() {
+  static const UINT message =
+      ::RegisterWindowMessageW(kEngineContextLostMessage);
+  return message;
+}
+
+// The id of the engine's answer (kEngineContextRestoredMessage), as above.
+UINT EngineContextRestoredMessage() {
+  static const UINT message =
+      ::RegisterWindowMessageW(kEngineContextRestoredMessage);
+  return message;
+}
+
+// The engine's door to be told of a loss (kEngineToldOfALoss) — null where
+// the engine does not restore, Flutter's own among them.
+using TellTheEngine = void (*)();
+TellTheEngine EngineThatRestores() {
+  static const TellTheEngine tell = [] {
+    const HMODULE engine = ::GetModuleHandleW(L"flutter_windows.dll");
+    return engine == nullptr ? nullptr
+                             : reinterpret_cast<TellTheEngine>(
+                                   ::GetProcAddress(engine, kEngineToldOfALoss));
+  }();
+  return tell;
+}
+
+// Says on |channel| by |method| that the screen went: the reason and the
+// moment, [int32, int64 ms since 1970 UTC]. Nothing before Dart is listened
+// for.
+void SayTheScreenWent(
+    flutter::MethodChannel<flutter::EncodableValue>* channel,
+    const char* method,
+    WPARAM reason,
+    LPARAM seen_at) {
+  if (channel == nullptr) {
+    return;
+  }
+  channel->InvokeMethod(
+      method,
+      std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
+          flutter::EncodableValue(static_cast<int32_t>(reason)),
+          flutter::EncodableValue(static_cast<int64_t>(seen_at)),
+      }));
+}
+
+// Says on |channel| that the screen stood again in a context made anew:
+// the word of the loss as it would have been said ([int32 reason, int64
+// seen at, the method it is said by]) and the moment it stood, [int64].
+void SayTheScreenStoodAgain(
+    flutter::MethodChannel<flutter::EncodableValue>* channel,
+    const char* said_by,
+    WPARAM reason,
+    LPARAM seen_at,
+    LPARAM stood_at) {
+  if (channel == nullptr) {
+    return;
+  }
+  channel->InvokeMethod(
+      kScreenContextRestored,
+      std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
+          flutter::EncodableValue(static_cast<int32_t>(reason)),
+          flutter::EncodableValue(static_cast<int64_t>(seen_at)),
+          flutter::EncodableValue(std::string(said_by)),
+          flutter::EncodableValue(static_cast<int64_t>(stood_at)),
+      }));
 }
 
 }  // namespace
@@ -342,14 +472,22 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
   if (message == kScreenWentMessage) {
-    if (screen_channel_) {
-      screen_channel_->InvokeMethod(
-          kScreenWent,
-          std::make_unique<flutter::EncodableValue>(flutter::EncodableList{
-              flutter::EncodableValue(static_cast<int32_t>(wparam)),
-              flutter::EncodableValue(static_cast<int64_t>(lparam)),
-          }));
-    }
+    HearTheScreenGo(kScreenWent, wparam, lparam);
+    return 0;
+  }
+  // The engine's word carries no moment: the runner's, as it hears it.
+  if (const UINT lost = EngineContextLostMessage();
+      lost != 0 && message == lost) {
+    HearTheScreenGo(kScreenContextLost, wparam, UnixMillisecondsNow());
+    return 0;
+  }
+  if (const UINT restored = EngineContextRestoredMessage();
+      restored != 0 && message == restored) {
+    HearTheEngineAnswer(wparam == 1);
+    return 0;
+  }
+  if (message == WM_TIMER && wparam == kEngineAnswerTimer) {
+    HearTheEngineAnswer(false);
     return 0;
   }
 
@@ -530,8 +668,29 @@ void FlutterWindow::ListenForTheScreen() {
       [this](const flutter::MethodCall<flutter::EncodableValue>& call,
              std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
                  result) {
+        // No words: the watch's device, asked now (ScreenWatch::Stands).
+        if (call.method_name() == kScreenStands) {
+          result->Success(flutter::EncodableValue(
+              screen_watch_ != nullptr && screen_watch_->Stands()));
+          return;
+        }
         const auto* said =
             std::get_if<flutter::EncodableList>(call.arguments());
+        // [when it asked]: the codec sends an int that fits 32 bits as one.
+        if (call.method_name() == kScreenPixelNotSaid) {
+          const flutter::EncodableValue* asked =
+              said && said->size() == 1 ? &(*said)[0] : nullptr;
+          const auto* wide = asked ? std::get_if<int64_t>(asked) : nullptr;
+          const auto* narrow = asked ? std::get_if<int32_t>(asked) : nullptr;
+          if (!wide && !narrow) {
+            result->Error("not-a-moment");
+            return;
+          }
+          result->Success();
+          HearTheScreenGo(kScreenPixelNotSaid, 0,
+                          static_cast<LPARAM>(wide ? *wide : *narrow));
+          return;
+        }
         std::vector<std::wstring> words;
         for (const flutter::EncodableValue& word :
              said ? *said : flutter::EncodableList()) {
@@ -562,6 +721,10 @@ void FlutterWindow::ListenForTheScreen() {
         }
         result->NotImplemented();
       });
+  WatchTheScreen();
+}
+
+void FlutterWindow::WatchTheScreen() {
   // Only on the adapter Flutter says it draws on: a device on another would
   // hear another GPU's resets.
   IDXGIAdapter* adapter = nullptr;
@@ -570,6 +733,49 @@ void FlutterWindow::ListenForTheScreen() {
         std::make_unique<ScreenWatch>(adapter, GetHandle(), kScreenWentMessage);
     adapter->Release();
   }
+}
+
+void FlutterWindow::HearTheScreenGo(const char* method,
+                                    WPARAM reason,
+                                    LPARAM seen_at) {
+  const TellTheEngine tell = EngineThatRestores();
+  if (tell == nullptr) {
+    SayTheScreenWent(screen_channel_.get(), method, reason, seen_at);
+    return;
+  }
+  // Of the loss that was answered, or of the one held: one loss, whoever
+  // says it first.
+  if (seen_at <= stood_again_at_ || held_word_.has_value()) {
+    return;
+  }
+  held_word_ = HeldWord{method, reason, seen_at};
+  ::SetTimer(GetHandle(), kEngineAnswerTimer, kEngineAnswersWithin, nullptr);
+  // The engine says a loss once till it stands again: told of the one it
+  // said itself, it does nothing more.
+  tell();
+}
+
+void FlutterWindow::HearTheEngineAnswer(bool stands) {
+  ::KillTimer(GetHandle(), kEngineAnswerTimer);
+  // An answer to no word held: one after the time ran out, which Dart was
+  // told of as a loss, and asks of.
+  if (!held_word_.has_value()) {
+    return;
+  }
+  const HeldWord word = *held_word_;
+  held_word_.reset();
+  if (!stands) {
+    SayTheScreenWent(screen_channel_.get(), word.method, word.reason,
+                     word.seen_at);
+    return;
+  }
+  // The removed device's watch goes before the moment is taken: what it
+  // posted, it posted before it.
+  screen_watch_ = nullptr;
+  stood_again_at_ = UnixMillisecondsNow();
+  WatchTheScreen();
+  SayTheScreenStoodAgain(screen_channel_.get(), word.method, word.reason,
+                         word.seen_at, stood_again_at_);
 }
 
 void FlutterWindow::ListenForFullScreen() {

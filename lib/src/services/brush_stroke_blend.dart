@@ -7,14 +7,11 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart' show BrushDualView;
-import '../models/brush_frame_key.dart';
 import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import 'package:gpu_engine/gpu_engine.dart' show GpuBlend;
-
-import '../native/engine_tile_ledger.dart';
 
 // BB-1 (R26 #9): a brush blend applies ONCE per stroke — the stroke's
 // buffer laid on the cel in its mode, never dab by dab (overlapping dabs
@@ -59,18 +56,6 @@ Uint8List bitmapSurfaceRegionPixels(
   });
   return region;
 }
-
-/// [bitmapSurfaceRegionPixels], each tile read back from the engine: what a
-/// plugin is handed (flip lane ⓓ-4). Waits for the GPU.
-Uint8List engineSurfaceRegionPixels(
-  BitmapSurface surface,
-  DirtyRegion bounds,
-) => bitmapSurfaceRegionPixels(
-  surface,
-  bounds,
-  bytesOf: (tiles, use) =>
-      EngineTileLedger.instance.readEach(BrushFrameKey.noCel, tiles, use),
-);
 
 /// The stroke's own OPACITY as a coverage byte — the channel a selection
 /// mask already speaks.

@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/device_viewport.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// 🚨확정 lays down what LANDED — cut by the selection it landed through,
 /// whatever the marquee is when 확정 is pressed (관제 2026-11-14, by 유저
@@ -79,6 +80,7 @@ void main() {
     addTearDown(slot.dispose);
     final last = LastStrokeSlot();
     addTearDown(last.dispose);
+    theTreeGoesFirst(tester);
     final sink = BrushEditCacheInvalidationSink();
     final atRenderOne = seedFromRender(tester, CanvasViewport());
     Future<void> build() async {

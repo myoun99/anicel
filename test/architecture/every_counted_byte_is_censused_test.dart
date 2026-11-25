@@ -161,6 +161,11 @@ final _counter = RegExp(r'\bint get (\w*[bB]ytes)\b');
 /// Counters the census does NOT read, and why. ⚠️A reason, not a name —
 /// an entry whose reason is "not yet" has to say what would close it.
 const _notCensused = <String, String>{
+  // — Sums the census reads in their parts (card
+  // one-debug-window-shows-everything: every sum shows its parts).
+  'lib/src/native/engine_tile_ledger.dart → appPoolBytes':
+      'via:appPoolParts the pages, the folded pages and the page made '
+      'ahead, which this adds up',
   // — Per-OBJECT sizes, not holdings. These answer "how big is this one
   // thing" for the code that owns it; the holding is counted where the
   // things are kept.

@@ -33,10 +33,13 @@ import 'still_raster.dart' show TickSceneLayer;
 /// ⚠️IT STANDS ON THE GROUND ITS FACES STAND ON: a look laid under is drawn
 /// under ALL [child] paints, one laid over, over all of it. So nothing
 /// opaque may lie between the sheet and a face that lays a look under —
-/// the tool strips' ground is their dock's, painted around the region —
+/// the tool strips' ground is their dock's, painted around the region,
+/// and a canvas capsule's its own, around its region (`CanvasCapsule`) —
 /// and what something is painted over in place stands aside
-/// ([LiveSheet.inPlace]). ⏳The canvas capsules and the dock panels paint
-/// their ground in their own region, and stand on none yet (card
+/// ([LiveSheet.inPlace]). Where a ground is painted inside its region — a
+/// panel's header (`EditorPanelHeader`) — the sheet lies on it, and what
+/// stands on the sheet is a layer of its own, so the sheet cuts the
+/// region's image no wider than that layer (card
 /// a-hover-in-a-capsule-or-a-dock-takes-the-regions-image-again).
 ///
 /// ⚠️WHAT A LOOK KEEPS OF ITS BOX: where it stands, how large, and the
@@ -53,6 +56,17 @@ class LiveSheet extends StatefulWidget {
   /// in the order they are painted in.
   static Widget inPlace({required Widget child}) =>
       _LiveSheetScope(under: null, over: null, child: child);
+
+  /// [child] on a ground of its own painted over the sheet: what it lays
+  /// under paints in place, on that ground — the sheet's under layer lies
+  /// beneath the ground — and what it lays over still lies on the sheet,
+  /// over the ground too. The selected panel tab's (`EditorPanelTabs`): its
+  /// hover lights on its fill, and the band a hovered panel lights on it
+  /// stays off the strip's picture.
+  static Widget overAGroundOfItsOwn({required Widget child}) => Builder(
+    builder: (context) =>
+        _LiveSheetScope(under: null, over: overOf(context), child: child),
+  );
 
   /// The looks laid under what the sheet [context] is built over holds, or
   /// null where it is built over none.

@@ -619,22 +619,43 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     return chained;
   }
 
+  /// The tile the engine laid at each coordinate the overlay replaces
+  /// ([preBlended]) — the result, before the cel's texts ([tileShownFor])
+  /// — and the stroke revision it shows: what pen-up hands the cel where it
+  /// is the stroke's newest there
+  /// (`BrushLiveStrokeRasterizer.promoteStrokeTiles`).
+  Map<TileCoord, ({BitmapTile tile, int revision})> get landedTiles {
+    pictureOwed();
+    return {
+      for (final MapEntry(key: coord, value: shown) in _shown.entries)
+        if ((shown.landed, shown.revision) case (final tile?, final revision?))
+          coord: (tile: tile, revision: revision),
+    };
+  }
+
   /// Takes the picture for [coord] IF it represents [revision] —
   /// ownership transfers to the caller (the tile image cache), so it is
   /// removed here WITHOUT being retired. Null when nothing is pictured
   /// there or the image is a revision behind the tile being adopted.
+  /// [landing] is the tile the coordinate holds from here on: where it is
+  /// the one the engine laid here ([landedTiles]), it goes with it, and is
+  /// not retired.
   ///
   /// This is what makes pen-up free: the image the user has been looking
   /// at becomes the committed tile's image, with no second picture and no
   /// window where the tile has none.
-  ui.Image? takeTileImageAt(TileCoord coord, {required int revision}) {
+  ui.Image? takeTileImageAt(
+    TileCoord coord, {
+    required int revision,
+    required BitmapTile landing,
+  }) {
     if (_shown[coord]?.revision != revision) {
       return null;
     }
     _moves = [];
     final taken = _shown.remove(coord)!;
     final landed = taken.landed;
-    if (landed != null) {
+    if (landed != null && !identical(landed, landing)) {
       EngineTileLedger.instance.retire(landed);
     }
     return taken.image;

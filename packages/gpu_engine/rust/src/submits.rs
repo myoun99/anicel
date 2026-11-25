@@ -45,6 +45,8 @@ pub(crate) struct Submits(Mutex<Kept>);
 #[derive(Default)]
 struct Kept {
     made: u64,
+    /// The newest the GPU said it finished, by number — none, 0.
+    done: u64,
     submits: VecDeque<Submitted>,
 }
 
@@ -74,9 +76,20 @@ impl Submits {
     /// The GPU said it finished the submit `number` — and so every one
     /// before it, which went ahead of it.
     pub(crate) fn done(&self, number: u64) {
-        for submit in self.kept().submits.iter_mut().filter(|submit| submit.number <= number) {
+        let mut kept = self.kept();
+        kept.done = kept.done.max(number);
+        for submit in kept.submits.iter_mut().filter(|submit| submit.number <= number) {
             submit.done = true;
         }
+    }
+
+    /// How many submits the GPU has not said it finished — however many
+    /// that is, past the newest kept: what the screen shows as the GPU's
+    /// line (H66, 관제 2026-11-23 23:24 「쌓인 걸음(낸 것 − 끝난 것) 실시간」).
+    /// ⚠️As of the device's last poll, where the engine hears it.
+    pub(crate) fn behind(&self) -> u64 {
+        let kept = self.kept();
+        kept.made - kept.done
     }
 
     /// The submits kept, the oldest first.
@@ -165,6 +178,23 @@ mod tests {
         submits.done(2);
         let done: Vec<_> = submits.kept_now().iter().map(|submit| submit.done).collect();
         assert_eq!(done, [true, true, false, false]);
+    }
+
+    #[test]
+    fn behind_are_the_submits_made_past_the_newest_finished_however_many() {
+        let submits = Submits::default();
+        let by = Location::caller();
+        assert_eq!(submits.behind(), 0);
+        for _ in 0..KEPT + 6 {
+            submits.note(by);
+        }
+        assert_eq!(submits.behind(), KEPT as u64 + 6, "past the kept, too");
+        submits.done(4);
+        assert_eq!(submits.behind(), KEPT as u64 + 2);
+        submits.done(3);
+        assert_eq!(submits.behind(), KEPT as u64 + 2, "an older word takes nothing back");
+        submits.done(KEPT as u64 + 6);
+        assert_eq!(submits.behind(), 0);
     }
 
     #[test]

@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 유저 2026-08-27, 실기: 「여전히 해당 프레임에서 픽셀삭제누르면 반영안됨.
 /// 캔버스 여전히 그림 남아있음. **다만 타임라인 재 굽기 들어가는거보면 역시
@@ -53,6 +54,7 @@ void main() {
       );
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
+      theTreeGoesFirst(tester);
       // What the panel HANDS the canvas to draw the active layer with — the
       // composite tree is built by the editor, not reachable from a fixture,
       // and this is the value that travels into it.

@@ -1,9 +1,11 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The export window's modules carry no explanatory copy.
 ///
@@ -14,12 +16,13 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 /// languages. This pumps every tab that carried one and looks for each
 /// sentence's own words.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Future<ExportDialogState> pumpDialog(WidgetTester tester) async {
     // Room for the window's least in the TEST font, whose words run wide:
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );

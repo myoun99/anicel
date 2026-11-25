@@ -20,6 +20,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// F-38a — 유저 2026-08-27: 「선택 후 변형시 변형 시작할때 **1프레임, 기존
 /// 그림의 일부? 만 보였다가 사라짐**. 비슷한게 옛날에도 있었어서 확정시에도
@@ -63,6 +64,7 @@ void main() {
     addTearDown(overlay.dispose);
     final commands = CanvasSelectionCommands();
     addTearDown(commands.dispose);
+    theTreeGoesFirst(tester);
     final imageCache = LayerFrameImageCache(
       frameStore: coordinator.frameStore,
     );

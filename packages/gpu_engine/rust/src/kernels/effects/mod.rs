@@ -24,7 +24,7 @@ pub(crate) mod matrix_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use crate::kernels::shared::q;
+use crate::kernels::shared::{le_words, q};
 
 /// The colour key walk; its host defines `key_word` (the file's head has
 /// the run's layout).
@@ -57,11 +57,7 @@ impl KeyRun<'_> {
         words.extend_from_slice(self.green);
         words.extend_from_slice(self.blue);
         words.push(self.restores);
-        words.extend(
-            self.maps
-                .chunks_exact(4)
-                .map(|bytes| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])),
-        );
+        words.extend(le_words(self.maps));
         words
     }
 }

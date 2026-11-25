@@ -12,6 +12,9 @@
 //!   Flutter's own macOS surfaces use (macos/framework/Source/
 //!   FlutterSurface.mm:94-136), minus the render-target use no kernel
 //!   needs.
+//! - The law of a screen's buffer (platform/mod.rs): how Metal keeps an
+//!   IOSurface's texture — whether it compresses one, and what hands it
+//!   between the two devices — has not been read (공통 2026-11-24).
 //! - Which device Flutter draws with is not handed to plugins, so the
 //!   engine opens only where there is one (device.rs, `open_sole`): a
 //!   dual-GPU Intel Mac, where Flutter takes the integrated GPU and wgpu
@@ -41,6 +44,21 @@ use wgpu::hal::api::Metal;
 /// IOSurface.
 pub const BACKENDS: wgpu::Backends = wgpu::Backends::METAL;
 
+/// The OS keeps what Metal's compiler made — the Metal shader cache, each
+/// app's own, which the system keeps and hands back across launches — so
+/// the engine hands nothing here: wgpu 30 gives Metal no pipeline cache
+/// (`wgpu::PipelineCache`: Vulkan only), and `MTLBinaryArchive`, Metal's
+/// own way to keep pipelines by hand, is not reached through it.
+/// ⚠️Not seen on a device by this engine: a launch's compile times on an
+/// iPad say whether the OS answers.
+pub fn keep_shaders(_device: &wgpu::Device, _folder: Option<std::path::PathBuf>) {}
+
+/// Nothing the engine kept is handed — the OS's cache says nothing of
+/// what it answered ([`keep_shaders`]).
+pub fn pipelines_found(_device: &wgpu::Device) -> Option<u64> {
+    None
+}
+
 const BYTES_PER_TEXEL: usize = 4;
 
 /// The CVPixelBuffer Flutter is handed, over the IOSurface the texture
@@ -57,6 +75,18 @@ impl SharedHandle {
     /// 84-87), so the plugin retains this before returning it.
     pub fn raw(&self) -> *mut c_void {
         CFRetained::as_ptr(&self.pixels).as_ptr().cast()
+    }
+
+    /// What Flutter shows, where it is not the texture the kernels write
+    /// — never here.
+    pub fn shown(&self) -> Option<&wgpu::Texture> {
+        None
+    }
+
+    /// How the buffer was laid out, read back off it — where the platform
+    /// lets the engine say ([`super::Laid`]): never here.
+    pub fn laid_said(&self) -> String {
+        String::new()
     }
 }
 
@@ -135,6 +165,7 @@ pub fn create(
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
+    _laid: super::Laid,
 ) -> Result<(wgpu::Texture, SharedHandle), String> {
     if format != wgpu::TextureFormat::Bgra8Unorm {
         return Err(format!("{format:?} is not a format Flutter's CVPixelBuffer shows"));
@@ -195,6 +226,11 @@ pub fn create(
     ))
 }
 
+/// The way a surface reaches Flutter's screen here, for the debug screen.
+pub fn screen_said(_device: &wgpu::Device) -> String {
+    "iosurface".to_owned()
+}
+
 /// Metal names no adapter by LUID; Flutter is matched by there being one
 /// device (device.rs, `open_sole`).
 pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
@@ -218,6 +254,12 @@ pub fn device_went_by(_device: &wgpu::Device) -> u32 {
     super::WENT_UNSAID
 }
 
+/// What asks the device's driver whether it took the device — nothing:
+/// nothing wgpu hands over of Metal says that a device was taken.
+pub fn asking_the_driver_of(_device: &wgpu::Device) -> Option<super::DriverAsked> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use objc2_core_video::{
@@ -227,6 +269,7 @@ mod tests {
     };
 
     use crate::kernels::fill::Fill;
+    use crate::platform::Laid;
     use crate::testing::{assert_pinned, first_engine};
 
     // fill's own ledger row (kernels/fill/tests.rs): 70 x 45, so the
@@ -240,9 +283,14 @@ mod tests {
     #[test]
     fn flutter_is_handed_the_bytes_the_kernel_wrote() {
         let engine = first_engine();
-        let (texture, shared) =
-            super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Bgra8Unorm)
-                .expect("shared surface");
+        let (texture, shared) = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Bgra8Unorm,
+            Laid::ForTheCpuToo,
+        )
+        .expect("shared surface");
         Fill::new(engine).run(engine, &texture, 7).expect("fill");
         let pixels = &*shared.pixels;
         assert_eq!(CVPixelBufferGetPixelFormatType(pixels), kCVPixelFormatType_32BGRA);
@@ -267,7 +315,13 @@ mod tests {
     #[test]
     fn an_rgba_surface_is_refused() {
         let engine = first_engine();
-        let made = super::create(engine.device(), WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8Unorm);
+        let made = super::create(
+            engine.device(),
+            WIDTH,
+            HEIGHT,
+            wgpu::TextureFormat::Rgba8Unorm,
+            Laid::ForTheCpuToo,
+        );
         assert!(made.is_err());
     }
 }

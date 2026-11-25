@@ -225,6 +225,27 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   required CutId cutId,
   required LayerId layerId,
   bool cameraHead = false,
+}) => _closedFrom(
+  project,
+  cutId: cutId,
+  layerId: layerId,
+  next: (at) => [
+    ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
+    ...conteHeadTargets(project, at.layerId),
+    if (cameraHead) ...cameraHeadTargets(project, at.layerId),
+  ],
+);
+
+/// ([cutId], [layerId]) and every address [next] reaches from it, and from
+/// those, the row itself first and each address once.
+List<({CutId cutId, LayerId layerId})> _closedFrom(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  required Iterable<({CutId cutId, LayerId layerId})> Function(
+    ({CutId cutId, LayerId layerId}) at,
+  )
+  next,
 }) {
   // From the cut that HOLDS the row ([conteHeadTargets] says why): the
   // registry keys a row's group by its own cut, and would call a row
@@ -238,13 +259,7 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   ];
   final seen = {reached.first};
   for (var index = 0; index < reached.length; index += 1) {
-    final at = reached[index];
-    final next = [
-      ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
-      ...conteHeadTargets(project, at.layerId),
-      if (cameraHead) ...cameraHeadTargets(project, at.layerId),
-    ];
-    for (final target in next) {
+    for (final target in next(reached[index])) {
       if (seen.add(target)) {
         reached.add(target);
       }
@@ -283,32 +298,91 @@ List<LayerId> eyeMirrorRows(Project project, Iterable<LayerId> layerIds) => {
     },
 }.toList();
 
-/// The rows that EXIST as one with ([cutId], [layerId]) — what a delete
-/// takes together.
+/// The rows that EXIST as one with ([cutId], [layerId]) — every use of it:
+/// what a merge and a bake ask after (a row with a self in its own cut,
+/// whose drawing another row there still wears).
 ///
 /// A linked row is one layer seen from several cuts ([linkMirrorTargets]).
 /// And a ROW OF A TRACK'S CONTE — an attach row, or a 공정 folder filing
 /// them — is one row of its structure (I-73, the drawn proposal 유저 took
 /// on 2026-10-08: 「머리 — … 어태치 구성 … — 트랙의 모든 컷이 하나」, and
-/// F-343): it goes from every cut of the track at once, each cut's own link
-/// group with it. Taken from one cut alone, the structure would give it
-/// back to that cut, empty.
+/// F-343): it exists in every cut of the track at once, each cut's own link
+/// group with it.
+///
+/// ⛔Not what a DELETE takes ([deleteMirrorTargets]): a row pasted linked
+/// into its own cut is another use, and its delete leaves the row it was
+/// pasted from. ↩️The delete took this, and the copy's delete took its
+/// source with it (Q1 2026-11-23).
 ///
 /// ⛔Not the conte itself. A cut has a conte or has none, cut by cut — the
 /// rail keeps the button that makes one in every cut that has none — so
-/// deleting one cut's is that cut's alone (and its link group's).
+/// one cut's is that cut's alone (and its link group's).
 List<({CutId cutId, LayerId layerId})> existenceMirrorTargets(
   Project project, {
   required CutId cutId,
   required LayerId layerId,
+}) => _ridesAConte(project, layerId)
+    ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
+    : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
+
+/// The rows a DELETE of ([cutId], [layerId]) takes with it — the row's
+/// self in every cut ([selvesInEveryCut]) and, for a ROW OF A TRACK'S
+/// CONTE, its row of the structure in every cut of the track, each with
+/// its selves (I-73, F-343). Taken from one cut alone, the structure would
+/// give it back to that cut, empty.
+///
+/// 🗣️a-row-pasted-linked-takes-its-source-when-deleted-Q1 (유저 2026-11-23:
+/// 「그 줄만 지운다 — 겸용 컷 사이는 지금대로」): a row pasted linked into
+/// its own cut is ANOTHER use of the drawing, not the row's self — its
+/// delete leaves the row it was pasted from, and the 겸용 cuts lose its
+/// self there as before.
+List<({CutId cutId, LayerId layerId})> deleteMirrorTargets(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) => _ridesAConte(project, layerId)
+    ? _closedFrom(
+        project,
+        cutId: cutId,
+        layerId: layerId,
+        next: (at) => [
+          ...selvesInEveryCut(project, cutId: at.cutId, layerId: at.layerId),
+          ...conteHeadTargets(project, at.layerId),
+        ],
+      )
+    : selvesInEveryCut(project, cutId: cutId, layerId: layerId);
+
+/// Whether [layerId] is a row of its track's conte structure.
+bool _ridesAConte(Project project, LayerId layerId) =>
+    conteHeadTargets(project, layerId).isNotEmpty &&
+    layerAnywhereOrNull(project, layerId)?.conteKey != null;
+
+/// ([cutId], [layerId]) and its self in every other cut its link group
+/// reaches — the n-th of its uses in [cutId] is the n-th there
+/// ([LayerLinkRegistry.counterpartIn], I-150) — and never another use in
+/// [cutId] itself.
+List<({CutId cutId, LayerId layerId})> selvesInEveryCut(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
 }) {
-  final ofTheStructure = conteHeadTargets(project, layerId);
-  final ridesAConte =
-      ofTheStructure.isNotEmpty &&
-      layerAnywhereOrNull(project, layerId)?.conteKey != null;
-  return ridesAConte
-      ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
-      : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
+  final registry = project.linkRegistry;
+  final group = registry.groupOf(cutId: cutId, layerId: layerId);
+  if (group == null) {
+    return [(cutId: cutId, layerId: layerId)];
+  }
+  return [
+    (cutId: cutId, layerId: layerId),
+    for (final other in {for (final member in group.members) member.cutId})
+      if (other != cutId)
+        if (registry.counterpartIn(
+              cutId: cutId,
+              layerId: layerId,
+              targetCutId: other,
+            )
+            case final self?)
+          (cutId: other, layerId: self),
+  ];
 }
 
 /// The transform track ([cutId], [layerId]) keys: the row's own, except the

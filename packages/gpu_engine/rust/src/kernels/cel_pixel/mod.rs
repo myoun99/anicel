@@ -44,13 +44,13 @@ use std::ops::Range;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
-use crate::kernels::dab::landing::placed;
+use crate::kernels::dab::landing::{Landed, placed};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::pool::{Cel, Pool};
 use crate::kernels::shared::{
     Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, Run, TILE_WGSL, cut_by, encode_on, encoded,
-    fits, page_table, pipeline, plane, range, runs, tiles_a_pass,
+    fits, le_words, page_table, pipeline, plane, range, runs, tiles_a_pass,
 };
 use crate::kernels::write::Change;
 
@@ -214,7 +214,7 @@ impl Passed {
         engine: &Engine,
         at: (&mut Pool, Cel),
         walked: Range<usize>,
-    ) -> Option<Vec<(Change, Option<TileAt>)>> {
+    ) -> Option<Vec<Landed>> {
         if walked.end > self.tiles.len() {
             return fail(format!(
                 "tiles {walked:?} of a walk of {} landed",
@@ -319,7 +319,7 @@ impl CelPixels {
             .collect();
         encode_on(engine, &mut encoder, &counted);
         engine.queue.submit([encoder.finish()]);
-        let (touched, runs): (Vec<u32>, Vec<u32>) = words(&engine.read_buffer(&counts)?)
+        let (touched, runs): (Vec<u32>, Vec<u32>) = le_words(&engine.read_buffer(&counts)?)
             .chunks_exact(2)
             .map(|two| (two[0], two[1]))
             .unzip();
@@ -365,7 +365,7 @@ impl CelPixels {
             engine.wait()?;
             return Some(Passed { tiles, out, touched, runs: Vec::new() });
         }
-        let runs = lengths(&words(&engine.read_buffer(&put)?), &touched, &runs, &starts);
+        let runs = lengths(&le_words(&engine.read_buffer(&put)?), &touched, &runs, &starts);
         Some(Passed { tiles, out, touched, runs })
     }
 }
@@ -577,11 +577,4 @@ impl Verb<'_> {
         uniform.extend(shape);
         Given::new(engine, encoder, &words, mask.map(|mask| mask.rows(&rows)), &uniform)
     }
-}
-
-fn words(bytes: &[u8]) -> Vec<u32> {
-    bytes
-        .chunks_exact(4)
-        .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
-        .collect()
 }

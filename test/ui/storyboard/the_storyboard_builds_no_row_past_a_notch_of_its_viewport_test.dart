@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -26,6 +27,7 @@ import '../../helpers/home_page_probes.dart';
 /// 「화면 밖 여유 행 — 늘」): the notch is built. ↩️⛔From 2026-10-29 this
 /// pinned no row past the viewport itself.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// The track the S rows stand on, as their keys name it.
   late String track;
 

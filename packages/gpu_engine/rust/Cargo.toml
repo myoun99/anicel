@@ -90,6 +90,8 @@ windows = { version = "0.62", features = [
   "Win32_System_LibraryLoader",
   # A face's file mapped, not copied (kernels/letters/mapped.rs).
   "Win32_System_Memory",
+  # Where a view of a span may begin (kernels/letters/mapped.rs).
+  "Win32_System_SystemInformation",
 ] }
 
 # A face's file mapped, not copied (kernels/letters/mapped.rs): mmap, as

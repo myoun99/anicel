@@ -1,8 +1,12 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import '../../core/made_once.dart';
+import '../../core/progress_share.dart';
+import '../../models/kept_span.dart';
 import '../flutter_test_run.dart';
 import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
@@ -36,33 +40,74 @@ import '../media/viewer_document.dart';
 /// whatever the buffer held. PDFium asks only within the file's length, so
 /// anything short of the whole window is a failure, and 0 is the one answer
 /// it reads as one (audit 2026-09-24).
-int readPdfWindow(
+Future<int> readPdfWindow(
   MediaWindowReader reader,
   Uint8List buffer,
   int position,
   int size,
-) {
+) async {
   try {
-    final got = reader.readIntoSync(buffer, position, size);
+    final got = await reader.readInto(buffer, position, size);
     return got == size ? got : 0;
   } on Object {
     return 0;
   }
 }
 
+/// How far PDFium has read a file while it OPENS it, told as a share of the
+/// file — F-608-Q2's 「the bytes read of the bytes to read」, the decoder's
+/// own reads counted (🗣️유저 11-23 「pdf읽기는 퍼센트 안들어간단게 뭐야 …
+/// 당연히 넣어야하는거아니야?」).
+///
+/// 🔬Why the open, and why the whole file (저장 11-24, PDFium through
+/// pdfrx 2.4.7, four PDFs of 5–141 MB — a conte, a manga volume, notes):
+/// opening read 100.0–101.4% of each file, and a page rendered after it
+/// read a few KB — so the open IS the read, and what a page reads later is
+/// its rasterizing's. Re-reads are counted as read; the share stops at the
+/// whole.
+final class PdfOpeningReads {
+  PdfOpeningReads(this._length, this._onRead);
+
+  final int _length;
+  final void Function(double fraction)? _onRead;
+  int _read = 0;
+  bool _opened = false;
+
+  /// [got] more bytes read — told only while the document is opening.
+  void took(int got) {
+    if (_opened || got <= 0) {
+      return;
+    }
+    _read += got;
+    _onRead?.call(math.min<double>(1, doneShare(_read, _length)));
+  }
+
+  /// The document is open: what it reads from here on is a page's.
+  void opened() => _opened = true;
+}
+
+/// A test opener that also hears how far the file is read ([PdfRenderService
+/// .open]'s onRead) — set as [PdfRenderService.debugOpenerOverride], it
+/// stands for PDFium telling its reads.
+typedef PdfReadingOpener =
+    Future<ViewerDocument> Function(
+      MediaByteSource source, {
+      void Function(double fraction)? onRead,
+    });
+
 abstract final class PdfRenderService {
   /// Test seam: when set, [open] routes here and [availability] reads
   /// true — widget tests drive fake documents without any FFI.
   static ViewerDocumentOpener? debugOpenerOverride;
 
-  static bool? _availability;
-  static Future<bool>? _probe;
+  /// The probe, and its verdict once it has one ([MadeOnce]).
+  static MadeOnce<bool> _probe = MadeOnce();
 
   /// The probe's last verdict: null = not probed yet, false = PDFium did
   /// not load (the honest-absence state), true = ready. The runtime path
   /// report reads this without forcing a probe.
   static bool? get availability =>
-      debugOpenerOverride != null ? true : _availability;
+      debugOpenerOverride != null ? true : _probe.orNull;
 
   /// Probes once per process (the app kicks this at startup so the
   /// System page and the import window have a settled answer). Any
@@ -72,46 +117,55 @@ abstract final class PdfRenderService {
     if (debugOpenerOverride != null) {
       return Future<bool>.value(true);
     }
-    return _probe ??= _probeAvailability();
+    return _probe.of(_probeAvailability);
   }
 
   static Future<bool> _probeAvailability() async {
     if (underFlutterTest) {
       // flutter_tester has no bundled native asset and must never try —
       // the same gate the audio device and video encoder use.
-      return _availability = false;
+      return false;
     }
     try {
       await pdfrx.pdfrxFlutterInitialize();
-      return _availability = true;
+      return true;
     } on Object {
-      return _availability = false;
+      return false;
     }
   }
 
-  /// Opens the PDF [source] holds. Null means the RENDERER is absent; a
-  /// file that fails to open (corrupt, password-locked) throws instead —
+  /// Opens the PDF [source] holds, [onRead] told how far the file is read
+  /// while it opens ([PdfOpeningReads]). Null means the RENDERER is absent;
+  /// a file that fails to open (corrupt, password-locked) throws instead —
   /// the two states deserve different messages.
   ///
-  /// A whole file is PDFium's to read by its path. Anything else — a PDF
-  /// carried inside the `.anicel`, or its framed copy — is served a window
-  /// at a time, through a reader that keeps its file open for as long as
-  /// the document is ([MediaByteSource.openWindowReader]): a hundred-page
-  /// conte is never pulled whole, and never unpacked to a temp file (유저
-  /// 2026-08-27 「사본 남으면 진짜 용서안할게」).
-  static Future<ViewerDocument?> open(MediaByteSource source) async {
+  /// Every PDF is served a window at a time, through a reader that keeps
+  /// its file open for as long as the document is
+  /// ([MediaByteSource.openWindowReader]): a hundred-page conte is never
+  /// pulled whole, and never unpacked to a temp file (유저 2026-08-27
+  /// 「사본 남으면 진짜 용서안할게」).
+  ///
+  /// ↩️A user's own file was PDFium's to read by its path — where the
+  /// window could not see it read, so a PDF on the cloud stood at one
+  /// number while it came down (decoder-reads-skip-the-percent). One
+  /// reader for every PDF now; 🔬its open took 0.33 s where the path's
+  /// took 0.10–0.18 s for 141 MB read warm (저장 11-24), the price of
+  /// reading off the UI isolate ([MediaWindowReader.readInto]).
+  static Future<ViewerDocument?> open(
+    MediaByteSource source, {
+    void Function(double fraction)? onRead,
+  }) async {
     final override = debugOpenerOverride;
+    if (override is PdfReadingOpener) {
+      return override(source, onRead: onRead);
+    }
     if (override != null) {
       return override(source);
     }
     if (!await ensureAvailable()) {
       return null;
     }
-    final file = source.wholeFilePath;
-    final document = file != null
-        ? await pdfrx.PdfDocument.openFile(file)
-        : await _openWindowed(source);
-    return _PdfrxDocumentHandle(document);
+    return _PdfrxDocumentHandle(await _openWindowed(source, onRead));
   }
 
   /// [source] opened on a reader that keeps its file open for the
@@ -119,55 +173,75 @@ abstract final class PdfRenderService {
   /// when the document is, or at once when it never opens.
   static Future<pdfrx.PdfDocument> _openWindowed(
     MediaByteSource source,
+    void Function(double fraction)? onRead,
   ) async {
+    final length = source.lengthSync();
+    final reads = PdfOpeningReads(length, onRead);
     final reader = source.openWindowReader();
     try {
-      return await pdfrx.PdfDocument.openCustom(
-        read: (buffer, position, size) =>
-            readPdfWindow(reader, buffer, position, size),
-        fileSize: source.lengthSync(),
+      final document = await pdfrx.PdfDocument.openCustom(
+        read: (buffer, position, size) async {
+          final got = await readPdfWindow(reader, buffer, position, size);
+          reads.took(got);
+          return got;
+        },
+        fileSize: length,
         sourceName: '$source',
         onDispose: reader.close,
       );
+      reads.opened();
+      return document;
     } on Object {
       reader.close();
       rethrow;
     }
   }
 
-  /// Test seam for [pageSpan], for the same reason as [debugOpenerOverride]:
-  /// flutter_tester never loads PDFium.
+  /// Test seam for [pagesKept]'s pages, for the same reason as
+  /// [debugOpenerOverride]: flutter_tester never loads PDFium. The pages are
+  /// counted through [open], as the fake documents are.
   static Future<Uint8List?> Function(String path, int first, int count)?
   debugPageSpanOverride;
 
-  /// Pages [first] .. [first] + [count] - 1 of [path] as a PDF of their
-  /// own — what a trimmed PDF is carried as (유저 2026-09-23: 자른 구간만
-  /// 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」). Null when
-  /// the renderer is absent.
+  /// The pages [keep] answers for out of [path]'s page count, as a PDF of
+  /// their own — what a trimmed PDF is carried as (유저 2026-09-23: 자른
+  /// 구간만 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」) —
+  /// and the span they are. Null when the renderer is absent, or [keep]
+  /// keeps nothing.
+  ///
+  /// The file is opened ONCE, [onRead] told how far PDFium read it as it
+  /// opened ([PdfOpeningReads]): the cut's own share of the window's
+  /// percent. ↩️It was opened twice — once to count its pages, once to cut
+  /// them — each read of the whole file unseen by the window
+  /// (decoder-reads-skip-the-percent, 11-24).
   ///
   /// ⚠️The pages are PDFium's own objects moved into a new document, never
   /// pictures of them: a conte page stays vector, and a page that renders
   /// sharp at any zoom in the original renders sharp in its piece.
-  static Future<Uint8List?> pageSpan(
-    String path, {
-    required int first,
-    required int count,
+  static Future<({Uint8List bytes, KeptSpan kept})?> pagesKept(
+    String path,
+    KeptSpan? Function(int pageCount) keep, {
+    void Function(double fraction)? onRead,
   }) async {
     final override = debugPageSpanOverride;
     if (override != null) {
-      return override(path, first, count);
+      return _pagesKeptByTheSeams(path, keep, override, onRead);
     }
     if (!await ensureAvailable()) {
       return null;
     }
-    final source = await pdfrx.PdfDocument.openFile(path);
+    final source = await _openWindowed(MediaFileBytes(path), onRead);
     try {
+      final kept = keep(source.pages.length);
+      if (kept == null) {
+        return null;
+      }
       final piece = await pdfrx.PdfDocument.createNew(sourceName: path);
       try {
-        piece.pages = source.pages.sublist(first, first + count);
+        piece.pages = source.pages.sublist(kept.first, kept.first + kept.count);
         // Encoding assembles the piece first, while [source] — whose pages
         // it is borrowing — is still open.
-        return await piece.encodePdf();
+        return (bytes: await piece.encodePdf(), kept: kept);
       } finally {
         await piece.dispose();
       }
@@ -176,11 +250,36 @@ abstract final class PdfRenderService {
     }
   }
 
+  /// [pagesKept] with no PDFium: the pages counted by the test opener
+  /// ([open]), cut by [cut] ([debugPageSpanOverride]).
+  static Future<({Uint8List bytes, KeptSpan kept})?> _pagesKeptByTheSeams(
+    String path,
+    KeptSpan? Function(int pageCount) keep,
+    Future<Uint8List?> Function(String path, int first, int count) cut,
+    void Function(double fraction)? onRead,
+  ) async {
+    final document = await open(MediaFileBytes(path), onRead: onRead);
+    if (document == null) {
+      return null;
+    }
+    final int pages;
+    try {
+      pages = document.pageCount;
+    } finally {
+      await document.dispose();
+    }
+    final kept = keep(pages);
+    if (kept == null) {
+      return null;
+    }
+    final bytes = await cut(path, kept.first, kept.count);
+    return bytes == null ? null : (bytes: bytes, kept: kept);
+  }
+
   static void debugResetForTests() {
     debugOpenerOverride = null;
     debugPageSpanOverride = null;
-    _availability = null;
-    _probe = null;
+    _probe = MadeOnce();
   }
 }
 

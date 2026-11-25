@@ -51,9 +51,14 @@ abstract final class EngineStrokes {
   /// all on the thread the app's frames are built on, 7.0–10.1 s of a
   /// stopped app within 13 s of the canvas (🗣️관제 06:42: 「같은 선이
   /// 걸린다」).
-  static Future<void> warmBlurStrips() =>
-      _blurStrips.of(() => GpuBlurs.compilingStrips(appGpuEngine));
-  static final _blurStrips = KeptOnTheAppsEngine<Future<void>>();
+  static Future<void> warmBlurStrips() => _blurStrips.once(() async {
+    final engine = appGpuEngine;
+    await GpuBlurs.compilingStrips(engine);
+    return engine;
+  });
+
+  /// The engine the strips were compiled on, which keeps them.
+  static final _blurStrips = KeptOnTheAppsEngine<GpuEngine>();
 
   /// A stroke of no tiles.
   static GpuStroke take() =>
@@ -93,12 +98,13 @@ abstract final class EngineStrokes {
     }
   }
 
-  /// The bytes the strokes kept hold, for the memory census.
-  static int get idleBytes =>
-      (_idle.orNull ?? const <GpuStroke>[]).fold(
-        _blurs.compiled?.bytes ?? 0,
-        (bytes, stroke) => bytes + stroke.bytes,
-      );
+  /// The bytes of the strokes kept for the next pen-down, for the memory
+  /// census — beside the blurs' ([blurBytes]).
+  static int get idleStrokeBytes => (_idle.orNull ?? const <GpuStroke>[])
+      .fold(0, (bytes, stroke) => bytes + stroke.bytes);
+
+  /// The bytes the blurs compiled hold.
+  static int get blurBytes => _blurs.compiled?.bytes ?? 0;
 
   /// The OS says memory is tight: the strokes kept go.
   static void letGoIdle() {

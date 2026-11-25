@@ -1,9 +1,7 @@
-import 'dart:io' show ProcessInfo;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuMask, GpuStampPicture, GpuVideoMemory;
+    show GpuFloods, GpuMask, GpuReadout, GpuStampPicture, GpuVideoMemory;
 
 import '../../native/app_gpu_engine.dart';
 import '../../native/engine_selection_masks.dart';
@@ -32,7 +30,15 @@ class MemoryCensusItem {
     required this.id,
     required this.bytes,
     this.detail = 0,
-  });
+  }) : parts = const [];
+
+  /// A row that is the sum of [parts] — its bytes their sum, so the two
+  /// cannot disagree.
+  MemoryCensusItem.ofParts({
+    required this.id,
+    required this.parts,
+    this.detail = 0,
+  }) : bytes = parts.fold(0, (sum, part) => sum + part.bytes);
 
   /// Stable key for the label lookup — never shown raw.
   final String id;
@@ -42,7 +48,17 @@ class MemoryCensusItem {
   /// A second number the row may show inside the first (bytes that cannot
   /// be evicted while playback holds them). Zero when the item has none.
   final int detail;
+
+  /// The holders the row adds up, each by name — the debug window shows
+  /// them under the row (card one-debug-window-shows-everything: 「every
+  /// sum shows its parts」); the memory tab shows the row alone, the shape
+  /// the user chose. None where the row is one holder.
+  final List<MemoryCensusPart> parts;
 }
+
+/// One holder of a [MemoryCensusItem.parts], named in the debug window's
+/// own words (not translated — the window is the developer's).
+typedef MemoryCensusPart = ({String name, int bytes});
 
 /// 🚨★★★WHAT THE APP IS HOLDING, counted in ONE place.
 ///
@@ -81,6 +97,7 @@ class MemoryCensus {
     this.videoItems = const [],
     this.availableBytes,
     this.deviceBytes,
+    this.mappings,
   });
 
   /// What the OS says this PROCESS is holding — the SAME number that OS's
@@ -106,6 +123,12 @@ class MemoryCensus {
   /// ↩️a run with no native engine at all, until the connection round moved
   /// the question into the engine that ships with the app.
   final int footprintBytes;
+
+  /// Whose [footprintBytes] is, mapping by mapping, as the OS accounts it:
+  /// the mappings that hold the most, each with its MiB, and how long the
+  /// engine's read took (`QaMemory.mappings`) — null where the platform
+  /// keeps no such account, and till the engine's first read lands.
+  final String? mappings;
 
   /// How much more the OS will let this process take, where the platform
   /// says. Null where it will not — the number refuses to guess, and the
@@ -242,28 +265,39 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
   final gpu = appGpuVideoMemory;
   final textures = texturesAreInTheRamFigure(gpu);
   final ram = <MemoryCensusItem>[
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'drawings',
-      bytes: sum(
-        (session) =>
-            session.renderCaches.brushFrameStore.hotBakedBytes +
-            // ⛔NOT `coldBakedBytes` (2026-09-11): a cooled cel is written to
-            // the run's 이사대기 room and only a file ref stays in memory —
-            // those are bytes on DISK. Counted here, 「ours」 swelled and the
-            // engine's share shrank by exactly as much.
-            // 🚨LIFTED PIXELS COUNT, and were missing until 2026-09-10. A
-            // move or a transform holds the pixels it picked up — up to a
-            // whole canvas — in the SAME store, and the readout said
-            // nothing about them: mid-transform the panel showed less
-            // memory than the app was holding, and the difference read as
-            // engine overhead.
-            //
-            // ⛔Folded into `drawings` rather than given a row: it is the
-            // same store holding the same user's artwork, it is zero the
-            // moment the tool lets go, and a row of its own would need a
-            // fifth string in five languages to say "usually nothing".
-            session.renderCaches.brushFrameStore.reclaimableViewBytes,
-      ) + _heldBesideTheStoresBytes(sessions),
+      parts: [
+        (
+          name: 'hot cels',
+          bytes: sum(
+            (session) => session.renderCaches.brushFrameStore.hotBakedBytes,
+          ),
+        ),
+        // ⛔NOT `coldBakedBytes` (2026-09-11): a cooled cel is written to
+        // the run's 이사대기 room and only a file ref stays in memory —
+        // those are bytes on DISK. Counted here, 「ours」 swelled and the
+        // engine's share shrank by exactly as much.
+        // 🚨LIFTED PIXELS COUNT, and were missing until 2026-09-10. A
+        // move or a transform holds the pixels it picked up — up to a
+        // whole canvas — in the SAME store, and the readout said
+        // nothing about them: mid-transform the panel showed less
+        // memory than the app was holding, and the difference read as
+        // engine overhead.
+        //
+        // ⛔Folded into `drawings` rather than given a row: it is the
+        // same store holding the same user's artwork, it is zero the
+        // moment the tool lets go, and a row of its own would need a
+        // fifth string in five languages to say "usually nothing".
+        (
+          name: 'lifted pixels',
+          bytes: sum(
+            (session) =>
+                session.renderCaches.brushFrameStore.reclaimableViewBytes,
+          ),
+        ),
+        (name: 'held beside', bytes: _heldBesideTheStoresBytes(sessions)),
+      ],
     ),
     MemoryCensusItem(
       id: 'sheetInk',
@@ -276,25 +310,30 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             ),
       ),
     ),
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'undo',
-      bytes:
-          sum((session) => session.historyManager.retainedBytes) +
-          // 확정's held stroke (confirm-button): a past edit kept to be laid
+      parts: [
+        (
+          name: 'history',
+          bytes: sum((session) => session.historyManager.retainedBytes),
+        ),
+        // 확정's held stroke (confirm-button): a past edit kept to be laid
           // down again, which is what this row counts. Folded in rather than
           // given a row, for the reason `drawings` gives above. The app's,
-          // so once ([CutPieceSlot.allPieceBytes]).
-          LastStrokeSlot.allStrokeBytes,
+        // so once ([CutPieceSlot.allPieceBytes]).
+        (name: 'held stroke', bytes: LastStrokeSlot.allStrokeBytes),
+      ],
     ),
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'brushTips',
-      bytes:
-          BrushTipStampCache.instance.residentBytes +
-          // The cut tool's HELD piece is the stamp's tip (유저: 「잘라내기 할
+      parts: [
+        (name: 'tips', bytes: BrushTipStampCache.instance.residentBytes),
+        // The cut tool's HELD piece is the stamp's tip (유저: 「잘라내기 할
           // 때마다 가지고 있는 찍기 팁 교체야」), so it rides this row — the
           // app's one slot, counted once. 🆕I-14: a cut from the media
-          // viewer holds its source at full size.
-          CutPieceSlot.allPieceBytes,
+        // viewer holds its source at full size.
+        (name: 'cut piece', bytes: CutPieceSlot.allPieceBytes),
+      ],
     ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: the
     // grow-only scratch sized by the largest call so far. Resident, and
@@ -332,6 +371,7 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
   // memory is the RAM's ([texturesAreInTheRamFigure]), the VRAM's where it
   // is apart (🗣️유저 2026-11-16, vram-in-use-shown-in-the-memory-tab-Q3:
   // 「칸마다 내역」).
+  final cels = EngineTileLedger.appPoolParts;
   final pictures = <MemoryCensusItem>[
     // The frames' pictures every screen shows (one-picture-per-frame),
     // the ones on screen in its detail — and the pictures of the nodes
@@ -347,17 +387,23 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // of the same hold one tile, weighed by the one that made it (F-610,
     // 유저 2026-11-18 「같은 타일은 한 벌만」), and by none once that one is
     // let go — the engine's count, so once.
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'framePictures',
-      bytes:
-          sum(
-            (session) =>
-                session.renderCaches.framePictureStore.madeBytes +
-                session.playbackRig.framePictures.heldBytes,
-          ) +
-          EnginePictures.idlePictureBytes +
-          EnginePictures.unownedPictureBytes +
-          LiveCelScreen.keptBytes,
+      parts: [
+        (
+          name: 'frames made',
+          bytes: sum(
+            (session) => session.renderCaches.framePictureStore.madeBytes,
+          ),
+        ),
+        (
+          name: 'playback held',
+          bytes: sum((session) => session.playbackRig.framePictures.heldBytes),
+        ),
+        (name: 'idle slots', bytes: EnginePictures.idlePictureBytes),
+        (name: 'unowned tiles', bytes: EnginePictures.unownedPictureBytes),
+        (name: 'live cel screen', bytes: LiveCelScreen.keptBytes),
+      ],
       detail: sum(
         (session) => session.renderCaches.framePictureStore.pinnedBytes,
       ),
@@ -380,15 +426,25 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // (관제 2026-11-11, (2) ⓒ): its tiles are the pool's since 2026-11-15
     // (a-plugin-step-goes-through-the-cpu-and-back) — ↩️a row of its own
     // till then, `pluginSteps`, a picture in the app's memory.
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'tileImages',
-      bytes:
-          BitmapTileImageCache.liveImageBytes +
-          EngineTileLedger.appPoolBytes +
-          EngineStrokes.idleBytes +
-          GpuStampPicture.liveBytes +
-          GpuMask.liveBytes +
-          EngineSelectionMasks.keptPlaneBytes,
+      parts: [
+        (name: 'bitmap tiles', bytes: BitmapTileImageCache.liveImageBytes),
+        (name: 'cel pages', bytes: cels.pages),
+        (name: 'folded pages', bytes: cels.folded),
+        (name: 'page made ahead', bytes: cels.ahead),
+        (name: 'strokes', bytes: EngineStrokes.idleStrokeBytes),
+        (name: 'blurs', bytes: EngineStrokes.blurBytes),
+        (name: 'stamps', bytes: GpuStampPicture.liveBytes),
+        (name: 'masks', bytes: GpuMask.liveBytes),
+        (name: 'selection planes', bytes: EngineSelectionMasks.keptPlaneBytes),
+        // 🔬A read's buffer and a fill's pictures, each one press's or one
+        // read's — counted by the engine and read by nothing here till the
+        // debug window's list of what nothing showed (관제 2026-11-24,
+        // one-debug-window-shows-everything): they lay in the rest.
+        (name: 'readouts', bytes: GpuReadout.liveBytes),
+        (name: 'fills', bytes: GpuFloods.liveBytes),
+      ],
     ),
     // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
     // is allowed 100 MiB and 1000 entries by default and nothing in this
@@ -404,11 +460,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       id: 'imageCache',
       bytes: PaintingBinding.instance.imageCache.currentSizeBytes,
     ),
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'panelRasters',
-      bytes:
-          StaticRaster.censusBytes +
-          // A dock region's still image (2026-09-25) is the same kind of
+      parts: [
+        (name: 'panel rasters', bytes: StaticRaster.censusBytes),
+        // A dock region's still image (2026-09-25) is the same kind of
           // holding: a panel region kept as a raster while nothing changes.
           //
           // ↩️So was a layer stack view's display buffer, PUSHED here from
@@ -416,8 +472,9 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           // buffer pinned, not one image: counting one until 2026-09-12
           // left the canvases it missed in 「엔진·폰트·프레임워크」 as 10GB
           // nothing would own. Nothing keeps one since a frame became one
-          // picture (one-picture-per-frame ②-5a, 2026-10-25).
-          StillRaster.censusBytes,
+        // picture (one-picture-per-frame ②-5a, 2026-10-25).
+        (name: 'still rasters', bytes: StillRaster.censusBytes),
+      ],
     ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].
@@ -451,18 +508,22 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       id: 'strokePreviews',
       bytes: BrushStrokePreviewCache.instance.sampleBytes,
     ),
-    MemoryCensusItem(
+    MemoryCensusItem.ofParts(
       id: 'timelineTiles',
-      bytes:
-          TimelineGridTileStore.instance.tileImageBytes +
-          // What the frame grids show those tiles through, a texture a
+      parts: [
+        (
+          name: 'grid tiles',
+          bytes: TimelineGridTileStore.instance.tileImageBytes,
+        ),
+        // What the frame grids show those tiles through, a texture a
           // grid (`TimelineGridScreenHost`, 관제 2026-11-09 08:07 E①). Folded
           // in for the reason `drawings` gives above; the canvas's own
-          // view, when it takes one, is no timeline's and needs a row.
-          ScreenTexture.liveBytes +
-          // And what the batch that draws them keeps between frames: the
-          // words' atlas, the planes, the waves' unders.
-          AppGpuGridBatch.keptGridBytes,
+        // view, when it takes one, is no timeline's and needs a row.
+        (name: 'screen textures', bytes: ScreenTexture.liveBytes),
+        // And what the batch that draws them keeps between frames: the
+        // words' atlas, the planes, the waves' unders.
+        (name: 'grid batch', bytes: AppGpuGridBatch.keptGridBytes),
+      ],
     ),
   ];
   int largestFirst(MemoryCensusItem a, MemoryCensusItem b) =>
@@ -473,9 +534,10 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // [MemoryCensus.footprintBytes] for why they differ and which one the
     // user is looking at. `ProcessInfo.currentRss` stands in only where the
     // platform will not say.
-    footprintBytes: QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
+    footprintBytes: QaMemory.processFootprintOrRssBytes,
     availableBytes: QaMemory.availableMemoryBytes,
     deviceBytes: QaMemory.physicalMemoryBytes,
+    mappings: QaMemory.mappings,
     items: [...ram, if (textures) ...pictures]..sort(largestFirst),
     videoItems: textures ? const [] : (pictures..sort(largestFirst)),
     gpuMemoryIsRam: textures,

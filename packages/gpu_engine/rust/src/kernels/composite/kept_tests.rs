@@ -14,8 +14,13 @@ use std::time::Duration;
 /// A kept picture's tiles, read back one after another, row after row:
 /// each as the pool it is kept in holds it, whatever it lies as.
 pub(crate) fn kept_bytes(kept: &Kept) -> Vec<u8> {
+    kept_bytes_on(rig().engine, kept)
+}
+
+/// [`kept_bytes`] of a picture kept on `engine`.
+pub(crate) fn kept_bytes_on(engine: &Engine, kept: &Kept) -> Vec<u8> {
     let places: Vec<TileAt> = kept.places().collect();
-    kept.pictures.read(rig().engine, &places).expect("read the tiles back")
+    kept.pictures.read(engine, &places).expect("read the tiles back")
 }
 
 /// How many of the tiles named at `names` lie off their slots in

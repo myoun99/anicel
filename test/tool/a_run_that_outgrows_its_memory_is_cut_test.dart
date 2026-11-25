@@ -205,17 +205,25 @@ void main() {
       }
     });
 
-    test('what `ps` prints is read, a name with a space and all', () {
+    test('what `ps` prints is read, a name with a space and all — its CPU '
+        'time as procps and the BSDs print it, and no zombie', () {
       final rows = rowsFromPs(
-        '    1     0  2048 init\n'
-        '  300     1 10240 flutter tester\n'
+        '    1     0  2048 00:00:01 Ss   init\n'
+        '  300     1 10240 1-02:03:04 Rl+ flutter tester\n'
+        '  301   300     0 00:15:00 Z    flutter_tester\n'
+        '  400     1   512 12:34.56 S    dart\n'
         'not a row\n',
       );
-      expect(rows, hasLength(2));
-      expect(rows.last.pid, 300);
-      expect(rows.last.parent, 1);
-      expect(rows.last.bytes, 10240 * 1024);
-      expect(rows.last.name, 'flutter tester');
+      expect([for (final row in rows) row.pid], [1, 300, 400]);
+      final tester = rows[1];
+      expect(tester.parent, 1);
+      expect(tester.bytes, 10240 * 1024);
+      expect(tester.name, 'flutter tester');
+      // A day and 2:03:04, in ticks of a hundred nanoseconds.
+      expect(tester.cpu, (86400 + 2 * 3600 + 3 * 60 + 4) * 10000000);
+      expect(rows.first.cpu, 10000000);
+      expect(rows.last.cpu, 7545600000);
+      expect(cpuTicksOf('soon'), 0);
     });
   });
 

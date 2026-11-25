@@ -9,6 +9,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart' show debugWaitsHere;
 
 /// What a live stroke's overlay holds of what it shows — one record a
 /// coordinate, its picture, the tile it is of and the revision it shows:
@@ -71,15 +72,64 @@ void main() {
         .single;
 
     expect(
-      overlay.takeTileImageAt(coord, revision: promoted.revision + 1),
+      overlay.takeTileImageAt(
+        coord,
+        revision: promoted.revision + 1,
+        landing: promoted.tile,
+      ),
       isNull,
       reason: 'a picture a revision behind would show the wrong pixels for '
           'as long as the tile it is pinned to lives',
     );
     expect(overlay.tileImages[coord], same(picture));
     expect(
-      overlay.takeTileImageAt(coord, revision: promoted.revision),
+      overlay.takeTileImageAt(
+        coord,
+        revision: promoted.revision,
+        landing: promoted.tile,
+      ),
       same(picture),
+    );
+  });
+
+  // 🚨Pen-up hands the cel the tile the overlay shows (관제 2026-11-24, card
+  // the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2).
+  test('pen-up hands over the very tile the overlay shows — what it owes '
+      'pictured first —, waits for no GPU, and the tile lives on', () {
+    final (:overlay, :rasterizer) = strokeStarted();
+    flush(overlay, rasterizer, [dabAt(2.5, 0)]);
+    overlay.pictureOwed();
+    // The last pile, not pictured yet: what the overlay owes.
+    flush(overlay, rasterizer, [dabAt(4.5, 1)]);
+    final waits = debugWaitsHere;
+
+    final shown = overlay.landedTiles;
+    final promoted = rasterizer
+        .promoteStrokeTiles(
+          base: base,
+          mode: BrushBlendMode.color,
+          erase: false,
+          shown: shown,
+        )
+        .single;
+
+    expect(debugWaitsHere, waits, reason: 'no wait for the GPU');
+    expect(
+      identical(promoted.tile, shown[coord]!.tile),
+      isTrue,
+      reason: 'the very tile shown, at the stroke\'s newest',
+    );
+    overlay.takeTileImageAt(
+      coord,
+      revision: promoted.revision,
+      landing: promoted.tile,
+    );
+    overlay.reset();
+    rasterizer.clear();
+    expect(
+      promoted.tile.readPixels((_, pixels) => pixels.any((byte) => byte != 0)),
+      isTrue,
+      reason: 'and it lives on: the overlay let go of none it handed over',
     );
   });
 

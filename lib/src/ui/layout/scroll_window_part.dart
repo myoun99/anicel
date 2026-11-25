@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../timeline/timeline_edge_auto_pan.dart' show ScrollWindow;
 import 'device_grid.dart';
 import 'device_grid_scroll_controller.dart';
+import '../listenable_rebind.dart';
 
 /// Where a [ScrollWindowPart] lays what it holds: [top] down from its own
 /// top, [extent] tall.
@@ -171,8 +172,7 @@ class _RenderScrollWindowSettle extends RenderProxyBox {
       return;
     }
     if (attached) {
-      _controller.removeListener(_scrolled);
-      controller.addListener(_scrolled);
+      rebindListener(_controller, controller, _scrolled);
     }
     _controller = controller;
     _grid = grid;

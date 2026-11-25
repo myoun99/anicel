@@ -1,0 +1,408 @@
+A texture on Android shown from one HardwareBuffer its producer makes and
+keeps (board the-galaxy-tab-canvas-went-slow-on-build-1095, 길 A; 유저
+2026-11-22: 「윈도랑 안드랑 다른거 통일못하는거야?」 — 「그게 젤
+근본해결」). On every other platform Anicel's engine makes two surfaces
+and Flutter shows each as a texture of its own, turn about; on Android the
+only doors take an Image from a queue (SurfaceProducer, ImageTextureEntry),
+which an app cannot make, so the engine copied each frame onto a queue's
+next image.
+
+TextureRegistry.createHardwareBufferTexture(buffer) makes an entry of that
+one buffer, for its life: the native side takes it through the image
+texture's own door (registerImageTexture), asks the entry whether it is a
+HardwareBufferConsumer, and imports the buffer once, as it imports an
+Image's (ImageExternalTexture::AcquireLatestHardwareBuffer). An entry that
+is not one takes the Image path unchanged. Nothing waits for the buffer to
+be written: the producer shows the texture once its GPU has finished it,
+and writes it again only while it is not shown.
+
+No buffer is handed under an id that already has one: a picture changes by
+the layer tree's texture id, so the raster never picks up a picture a frame
+apart from where the tree placed it (board
+panning-then-pen-jumps-the-android-canvas-a-frame).
+
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture.cc b/engine/src/flutter/shell/platform/android/image_external_texture.cc
+index 4b8ea52c9ac..4ad8f952750 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture.cc
++++ b/engine/src/flutter/shell/platform/android/image_external_texture.cc
+@@ -112,6 +112,18 @@ void ImageExternalTexture::CloseHardwareBuffer(
+   jni_facade_->HardwareBufferClose(JavaLocalRef(hardware_buffer));
+ }
+ 
++JavaLocalRef ImageExternalTexture::AcquireLatestHardwareBuffer(
++    JavaLocalRef& image) {
++  std::optional<JavaLocalRef> handed =
++      jni_facade_->HardwareBufferConsumerAcquireLatest(
++          JavaLocalRef(image_texture_entry_));
++  if (handed.has_value()) {
++    return handed.value();
++  }
++  image = AcquireLatestImage();
++  return HardwareBufferFor(image);
++}
++
+ JavaLocalRef ImageExternalTexture::HardwareBufferFor(
+     const fml::jni::JavaRef<jobject>& image) {
+   if (image.obj() == nullptr) {
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture.h b/engine/src/flutter/shell/platform/android/image_external_texture.h
+index 96b78ed68f3..fce2682b729 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture.h
++++ b/engine/src/flutter/shell/platform/android/image_external_texture.h
+@@ -74,6 +74,13 @@ class ImageExternalTexture : public flutter::Texture {
+ 
+   void CloseHardwareBuffer(const fml::jni::JavaRef<jobject>& hardware_buffer);
+ 
++  /// The HardwareBuffer to show next, null where there is none new: the one
++  /// an entry that takes HardwareBuffers was handed last
++  /// (TextureRegistry.HardwareBufferConsumer), else that of the entry's
++  /// latest Image — which [image] then holds while the buffer is used, as
++  /// it is held where [AcquireLatestImage] is asked alone.
++  JavaLocalRef AcquireLatestHardwareBuffer(JavaLocalRef& image);
++
+   AHardwareBuffer* AHardwareBufferFor(
+       const fml::jni::JavaRef<jobject>& hardware_buffer);
+ 
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture_gl.cc b/engine/src/flutter/shell/platform/android/image_external_texture_gl.cc
+index 94ab2f4cf8c..42bb4a86cec 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture_gl.cc
++++ b/engine/src/flutter/shell/platform/android/image_external_texture_gl.cc
+@@ -67,11 +67,8 @@ void ImageExternalTextureGL::UpdateImage(JavaLocalRef& hardware_buffer,
+ 
+ void ImageExternalTextureGL::ProcessFrame(PaintContext& context,
+                                           const SkRect& bounds) {
+-  JavaLocalRef image = AcquireLatestImage();
+-  if (image.is_null()) {
+-    return;
+-  }
+-  JavaLocalRef hardware_buffer = HardwareBufferFor(image);
++  JavaLocalRef image;
++  JavaLocalRef hardware_buffer = AcquireLatestHardwareBuffer(image);
+   if (hardware_buffer.is_null()) {
+     return;
+   }
+diff --git a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
+index 6ce13961a44..7b20d89b7ea 100644
+--- a/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
++++ b/engine/src/flutter/shell/platform/android/image_external_texture_vk_impeller.cc
+@@ -38,11 +38,8 @@ void ImageExternalTextureVKImpeller::Detach() {}
+ 
+ void ImageExternalTextureVKImpeller::ProcessFrame(PaintContext& context,
+                                                   const SkRect& bounds) {
+-  JavaLocalRef image = AcquireLatestImage();
+-  if (image.is_null()) {
+-    return;
+-  }
+-  JavaLocalRef hardware_buffer = HardwareBufferFor(image);
++  JavaLocalRef image;
++  JavaLocalRef hardware_buffer = AcquireLatestHardwareBuffer(image);
+   if (hardware_buffer.is_null()) {
+     return;
+   }
+diff --git a/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java b/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
+index 1dd3b78dfe4..9ae6ae799db 100644
+--- a/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
++++ b/engine/src/flutter/shell/platform/android/io/flutter/embedding/engine/renderer/FlutterRenderer.java
+@@ -303,6 +303,19 @@ public class FlutterRenderer implements TextureRegistry {
+     return entry;
+   }
+ 
++  @NonNull
++  @Override
++  @RequiresApi(API_LEVELS.API_26)
++  public HardwareBufferTextureEntry createHardwareBufferTexture(@NonNull HardwareBuffer buffer) {
++    final HardwareBufferTextureRegistryEntry entry =
++        new HardwareBufferTextureRegistryEntry(nextTextureId.getAndIncrement(), buffer);
++    Log.v(TAG, "New HardwareBufferTextureEntry ID: " + entry.id());
++    // The image texture's door: the native side asks the entry which it takes.
++    registerImageTexture(entry.id(), entry, /*resetOnBackground=*/ false);
++    scheduleEngineFrame();
++    return entry;
++  }
++
+   @Override
+   public void onTrimMemory(int level) {
+     final Iterator<WeakReference<OnTrimMemoryListener>> iterator = onTrimMemoryListeners.iterator();
+@@ -1013,6 +1026,67 @@ public class FlutterRenderer implements TextureRegistry {
+     }
+   }
+ 
++  @Keep
++  @RequiresApi(API_LEVELS.API_26)
++  final class HardwareBufferTextureRegistryEntry
++      implements TextureRegistry.HardwareBufferTextureEntry,
++          TextureRegistry.HardwareBufferConsumer,
++          TextureRegistry.ImageConsumer {
++    private final long id;
++    private boolean released;
++    // ANICEL — not Flutter's: one buffer for the entry's life, handed as
++    // it is made, and no way to hand another. A texture's picture changes
++    // in the layer tree (its id) and never under one id: a buffer swapped
++    // under an id is picked up by the raster on its own, a frame apart
++    // from where the tree placed it (card
++    // panning-then-pen-jumps-the-android-canvas-a-frame, 관제 2026-11-23).
++    private HardwareBuffer buffer;
++
++    HardwareBufferTextureRegistryEntry(long id, @NonNull HardwareBuffer buffer) {
++      this.id = id;
++      this.buffer = buffer;
++    }
++
++    @Override
++    public long id() {
++      return id;
++    }
++
++    @Override
++    public void release() {
++      if (released) {
++        return;
++      }
++      released = true;
++      HardwareBuffer toClose;
++      synchronized (this) {
++        toClose = buffer;
++        buffer = null;
++      }
++      if (toClose != null) {
++        toClose.close();
++      }
++      unregisterTexture(id);
++    }
++
++    @Override
++    @Nullable
++    public HardwareBuffer acquireLatestHardwareBuffer() {
++      synchronized (this) {
++        HardwareBuffer taken = buffer;
++        buffer = null;
++        return taken;
++      }
++    }
++
++    /** Never an Image: the native side takes this entry's HardwareBuffers instead. */
++    @Override
++    @Nullable
++    public Image acquireLatestImage() {
++      return null;
++    }
++  }
++
+   @Keep
+   final class ImageTextureRegistryEntry
+       implements TextureRegistry.ImageTextureEntry, TextureRegistry.ImageConsumer {
+diff --git a/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java b/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
+index 2ba9e6ff947..b38d70626f2 100644
+--- a/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
++++ b/engine/src/flutter/shell/platform/android/io/flutter/view/TextureRegistry.java
+@@ -5,11 +5,13 @@
+ package io.flutter.view;
+ 
+ import android.graphics.SurfaceTexture;
++import android.hardware.HardwareBuffer;
+ import android.media.Image;
+ import android.view.Surface;
+ import androidx.annotation.Keep;
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
++import androidx.annotation.RequiresApi;
+ 
+ /**
+  * Registry of backend textures used with a single {@link io.flutter.embedding.android.FlutterView}
+@@ -94,6 +96,24 @@ public interface TextureRegistry {
+   @NonNull
+   ImageTextureEntry createImageTexture();
+ 
++  /**
++   * Creates and registers a texture shown from one HardwareBuffer its producer makes and keeps,
++   * for the texture's life — no queue between them: the buffer handed is the buffer drawn, as it
++   * stands each paint. A picture changes by showing another texture, never under this one.
++   *
++   * <p>NOTE: Caller should not call HardwareBuffer.close() on the buffer handed.
++   *
++   * <p>NOTE: Nothing waits for the buffer to be written: the caller shows the texture once its GPU
++   * has finished writing the buffer, and writes it again only where it is not shown.
++   *
++   * @return a HardwareBufferTextureEntry.
++   */
++  @NonNull
++  @RequiresApi(26)
++  default HardwareBufferTextureEntry createHardwareBufferTexture(@NonNull HardwareBuffer buffer) {
++    throw new UnsupportedOperationException("this registry takes no HardwareBuffers");
++  }
++
+   /**
+    * Callback invoked when memory is low.
+    *
+@@ -299,6 +319,13 @@ public interface TextureRegistry {
+     void pushImage(Image image);
+   }
+ 
++  /**
++   * A texture shown from the one HardwareBuffer it was made with ({@link
++   * #createHardwareBufferTexture}): it takes no other.
++   */
++  @Keep
++  interface HardwareBufferTextureEntry extends TextureEntry {}
++
+   /** Listener invoked when the most recent image has been consumed. */
+   interface OnFrameConsumedListener {
+     /**
+@@ -327,6 +354,20 @@ public interface TextureRegistry {
+     Image acquireLatestImage();
+   }
+ 
++  @Keep
++  interface HardwareBufferConsumer {
++    /**
++     * Retrieve the HardwareBuffer pushed last, and not retrieved yet.
++     *
++     * <p>NOTE: Caller must call HardwareBuffer.close() on returned buffer.
++     *
++     * @return HardwareBuffer or null.
++     */
++    @Nullable
++    @RequiresApi(26)
++    HardwareBuffer acquireLatestHardwareBuffer();
++  }
++
+   @Keep
+   interface GLTextureConsumer {
+     /**
+diff --git a/engine/src/flutter/shell/platform/android/jni/jni_mock.h b/engine/src/flutter/shell/platform/android/jni/jni_mock.h
+index 2ed8230a48e..d41abd85781 100644
+--- a/engine/src/flutter/shell/platform/android/jni/jni_mock.h
++++ b/engine/src/flutter/shell/platform/android/jni/jni_mock.h
+@@ -90,6 +90,11 @@ class JNIMock final : public PlatformViewAndroidJNI {
+               (JavaLocalRef hardware_buffer),
+               (override));
+ 
++  MOCK_METHOD(std::optional<JavaLocalRef>,
++              HardwareBufferConsumerAcquireLatest,
++              (JavaLocalRef image_texture_entry),
++              (override));
++
+   MOCK_METHOD(void,
+               SurfaceTextureDetachFromGLContext,
+               (JavaLocalRef surface_texture),
+diff --git a/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h b/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h
+index dab7e09adb5..b43ba708860 100644
+--- a/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h
++++ b/engine/src/flutter/shell/platform/android/jni/platform_view_android_jni.h
+@@ -5,6 +5,7 @@
+ #ifndef FLUTTER_SHELL_PLATFORM_ANDROID_JNI_PLATFORM_VIEW_ANDROID_JNI_H_
+ #define FLUTTER_SHELL_PLATFORM_ANDROID_JNI_PLATFORM_VIEW_ANDROID_JNI_H_
+ 
++#include <optional>
+ #include <utility>
+ 
+ #include "flutter/fml/mapping.h"
+@@ -151,6 +152,15 @@ class PlatformViewAndroidJNI {
+   ///
+   virtual void HardwareBufferClose(JavaLocalRef hardware_buffer) = 0;
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      The HardwareBuffer pushed last to an entry that takes them
++  ///             (TextureRegistry.HardwareBufferConsumer) and not taken yet —
++  ///             null where none is — or nullopt where the entry is not one,
++  ///             and takes Images.
++  ///
++  virtual std::optional<JavaLocalRef> HardwareBufferConsumerAcquireLatest(
++      JavaLocalRef image_texture_entry) = 0;
++
+   //----------------------------------------------------------------------------
+   /// @brief      Positions and sizes a platform view if using hybrid
+   ///             composition.
+diff --git a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
+index 1c9964a7147..9b7d861f722 100644
+--- a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
++++ b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.cc
+@@ -46,6 +46,9 @@ static fml::jni::ScopedJavaGlobalRef<jclass>* g_texture_wrapper_class = nullptr;
+ static fml::jni::ScopedJavaGlobalRef<jclass>*
+     g_image_consumer_texture_registry_interface = nullptr;
+ 
++static fml::jni::ScopedJavaGlobalRef<jclass>*
++    g_hardware_buffer_consumer_texture_registry_interface = nullptr;
++
+ static fml::jni::ScopedJavaGlobalRef<jclass>* g_image_class = nullptr;
+ 
+ static fml::jni::ScopedJavaGlobalRef<jclass>* g_hardware_buffer_class = nullptr;
+@@ -141,6 +144,8 @@ static jmethodID g_image_close_method = nullptr;
+ 
+ static jmethodID g_hardware_buffer_close_method = nullptr;
+ 
++static jmethodID g_acquire_latest_hardware_buffer_method = nullptr;
++
+ static jmethodID g_compute_platform_resolved_locale_method = nullptr;
+ 
+ static jmethodID g_request_dart_deferred_library_method = nullptr;
+@@ -1238,6 +1243,22 @@ bool PlatformViewAndroid::Register(JNIEnv* env) {
+     fml::jni::ClearException(env, true);
+   }
+ 
++  // An entry that takes HardwareBuffers rather than Images: a producer that
++  // makes and keeps its own buffers hands them over as they are.
++  g_hardware_buffer_consumer_texture_registry_interface =
++      new fml::jni::ScopedJavaGlobalRef<jclass>(
++          env, env->FindClass(
++                   "io/flutter/view/TextureRegistry$HardwareBufferConsumer"));
++  if (!g_hardware_buffer_consumer_texture_registry_interface->is_null()) {
++    g_acquire_latest_hardware_buffer_method = env->GetMethodID(
++        g_hardware_buffer_consumer_texture_registry_interface->obj(),
++        "acquireLatestHardwareBuffer", "()Landroid/hardware/HardwareBuffer;");
++  }
++  if (g_acquire_latest_hardware_buffer_method == nullptr) {
++    // Continue on: no entry takes HardwareBuffers then.
++    fml::jni::ClearException(env, true);
++  }
++
+   g_compute_platform_resolved_locale_method = env->GetMethodID(
+       g_flutter_jni_class->obj(), "computePlatformResolvedLocale",
+       "([Ljava/lang/String;)[Ljava/lang/String;");
+@@ -1729,6 +1750,33 @@ void PlatformViewAndroidJNIImpl::HardwareBufferClose(
+   FML_CHECK(fml::jni::CheckException(env));
+ }
+ 
++std::optional<JavaLocalRef>
++PlatformViewAndroidJNIImpl::HardwareBufferConsumerAcquireLatest(
++    JavaLocalRef image_texture_entry) {
++  if (g_acquire_latest_hardware_buffer_method == nullptr ||
++      image_texture_entry.is_null()) {
++    return std::nullopt;
++  }
++  JNIEnv* env = fml::jni::AttachCurrentThread();
++  // The entry is held through a weak reference, as an Image entry is.
++  fml::jni::ScopedJavaLocalRef<jobject> entry(
++      env, env->CallObjectMethod(image_texture_entry.obj(),
++                                 g_java_weak_reference_get_method));
++  if (entry.is_null() ||
++      !env->IsInstanceOf(
++          entry.obj(),
++          g_hardware_buffer_consumer_texture_registry_interface->obj())) {
++    return std::nullopt;
++  }
++  JavaLocalRef taken = JavaLocalRef(
++      env, env->CallObjectMethod(entry.obj(),
++                                 g_acquire_latest_hardware_buffer_method));
++  if (fml::jni::ClearException(env, false)) {
++    return JavaLocalRef();
++  }
++  return taken;
++}
++
+ void PlatformViewAndroidJNIImpl::FlutterViewOnDisplayPlatformView(
+     int view_id,
+     int x,
+diff --git a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h
+index eacf7fed22b..f08c54c9f2c 100644
+--- a/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h
++++ b/engine/src/flutter/shell/platform/android/platform_view_android_jni_impl.h
+@@ -66,6 +66,9 @@ class PlatformViewAndroidJNIImpl final : public PlatformViewAndroidJNI {
+ 
+   void HardwareBufferClose(JavaLocalRef hardware_buffer) override;
+ 
++  std::optional<JavaLocalRef> HardwareBufferConsumerAcquireLatest(
++      JavaLocalRef image_texture_entry) override;
++
+   void FlutterViewOnDisplayPlatformView(int view_id,
+                                         int x,
+                                         int y,

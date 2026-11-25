@@ -26,6 +26,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:image/image.dart' as img;
 
+import '../../core/made_once.dart';
 import '../../core/on_a_worker.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/canvas_size.dart';
@@ -60,7 +61,7 @@ Future<int> pictureSideLimit() {
   if (named != null) {
     return Future<int>.value(named);
   }
-  return _measuredSide ??= _measureSide();
+  return _measuredSide.of(_measureSide);
 }
 
 /// The side a test stands this device's engine at, in place of
@@ -68,7 +69,7 @@ Future<int> pictureSideLimit() {
 @visibleForTesting
 int? debugPictureSideLimit;
 
-Future<int>? _measuredSide;
+final _measuredSide = MadeOnce<int>();
 
 /// Longer than any engine's side: a row this long that comes back whole
 /// says the engine cuts nothing a picture could be.

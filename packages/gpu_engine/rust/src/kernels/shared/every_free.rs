@@ -197,7 +197,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 41] {
             let surface = [false, true]
                 .into_iter()
                 // SAFETY: the engine is live.
-                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra) })
+                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra, true) })
                 .find(|surface| !surface.is_null())
                 .unwrap_or_else(|| panic!("{name}: {}", last_error()));
             // SAFETY: both are live, made on the engine.
@@ -343,7 +343,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 41] {
             let made = [false, true]
                 .into_iter()
                 // SAFETY: the engine is live.
-                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra) })
+                .map(|bgra| unsafe { gpu_engine_surface_new(first_engine(), 4, 4, bgra, true) })
                 .find(|surface| !surface.is_null())
                 .unwrap_or(std::ptr::null_mut());
             gives_back(name, made, gpu_engine_surface_free)
@@ -365,13 +365,9 @@ fn exported() -> BTreeSet<String> {
     verbs().into_keys().filter(free).collect()
 }
 
-// ⛔`gpu_engine_window_free` alone is not in the table: a window is an
-// Android SurfaceProducer's, which no host test makes (platform/android.rs).
-const UNMADE: [&str; 1] = ["gpu_engine_window_free"];
-
 #[test]
 fn every_free_the_sources_export_is_in_the_table() {
-    let named = frees().into_iter().map(|(name, _)| name).chain(UNMADE);
+    let named = frees().into_iter().map(|(name, _)| name);
     let (named, exported): (BTreeSet<String>, _) = (named.map(str::to_owned).collect(), exported());
     let off: Vec<_> = exported.difference(&named).collect();
     assert!(off.is_empty(), "a free the table does not make and let go of: {off:?}");

@@ -3,6 +3,7 @@
 // on every build: 🔬a fifth of reopening the storyboard on the AMMI OP
 // (frame-panels-build-in-one-frame, 2026-10-24). It builds those of the
 // panel's window now, as the painters beside it draw theirs.
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -169,6 +170,7 @@ Future<double> _viewEndingOnASpan(WidgetTester tester) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('an S row builds the pieces of the sounds its window reaches '
       '— and a sound further on once the view goes there', (tester) async {
     await _open(tester, _project(far: 3000));

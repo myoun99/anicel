@@ -8,7 +8,7 @@ use super::{Camera, Screen, affine, meets, row};
 use crate::device::{Engine, gpu_engine_waits_here};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::abi::{gpu_engine_pictures_give_back, gpu_engine_pictures_idle_bytes};
-use crate::kernels::composite::kept::tests::{kept_bytes, moved, rested, rested_on, resting};
+use crate::kernels::composite::kept::tests::{kept_bytes, kept_bytes_on, moved, rested, rested_on, resting};
 use crate::kernels::composite::kept::{Film, Kept, Tiles, plan};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on, texel};
 use crate::kernels::composite::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
@@ -938,6 +938,18 @@ fn named(screen: &Screen) -> Vec<TileAt> {
     screen.canvas.as_ref().expect("a canvas").named().tiles.iter().flatten().copied().collect()
 }
 
+/// The checker kept on `engine` — one of a test's own
+/// ([`a_device_of_its_own`]) — in a pool of pages of 4, by a composite
+/// of its own: 15 tiles on four pages, none folded yet.
+fn a_checker_kept_on(engine: &Engine) -> (Composite, Pictures, Screen) {
+    let composite = Composite::new(engine).expect("its executor");
+    let pictures = Pictures::sized(4).expect("a pool");
+    let (pages, set, _) = composite_on(engine, checker, CANVAS);
+    let kept = Kept::made_in(engine, &composite, &laid(&pages, &set), PAGE, None, &pictures, composite.widest());
+    let screen = screen_of(kept.expect("kept"));
+    (composite, pictures, screen)
+}
+
 const FOLDED_CAMERAS: [(f64, (f64, f64), (f64, f64)); 3] =
     [(3.0, (0.8, 0.6), (-200.25, -40.5)), (0.4, (1.0, 0.0), (3.0, 2.0)), (0.03, (1.0, 0.0), (20.75, 18.0))];
 
@@ -1006,26 +1018,35 @@ fn a_folded_picture_let_go_leaves_no_page_of_it() {
 // 15 tiles on pages of 4 — a batch is a page of folded tiles' at most, 4 —
 // the first batch alone is folded, and settled, where a picture is made
 // before it is told; the next rest folds the rest. Asked on the engine's
-// thread, where the first batch is handed over as the rest is asked.
+// thread, where the first batch is handed over as the rest is asked, its
+// answer held till the hand is at work ([`Engine::polls_held`]): told
+// while the ask is still in hand, the ask takes it up and hands the next
+// batch over, the hand at rest still, as it is to (`Pictures::folds_on`).
+// 🔬WSL lavapipe 2026-11-24, every test of the crate at once (card
+// a-rest-s-folds-count-otherwise-under-the-asked-limits): 8 of 4, the
+// answer unheld. On an engine of its own, whose polls no other test waits
+// for.
 #[test]
 fn a_hand_at_work_stops_a_rest_s_folds_behind_their_batch() {
-    let engine = rig().engine;
-    let pictures = Pictures::sized(4).expect("a pool");
-    let (pages, set, _) = composite_of(checker, CANVAS);
-    let screen = screen_of(kept_in(&pictures, &laid(&pages, &set)));
-    let (names, bytes) = (named(&screen), canvas_bytes(&screen));
-    engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let (_composite, pictures, screen) = a_checker_kept_on(&engine);
+    let read = || kept_bytes_on(&engine, screen.canvas.as_ref().expect("a canvas"));
+    let (names, bytes) = (named(&screen), read());
+    engine.on_thread(|| Fold::new(&engine)).expect("the fold's kernels");
+    let held = engine.polls_held();
     let rest = engine.on_thread(|| {
-        let rest = resting(engine, &pictures);
+        let rest = resting(&engine, &pictures);
         pictures.hand_at_work();
         rest
     });
+    drop(held);
     assert_eq!(rested(rest), Some(false), "ended by the hand at work, the pictures unweighed");
     assert_eq!(moved(&pictures, &names), 4, "the batch handed over before the hand was at work, and no more");
-    assert!(canvas_bytes(&screen) == bytes);
-    rested_on(engine, &pictures);
+    assert!(read() == bytes);
+    rested_on(&engine, &pictures);
     assert_eq!(moved(&pictures, &names), 15, "the next rest folds the rest");
-    assert!(canvas_bytes(&screen) == bytes);
+    assert!(read() == bytes);
 }
 
 /// What a test has told to weigh by the pictures' tiles, and how many
@@ -1052,31 +1073,35 @@ fn told_to_weigh_by(pictures: &Pictures) -> Arc<ToldToWeigh> {
 // as long as it lives —, and not where a hand at work ended them, tiles
 // moved though they are: the walk is the engine's thread's, a stroke's
 // dab behind it, and the next rest's folds tell all the same. Those
-// dropped are struck off as the list would grow, and told nothing.
+// dropped are struck off as the list would grow, and told nothing. The
+// first batch's answer held as the hand is put at work, on an engine of
+// its own (`a_hand_at_work_stops_a_rest_s_folds_behind_their_batch` has
+// why).
 #[test]
 fn a_rest_s_folds_through_tell_what_weighs_by_the_pictures_to_weigh_again() {
-    let engine = rig().engine;
-    let pictures = Pictures::sized(4).expect("a pool");
-    let (pages, set, _) = composite_of(checker, CANVAS);
-    let screen = screen_of(kept_in(&pictures, &laid(&pages, &set)));
+    let turn = a_device_of_its_own();
+    let engine = turn.engine();
+    let (_composite, pictures, screen) = a_checker_kept_on(&engine);
     let names = named(&screen);
     let told = told_to_weigh_by(&pictures);
     let times = || told.0.load(Ordering::Relaxed);
-    engine.on_thread(|| Fold::new(engine)).expect("the fold's kernels");
+    engine.on_thread(|| Fold::new(&engine)).expect("the fold's kernels");
+    let held = engine.polls_held();
     let rest = engine.on_thread(|| {
-        let rest = resting(engine, &pictures);
+        let rest = resting(&engine, &pictures);
         pictures.hand_at_work();
         rest
     });
+    drop(held);
     assert_eq!(rested(rest), Some(false), "the rest is told so: ended, the pictures unweighed");
     assert_eq!((moved(&pictures, &names), times()), (4, 0), "a hand at work ended them: tiles moved, none told");
-    rested_on(engine, &pictures);
+    rested_on(&engine, &pictures);
     assert_eq!((moved(&pictures, &names), times()), (15, 1), "through, the hand at rest");
     for _ in 0..64 {
         drop(told_to_weigh_by(&pictures));
     }
     assert!(pictures.told_to_weigh() < 16, "those dropped stay listed: {}", pictures.told_to_weigh());
-    rested_on(engine, &pictures);
+    rested_on(&engine, &pictures);
     assert_eq!(times(), 2, "and at every rest's since, those dropped beside it told nothing");
 }
 
@@ -1149,11 +1174,7 @@ fn the_tiles_no_picture_weighs_are_weighed_again_once_a_rest_s_folds_are_through
 fn a_rest_folds_nothing_before_the_fold_s_kernels_are_compiled() {
     let turn = a_device_of_its_own();
     let engine = turn.engine();
-    let composite = Composite::new(&engine).expect("its executor");
-    let pictures = Pictures::sized(4).expect("a pool");
-    let (pages, set, _) = composite_on(&engine, checker, CANVAS);
-    let kept = Kept::made_in(&engine, &composite, &laid(&pages, &set), PAGE, None, &pictures, composite.widest());
-    let screen = screen_of(kept.expect("kept"));
+    let (_composite, pictures, screen) = a_checker_kept_on(&engine);
     let names = named(&screen);
     assert_eq!(rested(resting(&engine, &pictures)), Some(false), "told all the same: nothing folded, none weighed");
     engine.on_thread(|| ());
@@ -1172,11 +1193,7 @@ fn a_rest_folds_nothing_before_the_fold_s_kernels_are_compiled() {
 fn a_fold_refused_as_it_is_handed_over_ends_the_rest_and_holds_no_thread() {
     let turn = a_device_of_its_own();
     let engine = turn.engine();
-    let composite = Composite::new(&engine).expect("its executor");
-    let pictures = Pictures::sized(4).expect("a pool");
-    let (pages, set, _) = composite_on(&engine, checker, CANVAS);
-    let kept = Kept::made_in(&engine, &composite, &laid(&pages, &set), PAGE, None, &pictures, composite.widest());
-    let screen = screen_of(kept.expect("kept"));
+    let (composite, pictures, screen) = a_checker_kept_on(&engine);
     let names = named(&screen);
     engine.on_thread(|| Fold::new(&engine)).expect("the fold's kernels");
     engine.on_thread(|| SUBMITS_NOTHING.set(true));

@@ -9,8 +9,6 @@ import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter/painting.dart' show TextPosition;
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/app_faces.dart';
-
 /// R9-rest (the text tool): A TEXT OF A CEL, SET. `layoutCelText` is where
 /// what a person chose — letters in runs, a size each, a box or none, a
 /// turn — becomes where the letters ARE, and the box it is edited by, its
@@ -19,8 +17,16 @@ import '../../helpers/app_faces.dart';
 /// ⚠️The numbers are the TEST FONT's: flutter_test sets every glyph as a
 /// box one letter-size wide and tall (three quarters of it above the
 /// baseline), so at a line pitch of 1 a line is exactly as tall as its
-/// letters and 「ab」 at size 20 is 40 by 20. A test that needs the app's
-/// own faces loads them and says so.
+/// letters and 「ab」 at size 20 is 40 by 20.
+///
+/// ⛔NO FACE IS LOADED HERE — what the app's own set is
+/// a_brought_face_sets_the_letters_test.dart's: a face once loaded is the
+/// isolate's, and a file that loads none is bundled only with files that
+/// load none (tool/test_bundles.dart `loadsFonts`). 🔬This file loaded them
+/// in its last group, and its first ones went red bundled after a file
+/// that had (card
+/// two-text-files-measure-in-the-test-font-only-when-they-run-first,
+/// 2026-11-23).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1007,38 +1013,6 @@ void main() {
       expect(inked(70, 37), isTrue, reason: 'under the second\'s');
       expect(inked(30, 37), isFalse, reason: 'no letter of the second there');
       expect(inked(70, 17), isFalse, reason: 'the first\'s ends at 60');
-    });
-  });
-
-  group('the app\'s faces', () {
-    test('a run with no chosen face is set in the app\'s, and a bold run in '
-        'its bold', () async {
-      await loadTheAppFaces();
-
-      final plain = set([run('illicit')]);
-      final bold = set([run('illicit', bold: true)]);
-
-      expect(
-        plain.block.width,
-        lessThan(7 * 20),
-        reason: 'the test font sets every letter a whole size wide',
-      );
-      expect(bold.block.width, isNot(plain.block.width));
-      final other = set([run('illicit', family: 'Nanum Gothic')]);
-      expect(
-        other.block.width,
-        isNot(plain.block.width),
-        reason: 'a run in a chosen face is set in THAT face',
-      );
-      expect(other.block.width, lessThan(7 * 20));
-      // ↩️This asked for 「FlutterTest」, the test engine's own font, and
-      // got it. A family this device does not hold is set in the app's own
-      // now (`CanvasLetterFaces`, the text tool's faces) — not in whatever
-      // the engine would make of its name.
-      expect(
-        set([run('illicit', family: 'FlutterTest')]).block.width,
-        plain.block.width,
-      );
     });
   });
 }

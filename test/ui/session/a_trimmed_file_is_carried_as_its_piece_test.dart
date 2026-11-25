@@ -90,6 +90,25 @@ void main() {
     return frames;
   }
 
+  testWidgets("🗣️decoder-reads-skip-the-percent: a GIF's cut tells how far "
+      'it has read the file, up to the whole (F-608-Q2)', (tester) async {
+    final s = session();
+    final gif = await tester.runAsync(() => writeGif('read.gif'));
+    final heard = <double>[];
+
+    await tester.runAsync(
+      () => s.trimmedPieces.cut(
+        gif!,
+        MediaAssetKind.image,
+        inFrame: 1,
+        onProgress: heard.add,
+      ),
+    );
+
+    expect(heard, isNotEmpty);
+    expect(heard.last, 1);
+  });
+
   testWidgets('🎯a trimmed GIF is carried as an APNG of only the frames it '
       'keeps — the pool names the piece, the original only where it came '
       'from', (tester) async {
@@ -299,6 +318,36 @@ void main() {
       expect(kept.samples.length, to - from, reason: 'frames 7..18, no more');
       expect(kept.samples.first, all.samples[from]);
       expect(kept.samples.last, all.samples[to - 1]);
+      await tester.pumpAndSettle();
+    });
+
+    // 🗣️유저 11-24 (decoder-reads-skip-the-percent-Q3 「풀어 낸 프레임 ÷ 풀
+    // 프레임」): a sound's cut decodes up to the span's end and no further,
+    // so it tells the frames decoded of the frames to decode.
+    testWidgets("🗣️a sound's cut tells the frames it has decoded of those "
+        'to decode — the ones before the span too — up to the whole',
+        (tester) async {
+      final s = session();
+      final source = writeWav('long.wav', 10);
+      final heard = <double>[];
+
+      final cut = await tester.runAsync(
+        () => s.trimmedPieces.cut(
+          source,
+          MediaAssetKind.audio,
+          inFrame: 120,
+          outFrame: 149,
+          onProgress: heard.add,
+        ),
+      );
+
+      expect(cut, isNotNull);
+      expect(heard.length, greaterThan(1), reason: 'told along the way');
+      expect(heard.first, lessThan(0.9), reason: 'from before the span');
+      for (var i = 1; i < heard.length; i += 1) {
+        expect(heard[i], greaterThanOrEqualTo(heard[i - 1]), reason: '$heard');
+      }
+      expect(heard.last, 1);
       await tester.pumpAndSettle();
     });
 

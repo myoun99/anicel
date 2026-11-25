@@ -225,10 +225,11 @@ void main() {
   // first row that lays they are there
   // (a-grid-row-paints-its-cells-on-a-canvas-beside-its-tiles-Q3 · Q4).
   // ⚠️The first test of the file: no row here sets a word, so nothing but
-  // a screen's opening has read them.
+  // a screen's opening reads them — none read yet, as a launch finds them.
   testWidgets('the first screen there is to lay on reads the faces its '
       'tiles\' words are set in', (tester) async {
     aSmallView(tester);
+    EngineFaces.debugForget();
     expect(EngineFaces.areRead, isFalse, reason: '⛔premise: none read yet');
     await tester.pumpWidget(aGrid(_Row(() => tile)));
     await tester.pump();
@@ -381,7 +382,7 @@ void main() {
     aSmallView(tester);
     // The GPU finishes at once, till the test holds it.
     var holding = false;
-    final gates = <Completer<void>>[];
+    final gates = <Completer<GpuWaited?>>[];
     debugOpenEngineScreen = (_, width, height) async {
       surface = shownSurfaceOf(width, height);
       surfaces.add(surface);
@@ -391,7 +392,7 @@ void main() {
           if (!holding) {
             return Future.value();
           }
-          gates.add(Completer<void>());
+          gates.add(Completer<GpuWaited?>());
           return gates.last.future;
         },
       );
@@ -429,6 +430,122 @@ void main() {
     expect(shown(), atFirst, reason: 'the newest, where it was laid');
     expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
+
+  testWidgets('🚨what a row comes to lay, and stops drawing, is on the frame '
+      'up — or the row draws it as well, till a frame up shows it (card '
+      'a-fast-vertical-timeline-scroll-paints-row-pictures-a-notch-behind-'
+      'their-labels)', (tester) async {
+    aSmallView(tester);
+    // The GPU finishes at once, till the test holds it.
+    var holding = false;
+    final gates = <Completer<GpuWaited?>>[];
+    debugOpenEngineScreen = (_, width, height) async {
+      surface = shownSurfaceOf(width, height);
+      surfaces.add(surface);
+      return ScreenTexture.debugOnSurface(
+        surface,
+        done: () {
+          if (!holding) {
+            return Future.value();
+          }
+          gates.add(Completer<GpuWaited?>());
+          return gates.last.future;
+        },
+      );
+    };
+    // A row with nothing laid yet — its tile being rastered, its cells
+    // drawn by itself.
+    final row = _Row(() => tile)..layFrom(null);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    await tester.pump();
+    expect(row.laidLast, isTrue, reason: '⛔premise: the row lays here');
+    holding = true;
+
+    row.layFrom(const Rect.fromLTWH(0, 0, 120, 20));
+    await tester.pump();
+    expect(gates, hasLength(1), reason: '⛔premise: its lay is on the GPU');
+    expect(
+      row.answers.last,
+      isFalse,
+      reason: '🚨the frame up was laid before the tile — the row draws it too',
+    );
+
+    gates.last.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      row.answers.last,
+      isTrue,
+      reason: 'the frame up shows it now, and the row was asked again',
+    );
+  });
+
+  for (final axis in Axis.values) {
+    testWidgets('🚨a scroll ${axis.name} and back, a step a frame, has what '
+        'the view shows on the frame up in every frame, the GPU a frame '
+        'behind (card the-left-edge-of-the-rows-blinks-for-a-frame-as-a-'
+        'scroll-rewinds)', (tester) async {
+      // 검증 11-25: rewinding the timeline, the left 3 px of the rows were
+      // blank for a frame, nearly every time. The screen was laid again
+      // only once what the view shows had left where it was laid — so the
+      // frame up, laid before, had not got what was past it.
+      aSmallView(tester);
+      final gates = <Completer<GpuWaited?>>[];
+      debugOpenEngineScreen = (_, width, height) async {
+        surface = shownSurfaceOf(width, height);
+        surfaces.add(surface);
+        return ScreenTexture.debugOnSurface(
+          surface,
+          done: () {
+            gates.add(Completer<GpuWaited?>());
+            return gates.last.future;
+          },
+        );
+      };
+      Future<void> theGpuFinishes() async {
+        for (final gate in gates) {
+          if (!gate.isCompleted) {
+            gate.complete();
+          }
+        }
+        await tester.pump(Duration.zero);
+      }
+
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(
+        aGrid(_Row(() => tile), scroll: scroll, axis: axis),
+      );
+      await tester.pump();
+      await theGpuFinishes();
+      await tester.pump();
+      final lays = gates.length;
+
+      final steps = [
+        for (var to = 10.0; to <= 300; to += 10) to,
+        for (var to = 290.0; to >= 0; to -= 10) to,
+      ];
+      final bare = <double>[];
+      for (final to in steps) {
+        scroll.jumpTo(to);
+        await tester.pump();
+        final up = tester.layers.whereType<TextureLayer>().single.rect;
+        // What the view shows of the box, in its own pixels: the viewport's
+        // 100 along, from the scroll, and all of it across.
+        final (from, end) = axis == Axis.horizontal
+            ? (up.left, up.right)
+            : (up.top, up.bottom);
+        if (from > to || end < to + 100) {
+          bare.add(to);
+        }
+        await theGpuFinishes();
+      }
+
+      expect(gates.length - lays, greaterThan(1), reason: '⛔premise: laid');
+      expect(bare, isEmpty, reason: 'the frame up had not what was shown');
+    });
+  }
 
   testWidgets('a scroll down past what the screen holds lays it again, and '
       'back up', (tester) async {
@@ -1310,6 +1427,85 @@ void main() {
 
   // 타임라인/콘티 리뷰 2026-11-09 H: it let go of what it laid as it went,
   // and was not laid out again to paint it anew.
+  testWidgets('a row moved onto another grid\'s screen lays anew there: '
+      'what the frame up of the screen it left showed is not shown by this '
+      'one', (tester) async {
+    aSmallView(tester);
+    var holding = false;
+    final gates = <Completer<GpuWaited?>>[];
+    debugOpenEngineScreen = (_, width, height) async {
+      final opened = shownSurfaceOf(width, height);
+      surfaces.add(opened);
+      return ScreenTexture.debugOnSurface(
+        opened,
+        done: () {
+          if (!holding) {
+            return Future.value();
+          }
+          gates.add(Completer<GpuWaited?>());
+          return gates.last.future;
+        },
+      );
+    };
+    final slot = GlobalKey();
+    final moved = _Row(() => tile);
+    final stays = _Row(() => tile);
+    // Two grids: [moved] on the first or the second, [stays] on the
+    // second all along.
+    Widget grids({required bool onTheSecond}) {
+      Widget aRow(_Row row, {Key? key}) => SizedBox(
+        width: 60,
+        height: 10,
+        child: TimelineGridScreenSlot(
+          key: key,
+          child: CustomPaint(painter: row),
+        ),
+      );
+      Widget aHost(List<Widget> rows) => SizedBox(
+        width: 70,
+        height: 40,
+        child: TimelineGridScreenHost(child: Column(children: rows)),
+      );
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Row(
+            children: [
+              aHost([if (!onTheSecond) aRow(moved, key: slot)]),
+              aHost([
+                aRow(stays),
+                if (onTheSecond) aRow(moved, key: slot),
+              ]),
+            ],
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(grids(onTheSecond: false));
+    for (var paint = 0; paint < 4; paint += 1) {
+      // Laid again and again on the second, so its lays outnumber the
+      // first's.
+      stays.layFrom(const Rect.fromLTWH(0, 0, 120, 20));
+      await tester.pump();
+      await tester.pump();
+    }
+    expect(moved.answers.last, isTrue, reason: '⛔premise: up on the first');
+    holding = true;
+
+    await tester.pumpWidget(grids(onTheSecond: true));
+    expect(moved.laidLast, isTrue, reason: '⛔premise: it lays on the second');
+    expect(
+      moved.answers.last,
+      isFalse,
+      reason: 'the second\'s frame up was laid before the row came',
+    );
+    for (final gate in gates) {
+      gate.complete();
+    }
+  });
+
   testWidgets('a row moved to another parent lays its tile again', (
     tester,
   ) async {
@@ -1420,6 +1616,9 @@ class _Row extends CustomPainter {
   /// Whether its last paint could lay its tile.
   bool laidLast = false;
 
+  /// What each lay answered: whether the frame up showed it.
+  final answers = <bool>[];
+
   /// How many times it was painted.
   int paints = 0;
 
@@ -1430,7 +1629,13 @@ class _Row extends CustomPainter {
     laidLast = laying != null;
     if (_from case final from?) {
       for (var laid = 0; laid < times; laid += 1) {
-        laying?.lay((picture: _tile(), from: from, onto: Offset.zero & size));
+        if (laying?.lay(
+              (picture: _tile(), from: from, onto: Offset.zero & size),
+              of: laid,
+            )
+            case final up?) {
+          answers.add(up);
+        }
       }
     }
   }

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +87,7 @@ Finder _cutBlocks() => find.descendant(
 );
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   opensTheEnginesScreens();
   testWidgets('a folded STORYBOARD shows the track row — its cuts, not the '
       'timeline\'s frames', (tester) async {

@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,7 @@ import '../helpers/project_scratch_folder.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/until_the_brushes_land.dart';
+import '../helpers/until_the_panel_pictures_land.dart';
 
 /// A picture that LANDS repaints the painters that asked for it and
 /// rebuilds nothing — in the workspace as it is wired, with its own store.
@@ -50,6 +52,7 @@ import '../helpers/until_the_brushes_land.dart';
 /// zoom every cut on the film lands a picture, and the storyboard's ruler,
 /// rows and chrome were rebuilt once for each.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   opensTheEnginesScreens();
   Future<void> open(WidgetTester tester, String tab) async {
     await tester.tap(find.byKey(ValueKey<String>(tab)));
@@ -82,12 +85,7 @@ void main() {
     StoryboardThumbnails thumbnails,
   ) async {
     await untilTheBrushesLand(tester);
-    expect(
-      await settleAsync(tester, () => !thumbnails.pending()),
-      isTrue,
-      reason: 'the premise: every picture on screen landed',
-    );
-    await tester.pumpAndSettle();
+    await untilThePanelPicturesLand(tester, thumbnails);
   }
 
   /// [cut]'s picture lands as a render lands it — asked at a width no

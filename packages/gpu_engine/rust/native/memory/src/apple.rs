@@ -61,6 +61,12 @@ pub(crate) fn available() -> Option<u64> {
     None
 }
 
+/// Apple has no per-mapping account a process can read of itself: the line
+/// that names what holds the footprint is the Linux kernel's (`crate::mappings`).
+pub(crate) fn mappings() -> Option<Vec<(String, u64)>> {
+    None
+}
+
 /// What it holds and what it may still take, as the C added them: with no
 /// footprint, the allowance alone.
 #[cfg(not(target_os = "macos"))]

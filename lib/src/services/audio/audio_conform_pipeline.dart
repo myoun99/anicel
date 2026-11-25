@@ -322,6 +322,26 @@ class ConformCacheLayout {
   }
 }
 
+/// The two reads of a source a conform makes, each heard as its half of
+/// what is read ([AudioConformPipeline.ensureConform]): the first [next]
+/// hands out tells 0–½, the second ½–1.
+final class _TwoReads {
+  _TwoReads(this._onRead);
+
+  final void Function(double fraction)? _onRead;
+  var _handed = 0;
+
+  /// The next read's listener — null where nobody listens.
+  void Function(double fraction)? next() {
+    final onRead = _onRead;
+    if (onRead == null) {
+      return null;
+    }
+    final half = _handed++;
+    return (fraction) => onRead((half + fraction) / 2);
+  }
+}
+
 /// Builds and reuses conforms.
 ///
 /// Every file operation goes through injectable seams so the whole thing
@@ -336,6 +356,7 @@ class AudioConformPipeline {
     this.bucketsPerSecond = 40,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
+    this.onRead,
   });
 
   final AudioDecodeCallback decode;
@@ -349,6 +370,10 @@ class AudioConformPipeline {
   /// rational, never a float factor.
   final int speedNumerator;
   final int speedDenominator;
+
+  /// Hears how much of the source [ensureConform] has read, of what it
+  /// reads.
+  final void Function(double fraction)? onRead;
 
   /// The fingerprint [source] carries — the IDENTITY, content-derived so it
   /// survives being copied to another machine — without holding the source.
@@ -371,10 +396,16 @@ class AudioConformPipeline {
   /// enormous is stored framed … a movie does not shrink」. Both halves were
   /// guesses, and wrong: compression is decided per file and an MP4 shrinks
   /// 6.7% (2026-09-24).
-  static ConformSourceFingerprint fingerprintOfSource(MediaByteSource source) {
+  ///
+  /// [onRead] hears how much of it has been read, of its length.
+  static ConformSourceFingerprint fingerprintOfSource(
+    MediaByteSource source, {
+    void Function(double fraction)? onRead,
+  }) {
     var state = anicelCrc32Start;
     final buffer = Uint8List(_fingerprintChunkBytes);
     var read = 0;
+    final length = onRead == null ? 0 : source.lengthSync();
     final reader = source.openWindowReader();
     try {
       while (true) {
@@ -387,6 +418,7 @@ class AudioConformPipeline {
           got == buffer.length ? buffer : Uint8List.sublistView(buffer, 0, got),
         );
         read += got;
+        onRead?.call(length <= 0 ? 1 : read / length);
       }
     } finally {
       reader.close();
@@ -610,9 +642,15 @@ class AudioConformPipeline {
     // defined as `existing != null && …`. A second null test here reads as
     // if it could be otherwise.
     ConformSourceFingerprint? fingerprint;
+    // 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+    // 바이트를 센다」): [onRead] hears the bytes read of the bytes to read
+    // (F-608-Q2) — and a conform that reads the source reads it TWICE, the
+    // fingerprint and the decode, in whichever order the paths below take
+    // them: each is one half of what is read.
+    final reads = _TwoReads(onRead);
     if (!current && settingsMatch) {
       try {
-        fingerprint = fingerprintOfSource(src);
+        fingerprint = fingerprintOfSource(src, onRead: reads.next());
       } on Object catch (error) {
         // It EXISTS — the check above just said so — so this is transient:
         // an unhydrated cloud placeholder, or a handle held elsewhere.
@@ -669,7 +707,7 @@ class AudioConformPipeline {
         ? null
         : ConformScratch.open(conformPath);
     try {
-      final pass = _making.passOver(src, scratch);
+      final pass = _making.passOver(src, scratch, onRead: reads.next());
       if (pass == null) {
         return const ConformResult(
           outcome: ConformOutcome.undecodable,
@@ -678,7 +716,7 @@ class AudioConformPipeline {
       }
       if (fingerprint == null) {
         try {
-          fingerprint = fingerprintOfSource(src);
+          fingerprint = fingerprintOfSource(src, onRead: reads.next());
         } on Object catch (error) {
           return ConformResult(
             outcome: ConformOutcome.sourceUnreadable,

@@ -33,7 +33,7 @@ use crate::stream::window;
 fn fingerprint(file: &Path) -> (i32, usize, String) {
     let length = std::fs::metadata(file).unwrap_or_else(|error| panic!("{}: {error}", file.display())).len() as i64;
     let path = CString::new(file.to_str().expect("a UTF-8 path")).expect("no NUL");
-    let sound = window(&path, 0, length, false, 0, -1).expect("the fixture decodes");
+    let sound = window(&path, 0, length, false, 0, -1, &mut |_| {}).expect("the fixture decodes");
     let bytes: Vec<u8> = sound.samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
     (sound.format, sound.samples.len() / sound.channels as usize, ledger::fingerprint(&bytes))
 }

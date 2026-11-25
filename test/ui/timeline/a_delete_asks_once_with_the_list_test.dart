@@ -123,6 +123,43 @@ Future<void> _pressDelete(
   await tester.pumpAndSettle();
 }
 
+/// [id] copied and pasted LINKED over itself, as the shared pill does it —
+/// the copy, which the paste stands on.
+LayerId _pastedLinked(EditorSessionManager session, String id) {
+  _select(session, [id]);
+  session.layerClipboard.copySelectedRows();
+  session.selectLayer(LayerId(id));
+  session.layerClipboard.pasteRowsLinked();
+  final copy = session.activeLayerId!;
+  expect(copy, isNot(LayerId(id)), reason: '⛔전제: it stands on its copy');
+  // A folder is not linked itself: the rows it holds are.
+  final linkedRows = [
+    copy,
+    for (final row in session.requireActiveCut.layers)
+      if (row.folderId == copy) row.id,
+  ];
+  expect(
+    linkedRows.any((row) => session.layerVerbs.linkPartnersOf(row).isNotEmpty),
+    isTrue,
+    reason: '⛔전제: the copy is linked',
+  );
+  return copy;
+}
+
+/// Every row of every cut, by id: its name.
+Map<LayerId, String> _everyRow(EditorSessionManager session) => {
+  for (final track in session.repository.requireProject().tracks)
+    for (final cut in track.cuts)
+      for (final layer in cut.layers) layer.id: layer.name,
+};
+
+/// What the open delete window lists of [names] — each as many times as it
+/// stands there.
+List<String> _listedNow(WidgetTester tester, Iterable<String> names) => [
+  for (final name in names.toSet())
+    for (var i = 0; i < find.text(name).evaluate().length; i += 1) name,
+];
+
 void main() {
   group('what a delete takes along', () {
     test('a base takes its attach rows, top first', () {
@@ -309,6 +346,105 @@ void main() {
       expect(_stack(session), ['x', 'under', 'base', 'over', 'y', 'z']);
     });
   }
+
+  // 🔎a-row-pasted-linked-takes-its-source-when-deleted (검증/서피스 11-23,
+  // seen beside F-579 on the real app): a row pasted LINKED into its own
+  // cut, deleted, took its source along, and the window listed the copy
+  // alone — 「삭제할 레이어(1) A」. Which rows a delete takes is that card's
+  // -Q1, the user's to answer; the window lists those rows, whichever they
+  // are, so these pins hold either way.
+  group('the window lists what the delete takes, wherever it reaches', () {
+    for (final (what, rows, pasted) in [
+      ('a row pasted linked into its own cut', _withABase(), 'y'),
+      (
+        'a folder pasted linked: the rows it holds',
+        [
+          _row('x'),
+          _row('a', inside: 'F'),
+          _row('b', inside: 'F'),
+          _row('F', kind: LayerKind.folder),
+          _row('y'),
+        ],
+        'F',
+      ),
+    ]) {
+      testWidgets(what, (tester) async {
+        final session = _session(rows);
+        final copy = _pastedLinked(session, pasted);
+        _select(session, [copy.value]);
+        final before = _everyRow(session);
+
+        await _pressDelete(tester, session);
+        final listed = _listedNow(tester, before.values);
+        await tester.tap(
+          find.byKey(const ValueKey<String>('delete-layer-confirm-button')),
+        );
+        await tester.pumpAndSettle();
+
+        final after = _everyRow(session);
+        final gone = [
+          for (final MapEntry(:key, :value) in before.entries)
+            if (!after.containsKey(key)) value,
+        ];
+        expect(gone, isNotEmpty, reason: '⛔전제: the delete took rows');
+        expect(
+          listed,
+          unorderedEquals(gone),
+          reason: 'every row that went, listed — and nothing that stayed',
+        );
+      });
+    }
+
+    testWidgets('a row of a 겸용 cut: its row in the other cut is listed as '
+        'the link badge names it', (tester) async {
+      final session = _session(_withABase());
+      session.cutCommandCoordinator.createLinkedCut(
+        sourceCutId: const CutId('f303-cut'),
+      );
+      session.selectCut(const CutId('f303-cut'));
+      final partners = session.layerVerbs.linkPartnersOf(const LayerId('y'));
+      expect(partners, hasLength(1), reason: '⛔전제: y stands in both cuts');
+      _select(session, ['y']);
+
+      await _pressDelete(tester, session);
+
+      final strings = AppText.strings;
+      expect(find.text('${strings.deleteLayersHeading} (2)'), findsOneWidget);
+      expect(find.text('y'), findsOneWidget);
+      expect(
+        find.text(partners.single),
+        findsOneWidget,
+        reason: '07-21 「컷 X에서도 함께 사라집니다」 — the other cut\'s row '
+            'goes too, and the window never said so',
+      );
+    });
+
+    test('both rows of a link, selected, go as ONE step — the second is not '
+        'asked for after the first took it', () {
+      final session = _session(_withABase());
+      final copy = _pastedLinked(session, 'y');
+      _select(session, ['y', copy.value]);
+      final steps = session.historyManager.undoCount;
+
+      rowsOf(session).deleteSelectedLayers();
+
+      expect(_stack(session), isNot(contains('y')));
+      expect(_stack(session), isNot(contains(copy.value)));
+      expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
+      session.undo();
+      expect(_stack(session), containsAll(['y', copy.value]));
+    });
+
+    test('the hand-off stands on a row that stays', () {
+      final session = _session(_withABase());
+      final copy = _pastedLinked(session, 'y');
+      _select(session, [copy.value]);
+
+      rowsOf(session).deleteSelectedLayers();
+
+      expect(_stack(session), contains(session.activeLayerId?.value));
+    });
+  });
 
   testWidgets('declining leaves every row where it was', (tester) async {
     final session = _session(_withABase());

@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -23,7 +24,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/text/model_vocabulary.dart' show partsOf;
+import 'package:anicel/src/ui/text/model_vocabulary.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/import_span.dart';
@@ -457,10 +458,12 @@ void main() {
     expect(letGo, isEmpty, reason: 'no project is made for it');
     final notice = await openImportWarnings(tester);
     final name = here.repository.requireProject().shownNameOfMedia(path);
-    final (:about, :says) = partsOf(
-      AppText.strings.imUnreadable(name),
-      about: name,
-    );
+    // H72: and why — there is no file where it was (the road a photo of
+    // the warning is told apart by).
+    final (:about, :says) = ImportWarning.fileUnreadable(
+      name,
+      'no file at its path',
+    ).partsFor(AppText.language);
     for (final words in [about!, '$says (1)']) {
       expect(
         find.descendant(of: notice, matching: find.text(words)),

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -62,6 +63,7 @@ import '../../helpers/timeline_zoom.dart';
 /// the axis, they were laid out and painted again at every screen grown —
 /// the sheet and the ruler about 70% of such a frame (main PC, profile).
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Layer drawing(String id) => Layer(
     id: LayerId(id),
     name: id,

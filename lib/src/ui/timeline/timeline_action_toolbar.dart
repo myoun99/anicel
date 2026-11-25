@@ -332,8 +332,10 @@ class _StaticCommandGroup extends StatelessWidget {
   final WidgetBuilder builder;
 
   /// Whether what [builder] makes lays its own zones
-  /// ([CommandGroupZone]) — the frame pill's, round its groups — rather
-  /// than baking whole here.
+  /// ([CommandGroupZone]) — the frame pill's, round its groups, or a pill
+  /// baked whole on its sheet ([CommandPill.bakedWhole]) — rather than
+  /// baking whole here. ⚠️A pill always lays its own: a zone here round one
+  /// stands round its sheet's live layers and never bakes.
   final bool zoned;
 
   @override
@@ -587,7 +589,8 @@ class TimelineActionToolbar extends StatelessWidget {
       AppText.settings.value.programLanguage,
       session.layerVerbs.canDeleteActiveLayer,
     ),
-    builder: (context) => CommandPill(
+    zoned: true,
+    builder: (context) => CommandPill.bakedWhole(
       key: const ValueKey<String>('timeline-toolbar-layer-group'),
       head: PillNameCell(
         keyValue: 'timeline-layer-menu-button',
@@ -1266,7 +1269,8 @@ class TimelineActionToolbar extends StatelessWidget {
   Widget _fxPill() => _StaticCommandGroup(
     news: _news,
     gates: () => AppText.settings.value.programLanguage,
-    builder: (context) => CommandPill(
+    zoned: true,
+    builder: (context) => CommandPill.bakedWhole(
       head: PillNameCell(
         keyValue: 'timeline-effects-button',
         // T15 (유저 2026-08-13): 「fx버튼, 지금 아이콘인데 다른거랑 통일해서
@@ -1325,6 +1329,7 @@ class TimelineActionToolbar extends StatelessWidget {
               AppText.settings.value.programLanguage,
               session.cutPlacement.canCreateCut,
             ),
+            zoned: true,
             builder: (context) => CutCommandGroup(session: session),
           ),
         ),

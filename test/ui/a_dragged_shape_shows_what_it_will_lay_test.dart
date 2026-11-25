@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/device_viewport.dart';
 import '../helpers/surface_rgba_in_place.dart';
+import '../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-69-Q4ⓒ (유저 2026-10-08): 「윤곽선은 손을 따라오고, 실제 결과는 따라
 /// 그린다」 — while the shape tool's 「일반」 line or its fill is dragged, its
@@ -79,6 +80,7 @@ void main() {
     // The active row's opacity, as the editor hands it to the panel.
     final opacity = ValueNotifier(1.0);
     addTearDown(opacity.dispose);
+    theTreeGoesFirst(tester);
     final sink = BrushEditCacheInvalidationSink();
     final selection = CanvasSelectionCommands();
     final viewport = seedFromRender(tester, CanvasViewport());

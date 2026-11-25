@@ -792,11 +792,8 @@ final class ClipImportDoor {
     item.bake.frameId,
   );
 
-  ImportWarning _unreadable(ClipCelBake bake, String detail) => ImportWarning(
-    'celUnreadable',
-    '{file}: the picture could not be read — {detail}',
-    {'file': bake.label, 'detail': detail},
-  );
+  ImportWarning _unreadable(ClipCelBake bake, String detail) =>
+      ImportWarning.celUnreadable(bake.label, detail);
 }
 
 /// One picture decoded on a worker of its own — its cel, null for a

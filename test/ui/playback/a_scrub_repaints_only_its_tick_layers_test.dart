@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +34,7 @@ import '../../helpers/repaint_strays.dart';
 /// waiting to repaint that is not a tick's ([tickBoundariesUnder] — a
 /// panel's host is not one) or inside one.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   // Short cuts: a move of the drag crosses into the next.
   const cuts = 12;
   const frames = 8;

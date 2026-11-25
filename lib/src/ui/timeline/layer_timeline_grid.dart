@@ -148,11 +148,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// token subscribe, and the grid itself never rebuilds per pixel (the
   /// body is a real scrollable; pixels are free there).
   ///
-  /// The host's when it keeps one ([LayerTimelineGrid.frameAxisOffset]).
-  /// ⚠️Read ONCE: the workspace's lives as long as the workspace, and the
-  /// follower below holds whichever this resolved to.
-  late final ValueNotifier<double> _frameAxisOffset =
-      widget.frameAxisOffset ?? _ownedFrameAxisOffset;
+  /// The host's when it keeps one ([LayerTimelineGrid.frameAxisOffset]) —
+  /// the place's the grid shows now, which the follower below holds
+  /// ([TimelineFrameAxisFollower.standOn]).
+  ValueNotifier<double> get _frameAxisOffset => _frameAxis.frameAxisOffset;
 
   /// The fallback frame-axis offset for hosts that keep none of their own.
   final ValueNotifier<double> _ownedFrameAxisOffset = ValueNotifier<double>(0);
@@ -282,11 +281,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   double _rowViewportExtent = 0;
 
   /// The host's record of the layer axis ([LayerTimelineGrid.layerAxisOffset])
-  /// — read ONCE, as the frame axis's is.
-  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
-
-  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
-  late final VoidCallback _letGoOfKeptRows;
+  /// followed — the place's the grid shows now, as the frame axis's is.
+  late final KeptAxisFollow _keptRows;
 
   /// The frame axis following its controller (UI-R9 #11/#12a): the
   /// activity watch for the lazy endless SHRINK (never rescale the extent
@@ -294,7 +290,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// same one the sheet and the storyboard hold.
   late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
     controller: _horizontalScrollController,
-    frameAxisOffset: _frameAxisOffset,
+    frameAxisOffset: widget.frameAxisOffset ?? _ownedFrameAxisOffset,
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
     baseFrameCount: () => _visibleFrameCount,
@@ -343,19 +339,19 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // scroll, over the position the host had kept. Born at the kept offset,
     // the re-read reads back what was kept and records nothing.
     _horizontalScrollController = TwoAxisScrollController(
-      bornAt: _frameAxisOffset,
+      bornAt: widget.frameAxisOffset ?? _ownedFrameAxisOffset,
     );
     // The rows too, where the project left them (F-267) — and the row
     // window is cut there from the first build, which runs before the
     // scrollable it windows has a position to read.
-    final keptRows = _keptLayerAxis?.value ?? 0;
+    final keptRows = widget.layerAxisOffset?.value ?? 0;
     _verticalScrollController = TwoAxisScrollController(
-      bornAt: _keptLayerAxis,
+      bornAt: widget.layerAxisOffset,
     );
     _scroll.standAt(keptRows);
-    _letGoOfKeptRows = followKeptAxis(
+    _keptRows = KeptAxisFollow(
       _verticalScrollController,
-      _keptLayerAxis,
+      widget.layerAxisOffset,
       isMounted: () => mounted,
     );
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
@@ -417,14 +413,27 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       widget.hooks.frameCursor,
       _handlePlaybackPage,
     );
+    // 🗣️H78 (유저 2026-11-24 「내부컷도 마찬가지」): another cut's axes are
+    // another place — the grid stands where that cut was left, keeping its
+    // elements (I-57), and the zoom the cut comes with is no zoom step.
+    // ↩️The grid was keyed by its cut: every row was built again on each
+    // switch, which I-57 had taken away.
+    _frameAxis.standOn(widget.frameAxisOffset ?? _ownedFrameAxisOffset);
+    _keptRows.standOn(widget.layerAxisOffset);
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise the leading-edge frame anchors — unless a
     // notch or a pinch held its own point.
     applyZoomAnchoredScroll(
       _horizontalScrollController,
-      oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
-      newPixelsPerFrame: widget.metrics.frameCellWidth,
+      pixelsPerFrame: (
+        from: oldWidget.metrics.frameCellWidth,
+        to: widget.metrics.frameCellWidth,
+      ),
       anchorFrame: widget.hooks.frameCursor.value,
+      anotherPlace: !identical(
+        widget.frameAxisOffset,
+        oldWidget.frameAxisOffset,
+      ),
     );
   }
 
@@ -436,7 +445,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     _horizontalScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
-    _letGoOfKeptRows();
+    _keptRows.letGo();
     _verticalScrollController
       ..removeListener(_scroll.handleVerticalScroll)
       ..dispose();

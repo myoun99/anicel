@@ -85,15 +85,21 @@ double _stretched(double frames, double pixelsPerFrame) {
 /// The point a notch or a pinch held ([TwoAxisScrollController.zoomHold])
 /// is taken here whether or not this is its step: it anchors the step it
 /// asked for and no later one.
+///
+/// 🗣️H78: nor when the panel was handed [anotherPlace]'s axis — a cut or a
+/// timeline opened, standing where it was left at the zoom it was left at:
+/// the zoom it comes with is no step.
 void applyZoomAnchoredScroll(
   TwoAxisScrollController controller, {
-  required double oldPixelsPerFrame,
-  required double newPixelsPerFrame,
+  required ({double from, double to}) pixelsPerFrame,
   int? anchorFrame,
+  bool anotherPlace = false,
 }) {
+  final (from: oldPixelsPerFrame, to: newPixelsPerFrame) = pixelsPerFrame;
   final hold = controller.zoomHold;
   controller.zoomHold = null;
-  if (oldPixelsPerFrame == newPixelsPerFrame ||
+  if (anotherPlace ||
+      oldPixelsPerFrame == newPixelsPerFrame ||
       !controller.hasClients ||
       !scrollableIsShown(controller.position)) {
     return;

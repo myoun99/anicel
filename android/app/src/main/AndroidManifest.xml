@@ -39,13 +39,22 @@
              ⚠️singleTask also closes what stands above Anicel in its task -
              a system picker or settings screen it opened - when Anicel is
              opened again from its icon (from Recents, it stays). -->
+        <!-- configChanges names EVERY input device change - keyboard,
+             keyboardHidden, navigation, touchscreen
+             (a-keyboard-waking-restarts-the-app-on-the-galaxy-tab, H70,
+             유저 2026-11-24: 「갤탭 키보드 절전상태?였다가 재인식되면 앱
+             튕기고 재기동됨」). A change the list does not name tears the
+             activity down and builds it again, and the Flutter engine with
+             it: a Bluetooth keyboard coming back from sleep changes its
+             navigation (its arrow keys) with its keyboard, and Flutter's
+             template names only the keyboard's two. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:configChanges="orientation|keyboardHidden|keyboard|navigation|touchscreen|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
             <!-- Specifies an Android theme to apply to this Activity as soon as

@@ -152,6 +152,20 @@ final class PicturesUpTogether {
   /// The frames finished, each waiting for the rest.
   final List<Completer<void>> _finished = [];
 
+  /// What waits for every frame being drawn to be up ([beingDrawn]).
+  Completer<void>? _allUp;
+
+  /// The frames of the canvas's pictures being drawn now, as one: ends
+  /// once every one of them has gone up, or failed — null where none is
+  /// being drawn. What a stroke's next step waits for
+  /// (`_BrushEditOverlay.stepPendingOverlayDabs`).
+  Future<void>? get beingDrawn {
+    if (_drawing == 0) {
+      return null;
+    }
+    return (_allUp ??= Completer<void>()).future;
+  }
+
   /// [done] — a frame of one of the canvas's pictures, finishing on the
   /// GPU — as the frame goes up ([ScreenTexture.present]).
   Future<void> joined(Future<void> done) {
@@ -182,6 +196,12 @@ final class PicturesUpTogether {
     _drawing -= finished.length;
     for (final up in finished) {
       up.complete();
+    }
+    // After the frames: each is up before what waited for them all goes.
+    if (_drawing == 0) {
+      final allUp = _allUp;
+      _allUp = null;
+      allUp?.complete();
     }
   }
 }

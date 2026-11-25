@@ -13,6 +13,9 @@ import '../helpers/tiles_on_the_engine.dart';
 // A cel, by the name a painter gives one.
 const _cel = (1, 1);
 
+/// The box a landing tells ([landedOn]'s `telling`), no scan's.
+const _said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
+
 /// A landing that lays, over each tile asked, a tile of [add] more than the
 /// byte under it — on [on]'s ledger, asked at each making: the one of the
 /// engine that stands then — and keeps what it was asked to make again.
@@ -102,13 +105,14 @@ void main() {
       'said of its ink', () {
     final adds = _Adds(2, () => next);
     final under = tileOf(7);
-    final [first, second] = landedOn(ledger, [
-      under,
-      under,
-    ], 9, again: adds);
+    final [first, second] = landedOn(
+      ledger,
+      [under, under],
+      9,
+      again: adds,
+      telling: (left: 1, top: 2, right: 3, bottom: 4),
+    );
     expect(second.isOnlyOnEngine, isTrue, reason: '⛔premise: no copy here');
-    const said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
-    second.rememberInkBounds(said);
 
     engine.debugLose();
 
@@ -118,7 +122,7 @@ void main() {
     expect((column, row), (1, 0));
     expect(over, same(under));
     expect(second.hasInk, isTrue);
-    expect(second.inkBounds, said);
+    expect(second.inkBounds, _said);
     expect(first.pixels, everyElement(9));
     expect(adds.asked, hasLength(2));
     expect(adds.asked.last.single.column, 0);
@@ -180,16 +184,18 @@ void main() {
 
   test('a landing that leaves a tile as it was, made again, gives the bytes '
       'of the tile under it', () {
-    final tile = landedOn(ledger, [
-      tileOf(7),
-    ], 7, again: _LeavesAsItWas()).single;
-    const said = (left: 1, top: 2, rightExclusive: 3, bottomExclusive: 4);
-    tile.rememberInkBounds(said);
+    final tile = landedOn(
+      ledger,
+      [tileOf(7)],
+      7,
+      again: _LeavesAsItWas(),
+      telling: (left: 1, top: 2, right: 3, bottom: 4),
+    ).single;
 
     engine.debugLose();
 
     expect(tile.pixels, everyElement(7));
-    expect(tile.inkBounds, said, reason: 'made again: nothing is forgotten');
+    expect(tile.inkBounds, _said, reason: 'made again: nothing is forgotten');
   });
 
   test('a tile whose copy came keeps how it was made no longer, and is not '

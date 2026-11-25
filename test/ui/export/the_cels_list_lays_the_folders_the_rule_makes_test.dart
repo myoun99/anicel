@@ -33,6 +33,7 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-153 (유저 2026-11-04): 「순서는 중첩구조 그대로. 프로젝트-컷-레이어-그림
 /// 이렇게」 · 「레이어폴더 공간에서 폴더 바꾸면서 다른 레이어 보는구조로」 —
@@ -110,7 +111,7 @@ void main() {
     // with both folder columns beside the list.
     await tester.binding.setSurfaceSize(const Size(1700, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

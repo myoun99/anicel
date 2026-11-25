@@ -29,13 +29,25 @@ use super::source_scan::{Verb, hands_out_bytes, verbs};
 /// The verbs handed the engine that stay on their caller's thread, each
 /// with why: none takes the device in hand, and none hands the engine's
 /// thread anything it waits for.
-const ON_THEIR_CALLERS: [(&str, &str); 15] = [
+const ON_THEIR_CALLERS: [(&str, &str); 21] = [
     ("gpu_engine_adapter_name", "the adapter's own word of itself: no device is asked"),
     (
         "gpu_engine_video_memory",
         "asks the OS of the adapter's memory (DXGI) and the adapter of its kind, not the device",
     ),
-    ("gpu_engine_gone", "reads the engine's own word of its device (`Refusals`)"),
+    (
+        "gpu_engine_gone",
+        "reads the engine's own word of its device (`Refusals`), and asks whether its driver \
+         took it of D3D12's own device, by a hold of its own that waits on no GPU \
+         (`platform::asking_the_driver_of`): wgpu's device is in no hand here",
+    ),
+    (
+        "gpu_engine_late",
+        "the engine's own count of its waits past their limit, under a lock of its own \
+         (`Refusals::late`): no device is asked, and the app reads it on the UI's thread as \
+         it hears a refusal — behind a body that waits for a GPU long at one job, a turn of \
+         the engine's thread would stand that wait out",
+    ),
     ("gpu_engine_noted", "takes the engine's own word of its device (`Refusals`)"),
     (
         "gpu_engine_done_then",
@@ -43,6 +55,18 @@ const ON_THEIR_CALLERS: [(&str, &str); 15] = [
          caller would stay for what it asked not to stay for",
     ),
     ("gpu_engine_done_failure", "takes the engine's own word of a wait (`Ended`)"),
+    (
+        "gpu_engine_done_waited",
+        "takes the engine's own word of how a wait went (`WaitsWent`): no device is asked, \n         and a screen takes it on the UI's thread as it hears its frame done",
+    ),
+    (
+        "gpu_engine_compiles",
+        "the engine's own counts of its compiles (`Compiles`) and the hal device's of the \n         pipelines its folder answered — a word the compile cache keeps, under no lock the \n         device's work holds (`platform::pipelines_found`): the frame statistics read it on \n         the UI's thread, which behind a compile would stand",
+    ),
+    (
+        "gpu_engine_pictures_bytes",
+        "the engine's own count of the pictures' pages made (`Pictures::bytes`): no device is \n         asked, and the frame statistics read it on the UI's thread",
+    ),
     ("gpu_engine_apart_hold", "the engine's own count (`Apart`)"),
     ("gpu_engine_apart_let", "the engine's own count (`Apart`)"),
     ("gpu_engine_apart_held", "the engine's own count (`Apart`)"),
@@ -70,6 +94,14 @@ const ON_THEIR_CALLERS: [(&str, &str); 15] = [
          statistics throw it on the UI's thread, where a frame is built",
     ),
     (
+        "gpu_engine_clocked",
+        "the engine's own word of whether its device stamps a submit (`Clock::of`, at the          engine's making): no device is asked",
+    ),
+    (
+        "gpu_engine_submits_behind",
+        "the engine's own ledger of its submits, under a lock of its own (`Submits`): no device          is asked, and the frame statistics read it on the UI's thread as each frame is timed",
+    ),
+    (
         "gpu_engine_took",
         "the engine's own ledger of what its places took, under a lock of its own (`Took`): \
          no device is asked, and a screen asks it on the UI's thread as each frame goes up",
@@ -87,7 +119,19 @@ const ON_THEIR_CALLERS: [(&str, &str); 15] = [
 /// hand on the device — each named, under why: its body was read for it
 /// (2026-11-14), and a verb that comes after is read for it before it is
 /// written here.
-const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
+const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 13] = [
+    (
+        "the table of what Flutter's GPU has still to read of a screen's texture, under a \
+         lock of its own that nothing holds past the table: Flutter's raster thread and \
+         Impeller's fence waiter tell it, a screen asks it on the UI's thread \
+         (`screen_reads`)",
+        &[
+            "gpu_engine_screen_read",
+            "gpu_engine_screen_reads_keep",
+            "gpu_engine_screen_reads_forget",
+            "gpu_engine_screen_unread",
+        ],
+    ),
     (
         "opens an engine, on a thread made for it (`opened`)",
         &["gpu_engine_open", "gpu_engine_open_sole", "gpu_engine_open_first"],
@@ -138,6 +182,7 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_cel_passed_run_count",
             "gpu_engine_cel_passed_runs",
             "gpu_engine_finished_changes",
+            "gpu_engine_finished_inks",
             "gpu_engine_held_bytes_of",
             "gpu_engine_plan_steps",
             "gpu_engine_plan_weighed",
@@ -152,12 +197,12 @@ const NO_HAND_ON_THE_DEVICE: [(&str, &[&str]); 12] = [
             "gpu_engine_run_contours_read",
             "gpu_engine_pool_bytes",
             "gpu_engine_pool_ahead_bytes",
+            "gpu_engine_pool_folded_bytes",
             "gpu_engine_grid_kept_bytes",
             "gpu_engine_grid_most_side",
-            "gpu_engine_window_target",
-            "gpu_engine_window_said",
             "gpu_engine_surface_texture",
             "gpu_engine_surface_handle",
+            "gpu_engine_surface_laid_said",
         ],
     ),
     (
@@ -321,27 +366,6 @@ fn every_verb_does_what_it_does_of_the_device_on_the_engines_thread() {
         assert_eq!(handed_the_engine(verb), handed, "{name} is on the other ledger's side ({why})");
         assert!(!through_the_door(verb), "{name} goes through a door — off the ledger with it ({why})");
     }
-}
-
-/// 🚨A frame of every screen shows its window on the thread that builds the
-/// app's frames (Dart's `GpuWindow.present`), so the verb hands its body
-/// over and waits for no turn of the engine's thread
-/// (`platform/android.rs`, `Window`, has what the wait cost till
-/// 2026-11-21). Android's sources compile on no machine that runs these
-/// tests, so no test of behaviour reads them: this one reads the verb. The
-/// texture a window is drawn on is named through no door at all, which the
-/// ledger holds it to ([`NO_HAND_ON_THE_DEVICE`]).
-#[test]
-fn a_window_is_shown_with_no_wait_for_the_engines_thread() {
-    const WAITED_FOR: [&str; 2] = [".on_thread(", ".run_lent("];
-    let verbs = verbs();
-    let present = verbs.get("gpu_engine_window_present").expect("LIVENESS — the scan finds Android's verbs");
-    let waits: Vec<_> = WAITED_FOR.iter().filter(|door| present.body.contains(**door)).collect();
-    assert!(
-        waits.is_empty(),
-        "gpu_engine_window_present waits for the engine's thread ({waits:?}) on the thread that builds the \
-         app's frames — hand its body over (`Engine::posted`)"
-    );
 }
 
 #[test]

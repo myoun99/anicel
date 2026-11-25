@@ -288,7 +288,7 @@ fn filled() -> *mut Surface {
     let surface = [false, true]
         .into_iter()
         // SAFETY: `engine` is live.
-        .map(|bgra| unsafe { gpu_engine_surface_new(engine, WIDTH + 3, HEIGHT + 3, bgra) })
+        .map(|bgra| unsafe { gpu_engine_surface_new(engine, WIDTH + 3, HEIGHT + 3, bgra, true) })
         .find(|surface| !surface.is_null())
         .unwrap_or_else(|| panic!("{}", last_error()));
     // SAFETY: all are live, made on `engine`.

@@ -31,10 +31,12 @@ import '../canvas/canvas_layer_stack_view.dart'
         LiveRows,
         LiveSurfaceTokens,
         StackedFrame,
+        pluginStepsOf,
         waitsForItsPlugins;
 import '../canvas/picture_up_view.dart';
 import '../canvas/shown_cels.dart' show ShownCels;
 import '../canvas/viewport_canvas_transform.dart' show renderSnappedViewport;
+import '../debug/picture_writes.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../engine_screen_texture.dart';
 import 'camera_shot.dart' show canvasCutOnScreen;
@@ -43,6 +45,7 @@ import 'frame_pictures.dart';
 import 'frame_wait_mark.dart';
 import '../widgets/still_raster.dart';
 import 'stacked_frame_picture.dart';
+import '../listenable_rebind.dart';
 
 part 'live_cel_screen.dart';
 
@@ -235,11 +238,15 @@ final class _DrawnAsItStands {
 }
 
 /// How a frame screen's box lays its frame on its texture: the view through
-/// `viewport` at `devicePixelRatio`, its corner on the texel `corner`.
+/// `viewport` at `devicePixelRatio`, its corner on the texel `corner`,
+/// and the texels what it holds lies on with the margin a pan spares,
+/// [left, top, right, bottom) — what a frame through another camera draws
+/// alone (`EngineStackScreen.show`'s `holding`).
 typedef _OnTheTexture = ({
   CanvasViewport viewport,
   double devicePixelRatio,
   (int, int) corner,
+  (int, int, int, int) holding,
 });
 
 /// What a frame screen's box ([_RenderFrameScreen]) asks, in its paint, of
@@ -260,7 +267,7 @@ abstract interface class _FrameFeed {
   /// onto [target] of [size] texels, laid [on] it.
   void _show(
     StackedFrame? frame,
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size,
     _OnTheTexture on,
   );
@@ -695,6 +702,8 @@ class _FramePictureViewState extends State<FramePictureView>
   void _look() {
     final key = _pictures.keyOfStack(widget.nodes, widget.picture);
     if (key == _showing && _shown != null) {
+      // Shown for the frame handed now, which may be another of its key's.
+      _shown!.tellAs(pluginStepsOf(widget.nodes));
       return;
     }
     // ⛔Not peeked under this view's own key ([_keptUnder]) where a landing
@@ -704,6 +713,7 @@ class _FramePictureViewState extends State<FramePictureView>
     final there = _store.peek(key);
     if (there != null) {
       _take(key, there);
+      there.tellAs(pluginStepsOf(widget.nodes));
       return;
     }
     if (key == _showing) {
@@ -1223,13 +1233,13 @@ class _FramePictureViewState extends State<FramePictureView>
   @override
   void _show(
     StackedFrame? frame,
-    GpuTarget target,
+    GpuSurface target,
     (int, int) size,
     _OnTheTexture on,
   ) {
     _cutOnScreen = _showing?.cutId ?? _cutOnScreen;
     _pictures.putOnScreen();
-    final (:viewport, :devicePixelRatio, :corner) = on;
+    final (:viewport, :devicePixelRatio, :corner, :holding) = on;
     final shown = _drawnPicture;
     if (shown != null) {
       shown.show(
@@ -1238,6 +1248,7 @@ class _FramePictureViewState extends State<FramePictureView>
         viewport: viewport,
         devicePixelRatio: devicePixelRatio,
         corner: corner,
+        holding: holding,
       );
       _standingOn?.free();
       _standingOn = null;
@@ -1251,6 +1262,7 @@ class _FramePictureViewState extends State<FramePictureView>
       viewport: viewport,
       devicePixelRatio: devicePixelRatio,
       corner: corner,
+      holding: holding,
     );
   }
 
@@ -1358,6 +1370,7 @@ class _FramePictureViewState extends State<FramePictureView>
     final (:composite, :letters) = _store.toolsOpen!;
     final screen = _standingOn ??= EngineStackScreen(composite, letters);
     if (!identical(_composedOn, frame) || _standingMoved) {
+      PictureWrites.wrote(PictureWrite.whole);
       // Laid whole for the canvas this view is: what it stood on before is
       // let go of (🔬a blur value dragged on S5_BA cut 352 held 3.6 GB of
       // values passed over, 2026-11-20).
@@ -1875,8 +1888,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
       super.markNeedsPaint();
     }
     if (attached) {
-      _repaint?.removeListener(markNeedsPaint);
-      screen.repaint.addListener(markNeedsPaint);
+      rebindListener(_repaint, screen.repaint, markNeedsPaint);
     }
     _repaint = screen.repaint;
   }
@@ -1971,6 +1983,24 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     return (-window.left.toInt(), -window.top.toInt());
   }
 
+  /// The texels what this box holds lies on with its margin to spare on
+  /// every side ([_holds]), its corner on the texel [corner] —
+  /// [left, top, right, bottom), past the texture where it reaches past it
+  /// (the screen takes what lies within, `EngineStackScreen.show`): what a
+  /// frame through another camera draws, the rest of its texture drawn by
+  /// the next through this one, and what the frame drawn last must hold for
+  /// a pan it serves ([_servedByTheFrameDrawnLast]).
+  (int, int, int, int) _holdingOn((int, int) corner) {
+    final (:rect, :margin, wanted: _) = _holds;
+    final (cornerX, cornerY) = corner;
+    return (
+      (rect.left - margin).floor() + cornerX,
+      (rect.top - margin).floor() + cornerY,
+      (rect.right + margin).ceil() + cornerX,
+      (rect.bottom + margin).ceil() + cornerY,
+    );
+  }
+
   /// 🚨A PAN THE FRAME DRAWN LAST STILL SERVES DRAWS NOTHING: the frame up
   /// is moved with the view ([_standingFrom]) and the engine is asked for
   /// no other — 「거기서 더 가볍게」 (유저 2026-11-15), the frame grid's law
@@ -1978,8 +2008,10 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   /// 않고」). Whether the frame drawn last — up, or still on the GPU
   /// ([ScreenTexture.drawnLastFor]) — serves the view as it stands: drawn
   /// through this view a whole number of device pixels of pan away, and
-  /// what the box holds still within it ([_holds]), its margin to spare
-  /// on every side.
+  /// what the box holds still within what its target holds of it
+  /// ([EngineStackScreen.heldIn] — all of the texture, but after a frame
+  /// through another camera, which draws what the box holds alone:
+  /// [_holdingOn]), its margin to spare on every side.
   /// ↩️Every step of a pan asked the engine for a frame, a body on its
   /// thread behind whatever else it had been handed.
   ///
@@ -1991,7 +2023,8 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
   bool get _servedByTheFrameDrawnLast {
     final texture = _shownThrough.texture;
     final drawnFor = texture?.drawnLastFor;
-    if (texture == null || drawnFor is! _DrawnFor) {
+    final held = EngineStackScreen.heldIn(texture?.drawnLastKept);
+    if (texture == null || drawnFor is! _DrawnFor || held == null) {
       return false;
     }
     final (:viewport, corner: (cornerX, cornerY)) = drawnFor;
@@ -2011,10 +2044,11 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
     }
     final (:rect, :margin, wanted: _) = _holds;
     final (left, top) = (movedX - cornerX, movedY - cornerY);
-    return left <= rect.left - margin &&
-        top <= rect.top - margin &&
-        left + texture.width >= rect.right + margin &&
-        top + texture.height >= rect.bottom + margin;
+    final (heldLeft, heldTop, heldRight, heldBottom) = held;
+    return left + heldLeft <= rect.left - margin &&
+        top + heldTop <= rect.top - margin &&
+        left + heldRight >= rect.right + margin &&
+        top + heldBottom >= rect.bottom + margin;
   }
 
   /// What a frame drawn now, the view's corner on the texel [corner], is
@@ -2060,6 +2094,7 @@ class _RenderFrameScreen extends RenderBox implements StandingPicture {
           viewport: _viewport,
           devicePixelRatio: _devicePixelRatio,
           corner: corner,
+          holding: _holdingOn(corner),
         )),
         drawnFor: _drawnFor(corner),
         place: _placeAt(offset),

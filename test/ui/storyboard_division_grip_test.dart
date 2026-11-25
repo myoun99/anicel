@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,6 +212,7 @@ List<_Door> _doors({required int panel, required int cut}) => [
 ];
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('EVERY panel hangs a leading grip — the two edges of one '
       'boundary name two edits, not one', (tester) async {
     await _openStoryboard(tester);

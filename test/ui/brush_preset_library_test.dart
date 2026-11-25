@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../helpers/brought_at_once.dart';
 import '../helpers/temp_dir.dart';
 import '../services/abr_test_builder.dart';
 
@@ -86,7 +87,7 @@ void main() {
       addTearDown(library.dispose);
 
       expect(
-        await library.importFromFile(),
+        await library.importFromFile(behind: broughtAtOnce),
         'Could not open the file: Bad state: no dialog',
       );
     });
@@ -112,10 +113,13 @@ void main() {
       addTearDown(garbled.dispose);
 
       expect(
-        await throwing.importFromFile(),
+        await throwing.importFromFile(behind: broughtAtOnce),
         ko.brImportPickFailed('Bad state: no dialog'),
       );
-      expect(await garbled.importFromFile(), ko.brImportUnreadable);
+      expect(
+        await garbled.importFromFile(behind: broughtAtOnce),
+        ko.brImportUnreadable,
+      );
     });
 
     test('🎯each reader\'s refusal is said in the program language — the '
@@ -134,7 +138,7 @@ void main() {
               (name: name, bytes: Uint8List.fromList(bytes)),
         );
         addTearDown(library.dispose);
-        return library.importFromFile();
+        return library.importFromFile(behind: broughtAtOnce);
       }
 
       expect(
@@ -192,7 +196,7 @@ void main() {
       addTearDown(library.dispose);
 
       expect(
-        await library.importFromFile(),
+        await library.importFromFile(behind: broughtAtOnce),
         ko.brImportWarnings(ko.brImported(1, 'pack.abr'), 1),
       );
     });
@@ -204,7 +208,7 @@ void main() {
       );
       addTearDown(library.dispose);
 
-      expect(await library.importFromFile(), isNull);
+      expect(await library.importFromFile(behind: broughtAtOnce), isNull);
     });
 
     test('a file outside the brush kinds is refused BY NAME, before any '
@@ -216,7 +220,7 @@ void main() {
       );
       addTearDown(library.dispose);
 
-      final message = await library.importFromFile();
+      final message = await library.importFromFile(behind: broughtAtOnce);
       expect(
         message,
         AppText.strings.unsupportedFileMessage(
@@ -864,6 +868,46 @@ void _exportRoundTripTests() {
     );
   }
 
+  // 🗣️H82 (유저 2026-11-24): 「갤탭에서 tvp브러시 임포트해봣는데 진행창이
+  // 안뜨고 갑자기 가져왔다고만 뜸. … 뭐든 임포트면 통일해서 뜨게」.
+  test('🚨a brush file picked is read into the library behind what the door '
+      'stands it behind — the one wait window — and nothing of it before',
+      () async {
+    final service = BrushPresetFileService(
+      filePath: '${tempDirectory.path}/library.json',
+    );
+    final source = libraryOf(service: service);
+    addTearDown(source.dispose);
+    source.saveCurrent(BrushSettings(size: 7, hardness: 0.3));
+    final path = '${tempDirectory.path}/one.anibrush';
+    await source.exportPresets(
+      [source.presets.single],
+      hand: (_, write) async => await write(path) ? path : null,
+    );
+    final receiver = libraryOf(
+      service: BrushPresetFileService(
+        filePath: '${tempDirectory.path}/other.json',
+      ),
+      picked: (name: 'one.anibrush', bytes: await File(path).readAsBytes()),
+    );
+    addTearDown(receiver.dispose);
+    await receiver.load();
+    final before = receiver.presets.length;
+    int? when;
+
+    Future<T> behind<T>(Future<T> Function() bring) async {
+      when = receiver.presets.length;
+      return bring();
+    }
+
+    expect(
+      await receiver.importFromFile(behind: behind),
+      contains('Imported'),
+    );
+    expect(when, before, reason: 'none of it in before the window stood');
+    expect(receiver.presets.length, before + 1, reason: 'all of it behind');
+  });
+
   test('🚨a brush exported and imported back comes with what the hand had '
       'set on it AS ITS OWN VALUES (I-148-Q1) — reset goes back to them',
       () async {
@@ -901,7 +945,10 @@ void _exportRoundTripTests() {
     addTearDown(receiver.dispose);
     await receiver.load();
 
-    expect(await receiver.importFromFile(), contains('Imported'));
+    expect(
+      await receiver.importFromFile(behind: broughtAtOnce),
+      contains('Imported'),
+    );
     final arrived = receiver.presets.firstWhere(
       (preset) => preset.name == saved.name,
     );
@@ -943,7 +990,10 @@ void _exportRoundTripTests() {
     addTearDown(receiver.dispose);
     await receiver.load();
 
-    expect(await receiver.importFromFile(), contains('Imported'));
+    expect(
+      await receiver.importFromFile(behind: broughtAtOnce),
+      contains('Imported'),
+    );
     expect(
       receiver.presets.firstWhere((preset) => preset.name == 'Real')
           .settings
@@ -987,7 +1037,10 @@ void _exportRoundTripTests() {
     );
     final before = receiver.presets.length;
 
-    expect(await receiver.importFromFile(), contains('Imported'));
+    expect(
+      await receiver.importFromFile(behind: broughtAtOnce),
+      contains('Imported'),
+    );
 
     expect(receiver.presets, hasLength(before + 1));
     expect(
@@ -1018,7 +1071,7 @@ void _exportRoundTripTests() {
     await receiver.load();
 
     final before = receiver.presets.length;
-    final message = await receiver.importFromFile();
+    final message = await receiver.importFromFile(behind: broughtAtOnce);
     expect(message, isNotNull);
     expect(message, contains('Anicel brush'));
     expect(receiver.presets.length, before, reason: 'nothing was merged');
@@ -1188,7 +1241,10 @@ void _exportRoundTripTests() {
         picked: loose,
       );
       addTearDown(receiver.dispose);
-      expect(await receiver.importFromFile(), ko.brImported(2, loose.name));
+      expect(
+        await receiver.importFromFile(behind: broughtAtOnce),
+        ko.brImported(2, loose.name),
+      );
     });
   });
 }

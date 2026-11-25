@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
@@ -1868,6 +1870,7 @@ void main() {
                 required LayerId layerId,
                 required int anchorIndex,
                 required int headIndex,
+                LayerId? headLayerId,
               }) {
                 stripDrags.add((layerId, anchorIndex, headIndex));
               },
@@ -1917,6 +1920,101 @@ void main() {
       expect(stripDrags, isEmpty);
       expect(cutDrags, isNotEmpty);
       expect(cutDrags.first.$1, 28);
+    });
+
+    // 🗣️H75 (유저 2026-11-24): 「콘티레이어도 동일하게 싱크어태치랑 블록
+    // 그림교체라던가 가능하게. 제발 이런거 별개규칙 만들지않고 통일」 — the
+    // panels name the row a hand goes to, as the timeline's rows do: the
+    // move's trades and the band over the rows are the session's own.
+    // ↩️None was named (「a cut has exactly one conte layer」, 07-27).
+    testWidgets('🎯the panels name the conte row a hand goes to — a sweep\'s '
+        'head and a move\'s landing, a synced row\'s above the conte '
+        '(H75)', (tester) async {
+      const conte = LayerId('sb-a');
+      const synced = LayerId('sb-a-over');
+      final stripSelection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+      addTearDown(stripSelection.dispose);
+      final heads = <LayerId?>[];
+      final landings = <LayerId?>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut(
+            'cut-a',
+            name: 'Cut A',
+            layers: [
+              _animationLayer('anim-a'),
+              _storyboardLayer(conte.value),
+              _storyboardLayer(synced.value).copyWith(
+                attachedToLayerId: conte,
+                attachedPlacement: AttachedPlacement.above,
+                attachedMode: AttachedMode.synced,
+              ),
+            ],
+          ),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        stripSelect: StoryboardStripSelectCallbacks(
+          selection: stripSelection,
+          onDrag:
+              ({
+                required LayerId layerId,
+                required int anchorIndex,
+                required int headIndex,
+                LayerId? headLayerId,
+              }) {
+                heads.add(headLayerId);
+              },
+          onClear: () {},
+          move: StoryboardRangeMoveCallbacks(
+            onBegin: (_) => true,
+            onUpdate: (_, targetLayerId) => landings.add(targetLayerId),
+            onEnd: () {},
+            onCancel: () {},
+          ),
+        ),
+      );
+
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
+      final conteRow = conteRowRect(tester, 'track-a');
+      final syncedRow = conteRowRect(tester, 'track-a-conte+1');
+      final up = syncedRow.center.dy - conteRow.center.dy;
+      expect(up, lessThan(0), reason: 'fixture: the synced row is above');
+
+      Future<void> dragFrom(double frame, double rise) async {
+        final gesture = await tester.startGesture(
+          Offset(blockA.left + 8 * frame, conteRow.center.dy),
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveBy(const Offset(8 * 4.0, 0));
+        await tester.pump();
+        await gesture.moveBy(Offset(0, rise));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
+
+      await dragFrom(4, up);
+      expect(heads, isNotEmpty);
+      expect(heads.last, synced, reason: 'the sweep ended on the synced row');
+
+      stripSelection.value = const TimelineFrameRangeSelection(
+        layerId: conte,
+        startIndex: 0,
+        endIndexExclusive: 24,
+      );
+      await tester.pump();
+      await dragFrom(4, 0);
+      expect(landings, isNotEmpty);
+      expect(landings.last, conte, reason: 'along its own row, as a row does');
+
+      landings.clear();
+      await dragFrom(4, up);
+      expect(landings, isNotEmpty);
+      expect(landings.last, synced, reason: 'the hand went up to it');
     });
 
     testWidgets('the range selection draws the timeline\'s ONE band across '

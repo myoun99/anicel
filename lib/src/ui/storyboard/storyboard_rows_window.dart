@@ -123,7 +123,7 @@ class _StoryboardRowsWindow {
     }
     final scrolled = position != null && position.hasPixels
         ? position.pixels
-        : _state._keptLayerAxis?.value ?? 0;
+        : _state._keptRows.kept?.value ?? 0;
     return (
       edges: edges,
       scrollOffset: scrolled

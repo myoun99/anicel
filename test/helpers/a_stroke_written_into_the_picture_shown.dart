@@ -528,6 +528,67 @@ void aStrokeIsWrittenIntoThePictureShown({
     await tester.pumpWidget(const SizedBox());
   }, skip: skip);
 
+  // 🚨ONE TOKEN A COORDINATE (관제 2026-11-24, card
+  // the-start-of-every-stroke-stalls-on-the-galaxy-tab ③-2): pen-up hands the
+  // cel the very tile the overlay showed, and the coordinate that shows it
+  // did not move. ↩️The overlay's and the cel's were told apart: the frame
+  // after every lift wrote the stroke's whole box into the picture again.
+  testWidgets('🚨a stroke handed over at pen-up writes nothing into the '
+      'picture again: the coordinate shows the very tile it showed', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = StoreTellingItsWrites();
+    addTearDown(store.dispose);
+    final standing = await standOnIt(
+      tester,
+      store,
+      view: pannedView,
+      lineage: 'a-stroke-handed-over',
+    );
+    final (:cels, :overlay, :painter, :run) = (
+      cels: standing.cels,
+      overlay: standing.overlay,
+      painter: standing.painter,
+      run: standing.run,
+    );
+    final shown = stroked(strokeAt);
+    overlay.showResultTiles([PromotedStrokeTile(origin, shown, 1)]);
+    await tester.pump();
+    expect(
+      store.patched,
+      isNotEmpty,
+      reason: '⛔premise: the step is written into the picture',
+    );
+    final written = store.patched.length;
+
+    land(cels, {origin: shown});
+    overlay.takeTileImageAt(origin, revision: 1, landing: shown);
+    overlay.reset();
+    final after = run.pictures.keyOfStack(nodes, frame);
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: pannedView,
+      live: painter(),
+    );
+    await tester.pump();
+    expect(
+      store.peek(after),
+      isNotNull,
+      reason: '⛔premise: the picture answers to the frame\'s next key',
+    );
+    expect(store.laid, isNot(contains(after)), reason: 'not laid anew');
+    expect(
+      store.patched,
+      hasLength(written),
+      reason: 'and nothing written into it again',
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, skip: skip);
+
   // F-525: what the frame's key is given is the frame — a landing that
   // came with a float in hand included. ↩️A float could not be told by
   // where it lands, so such a landing was no move: the frame's next key

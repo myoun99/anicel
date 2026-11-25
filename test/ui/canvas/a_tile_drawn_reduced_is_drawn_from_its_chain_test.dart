@@ -224,7 +224,11 @@ void main() {
     expect(shown, isNot(same(door)));
     expect(carriesChain(shown), isTrue);
     expect(
-      overlay.takeTileImageAt(coord, revision: fillPromotionRevision),
+      overlay.takeTileImageAt(
+        coord,
+        revision: fillPromotionRevision,
+        landing: overlay.shownTiles[coord]!,
+      ),
       same(shown),
       reason: 'the picture the screen showed is the one the tile adopts',
     );

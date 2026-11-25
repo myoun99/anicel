@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -14,6 +15,7 @@ import '../../helpers/app_icon_button_probe.dart';
 /// through the app, where that default lives, not through a bare host whose
 /// constructor default the workspace never used.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   testWidgets('the timesheet, the conte and the envelope each open with '
       'their brush switch off', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));

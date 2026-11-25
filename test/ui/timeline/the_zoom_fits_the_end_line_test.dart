@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,7 @@ import '../../helpers/timeline_zoom.dart';
 /// 🗣️F-472 (유저 2026-10-26): 「엔드라인조차 안보이니까 엔드라인뒤 1코마까지
 /// 추가로 보여주는걸로」 — one koma past the end line stands in it too.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const frames = 120;
   /// A step of the bar: 1% of its 100%, half the zoom a cut opens at (F-491).
   const step = TimelineZoomLimits.referencePixelsPerFrame / 200;

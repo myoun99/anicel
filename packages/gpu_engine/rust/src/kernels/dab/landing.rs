@@ -5,10 +5,12 @@
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode;
+use crate::kernels::composite::spares::out_of;
 use crate::kernels::composite::{Composite, Composited, Plan, Step, TILE, TileAt, TileSet};
 use crate::kernels::mask::Mask;
-use crate::kernels::pool::{Cel, Pool};
+use crate::kernels::pool::{Cel, Pool, gathered_as_they_lie};
 use crate::kernels::shared::ResampleMap;
+use crate::kernels::cel_pixel::ink::InkBox;
 use crate::kernels::write::{Change, Write};
 
 /// A row's opacity at whole, the executor's 16-bit scale.
@@ -21,6 +23,14 @@ pub(crate) struct Laid<'a> {
     pub(crate) mode: u32,
     pub(crate) mask: Option<&'a Mask<'a>>,
 }
+
+/// What a landing made of a tile asked: what it is beside the tile under
+/// it, where it lies — none where it took no slot —, and the box its ink
+/// fills, as the write that compares tells it ([`Write::changed`]). A
+/// landing that does not compare is told no box, as it is told no change
+/// — every tile `Change::Inked` —, and says none: its caller knows it
+/// asked for none (the app's `EngineTileLedger.land`).
+pub(crate) type Landed = (Change, Option<TileAt>, Option<InkBox>);
 
 /// A coordinate asked of a landing: its tile's column and row, and the cel's
 /// tile there, if it has one.
@@ -92,7 +102,7 @@ pub(crate) fn land(
     asked: &[Asked],
     laid: &Laid,
     compared: Option<&Write>,
-) -> Option<Vec<(Change, Option<TileAt>)>> {
+) -> Option<Vec<Landed>> {
     let out = made(engine, composite, pool.pages(), over, asked, laid)?.out;
     put(engine, (pool, cel), &out, asked, compared)
 }
@@ -118,30 +128,37 @@ pub(crate) fn put(
     out: &wgpu::Buffer,
     asked: &[Asked],
     compared: Option<&Write>,
-) -> Option<Vec<(Change, Option<TileAt>)>> {
-    let changes = if let Some(write) = compared {
-        let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
-        write.changed(engine, pool.pages(), out, &under)?
-    } else {
-        vec![Change::Inked; asked.len()]
+) -> Option<Vec<Landed>> {
+    let Some(write) = compared else {
+        return placed(engine, (pool, cel), out, (0..asked.len()).map(|at| (at, Change::Inked)));
     };
-    placed(engine, (pool, cel), out, changes.into_iter().enumerate())
+    let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
+    let written = write.changed(engine, pool.pages(), out, &under)?;
+    let landed = placed(engine, (pool, cel), out, written.changes.into_iter().enumerate())?;
+    Some(landed.into_iter().zip(written.inks).map(|((change, at, _), ink)| (change, at, ink)).collect())
 }
 
 /// A landing finished and yet to be put: its tiles made — tile after tile
-/// in the order they were asked — and what each is beside the tile under
-/// it. What takes a slot of it is its caller's to book
+/// in the order they were asked — what each is beside the tile under it,
+/// and where its ink lies. What takes a slot of it is its caller's to book
 /// (`gpu_engine_finished_land_unwaited`): the pool's books are the
 /// thread's that asks, and the answer comes on another.
 pub struct Finished {
     out: wgpu::Buffer,
     changes: Vec<Change>,
+    inks: Vec<Option<InkBox>>,
 }
 
 impl Finished {
     /// What each tile is, in the order they were asked.
     pub(crate) fn changes(&self) -> &[Change] {
         &self.changes
+    }
+
+    /// The box each tile's ink fills, in the order they were asked — none
+    /// where it holds none ([`crate::kernels::write::Written`]).
+    pub(crate) fn inks(&self) -> &[Option<InkBox>] {
+        &self.inks
     }
 
     /// The tiles made, tile after tile in the order they were asked.
@@ -153,7 +170,7 @@ impl Finished {
     /// makes (`kernels::shared::every_free`).
     #[cfg(test)]
     pub(crate) fn of_none_inked(out: wgpu::Buffer) -> Self {
-        Self { out, changes: Vec::new() }
+        Self { out, changes: Vec::new(), inks: Vec::new() }
     }
 
     /// The tiles that take a slot — the inked —, each by its place among
@@ -187,9 +204,25 @@ pub(crate) fn finished_then(
     };
     let under: Vec<Option<TileAt>> = asked.iter().map(|ask| ask.under).collect();
     let made = out.clone();
-    write.changed_then(engine, pool, &out, &under, move |changes| {
-        then(changes.map(|changes| Finished { out: made, changes }));
+    write.changed_then(engine, pool, &out, &under, move |written| {
+        then(written.map(|written| Finished { out: made, changes: written.changes, inks: written.inks }));
     });
+}
+
+/// The tiles lying at `places` on `pool`'s pages — tiles a landing put
+/// already — side by side in a buffer of their own, as a landing makes
+/// its `out` ([`made`]): what [`finished_then`] asks of them, their copy
+/// submitted. Nothing where none is asked, or one lies folded: no fold is
+/// to hand here, on the engine's thread (`Pool::folds_unwaited` has why),
+/// and a tile a landing put lies as it is till a fold has taken it at a
+/// rest.
+pub(crate) fn put_already(engine: &Engine, pool: &[wgpu::Buffer], places: &[TileAt]) -> Option<wgpu::Buffer> {
+    if places.is_empty() {
+        return fail("no tile to tell of");
+    }
+    let out = out_of(engine, places.len());
+    gathered_as_they_lie(engine, pool, places, &out, |_, _| fail("a tile told of lies folded"))?;
+    Some(out)
 }
 
 /// Puts each of `out`'s tiles that `changes` — every one by its index among
@@ -202,19 +235,19 @@ pub(crate) fn placed(
     (pool, cel): (&mut Pool, Cel),
     out: &wgpu::Buffer,
     changes: impl Iterator<Item = (usize, Change)>,
-) -> Option<Vec<(Change, Option<TileAt>)>> {
+) -> Option<Vec<Landed>> {
     let mut landed = Vec::new();
     let mut writes = Vec::new();
     for (index, change) in changes {
         if change != Change::Inked {
-            landed.push((change, None));
+            landed.push((change, None, None));
             continue;
         }
         let Ok(at) = pool.fresh(engine, cel) else {
             break;
         };
         writes.push((index, at));
-        landed.push((change, Some(at)));
+        landed.push((change, Some(at), None));
     }
     Write::put(engine, pool.pages(), out, &writes)?;
     Some(landed)

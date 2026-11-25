@@ -58,7 +58,7 @@ import 'create_synced_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
-        existenceMirrorTargets,
+        deleteMirrorTargets,
         headMirrorTargets,
         linkCounterpartIn,
         linkMirrorTargets,
@@ -645,12 +645,13 @@ class CutCommandCoordinator {
     // emptiness.
     //
     // The row goes from every cut whose conte holds its row of the track's
-    // structure (I-73, F-343 — [existenceMirrorTargets]), so every cut it
-    // goes from is asked what it leaves empty there.
+    // structure (I-73, F-343 — [deleteMirrorTargets], the delete's own
+    // answer), so every cut it goes from is asked what it leaves empty
+    // there.
     if (isAttachedLayer(layer)) {
       final project = repository.requireProject();
       final emptied = [
-        for (final target in existenceMirrorTargets(
+        for (final target in deleteMirrorTargets(
           project,
           cutId: cutId,
           layerId: layerId,

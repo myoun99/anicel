@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +56,7 @@ import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/text_finders.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
 /// label picked through the timeline's own flyout, a take picker with
@@ -62,6 +64,7 @@ import '../../helpers/text_finders.dart';
 /// under the preview, the cut's rows as the timeline draws them: a switch on
 /// every row, a block for every drawing.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot, ScreensLeft.ofALay});
   opensTheEnginesScreens();
   setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -257,7 +260,7 @@ void main() {
     // the Cels list's rules stand as wide as their words (F-486).
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

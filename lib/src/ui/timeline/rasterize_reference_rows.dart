@@ -6,6 +6,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../services/editing/fx_bake_plan.dart' show ReferenceRidersTaking;
 import '../../services/reference_move_carried.dart' show ReferenceMoveCarried;
+import '../dialogs/app_confirm_dialog.dart' show NoticeDetails, showAppNotice;
 import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
@@ -83,15 +84,20 @@ Future<void> _letGo(
 /// ([ReferenceMoveCarried.framed]) or take the picture in place.
 typedef _Baked = ({Layer row, bool framed});
 
-/// [baked] rasterized behind the wait window, one bar for the batch.
+/// [baked] rasterized behind the wait window, one bar for the batch — and
+/// the rows a bake refused named after it, left the references they are
+/// (🗣️F-374-Q11 「막고 경고」). ↩️A refusal said nothing: a press on a 겸용
+/// cut whose uses showed a still apart did nothing at all (card a-linked-
+/// still-reference-bake-does-nothing-when-its-cuts-show-it-apart, 11-25).
 Future<void> _bake(
   BuildContext context,
   EditorSessionManager session,
   CutId cutId,
   List<_Baked> baked,
-) {
+) async {
   final strings = AppText.strings;
-  return runWithAppProgress<void>(
+  final left = <String>[];
+  await runWithAppProgress<void>(
     context: context,
     title: baked.length > 1
         ? strings.tlSelectedLayers
@@ -125,11 +131,35 @@ Future<void> _bake(
           );
           share(1, 1);
         }
-        if (letGo && riders != null) {
+        if (!letGo) {
+          left.add(baked[i].row.name);
+        } else if (riders != null) {
           await _bakeRiders(session, riders);
         }
       }
     },
+  );
+  if (left.isNotEmpty && context.mounted) {
+    await _sayLeft(context, left);
+  }
+}
+
+/// The rows a bake refused, named in one notice.
+Future<void> _sayLeft(BuildContext context, List<String> left) {
+  final strings = AppText.strings;
+  return showAppNotice(
+    context,
+    windowKey: const ValueKey<String>('reference-rasterize-left'),
+    title: strings.commonNotice,
+    message: strings.rasterizeLeftReferences,
+    details: [
+      NoticeDetails(
+        left,
+        heading: strings.tlLayer,
+        open: true,
+        oneLineEach: true,
+      ),
+    ],
   );
 }
 

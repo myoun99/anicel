@@ -9,7 +9,7 @@ use super::{Boxed, Warp, Window};
 use crate::device::Engine;
 use crate::kernels::composite::tests::mix;
 use crate::kernels::mesh::{MeshGrid, MeshOwners, affines};
-use crate::kernels::shared::{ResampleMap, ResampleMode, plane, words_buffer};
+use crate::kernels::shared::{ResampleMap, ResampleMode, le_words, plane, words_buffer};
 use crate::testing::{a_device_of_its_own, assert_pinned, first_engine, last_error, read_buffer};
 
 struct Rig {
@@ -34,13 +34,6 @@ fn picture(width: u32, height: u32) -> Vec<u32> {
     (0..width * height)
         .map(|at| mix(at ^ 0x5bd1_e995))
         .map(|word| if word >> 24 < 32 { 0 } else { word })
-        .collect()
-}
-
-fn words(bytes: &[u8]) -> Vec<u32> {
-    bytes
-        .chunks_exact(4)
-        .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
         .collect()
 }
 
@@ -71,14 +64,14 @@ fn meshed(
     let pixels = boxed(pixels);
     let picture = Boxed { pixels: &pixels, size };
     let warped = warp.mesh(engine, (owners, mesh), &picture, source_at, window, 1.0, mode)?;
-    Some(words(&read_buffer(engine, &warped)))
+    Some(le_words(&read_buffer(engine, &warped)))
 }
 
 /// Each pixel's owner in `window`, as the warp reads them.
 fn owners(mesh: &MeshGrid, window: Window) -> Vec<u32> {
     let Rig { engine, owners, .. } = rig();
     let owned = owners.owners(engine, mesh, window.at, window.size).expect("owners");
-    words(&read_buffer(engine, &owned))
+    le_words(&read_buffer(engine, &owned))
 }
 
 /// Pixel (x, y) of the canvas from a box `width` across at its origin, or
@@ -153,9 +146,9 @@ fn one_map_takes_every_pixel_of_the_window() {
         .flat_map(|y| (2..8).map(move |x| (x, y)))
         .map(|(x, y)| at(&pixels, (4, 4), x - 3, y + 2))
         .collect();
-    assert_eq!(words(&read_buffer(engine, &warped)), wanted);
+    assert_eq!(le_words(&read_buffer(engine, &warped)), wanted);
     let none = warp.one(engine, &source, None, window).expect("warp");
-    assert_eq!(words(&read_buffer(engine, &none)), [0; 42]);
+    assert_eq!(le_words(&read_buffer(engine, &none)), [0; 42]);
 }
 
 /// A mirror at full size — C6's flip, which the app makes as a reorder of
@@ -184,7 +177,7 @@ fn a_mirror_at_full_size_puts_every_word_as_it_is() {
             let map = ResampleMap::new(inverse, 1.0, mode, width, height).expect("a mirror lands");
             assert!(!map.is_copy(), "a mirror is not R1's copy");
             let warped = warp.one(engine, &source, Some(&map), window).expect("warp");
-            let warped = words(&read_buffer(engine, &warped));
+            let warped = le_words(&read_buffer(engine, &warped));
             assert_eq!(warped, wanted, "{mode:?}, across {across}, down {down}");
         }
     }
@@ -259,7 +252,7 @@ fn warped_on(
         }
     };
     let warped = warped.unwrap_or_else(|| panic!("warp: {}", last_error()));
-    words(&read_buffer(engine, &warped))
+    le_words(&read_buffer(engine, &warped))
 }
 
 // On a device whose binding holds less than the picture and the window, a

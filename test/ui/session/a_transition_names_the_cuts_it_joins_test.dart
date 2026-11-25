@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -34,6 +35,7 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 ///
 /// Two 24-frame cuts, 301 and 302, and an O.L over frames 18..29.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   Cut cut(String name) => Cut(
     id: CutId(name),
     name: name,

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -23,6 +24,7 @@ import '../../helpers/home_page_probes.dart';
 /// greys the header of an effect of a plugin this device has not, from the
 /// app's one list.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   final glow = fxPluginDescriptionOf('com.example.glow', name: 'Glow');
   LayerEffect glowing(String id) => LayerEffect.defaults(
     id: EffectId(id),

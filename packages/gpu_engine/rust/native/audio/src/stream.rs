@@ -105,6 +105,9 @@ pub struct Stream {
     lead: i64,
     /// Frames of the sound still to come, or -1: all the decoder hands back.
     left: i64,
+    /// What the decoder reads the sound out of, for how far it has read
+    /// ([Stream::read_through]).
+    container: Container,
 }
 
 impl Stream {
@@ -143,6 +146,12 @@ impl Stream {
         if [FORMAT_MOVIE_PCM, FORMAT_AAC, FORMAT_ALAC, FORMAT_OS].contains(&format) {
             container_start(container, sample_rate, &mut start);
         }
+        // ⚠️What was read to get here — each decoder tried, a movie's index
+        // read wherever it lies (at the file's END in a movie not made for
+        // the web), the boxes `container_start` reads — is the decoder
+        // finding its way, not walking the sound: counted from here, the
+        // reads walk the container front to back as the sound comes.
+        container.reach().from_nothing();
         Some(Stream {
             decoder,
             format,
@@ -153,6 +162,7 @@ impl Stream {
             block_at: 0,
             lead: start.left_to_take(),
             left: start.keep,
+            container: container.clone(),
         })
     }
 
@@ -167,6 +177,18 @@ impl Stream {
 
     pub fn sample_rate(&self) -> i32 {
         self.sample_rate
+    }
+
+    /// How much of the container its decoder has read through since the
+    /// sound began, 0–1: the furthest byte read of the container's bytes
+    /// ([media::span::Reach]).
+    ///
+    /// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+    /// 바이트를 센다」) — what the import window's percent counts while a
+    /// sound is made (F-608-Q2: bytes read of the bytes to read).
+    pub fn read_through(&self) -> f64 {
+        let size = self.container.size();
+        if size <= 0 { 1.0 } else { (self.container.reach().get() as f64 / size as f64).clamp(0.0, 1.0) }
     }
 
     /// Moves on through up to `frames` frames of the sound — into `out`, or
@@ -229,15 +251,42 @@ pub struct Window {
 /// its frames: ask for nothing, then for what that says to ask. A window
 /// past the end is no frames, not a failure. None when nothing could read
 /// it.
-pub fn window(path: &CStr, offset: i64, length: i64, framed: bool, first: i64, count: i64) -> Option<Window> {
+///
+/// `told` hears how far it has come: the frames decoded of the frames to
+/// decode, `first + count` — those before the window are decoded too, to
+/// pass them (🗣️유저 11-24, decoder-reads-skip-the-percent-Q3 「풀어 낸
+/// 프레임 ÷ 풀 프레임」: a cut reads only up to its end, so the bytes it will
+/// read are not known before it ends; a movie's cut counts its frames the
+/// same way). A window to the end (-1) has no whole, and tells nothing.
+pub fn window(
+    path: &CStr,
+    offset: i64,
+    length: i64,
+    framed: bool,
+    first: i64,
+    count: i64,
+    told: &mut dyn FnMut(f64),
+) -> Option<Window> {
     if first < 0 {
         return None;
     }
     let mut stream = Stream::open(path, offset, length, framed)?;
     let channels = stream.channels as usize;
+    let whole = if count < 0 { 0 } else { first + count };
+    let mut tell = |decoded: i64| {
+        if whole > 0 {
+            told(decoded as f64 / whole as f64);
+        }
+    };
     let mut samples = Vec::new();
-    if count != 0 {
-        stream.pass(None, first);
+    let mut passed = 0;
+    while count != 0 && passed < first {
+        let got = stream.pass(None, (first - passed).min((BLOCK_FRAMES * 16) as i64));
+        if got == 0 {
+            break;
+        }
+        passed += got;
+        tell(passed);
     }
     let mut kept = 0;
     while count < 0 || kept < count {
@@ -251,6 +300,7 @@ pub fn window(path: &CStr, offset: i64, length: i64, framed: bool, first: i64, c
         if got == 0 {
             break;
         }
+        tell(passed + kept);
     }
     samples.truncate(kept as usize * channels);
     Some(Window { samples, format: stream.format, channels: stream.channels, sample_rate: stream.sample_rate })

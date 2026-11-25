@@ -264,6 +264,49 @@ VoidCallback followKeptAxis(
 
 void _keepsNothing() {}
 
+/// A panel's LAYER axis followed ([followKeptAxis]) — and, when the panel
+/// is handed another place's ([standOn]), that one: a cut or a timeline
+/// opened keeps its own scroll (H78), and the panel keeps its elements
+/// (I-57 — a cut switch builds the new rows in the old ones' places).
+final class KeptAxisFollow {
+  KeptAxisFollow(
+    this._controller,
+    ValueNotifier<double>? kept, {
+    required bool Function() isMounted,
+  }) : _kept = kept,
+       _isMounted = isMounted {
+    _letGo = followKeptAxis(_controller, kept, isMounted: isMounted);
+  }
+
+  final ScrollController _controller;
+  final bool Function() _isMounted;
+  late VoidCallback _letGo;
+
+  /// The axis followed now — null where the host keeps none.
+  ValueNotifier<double>? get kept => _kept;
+  ValueNotifier<double>? _kept;
+
+  /// [kept] followed from here on, and the scrollable stood where it was
+  /// left — at once, so no layout of the place left behind writes into it.
+  void standOn(ValueNotifier<double>? kept) {
+    if (identical(kept, _kept)) {
+      return;
+    }
+    _letGo();
+    _kept = kept;
+    if (kept != null && _controller.hasClients) {
+      final position = _controller.position;
+      final target = math.max(position.minScrollExtent, kept.value);
+      if (target != position.pixels) {
+        _controller.jumpTo(target);
+      }
+    }
+    _letGo = followKeptAxis(_controller, kept, isMounted: _isMounted);
+  }
+
+  void letGo() => _letGo();
+}
+
 /// One axis kept as a VALUE rather than by a scrollable — the folded row's,
 /// which stands at the host's kept offset (F-143): where it stands, how
 /// long its window is, how long one step is, and which step the playhead

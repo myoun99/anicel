@@ -113,7 +113,7 @@ final class EngineScreenTexture {
   /// the one drawn, once the GPU has finished it — put up as [upTogether]
   /// says ([ScreenTexture.present]).
   Layer presented(
-    void Function(GpuTarget next, (int, int) size) draw, {
+    void Function(GpuSurface next, (int, int) size) draw, {
     required Object drawnFor,
     required FramePlace place,
     Future<void> Function(Future<void> done)? upTogether,

@@ -60,6 +60,7 @@ import 'brush/brush_hand_settings_store.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
+import 'brush/picked_file.dart' show BringIn;
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_traces.dart';
@@ -79,6 +80,7 @@ import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'session/panel_view_memory.dart' show PanelAxes;
 import 'session/tab_rail_wiring.dart';
 import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
@@ -1174,7 +1176,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   ///
   /// One per rail, like [_railExtents]: the timeline, the sheet and the
   /// storyboard each fold, and each had its own offset die with it.
-  Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
+  PanelAxes get _frameAxisOffsets =>
       widget.session.panelViews.frameAxisOffsets;
 
   // The hidden sections, the row filter, the folded attach groups and the
@@ -2486,7 +2488,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the fonts, the shortcut presets, the palettes and the fx plugins.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
+    // Into the window that stands, when one does (H81) — its 「파일 추가」
+    // and 「폴더 추가」 come through this door.
     importWindow: (picked, {required toPool}) =>
+        _importWindowInbox.takeIn(picked) ??
         _openImportWindow(picked: picked, poolOnly: toPool),
     // After the library has landed, as a resumed tool choice is
     // ([_WorkspaceBrushPresets.libraryLanded]): the read puts back what the
@@ -2596,6 +2601,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// [poolOnly] is a pool's door — the media panel's ＋, the viewer's
   /// 「미디어에 등록」: registering for later is what was asked. [spot] is
   /// where a drop put the file — the window shows it locked.
+  /// Where the one door hands the import window that stands what it brings.
+  final _importWindowInbox = ImportWindowInbox();
+
   Future<void> _openImportWindow({
     List<String> initialPaths = const [],
     List<FolderGrant> picked = const [],
@@ -2606,6 +2614,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     context: context,
     builder: (context) => ImportDialog(
       session: widget.session,
+      inbox: _importWindowInbox,
+      openFiles: () => unawaited(_pickAndOpen()),
+      openFolder: () => unawaited(_pickFolderAndOpen()),
       initialPaths: initialPaths,
       picked: picked,
       poolOnly: poolOnly,

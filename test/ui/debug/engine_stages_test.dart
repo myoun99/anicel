@@ -7,7 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart' show GpuPlaceTook, GpuSampling;
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/debug/engine_stages.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
-import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
+import 'package:anicel/src/ui/debug/debug_window.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/screen_asked.dart';
 
@@ -19,15 +19,20 @@ import 'package:anicel/src/ui/debug/screen_asked.dart';
 /// (rust/src/took.rs) and read
 /// (test/native/a_timed_engine_tells_what_each_place_took_test.dart).
 void main() {
-  GpuPlaceTook gpu(String place, int micros, {int times = 1, int groups = 0}) =>
-      (
-        gpu: true,
-        place: place,
-        times: times,
-        micros: micros,
-        longest: micros,
-        groups: groups,
-      );
+  GpuPlaceTook gpu(
+    String place,
+    int micros, {
+    int times = 1,
+    int groups = 0,
+    int? longest,
+  }) => (
+    gpu: true,
+    place: place,
+    times: times,
+    micros: micros,
+    longest: longest ?? micros,
+    groups: groups,
+  );
   GpuPlaceTook cpu(String place, int micros, {int times = 1}) => (
     gpu: false,
     place: place,
@@ -37,7 +42,11 @@ void main() {
     groups: 0,
   );
   StagedFrame frame(int finish, List<GpuPlaceTook> took, {ScreenAsk? asked}) =>
-      (up: (draw: 1000, finish: finish, show: 500), asked: asked, took: took);
+      (
+        up: (draw: 1000, finish: finish, show: 500, went: null),
+        asked: asked,
+        took: took,
+      );
 
   const show = r'src\kernels\composite\screen.rs:412';
   const copy = 'src/platform/android.rs:237';
@@ -47,12 +56,12 @@ void main() {
   setUp(() {
     MeasurementMode.reset();
     EngineStages.install();
-    EngineStages.debugForget();
+    EngineStages.forget();
     ScreenAsked.debugForget();
   });
   tearDown(() {
     MeasurementMode.reset();
-    EngineStages.debugForget();
+    EngineStages.forget();
     ScreenAsked.debugForget();
     FrameStats.reset();
   });
@@ -125,11 +134,24 @@ void main() {
     expect(summary.places.single.mostInAFrame, 7000);
   });
 
+  test("a place's longest once is the longest of any one time it was told, "
+      'not of a frame', () {
+    final summary = EngineStages.summarize([
+      frame(10000, [gpu(show, 9000, times: 3, longest: 4000)]),
+      frame(10000, [gpu(show, 5000, times: 2, longest: 3000)]),
+    ]);
+
+    expect(summary.places.single.mostInAFrame, 9000);
+    expect(summary.places.single.longestOnce, 4000);
+  });
+
   test('the slowest frame is the one longest from its draw to being up, '
       'told by its own places', () {
     const stall = (
       columns: 865,
       rows: 864,
+      texels: 865 * 864,
+      moved: null,
       scale: 1.35,
       mode: GpuSampling.nearest,
     );
@@ -161,6 +183,8 @@ void main() {
     const stall = (
       columns: 865,
       rows: 864,
+      texels: 865 * 864,
+      moved: null,
       scale: 1.35,
       mode: GpuSampling.nearest,
     );
@@ -173,16 +197,17 @@ void main() {
           cpu(present, 20000),
         ], asked: stall),
       ]),
+      clocked: true,
     );
 
     // The columns' padding is the readout's own: the words and the
     // figures are what a photograph is read for.
     expect([for (final line in lines) line.replaceAll(RegExp(' +'), ' ')], [
       'STAGES 2f a frame 74.00 gpu 56.00 cpu 10.00',
-      ' gpu stroke/pile:88 45.00 max 90.00 12.5x 0.2k',
-      ' cpu device:1040 10.00 max 20.00 0.5x',
-      ' gpu composite/screen:412 6.00 max 12.00 0.5x 4.5k',
-      ' gpu platform/android:237 5.00 max 6.00 1.0x',
+      ' gpu stroke/pile:88 45.00 max 90.00 once 90.00 12.5x 0.2k',
+      ' cpu device:1040 10.00 max 20.00 once 20.00 0.5x',
+      ' gpu composite/screen:412 6.00 max 12.00 once 12.00 0.5x 4.5k',
+      ' gpu platform/android:237 5.00 max 6.00 once 6.00 1.0x',
       'SLOWEST 126.00 draw 1.00 finish 124.50 show 0.50 865x864 x1.35 '
           'nearest',
       ' gpu 96.00 cpu 20.00',
@@ -192,12 +217,28 @@ void main() {
     ]);
   });
 
+  test('🚨a device whose GPU has no clock shows none of its time, not a '
+      'zero (관제 11-23 23:51)', () {
+    final lines = EngineStages.lines(
+      EngineStages.summarize([
+        frame(20500, [cpu('src/device.rs:1040', 3000)]),
+      ]),
+      clocked: false,
+    );
+
+    final words = [for (final line in lines) line.replaceAll(RegExp(' +'), ' ')];
+    expect(words[0], 'STAGES 1f a frame 22.00 gpu — cpu 3.00');
+    expect(words[1], ' gpu: no timestamp queries on this device');
+    expect(words, contains(' gpu — cpu 3.00'), reason: 'the slowest, too');
+  });
+
   test('no more places are named than the readout has room for', () {
     final many = [
       for (var line = 1; line <= 20; line++) gpu('src/a.rs:$line', line * 100),
     ];
     final lines = EngineStages.lines(
       EngineStages.summarize([frame(10000, many)]),
+      clocked: true,
     );
 
     expect(
@@ -207,19 +248,10 @@ void main() {
     expect(lines[1], contains('a:20 '), reason: 'the one that took most');
   });
 
-  test('what a window says is shown a line each, and nothing where none '
-      'says anything', () {
-    expect(
-      EngineStages.windowLines(
-        'ahb storage no  color yes\nanother line\n',
-      ),
-      [' ahb storage no  color yes', ' another line'],
-    );
-    expect(EngineStages.windowLines(''), isEmpty);
-  });
-
   test('with no frame up yet the lines say so', () {
-    expect(EngineStages.lines(null), ['STAGES  timed, no frame yet']);
+    expect(EngineStages.lines(null, clocked: true), [
+      'STAGES  timed, no frame yet',
+    ]);
     expect(EngineStages.summary, isNull);
   });
 
@@ -227,40 +259,46 @@ void main() {
     tearDown(() => ScreenTexture.tookAsItWentUp = null);
 
     test('is off in an ordinary build, and nobody is told of a frame', () {
-      expect(MeasurementMode.startWithEngineStages, isFalse);
-      expect(MeasurementMode.engineStages.value, isFalse);
+      expect(MeasurementMode.startWithDebugWindow, isFalse);
+      expect(MeasurementMode.debugWindow.value, isFalse);
       expect(ScreenTexture.tookAsItWentUp, isNull);
     });
 
     test('on, the frames that go up are kept with what was asked of each; '
         'off again, none is kept and nobody is told', () {
-      MeasurementMode.engineStages.value = true;
+      MeasurementMode.debugWindow.value = true;
       final told = ScreenTexture.tookAsItWentUp;
       expect(told, isNotNull);
 
       const asked = (
         columns: 128,
         rows: 128,
+        texels: 128 * 128,
+        moved: null,
         scale: 1.0,
         mode: GpuSampling.nearest,
       );
       ScreenAsked.shown(asked);
-      told!((draw: 100, finish: 9000, show: 50), [gpu(show, 4000)]);
+      told!((draw: 100, finish: 9000, show: 50, went: null), [
+        gpu(show, 4000),
+      ]);
 
       final summary = EngineStages.summary!;
       expect(summary.frames, 1);
       expect(summary.slowest.asked, asked);
       expect(summary.places.single.micros, 4000);
 
-      MeasurementMode.engineStages.value = false;
+      MeasurementMode.debugWindow.value = false;
       expect(ScreenTexture.tookAsItWentUp, isNull);
       expect(EngineStages.summary, isNull);
     });
 
     test('no more frames are kept than the newest', () {
-      MeasurementMode.engineStages.value = true;
+      MeasurementMode.debugWindow.value = true;
       for (var at = 0; at < EngineStages.framesKept + 5; at++) {
-        EngineStages.wentUp((draw: 0, finish: at, show: 0), [gpu(show, at)]);
+        EngineStages.wentUp((draw: 0, finish: at, show: 0, went: null), [
+          gpu(show, at),
+        ]);
       }
 
       final summary = EngineStages.summary!;
@@ -272,24 +310,27 @@ void main() {
     });
   });
 
-  testWidgets('the statistics show the stages under their own lines while '
-      'the switch is on, and not while it is off', (tester) async {
+  testWidgets('the debug window shows the stages under the frame\'s lines '
+      'while it is up, and nothing while it is closed', (tester) async {
     addTearDown(() => ScreenTexture.tookAsItWentUp = null);
-    MeasurementMode.frameStats.value = true;
     await tester.pumpWidget(
-      const Directionality(
-        textDirection: TextDirection.ltr,
-        child: FrameStatsReadout(),
-      ),
+      const MaterialApp(home: DebugWindowHost(child: SizedBox())),
     );
     Finder line(String text) => find.textContaining(text);
-
     expect(line('STAGES'), findsNothing);
 
-    MeasurementMode.engineStages.value = true;
-    EngineStages.wentUp((draw: 100, finish: 9000, show: 50), [gpu(show, 4000)]);
-    // The readout is built again as the statistics publish, and with
-    // their window.
+    MeasurementMode.debugWindow.value = true;
+    await tester.pump();
+    expect(
+      line('STAGES  timed, no frame yet'),
+      findsOneWidget,
+      reason: 'its rows stand before a frame is timed',
+    );
+
+    EngineStages.wentUp((draw: 100, finish: 9000, show: 50, went: null), [
+      gpu(show, 4000),
+    ]);
+    // The window is built again as the statistics publish.
     FrameStats.debugFeed([
       FrameTiming(
         vsyncStart: 0,
@@ -304,20 +345,11 @@ void main() {
     await tester.pump();
 
     expect(line('STAGES  1f'), findsOneWidget);
-    expect(line('ahb storage'), findsNothing, reason: 'no window is open');
-
-    ScreenTexture.debugWindowSays(() => 'ahb storage no  color yes\n');
-    addTearDown(() => ScreenTexture.debugWindowSays(null));
-    FrameStats.publish();
-    await tester.pump();
-    expect(line('ahb storage no  color yes'), findsOneWidget);
     expect(line('composite/screen:412'), findsNWidgets(2));
     expect(line('SLOWEST'), findsOneWidget);
 
-    MeasurementMode.engineStages.value = false;
-    FrameStats.publish();
+    MeasurementMode.debugWindow.value = false;
     await tester.pump();
     expect(line('STAGES'), findsNothing);
-    expect(line('ahb storage'), findsNothing);
   });
 }

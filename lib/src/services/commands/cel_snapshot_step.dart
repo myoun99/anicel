@@ -20,7 +20,11 @@ import 'cel_snapshot_restore.dart';
 /// `BrushLiftMoveHistoryCommand`). The text edit would have been the third
 /// (R9-rest, 2026-10-06), which is where two copies of a law become one.
 mixin CelSnapshotStep
-    implements RetainedBytesCommand, ParkableCommand, PictureRestoringCommand {
+    implements
+        RetainedBytesCommand,
+        ParkableCommand,
+        PictureRestoringCommand,
+        TidiesOnceTold {
   BrushFrameEditingCoordinator get coordinator;
   CacheInvalidationSink? get cacheInvalidationSink;
 
@@ -63,6 +67,31 @@ mixin CelSnapshotStep
   @override
   void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) =>
       surfaces?.visitHeldTiles(visit, undone: undone);
+
+  @override
+  Future<void>? get toldAfter => surfaces?.afterTold;
+
+  /// Asks the cel to take the told picture ([BrushFrameEditingCoordinator.
+  /// takeToldTidied]) and takes what it took — the pair's after measured
+  /// again ([UndoSurfacePair.afterBecomes]). Asked of the cel only while
+  /// both halves are here: a pair that could not take it would leave the
+  /// cel's picture other than its after.
+  @override
+  void tidyAfter() {
+    final pair = surfaces;
+    final after = pair?.afterHeldHere;
+    if (pair == null || after == null) {
+      return;
+    }
+    final told = coordinator.takeToldTidied(
+      pair.key,
+      after,
+      cacheInvalidationSink: cacheInvalidationSink,
+    );
+    if (told != null) {
+      pair.afterBecomes(told);
+    }
+  }
 
   /// Puts the picture the step started from back on its cel.
   void restoreBefore() => _restore(surfaces?.before);

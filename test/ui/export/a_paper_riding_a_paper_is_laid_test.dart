@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
@@ -25,6 +26,7 @@ import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🐞F-594 ② (유저 2026-11-15: 「용지 색라벨 바꾸거나 하면 셀 탭 내보내기에서
 /// 적용안되있어서 … 코드대로 작동해야하는 상황에서 그러지 않았음」) — a 용지-작감
@@ -33,6 +35,7 @@ import '../../helpers/export_preview_probe.dart';
 /// it shows its base's blocks through its cell links. The Cels tab laid such
 /// a paper as nothing, reading the row's own timeline.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofALay});
   opensTheEnginesScreens();
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -109,7 +112,7 @@ void main() {
     );
     await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     final s = session();
     // The row the label leaves its picture: A wears LO 작감 — under the LO
     // filter it is in by hand, as the list's switch puts it.

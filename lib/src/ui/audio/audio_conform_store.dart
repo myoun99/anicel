@@ -152,6 +152,7 @@ class AudioConformStore extends ChangeNotifier {
   final Map<String, ConformResult> _entries = {};
   final Set<String> _pending = {};
   final Map<String, _ConformFailure> _failures = {};
+  final _reads = _ConformReads();
   bool _disposed = false;
 
   /// The carry each path's entry — or failure — was made OF ([resolveCarry]).
@@ -513,10 +514,13 @@ class AudioConformStore extends ChangeNotifier {
   /// [ensureFor], then the waveform when the conform is usable; null when
   /// it never will be. The one wait for everything that shows or measures
   /// a sound before it plays: the media viewer's page, the import window's
-  /// preview, and a sound's placement.
-  Future<AudioPeaks?> ensurePeaksFor(String sourcePath) async {
-    final result = await ensureFor(sourcePath);
-    return result != null && result.isUsable ? result.peaks : null;
+  /// preview, and a sound's placement. [onReading] hears, while it waits,
+  /// how much of the source the conform has read of what it reads.
+  Future<AudioPeaks?> ensurePeaksFor(
+    String sourcePath, {
+    void Function(double fraction)? onReading,
+  }) async {
+    return _peaksOf(await _reads.heardWhile(sourcePath, onReading, ensureFor));
   }
 
   Future<void> _ensure(String sourcePath) async {
@@ -535,6 +539,7 @@ class AudioConformStore extends ChangeNotifier {
           bucketsPerSecond: bucketsPerSecond,
           speedNumerator: speed.numerator,
           speedDenominator: speed.denominator,
+          onReading: (fraction) => _reads.heard(sourcePath, fraction),
         ),
       );
     } on Object catch (error) {
@@ -547,6 +552,7 @@ class AudioConformStore extends ChangeNotifier {
       return;
     }
     _pending.remove(sourcePath);
+    _reads.ended(sourcePath);
     // Whatever lands below — an entry or a failure — is of THIS carry. One
     // the pool has moved off since is dropped at the next lookup.
     _conformedAs[sourcePath] = carry;
@@ -644,6 +650,52 @@ typedef _Landing<T> = ({
 /// from it when the equalizer's bakes and checkpoints came to sit beside
 /// the conversions (board audio-fx-grows-like-the-pros ③, 11-17) and the
 /// three made one landing ([_land]).
+/// How much of each conform under way has read of what it reads, and who
+/// waits to hear it ([AudioConformStore.ensurePeaksFor]'s `onReading`) —
+/// the conform started before they asked (the import window's list starts
+/// it, its placement waits on it), so each hears the last word at once.
+///
+/// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+/// 바이트를 센다」): the import window's percent while a sound is made.
+final class _ConformReads {
+  final Map<String, double> _read = {};
+  final Map<String, Set<void Function(double)>> _hearing = {};
+
+  void heard(String sourcePath, double fraction) {
+    _read[sourcePath] = fraction;
+    for (final hear in [...?_hearing[sourcePath]]) {
+      hear(fraction);
+    }
+  }
+
+  void ended(String sourcePath) => _read.remove(sourcePath);
+
+  /// What [wait] answers for [sourcePath], [hear] told the reads till then.
+  Future<T> heardWhile<T>(
+    String sourcePath,
+    void Function(double fraction)? hear,
+    Future<T> Function(String sourcePath) wait,
+  ) async {
+    if (hear == null) {
+      return wait(sourcePath);
+    }
+    final hearing = _hearing.putIfAbsent(sourcePath, () => {})..add(hear);
+    try {
+      final waited = wait(sourcePath);
+      final last = _read[sourcePath];
+      if (last != null) {
+        hear(last);
+      }
+      return await waited;
+    } finally {
+      hearing.remove(hear);
+      if (hearing.isEmpty) {
+        _hearing.remove(sourcePath);
+      }
+    }
+  }
+}
+
 final class _DerivedSound {
   _DerivedSound(this._store);
 

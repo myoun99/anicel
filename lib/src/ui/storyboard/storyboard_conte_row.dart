@@ -52,6 +52,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   const _StoryboardConteRow({
     required this.trackId,
     required this.seat,
+    required this.seats,
     required this.layoutEntries,
     required this.height,
     required this.timelineScale,
@@ -75,6 +76,10 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// Which row of the track's conte group this is (`models/conte_group
   /// .dart`): 0 the conte, +k the k-th attach row above it, −k below.
   final int seat;
+
+  /// The seats the rail shows, top row first (`_shownConteSeats`) — what a
+  /// hand that leaves this row for another lands on ([_rowAtSeatFrom]).
+  final List<int> seats;
 
   /// The track's cuts as this step lays them — the V row's own list, so a
   /// cut's panels ride its trim and its move with the block above them.
@@ -166,6 +171,24 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     return layer == null ? null : (entry: entry, layer: layer);
   }
 
+  /// The row [rowDelta] seats from this one as the rail shows them
+  /// ([seats]), in the cut whose row at this seat is [row] — null where that
+  /// cut holds none there. What a hand over the rows names, as the
+  /// timeline's rows name the row under it ([resolveBlockMoveTargetLayer]).
+  LayerId? _rowAtSeatFrom(LayerId row, int rowDelta) {
+    final at = seats.indexOf(seat);
+    if (at < 0) {
+      return null;
+    }
+    final target = seats[(at + rowDelta).clamp(0, seats.length - 1)];
+    for (final entry in layoutEntries) {
+      if (conteRowAtSeat(entry.cut, seat)?.id == row) {
+        return conteRowAtSeat(entry.cut, target)?.id;
+      }
+    }
+    return null;
+  }
+
   int _frameAtX(double x) => _storyboardRowFrameAt(frameGeometry, x) ?? 0;
 
   /// The panels' half of the shared range gesture.
@@ -206,7 +229,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               conteRowOwnFrameAt(strip.entry, frame),
             );
       },
-      onSelectUpdate: (_, anchorIndex, headIndex, _) {
+      onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) {
         final strip = _stripAt(anchorIndex);
         if (strip == null) {
           return;
@@ -215,6 +238,10 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
           layerId: strip.layer.id,
           anchorIndex: conteRowOwnFrameAt(strip.entry, anchorIndex),
           headIndex: conteRowOwnFrameAt(strip.entry, headIndex),
+          headLayerId: _rowAtSeatFrom(
+            strip.layer.id,
+            (headCrossOffset / height).floor(),
+          ),
         );
       },
       // The cells' press already seeks into the cut, so the tap only drops
@@ -229,10 +256,20 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
         return strip != null &&
             (stripSelect.move?.onBegin(strip.layer.id) ?? false);
       },
-      // No target row is ever reported: a cut has exactly one conte layer,
-      // so there is nowhere sideways to land.
-      onMoveUpdate: (frameDelta, _) =>
-          stripSelect.move?.onUpdate(frameDelta, null),
+      // 🗣️H75 (유저 2026-11-24): 「콘티레이어도 동일하게 싱크어태치랑 블록
+      // 그림교체라던가 가능하게. 제발 이런거 별개규칙 만들지않고 통일」 — the
+      // row under the hand is named, as on the timeline, and the move's own
+      // trades answer. ↩️None was ever named: 「a cut has exactly one conte
+      // layer, so there is nowhere sideways to land」 (07-27), which the
+      // conte group's seats (I-73, 10-08) undid — a block on the panels
+      // never traded with a synced row.
+      onMoveUpdate: (frameDelta, rowDelta) {
+        final row = stripSelect.selection.value?.layerId;
+        stripSelect.move?.onUpdate(
+          frameDelta,
+          row == null ? null : _rowAtSeatFrom(row, rowDelta),
+        );
+      },
       onMoveEnd: stripSelect.move?.onEnd ?? _noMove,
       onMoveCancel: stripSelect.move?.onCancel ?? _noMove,
     );
@@ -294,6 +331,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   Object? get facts => (
     trackId,
     seat,
+    ByList(seats),
     ByList(layoutEntries),
     height,
     timelineScale.pixelsPerFrame,

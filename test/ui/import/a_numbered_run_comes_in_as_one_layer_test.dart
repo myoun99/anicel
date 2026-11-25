@@ -532,6 +532,49 @@ void main() {
     expect(added.single.frames, hasLength(2));
   });
 
+  // 🗣️H71 (유저 2026-11-24): 「안드 파일임포트시 a1만열리고 그 뒤 a2부터
+  // a18까지 연결임포트가 안됨 … 이는 전플랫폼 통일」 — Drive's documents
+  // are read through copies, each in a folder of its own.
+  testWidgets('🚨pictures of one run handed in together, each alone in its '
+      'folder, still stand as ONE row and come in as one layer (H71)', (
+    tester,
+  ) async {
+    final files = (await tester.runAsync(() async {
+      Future<String> alone(String name, int rgba) async => writeSolidPng(
+        await Directory('${tempDir.path}/$name').create(),
+        '$name.png',
+        rgba: rgba,
+      );
+      return {
+        'A1': await alone('A1', 0x112233FF),
+        'A2': await alone('A2', 0x112233FF),
+        'A3': await alone('A3', 0x445566FF),
+      };
+    }))!;
+    final s = await open(
+      tester,
+      [files['A1']!, files['A2']!, files['A3']!],
+      runs: [files['A1']!],
+    );
+
+    expect(
+      cellText(tester, 'option', files['A1']!),
+      AppText.strings.imRunSpan('A1', 'A3', 3),
+    );
+    for (final brought in ['A2', 'A3']) {
+      expect(
+        find.byKey(ValueKey<String>('import-cell-option-${files[brought]}')),
+        findsNothing,
+        reason: '$brought is A1\'s row\'s — no row of its own',
+      );
+    }
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1), reason: 'one layer for the whole run');
+    expect([for (final frame in added.single.frames) frame.name], ['1', '3']);
+  });
+
   testWidgets('the row answers for the pictures it brings: sent to the pool, '
       'each is a file of the pool\'s again, a row of its own', (tester) async {
     final files = await writeFolder(tester);
@@ -589,7 +632,10 @@ void main() {
     expect(
       find.descendant(
         of: notice,
-        matching: find.text('Could not read the file. (1)'),
+        // H72: and why — nothing stands where it was.
+        matching: find.text(
+          'Could not read the file — no file at its path (1)',
+        ),
       ),
       findsOneWidget,
     );

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,7 @@ import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 /// change). `a_playhead_tick_reads_no_ready_runs_test.dart` is the tick's
 /// half of this; here is the rebuild's.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   group('the strip', () {
     Widget strip(ReadyRunsIn runs, ValueNotifier<int> bucket) => Directionality(
       textDirection: TextDirection.ltr,

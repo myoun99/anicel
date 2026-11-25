@@ -54,6 +54,7 @@ import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/paper_editing_kit.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-127 (유저 2026-10-25): 「셀 출력의 타임시트나 컷봉투에도 타임시트
 /// 용지패널/컷봉투 용지패널이랑 동일하게 잉크 사용이라던가, 눌러서 원화 이름
@@ -125,7 +126,7 @@ void main() {
     );
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

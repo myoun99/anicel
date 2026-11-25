@@ -68,6 +68,7 @@ import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
+import 'debug/debug_window.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
 import 'input/one_pointer_shows_the_cursor.dart';
@@ -118,6 +119,8 @@ import 'session/editor_app_settings.dart';
 import 'lost_screen_evidence.dart';
 import 'lost_screen_restart.dart';
 import 'open_projects.dart';
+import 'raster_watch.dart';
+import 'screen_canary.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'workspace/workspace_bar_commands.dart';
@@ -587,6 +590,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       letGo: _letGo,
       landsFirst: _canvasSelectionCommands.landPendingMoveThen,
     )..addListener(_followProjectOnScreen);
+    // The debug window's census adds up every open project, and sits
+    // above every route, where none is in reach.
+    DebugWindow.openSessions = () => _projects.sessions;
     _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
@@ -642,6 +648,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     LostScreen.went.addListener(_keepTheWorkOfALostScreen);
     // Gone before this shell listened — a reset during the launch.
     scheduleMicrotask(_keepTheWorkOfALostScreen);
+    RasterWatch.stood.addListener(_noteTheRasterStood);
+    ScreenCanary.notSaid.addListener(_noteThePixelNotSaid);
+    LostScreen.stoodAgain.addListener(_noteTheScreenStoodAgain);
     appEngineGetsReady.addListener(_waitForTheEngineBehindTheWindow);
     // A launch is held from before its first frame. `runApp` builds the
     // tree, then draws it: asked between the two — a microtask of that
@@ -1149,6 +1158,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
+  /// H63: the thread that draws the screen stood ([RasterWatch]) — what
+  /// the app was doing is written, and nothing is asked
+  /// ([LostScreenEvidence.noteTheRasterStoodOnce]).
+  void _noteTheRasterStood() =>
+      LostScreenEvidence.noteTheRasterStoodOnce(_projects.active);
+
+  /// And so is a pixel the screen's context did not say back
+  /// ([ScreenCanary], [LostScreenEvidence.noteThePixelNotSaidOnce]).
+  void _noteThePixelNotSaid() =>
+      LostScreenEvidence.noteThePixelNotSaidOnce(_projects.active);
+
+  /// And so is a screen that stood again in a context made anew
+  /// ([LostScreen.stoodAgain], [LostScreenEvidence.noteTheScreenStoodAgainOnce])
+  /// — nothing is asked: the screen goes on (step two of board
+  /// a-real-gpu-reset-went-unheard-on-the-main-pc). ⚠️What the GPU held
+  /// before it, the app's own images among it, is not made again here yet
+  /// (that card, 11-23 17:44): this is the step that shows whether the
+  /// engine stands again in the app at all.
+  void _noteTheScreenStoodAgain() =>
+      LostScreenEvidence.noteTheScreenStoodAgainOnce(_projects.active);
+
   /// Whether the question stands now: asked once a loss — heard by the
   /// listener, or found by the launch's own look — and again at the app
   /// window's X once it was taken down ([_handleExitRequested]).
@@ -1212,6 +1242,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DebugWindow.openSessions = null;
     // The pan flag is app-wide: a shell that goes away must not keep it.
     _keyHolds.dispose();
     PencilInteractionService.instance.onPencilTap = null;
@@ -1222,6 +1253,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     EngineRefusals.told.removeListener(_sayWhatTheEngineRefused);
     EngineRefusals.openedAnother.removeListener(_sayTheDeviceStartedAgain);
     LostScreen.went.removeListener(_keepTheWorkOfALostScreen);
+    RasterWatch.stood.removeListener(_noteTheRasterStood);
+    ScreenCanary.notSaid.removeListener(_noteThePixelNotSaid);
+    LostScreen.stoodAgain.removeListener(_noteTheScreenStoodAgain);
     appEngineGetsReady.removeListener(_waitForTheEngineBehindTheWindow);
     _cursorOwner.dispose();
     _autosaveClock.dispose();

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
@@ -24,6 +25,7 @@ import '../../helpers/text_finders.dart';
 /// already there — either way it is given, each number the window number
 /// (F-507-Q1) showing its part.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   const nButton = ValueKey<String>('set-comma-n-button');
 
   // Which entry the window opens on is an app-wide value that outlives a

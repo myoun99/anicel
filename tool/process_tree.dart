@@ -5,17 +5,78 @@ import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 
-/// Ends the process [pid] and every process under it: `flutter test` runs
-/// its testers two and three processes down, and ending the shell alone
-/// leaves them holding the machine. ⚠️Off Windows only the shell's own
-/// children go with it.
-void cutTree(int pid) {
-  if (Platform.isWindows) {
-    Process.runSync('taskkill', ['/PID', '$pid', '/T', '/F']);
-  } else {
-    Process.runSync('pkill', ['-KILL', '-P', '$pid']);
-    Process.killPid(pid, ProcessSignal.sigkill);
+/// Ends the process [pid] and every process under it — [treeIn]'s walk of
+/// the machine's table, the one the watches below and the stuck stacks
+/// take — and returns them: `flutter test` runs its testers two and three
+/// processes down, and ending the shell alone leaves them holding the
+/// machine. All of one look, [pid] and those above first: a process ended
+/// before its children is not walked again, so none of them leaves the cut
+/// for init's care. [stillStanding] says what of them did not go.
+///
+/// ↩️Till 2026-11-24 each OS walked its own way — Windows `taskkill /T`, and
+/// off it `pkill -P`, the shell's own children alone. 🔬PR 1503 and 1504's
+/// Linux shards (card release-2026-11-24): every batch cut for its silence
+/// left its two testers running — the runner's 「Terminate orphan process」
+/// lines at the job's end were two a cut, 1504 shard 5 four of two cuts,
+/// shard 0 six of three, 1503 shard 4 two of one — and the files run again
+/// alone, to tell whose the stop was, ran beside them.
+/// ⚠️What a process starts between the look and its end is not in the look,
+/// as it was not in `taskkill /T`'s, which looked once too: a batch cut for
+/// its silence starts none.
+List<ProcessRow> cutTree(
+  int pid, {
+  List<ProcessRow> Function() read = readProcessTable,
+  void Function(int pid) end = _end,
+}) {
+  final tree = treeIn(read(), pid);
+  end(pid);
+  for (final row in tree) {
+    if (row.pid != pid) end(row.pid);
   }
+  return tree;
+}
+
+void _end(int pid) => Process.killPid(pid, ProcessSignal.sigkill);
+
+/// What of [cut] still runs after [looks] looks [every] apart at most —
+/// none where the cut took ([cutTree]); three seconds for each to go, as
+/// it stands. A row is the one cut where its number, its start and its name
+/// all are: a number given again is another process.
+Future<List<ProcessRow>> stillStanding(
+  List<ProcessRow> cut, {
+  List<ProcessRow> Function() read = readProcessTable,
+  int looks = 30,
+  Duration every = const Duration(milliseconds: 100),
+}) async {
+  bool same(ProcessRow a, ProcessRow b) =>
+      a.pid == b.pid && a.born == b.born && a.name == b.name;
+  var left = cut;
+  for (var look = 0; look < looks && left.isNotEmpty; look += 1) {
+    if (look > 0) await Future<void>.delayed(every);
+    final table = read();
+    left = [
+      for (final row in left)
+        if (table.any((now) => same(now, row))) row,
+    ];
+  }
+  return left;
+}
+
+/// What a cut says of itself: how many it ended, by name, and what of
+/// them still runs ([cutTree], [stillStanding]).
+String cutSaid(List<ProcessRow> cut, List<ProcessRow> left) {
+  final named = <String, int>{};
+  for (final row in cut) {
+    named[row.name] = (named[row.name] ?? 0) + 1;
+  }
+  final ended = [
+    for (final MapEntry(:key, :value) in named.entries) '$key ×$value',
+  ].join(' · ');
+  final standing = [for (final row in left) '${row.name} ${row.pid}'];
+  return standing.isEmpty
+      ? 'the cut ended ${cut.length} process(es) ($ended) — none still runs'
+      : '🚨 the cut ended ${cut.length} process(es) ($ended) — still '
+            'running: ${standing.join(' · ')}';
 }
 
 /// Makes every process this one starts from here on — and every process
@@ -131,6 +192,7 @@ class MemoryWatch {
   ///
   /// ⚠️NO LATCH: a cut that could not take (`taskkill` is a process to
   /// start, on a machine short of memory) is asked again at the next look.
+  /// (↩️[cutTree] starts none since 2026-11-24; a kill can still be refused.)
   void look() {
     final largest = largestInTree(_read(), _pid);
     if (largest == null || largest.bytes <= _cap) return;
@@ -280,30 +342,60 @@ class CpuWatch {
 List<ProcessRow> readProcessTable() {
   try {
     if (Platform.isWindows) return _readWindowsTable();
-    final asked = Process.runSync('ps', ['-A', '-o', 'pid=,ppid=,rss=,comm=']);
+    final asked = Process.runSync('ps', [
+      '-A',
+      '-o',
+      'pid=,ppid=,rss=,time=,stat=,comm=',
+    ]);
     return asked.exitCode == 0 ? rowsFromPs(asked.stdout as String) : const [];
   } on Exception {
     return const [];
   }
 }
 
-final _psRow = RegExp(r'^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+)$');
+final _psRow = RegExp(r'^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+)$');
 
 /// The table out of what `ps` printed. RSS in KB is what it has for
-/// [ProcessRow.bytes]. Off Windows an orphan goes to init, so no number
-/// needs [ProcessRow.born] to tell who it means.
+/// [ProcessRow.bytes], and its CPU time for [ProcessRow.cpu]. Off Windows
+/// an orphan goes to init, so no number needs [ProcessRow.born] to tell who
+/// it means.
+///
+/// ⛔NO ZOMBIE (state `Z`): it has ended and holds nothing, and waits only
+/// for its parent to read how — a cut's [stillStanding] would count it.
+/// ↩️Till 2026-11-24 no CPU time was asked of `ps`, and every row's was 0:
+/// a Linux CI batch said 「its own 0:00, beside it 0:00」 with four cores
+/// busy, and could not name who held them (card release-2026-11-24).
 List<ProcessRow> rowsFromPs(String text) => [
   for (final line in const LineSplitter().convert(text))
     if (_psRow.firstMatch(line) case final found?)
-      (
-        pid: int.parse(found[1]!),
-        parent: int.parse(found[2]!),
-        born: 0,
-        name: found[4]!,
-        bytes: int.parse(found[3]!) * 1024,
-        cpu: 0,
-      ),
+      if (!found[5]!.startsWith('Z'))
+        (
+          pid: int.parse(found[1]!),
+          parent: int.parse(found[2]!),
+          born: 0,
+          name: found[6]!,
+          bytes: int.parse(found[3]!) * 1024,
+          cpu: cpuTicksOf(found[4]!),
+        ),
 ];
+
+/// The CPU time `ps` prints — `[DD-]HH:MM:SS` (procps) or `M:SS.ss` (the
+/// BSDs') — in [ProcessRow.cpu]'s ticks of a hundred nanoseconds; 0 where
+/// it reads as neither.
+int cpuTicksOf(String time) {
+  final (days, clock) = switch (time.split('-')) {
+    [final clock] => (0, clock),
+    [final days, final clock] => (int.tryParse(days), clock),
+    _ => (null, ''),
+  };
+  double? seconds = 0;
+  for (final part in clock.split(':')) {
+    final read = double.tryParse(part);
+    seconds = seconds == null || read == null ? null : seconds * 60 + read;
+  }
+  if (days == null || seconds == null) return 0;
+  return ((days * 86400 + seconds) * 1e7).round();
+}
 
 List<ProcessRow> _readWindowsTable() {
   final rows = <ProcessRow>[];

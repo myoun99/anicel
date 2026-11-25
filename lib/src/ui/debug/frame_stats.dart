@@ -2,13 +2,32 @@ import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:gpu_engine/gpu_engine.dart' show GpuCompiles;
 
+import '../../native/app_gpu_engine.dart' show appGpuEngineOpen;
 import '../../native/screen_texture.dart';
+import '../../native/screen_turns.dart' show ScreenWaitsRead;
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
+import 'engine_behind.dart';
 import 'measurement_mode.dart';
 import 'pointer_clock.dart';
 import 'screen_asked.dart';
+import 'stroke_steps.dart';
+import 'warm_steps.dart';
+
+/// What a screen's finish went to (`ScreenFinish`), each part's p50 and
+/// p95 in milliseconds.
+typedef FinishWentMillis = ({
+  double queuedP50,
+  double queuedP95,
+  double polledP50,
+  double polledP95,
+  double heardP50,
+  double heardP95,
+  double togetherP50,
+  double togetherP95,
+});
 
 /// One publication of the frame clock: percentiles over a rolling window,
 /// plus the two numbers nobody in this app had ever read.
@@ -30,7 +49,13 @@ import 'screen_asked.dart';
 class FrameStatsSnapshot {
   const FrameStatsSnapshot({
     required this.frames,
+    required this.frameMean,
+    required this.frameTotals,
+    required this.screenMean,
+    required this.finishMean,
+    required this.screenTotals,
     required this.windowSeconds,
+    required this.displayHertz,
     required this.rasterP50,
     required this.rasterP95,
     required this.rasterWorst,
@@ -51,15 +76,36 @@ class FrameStatsSnapshot {
     required this.screenDrawP95,
     required this.screenFinishP50,
     required this.screenFinishP95,
+    required this.screenFinishWent,
     required this.screenShowP50,
     required this.screenShowP95,
-    required this.windowsAreCopied,
+    required this.screenPath,
+    required this.surfaceWaits,
     required this.screenAsked,
     required this.pointsPerSecond,
     required this.packetsPerSecond,
     required this.pointerP50,
     required this.pointerP95,
     required this.pointerMillisPerSecond,
+    required this.stepsPerSecond,
+    required this.dabsPerStepP50,
+    required this.dabsPerStepWorst,
+    required this.strokeHeldP50,
+    required this.strokeHeldP95,
+    required this.strokeUpP50,
+    required this.strokeUpP95,
+    required this.strokeAlong,
+    required this.firstStep,
+    required this.firstUpP50,
+    required this.firstUpWorst,
+    required this.landing,
+    required this.warmsPerSecond,
+    required this.warmP50,
+    required this.warmP95,
+    required this.gpuBehind,
+    required this.gpuBehindWorst,
+    required this.gpuClocked,
+    required this.compiles,
     required this.layerCacheCount,
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
@@ -80,9 +126,53 @@ class FrameStatsSnapshot {
   /// not a finding.
   final int frames;
 
+  /// The window's frames on average, part by part, in milliseconds: the
+  /// wait for the build, the build, the wait for the raster and the raster
+  /// — their sum is the latency's mean, so the debug window's bar of a
+  /// frame adds up to its whole (card one-debug-window-shows-everything:
+  /// 「every sum shows its parts and the rest」). Means, not medians: the
+  /// medians of parts add to no frame's whole.
+  final ({double buildWait, double build, double rasterWait, double raster})
+  frameMean;
+
+  /// Each frame of the window's latency, in milliseconds, oldest first —
+  /// the debug window's graph.
+  final List<double> frameTotals;
+
+  /// The engine's screen frames on average, in milliseconds: the draw, the
+  /// finish and the show, which add to a frame's way up — null where no
+  /// screen put one up.
+  final ({double draw, double finish, double show})? screenMean;
+
+  /// What the finishes that said their parts went to, on average, in
+  /// milliseconds — and those same finishes' whole, so what the parts do
+  /// not name is the rest. Null where no finish said its parts.
+  final ({
+    double queued,
+    double polled,
+    double heard,
+    double together,
+    double whole,
+  })?
+  finishMean;
+
+  /// Each screen frame's way up, in milliseconds, oldest first — the debug
+  /// window's graph.
+  final List<double> screenTotals;
+
   /// Wall span the window covers, from the first frame's vsync to the
   /// last's. [framesPerSecond] divides by it.
   final double windowSeconds;
+
+  /// The refresh rate the platform says the display runs at
+  /// (`FlutterView.display`) — zero where there is no view. Beside
+  /// [framesPerSecond]: a panel at 120 that is shown 94 frames a second is
+  /// missing frames; one the platform runs at 90 is shown no more.
+  ///
+  /// 🗣️관제 2026-11-23 23:24 (card the-galaxy-tab-canvas-went-slow-on-build-1095):
+  /// 「화면 갱신률(120/94)」 — the photographs of 1101 read 94, and no line
+  /// said what the display was asked to run at.
+  final double displayHertz;
 
   final double rasterP50;
   final double rasterP95;
@@ -150,19 +240,30 @@ class FrameStatsSnapshot {
   /// [screenUpP50] part by part (`ScreenUp`): the draw, the GPU finishing
   /// the frame and this isolate hearing so, and the show. The draw and
   /// the show are on the thread that builds the app's frames, and wait
-  /// for nothing there — on Android neither, where [windowsAreCopied]:
-  /// the copy of the whole screen is the engine's thread's, after the
-  /// show.
+  /// for nothing there. The show hands Flutter a texture id and copies
+  /// nothing, on every platform.
   final double screenDrawP50;
   final double screenDrawP95;
   final double screenFinishP50;
   final double screenFinishP95;
+
+  /// [screenFinishP50]'s parts (`ScreenFinish`), each its p50 and p95
+  /// over the frames that said them — null where none did.
+  final FinishWentMillis? screenFinishWent;
   final double screenShowP50;
   final double screenShowP95;
 
-  /// `ScreenTexture.windowsAreCopied`: false where no window was opened
-  /// — every platform but Android.
-  final bool windowsAreCopied;
+  /// `ScreenTexture.path`: the way the newest screen reaches Flutter's
+  /// screen, and why it was refused where it was — empty where none has
+  /// been opened.
+  final String screenPath;
+
+  /// What the screens waited for a buffer Flutter can no longer read, since
+  /// the app opened (`ScreenTurns`): how many waits and how long in all,
+  /// how many ended by the bound instead of the GPU's word, how many times
+  /// a screen's word was cut off — and the word now: told, cut, or none
+  /// heard (an engine without 0007, every platform but Android's).
+  final ScreenWaitsRead surfaceWaits;
 
   /// What the newest show of a canvas's screen asked of the engine
   /// (`ScreenAsked.last`): the texels [screenFinishP50] was spent on, and
@@ -178,6 +279,73 @@ class FrameStatsSnapshot {
   final double pointerP50;
   final double pointerP95;
   final double pointerMillisPerSecond;
+
+  /// A stroke's steps (`StrokeSteps`): how many went out a second, the
+  /// dabs each carried, how long the first of a step's dabs was held for
+  /// it, and how long from that dab to the frame that showed the step up.
+  ///
+  /// 🗣️유저 2026-11-23 (build 1101, a Galaxy Tab): 「그을수록 같은선안에서
+  /// 점점 느려지고 … 선떼고 5초뒤에 그은게 한번에 나오는정도」 — and no line here
+  /// said how far behind the pen the stroke stood. ⚠️The dabs, the held
+  /// and the up are over the newest steps, not this window's frames: with
+  /// no stroke drawn they are the last one's.
+  final double stepsPerSecond;
+  final int dabsPerStepP50;
+  final int dabsPerStepWorst;
+  final double strokeHeldP50;
+  final double strokeHeldP95;
+  final double strokeUpP50;
+  final double strokeUpP95;
+
+  /// The newest stroke's steps' up ([strokeUpP50]'s) along it
+  /// (`StrokeSteps.newestStrokeUpMicros`): the p50 over its first third and
+  /// over its last, and how many steps it took — null under three. A
+  /// stroke whose steps come later as it goes on reads later last.
+  final ({double first, double last, int steps})? strokeAlong;
+
+  /// A stroke's first step and its landing, apart (`StrokeSteps`): the
+  /// newest stroke's first step told whole, how long from the press to the
+  /// frame that showed it up over the strokes kept, and the newest landing
+  /// — null till one is.
+  ///
+  /// 🗣️H67 (card the-start-of-every-stroke-stalls-on-the-galaxy-tab): the
+  /// start of every stroke stalls, then draws, zoomed past 100% too — and
+  /// the lines above ask one step of a stroke's hundreds.
+  final FirstStep? firstStep;
+  final double firstUpP50;
+  final double firstUpWorst;
+  final Landing? landing;
+
+  /// The playback warmer's pictures made a second, and how long each of
+  /// the newest took from the ask to its landing ([WarmSteps]) — a frame's
+  /// picture made slower than the frame lasts leaves a run behind it.
+  ///
+  /// 🗣️H74 (card cut-346-plays-with-frames-missing-on-the-galaxy-tab): a
+  /// Galaxy Tab played a cut with frames missing once a transformed row
+  /// was shown, and no line here said whether for room or for pace.
+  /// ⚠️Over the newest pictures, not this window's frames: with nothing
+  /// warmed they are the last ones'.
+  final double warmsPerSecond;
+  final double warmP50;
+  final double warmP95;
+
+  /// The submits of the app's engine the GPU had not said it finished, as
+  /// of the device's last poll (`GpuEngine.submitsBehind`): as this window
+  /// was published, and the most read at a frame built since the last
+  /// publication — null where no engine is open. Steps piling up on the
+  /// GPU climb here while every duration above reads inside budget.
+  final int? gpuBehind;
+  final int? gpuBehindWorst;
+
+  /// Whether the engine's device stamps a submit's GPU time
+  /// (`GpuEngine.clocked`) — what the stage lines' GPU column is read by;
+  /// null where no engine is open.
+  final bool? gpuClocked;
+
+  /// What the engine's compiler made since it opened (`GpuEngine.compiles`)
+  /// — null where no engine is open.
+  final GpuCompiles? compiles;
+
 
   /// The engine's retained-raster accounting, and the reason this class
   /// exists.
@@ -336,8 +504,20 @@ abstract final class FrameStats {
   /// What the screens and the pointer clock had counted at the previous
   /// publication — read at [_lastCaptureVsync], as the bakes' total is —,
   /// and null where there is none before.
-  static ({int ups, int upsBehind, int packets, int points, int pointerMicros})?
+  static ({
+    int ups,
+    int upsBehind,
+    int packets,
+    int points,
+    int pointerMicros,
+    int steps,
+    int pictures,
+  })?
   _lastCounted;
+
+  /// The most submits behind read at a frame built since the last
+  /// publication ([FrameStatsSnapshot.gpuBehindWorst]) — null till one is.
+  static int? _behindWorst;
 
   static final List<FrameTiming> _window = <FrameTiming>[];
   static bool _installed = false;
@@ -365,18 +545,25 @@ abstract final class FrameStats {
     _installed = true;
     debugRegistrations += 1;
     SchedulerBinding.instance.addTimingsCallback(_record);
-    MeasurementMode.frameStats.addListener(_onEnabledChanged);
+    // At each frame built, not at each batch of timings: a release build
+    // hands those over a few times a second.
+    SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      if (MeasurementMode.debugWindow.value) {
+        _readBehind();
+      }
+    });
+    MeasurementMode.debugWindow.addListener(_onEnabledChanged);
     _onEnabledChanged();
   }
 
   static void _onEnabledChanged() {
-    if (!MeasurementMode.frameStats.value) {
+    if (!MeasurementMode.debugWindow.value) {
       reset();
     }
   }
 
   static void _record(List<FrameTiming> timings) {
-    if (!MeasurementMode.frameStats.value || timings.isEmpty) {
+    if (!MeasurementMode.debugWindow.value || timings.isEmpty) {
       return;
     }
     debugFeed(timings);
@@ -414,8 +601,8 @@ abstract final class FrameStats {
   /// Test hygiene: empties the window and unpublishes. Does NOT
   /// unregister the callback — installation is once per process by
   /// contract, and a test that could undo it would let the next test
-  /// double-register.
-  @visibleForTesting
+  /// double-register. The debug window's reset begins its window again
+  /// by it too.
   static void reset() {
     _window.clear();
     _lastPublishedVsync = null;
@@ -425,7 +612,10 @@ abstract final class FrameStats {
     _lastCaptureTotal = -1;
     _lastCaptureVsync = null;
     _lastCounted = null;
+    _behindWorst = null;
     PointerClock.forget();
+    StrokeSteps.forget();
+    WarmSteps.forget();
     latest.value = null;
   }
 
@@ -453,6 +643,19 @@ abstract final class FrameStats {
   /// recorder has no context to reach that from anyway.
   static double _devicePixelRatio() =>
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
+
+  static double _displayHertz() =>
+      PlatformDispatcher.instance.implicitView?.display.refreshRate ?? 0;
+
+  /// The submits behind now ([EngineBehind]), kept where the most since the
+  /// last publication ([_behindWorst]) — null where no engine is open.
+  static int? _readBehind() {
+    final behind = EngineBehind.now;
+    if (behind != null && behind > (_behindWorst ?? -1)) {
+      _behindWorst = behind;
+    }
+    return behind;
+  }
 
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
     // A figure of each of the window's frames, in microseconds, sorted for
@@ -515,7 +718,20 @@ abstract final class FrameStats {
     final upDraws = [for (final up in ups) up.draw]..sort();
     final upFinishes = [for (final up in ups) up.finish]..sort();
     final upShows = [for (final up in ups) up.show]..sort();
+    final wents = [for (final up in ups) ?up.went];
+    List<int> partOf(int Function(ScreenFinish went) part) =>
+        [for (final went in wents) part(went)]..sort();
+    final engine = appGpuEngineOpen.value;
+    final compiles = engine?.compiles;
     final packets = [...PointerClock.packetMicros]..sort();
+    final dabs = [...StrokeSteps.dabsKept]..sort();
+    final held = [...StrokeSteps.heldMicros]..sort();
+    final strokeUps = [...StrokeSteps.upMicros]..sort();
+    final warms = [...WarmSteps.madeMicros]..sort();
+    final firstUps = [...StrokeSteps.firstUpMicros]..sort();
+    final behind = _readBehind();
+    final behindWorst = _behindWorst;
+    _behindWorst = null;
 
     // Counters all, read as the bakes' total is: each one's slope over the
     // interval since the last publication.
@@ -525,15 +741,52 @@ abstract final class FrameStats {
       packets: PointerClock.packetsCounted,
       points: PointerClock.pointsCounted,
       pointerMicros: PointerClock.microsCounted,
+      steps: StrokeSteps.stepsCounted,
+      pictures: WarmSteps.picturesCounted,
     );
     final before = _lastCounted;
     _lastCounted = counted;
     double aSecond(int now, int? then) =>
         then == null || rateSeconds <= 0 ? 0.0 : (now - then) / rateSeconds;
 
+    double mean(Iterable<int> micros) => micros.isEmpty
+        ? 0
+        : micros.fold(0, (sum, each) => sum + each) / micros.length / 1000;
     return FrameStatsSnapshot(
       frames: window.length,
+      frameMean: (
+        buildWait: mean(buildWait),
+        build: mean(ui),
+        rasterWait: mean(rasterWait),
+        raster: mean(raster),
+      ),
+      frameTotals: [
+        for (final timing in window) timing.totalSpan.inMicroseconds / 1000,
+      ],
+      screenMean: ups.isEmpty
+          ? null
+          : (
+              draw: mean(upDraws),
+              finish: mean(upFinishes),
+              show: mean(upShows),
+            ),
+      finishMean: wents.isEmpty
+          ? null
+          : (
+              queued: mean(partOf((went) => went.queued)),
+              polled: mean(partOf((went) => went.polled)),
+              heard: mean(partOf((went) => went.heard)),
+              together: mean(partOf((went) => went.together)),
+              whole: mean([
+                for (final up in ups)
+                  if (up.went != null) up.finish,
+              ]),
+            ),
+      screenTotals: [
+        for (final up in ups) (up.draw + up.finish + up.show) / 1000,
+      ],
       windowSeconds: spanSeconds,
+      displayHertz: _displayHertz(),
       rasterP50: _percentileMillis(raster, 0.50),
       rasterP95: _percentileMillis(raster, 0.95),
       rasterWorst: _percentileMillis(raster, 1.0),
@@ -554,9 +807,18 @@ abstract final class FrameStats {
       screenDrawP95: _percentileMillis(upDraws, 0.95),
       screenFinishP50: _percentileMillis(upFinishes, 0.50),
       screenFinishP95: _percentileMillis(upFinishes, 0.95),
+      screenFinishWent: wents.isEmpty
+          ? null
+          : _finishWentOf(
+              queued: partOf((went) => went.queued),
+              polled: partOf((went) => went.polled),
+              heard: partOf((went) => went.heard),
+              together: partOf((went) => went.together),
+            ),
       screenShowP50: _percentileMillis(upShows, 0.50),
       screenShowP95: _percentileMillis(upShows, 0.95),
-      windowsAreCopied: ScreenTexture.windowsAreCopied,
+      screenPath: ScreenTexture.path,
+      surfaceWaits: ScreenTexture.surfaceWaits.read,
       screenAsked: ScreenAsked.last,
       pointsPerSecond: aSecond(counted.points, before?.points),
       packetsPerSecond: aSecond(counted.packets, before?.packets),
@@ -564,6 +826,25 @@ abstract final class FrameStats {
       pointerP95: _percentileMillis(packets, 0.95),
       pointerMillisPerSecond:
           aSecond(counted.pointerMicros, before?.pointerMicros) / 1000,
+      stepsPerSecond: aSecond(counted.steps, before?.steps),
+      dabsPerStepP50: _ranked(dabs, 0.50),
+      dabsPerStepWorst: _ranked(dabs, 1.0),
+      strokeHeldP50: _percentileMillis(held, 0.50),
+      strokeHeldP95: _percentileMillis(held, 0.95),
+      strokeUpP50: _percentileMillis(strokeUps, 0.50),
+      strokeUpP95: _percentileMillis(strokeUps, 0.95),
+      strokeAlong: _alongTheStroke(StrokeSteps.newestStrokeUpMicros),
+      firstStep: StrokeSteps.firstStep,
+      firstUpP50: _percentileMillis(firstUps, 0.50),
+      firstUpWorst: _percentileMillis(firstUps, 1.0),
+      landing: StrokeSteps.landing,
+      warmsPerSecond: aSecond(counted.pictures, before?.pictures),
+      warmP50: _percentileMillis(warms, 0.50),
+      warmP95: _percentileMillis(warms, 0.95),
+      gpuBehind: behind,
+      gpuBehindWorst: behindWorst,
+      gpuClocked: engine?.clocked,
+      compiles: compiles,
       layerCacheCount: last.layerCacheCount,
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,
@@ -583,11 +864,44 @@ abstract final class FrameStats {
   /// Nearest-rank percentile over a SORTED list of microseconds, in
   /// milliseconds. Same index arithmetic the brush lab already uses, so
   /// numbers from the two instruments can be compared directly.
-  static double _percentileMillis(List<int> sortedMicros, double p) {
-    if (sortedMicros.isEmpty) {
-      return 0;
+  /// [FrameStatsSnapshot.strokeAlong] of [ups], a stroke's in order.
+  static ({double first, double last, int steps})? _alongTheStroke(
+    List<int> ups,
+  ) {
+    final third = ups.length ~/ 3;
+    if (third == 0) {
+      return null;
     }
-    final index = ((sortedMicros.length - 1) * p).round();
-    return sortedMicros[index] / 1000.0;
+    double p50Of(Iterable<int> part) =>
+        _percentileMillis([...part]..sort(), 0.50);
+    return (
+      first: p50Of(ups.take(third)),
+      last: p50Of(ups.skip(ups.length - third)),
+      steps: ups.length,
+    );
   }
+
+  /// The p50 and p95 of each part of a finish, sorted.
+  static FinishWentMillis _finishWentOf({
+    required List<int> queued,
+    required List<int> polled,
+    required List<int> heard,
+    required List<int> together,
+  }) => (
+    queuedP50: _percentileMillis(queued, 0.50),
+    queuedP95: _percentileMillis(queued, 0.95),
+    polledP50: _percentileMillis(polled, 0.50),
+    polledP95: _percentileMillis(polled, 0.95),
+    heardP50: _percentileMillis(heard, 0.50),
+    heardP95: _percentileMillis(heard, 0.95),
+    togetherP50: _percentileMillis(together, 0.50),
+    togetherP95: _percentileMillis(together, 0.95),
+  );
+
+  static double _percentileMillis(List<int> sortedMicros, double p) =>
+      _ranked(sortedMicros, p) / 1000.0;
+
+  /// The nearest-rank percentile [p] of [sorted] — zero where it is empty.
+  static int _ranked(List<int> sorted, double p) =>
+      sorted.isEmpty ? 0 : sorted[((sorted.length - 1) * p).round()];
 }

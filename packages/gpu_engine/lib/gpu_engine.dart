@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' show max, min;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -132,10 +133,18 @@ enum GpuDeviceWent {
       code >= 0 && code < values.length ? values[code] : unsaid;
 }
 
-String _lastError() => using((arena) {
-  const capacity = 1024;
+String _lastError() => _copiedOut(1024, rust.lastError);
+
+/// The text one of the engine's functions copies out: [copy] writes up to
+/// [capacity] bytes of its UTF-8 into the buffer it is handed and returns
+/// the text's whole length (rust/src/lib.rs, `copy_out`) — what fit is
+/// read.
+String _copiedOut(
+  int capacity,
+  int Function(Pointer<Uint8> buffer, int capacity) copy,
+) => using((arena) {
   final buffer = arena<Uint8>(capacity);
-  final length = rust.lastError(buffer, capacity);
+  final length = copy(buffer, capacity);
   final count = length < capacity ? length : capacity;
   return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
 });
@@ -296,22 +305,26 @@ class GpuEngine {
     return made;
   }
 
-  /// [target]'s texture, for a draw on this engine to write: what the
-  /// target was said to hold is forgotten ([GpuTarget.kept]). Every draw
+  /// [target]'s texture, for a draw on this engine to write [rect] of —
+  /// [left, top, right, bottom), the whole of it where null: what the
+  /// target was said to hold is forgotten ([GpuSurface.kept]), and what the
+  /// draw writes is counted as changed ([GpuSurface.settle]). Every draw
   /// reaches a target's texture through here.
-  Pointer<rust.Texture> _toDrawOn(GpuTarget target) {
+  Pointer<rust.Texture> _toDrawOn(
+    GpuSurface target,
+    (int, int, int, int)? rect,
+  ) {
     final texture = _its(target)._texture;
-    target.kept = null;
+    target
+      ..kept = null
+      .._wrote(rect);
     return texture;
   }
 
-  String get adapterName => using((arena) {
-    const capacity = 256;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineAdapterName(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
+  String get adapterName => _copiedOut(
+    256,
+    (buffer, capacity) => rust.engineAdapterName(_engine, buffer, capacity),
+  );
 
   /// This process's use of the adapter's memory, as the OS says it
   /// ([GpuVideoMemory]).
@@ -338,6 +351,12 @@ class GpuEngine {
   /// while a hand is at work and none at rest ([restsAfter]). Till they
   /// are given back ([givePicturesBackPast]).
   int get idlePictureBytes => rust.picturesIdleBytes(_engine);
+
+  /// The bytes of the pages the engine's pictures have their tiles on,
+  /// made — a page whole, its free slots too: what the debug window says
+  /// the engine's pictures hold by its own count, beside the census's
+  /// holders of them. Read off the engine's thread.
+  int get pictureBytes => rust.picturesBytes(_engine);
 
   /// The bytes of the tiles the engine's pictures hold that none of them
   /// weighs. Screens composed of the same hold one tile for it, weighed by
@@ -374,7 +393,8 @@ class GpuEngine {
   Timer? _atRest;
 
   /// A compose was handed over — [GpuComposite.run], [GpuComposite.show],
-  /// [GpuScreen.compose], [GpuScreen.composeOver] —: a hand is at work,
+  /// [GpuScreen.compose], [GpuScreen.composeOver] — or a move, which keeps
+  /// a buffer as they do ([GpuComposite.move]): a hand is at work,
   /// and rests once none is for [restsAfter]. The engine takes the rest
   /// in turn behind what it was handed before, this isolate waiting for
   /// none of it.
@@ -429,11 +449,17 @@ class GpuEngine {
   /// (rust/src/device.rs, `Refusals`): every job that waits for it is
   /// refused from then on ([GpuRefused]), and nothing made on this engine
   /// is of use again. Known once a job has waited — the word that a
-  /// device is lost comes inside a wait.
+  /// device is lost comes inside a wait — and, where the device's driver
+  /// says that it took one (D3D12), whenever this is asked
+  /// (rust/src/device.rs, `Refusals::asks`).
   ///
   /// 🗣️gpu-canonical-store-Q11 (유저 2026-11-10): 「RAM 에 사본을 두고 앱을
   /// 유지한다」 — a lost device is not the app's end.
   bool get isGone => rust.engineGone(_engine);
+
+  /// Whether [close] has been called: nothing of this engine is asked
+  /// after, [isGone] among it.
+  bool get isClosed => _closed;
 
   /// Why the device went, as far as anything says ([GpuDeviceWent]) —
   /// unsaid while it is there.
@@ -446,35 +472,61 @@ class GpuEngine {
   /// `microsecondsSinceEpoch` reads.
   /// Asks nothing of the engine's thread or the device: what the app
   /// writes down as a device goes (H63).
-  String get unfinishedSubmits => using((arena) {
-    const capacity = 16384;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineUnfinished(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
+  String get unfinishedSubmits => _copiedOut(
+    16384,
+    (buffer, capacity) => rust.engineUnfinished(_engine, buffer, capacity),
+  );
+
+  /// How many submits of this engine the GPU has not said it finished — as
+  /// of the device's last poll (rust/src/submits.rs, `Submits::behind`).
+  /// Asks nothing of the engine's thread or the device.
+  int get submitsBehind => rust.engineSubmitsBehind(_engine);
+
+  /// What this engine's compiler made since it opened, and what ran
+  /// meanwhile without it (rust/src/device.rs, `Compiles`) — the frame
+  /// statistics' COMPILE line. Asks nothing of the engine's thread or the
+  /// device.
+  GpuCompiles get compiles => using((arena) {
+    final into = arena<Uint64>(6);
+    rust.engineCompiles(_engine, into);
+    return compilesSaid(into.asTypedList(6));
   });
+
+  /// The compiles [said] in the engine's six words
+  /// (rust/src/device.rs, `gpu_engine_compiles`): what [compiles] reads.
+  @visibleForTesting
+  static GpuCompiles compilesSaid(List<int> said) => (
+    made: said[0],
+    micros: said[1],
+    longestMicros: said[2],
+    underWay: said[3],
+    stoodIn: said[4],
+    // The OS keeps them, and says nothing (rust/src/platform/apple.rs).
+    found: said[5] == -1 ? null : said[5],
+  );
+
+  /// Whether this engine's device has a clock of its own
+  /// (rust/src/clock.rs): what a timed engine tells the GPU's time by
+  /// ([took]) — none told where it has not.
+  bool get clocked => rust.engineClocked(_engine);
 
   /// Times this engine from here on, or no longer (rust/src/took.rs):
   /// while it is, each body handed to its thread and each submit is timed
-  /// by where in the engine it was made ([took]). ⚠️A timed engine waits
-  /// out each submit where it makes it, so that the GPU's time is that
-  /// submit's and no other's: its frames are the sum of their parts, and
-  /// longer than an untimed engine's. Asked for what it is already, it
-  /// keeps what it has.
+  /// by where in the engine it was made ([took]) — a submit by the GPU's
+  /// own clock where the device has one ([clocked]), and waited for by no
+  /// one: the engine timed is the engine untimed. Asked for what it is
+  /// already, it keeps what it has.
   void timesItsPlaces(bool timed) => rust.engineTimed(_engine, timed);
 
   /// What each place of this engine took since this was last asked
   /// ([GpuPlaceTook]) — none while it is not timed ([timesItsPlaces]).
   /// Asks nothing of the engine's thread or the device.
-  List<GpuPlaceTook> took() => using((arena) {
-    const capacity = 16384;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineTook(_engine, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return placesTook(
-      utf8.decode(buffer.asTypedList(count), allowMalformed: true),
-    );
-  });
+  List<GpuPlaceTook> took() => placesTook(
+    _copiedOut(
+      16384,
+      (buffer, capacity) => rust.engineTook(_engine, buffer, capacity),
+    ),
+  );
 
   /// The places [told] says took anything, as the engine tells them a
   /// line each (rust/src/took.rs, `Took::told`): what [took] reads.
@@ -503,16 +555,28 @@ class GpuEngine {
   /// by yet, or null — taken, so no job is refused by it after. An error
   /// on a way that never waits is told to no one, and a test asks as it
   /// ends.
-  String? debugTakeNoted() => using((arena) {
-    const capacity = 1024;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.engineNoted(_engine, buffer, capacity);
-    if (length == 0) {
-      return null;
-    }
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
+  String? debugTakeNoted() {
+    final noted = _copiedOut(
+      1024,
+      (buffer, capacity) => rust.engineNoted(_engine, buffer, capacity),
+    );
+    return noted.isEmpty ? null : noted;
+  }
+
+  /// How many waits for the GPU passed the engine's limit with its
+  /// device standing (rust/src/device.rs, `Refusals::past`) — the GPU at
+  /// one job longer than the engine waits for any. ⛔Not read from a
+  /// refusal's words: a body handed over unwaited carries none
+  /// ([_toldRefused]).
+  int get waitsPastTheirLimit => rust.engineLate(_engine);
+
+  /// Test seam: a wait ended past its limit, as the engine ends one the
+  /// GPU does not answer — which no test waits out: thrown as that wait's
+  /// caller hears it.
+  Never debugWaitPastItsLimit() {
+    rust.engineWaitLate(_engine);
+    throw GpuRefused(_lastError());
+  }
 
   /// Test seam: the device destroyed — the nearest a test comes to a
   /// driver taking it away, which no test does. [isGone] says so once a
@@ -543,8 +607,11 @@ class GpuEngine {
   /// a screen's frame is put up as the GPU finishes it, the thread that
   /// builds the app's frames waiting for none of it ([debugWaitsHere]).
   ///
-  Future<void> done() {
-    final ended = Completer<void>();
+  /// Ends with how the wait went ([GpuWaited]) — null where the engine
+  /// kept no word of it — for whoever reads why a frame took as long as it
+  /// did (`ScreenTexture`'s finish).
+  Future<GpuWaited?> done() {
+    final ended = Completer<GpuWaited?>();
     rust.doneThen(
       _engine,
       _waits.told,
@@ -553,20 +620,33 @@ class GpuEngine {
     return ended.future;
   }
 
+  /// How the wait [wait] went where it finished — taken
+  /// (rust/src/device.rs, `gpu_engine_done_waited`).
+  GpuWaited? _waitedOf(int wait) => _closed
+      ? null
+      : using((arena) {
+          final into = arena<Uint64>(2);
+          if (!rust.doneWaited(_engine, wait, into)) {
+            return null;
+          }
+          return (queuedMicros: into[0], polledMicros: into[1]);
+        });
+
   /// The waits on their way ([done]), and how a thread of the engine's
   /// tells this isolate one has ended: by its number, and whether the GPU
   /// finished.
-  static final _waits = _Told<({Completer<void> ended, GpuEngine engine})>((
-    wait,
-    asked,
-    finished,
-  ) {
-    if (finished) {
-      asked.ended.complete();
-    } else {
-      asked.ended.completeError(GpuRefused(asked.engine._whyNotDone(wait)));
-    }
-  });
+  static final _waits =
+      _Told<({Completer<GpuWaited?> ended, GpuEngine engine})>((
+        wait,
+        asked,
+        finished,
+      ) {
+        if (finished) {
+          asked.ended.complete(asked.engine._waitedOf(wait));
+        } else {
+          asked.ended.completeError(GpuRefused(asked.engine._whyNotDone(wait)));
+        }
+      });
 
   /// Why the wait [wait] did not end with the GPU done — taken. 🚨Of an
   /// engine closed meanwhile nothing is read: its thread tells the waits
@@ -575,45 +655,53 @@ class GpuEngine {
     if (_closed) {
       return 'the engine was closed before the GPU had finished';
     }
-    return using((arena) {
-      const capacity = 1024;
-      final buffer = arena<Uint8>(capacity);
-      final length = rust.doneFailure(_engine, wait, buffer, capacity);
-      final count = length < capacity ? length : capacity;
-      return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-    });
+    return _copiedOut(
+      1024,
+      (buffer, capacity) => rust.doneFailure(_engine, wait, buffer, capacity),
+    );
   }
 
-  /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra].
-  GpuSurface surface(int width, int height, {required bool bgra}) {
-    final surface = rust.surfaceNew(_engine, width, height, bgra);
+  /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra] — laid
+  /// out for the CPU to read too unless [asTheDriverChooses], where the
+  /// platform lets that be said: Android alone, where drivers keep such a
+  /// buffer uncompressed and so nothing compressed is seen differently by
+  /// Flutter's device and the engine's (rust/src/platform/android.rs,
+  /// `allocated`). Elsewhere the two are one.
+  GpuSurface surface(
+    int width,
+    int height, {
+    required bool bgra,
+    bool asTheDriverChooses = false,
+  }) {
+    final surface = rust.surfaceNew(
+      _engine,
+      width,
+      height,
+      bgra,
+      !asTheDriverChooses,
+    );
     if (surface == nullptr) {
       throw GpuRefused(_lastError());
     }
-    return GpuSurface._(this, surface, width, height, bgra);
-  }
-
-  /// A Flutter texture of [width] × [height] RGBA texels that the engine
-  /// presents into — Android's way to the screen.
-  Future<GpuWindow> window(int width, int height) async {
-    final made = (await _plugin.invokeMapMethod<String, int>('window', {
-      'width': width,
-      'height': height,
-    }))!;
-    final textureId = made['textureId']!;
-    final window = rust.windowNew(
-      _engine,
-      Pointer.fromAddress(made['window']!),
+    return GpuSurface._(
+      this,
+      surface,
       width,
       height,
+      bgra,
+      asTheDriverChooses: asTheDriverChooses,
     );
-    if (window == nullptr) {
-      final error = _lastError();
-      await _plugin.invokeMethod<void>('release', {'textureId': textureId});
-      throw GpuRefused(error);
-    }
-    return GpuWindow._(this, window, textureId);
   }
+
+  /// 🔬The way a [surface] reaches Flutter's screen on this engine, for the
+  /// debug screen — on Android `ahb` where the device makes a screen of an
+  /// AHardwareBuffer, else `ahb no — ` and what stands in the way: the
+  /// extension, Vulkan 1.1, or the device's answer for a storable image
+  /// (rust/src/platform/android.rs, `screen_said`).
+  String get screenSaid => _copiedOut(
+    1024,
+    (buffer, capacity) => rust.screenSaid(_engine, buffer, capacity),
+  );
 
   /// Test seam: the engine keeps none of its kernels, as a launch finds it
   /// (rust/src/device.rs, `Kernels`) — what holds one keeps it, and the
@@ -694,17 +782,26 @@ class GpuEngine {
   }
 }
 
-/// What a kernel writes for the screen to show: a [GpuSurface] Flutter
-/// shows through a [SharedTexture], or a [GpuWindow]'s next image — one
-/// kernel entry for both (rust/src/kernels/mod.rs).
-sealed class GpuTarget implements _OfAnEngine {
-  GpuTarget(this._engine);
+/// What a kernel writes for the screen to show: a texture the compute pass
+/// fills and Flutter shows through a [SharedTexture], on every platform.
+///
+/// ↩️ONE CLASS SINCE ANDROID'S WINDOW WENT (2026-11-23): a sealed target
+/// stood over it and the window (`GpuWindow`), the window's images the
+/// kernels stored straight into. With the window gone it had one child —
+/// two names for one question (관제 2026-11-24, card
+/// gpu-target-has-one-child-left) —, folded into it.
+class GpuSurface implements _OfAnEngine {
+  GpuSurface._(
+    this._engine,
+    this._surface,
+    this.width,
+    this.height,
+    this.bgra, {
+    required this.asTheDriverChooses,
+  });
 
   @override
   final GpuEngine _engine;
-
-  /// The texture the kernel writes.
-  Pointer<rust.Texture> get _texture;
 
   /// WHAT THE TARGET STILL HOLDS OF THE FRAME DRAWN ON IT LAST, as who drew
   /// it says once it has — read back by who draws on it next, to draw
@@ -723,9 +820,55 @@ sealed class GpuTarget implements _OfAnEngine {
   /// (Android's, on the way builds 1095 to 1097 showed one by): its next
   /// was another of its swapchain's each frame, holding a frame older
   /// than the last by how many it keeps. Every target is one texture of
-  /// the engine's own now, a window's too
-  /// (rust/src/platform/android.rs, `Window`).
+  /// the engine's own now: a surface (rust/src/platform/android.rs).
   Object? kept;
+
+  /// What the draws since the last [settle] wrote of the target — the box
+  /// round all of them, [left, top, right, bottom) —, null where none has.
+  (int, int, int, int)? _changed;
+
+  /// [_changed], read by a test.
+  (int, int, int, int)? get debugChanged => _changed;
+
+  void _wrote((int, int, int, int)? rect) {
+    final (left, top, right, bottom) = rect ?? (0, 0, width, height);
+    _changed = switch (_changed) {
+      null => (left, top, right, bottom),
+      (final l, final t, final r, final b) => (
+        min(l, left),
+        min(t, top),
+        max(r, right),
+        max(b, bottom),
+      ),
+    };
+  }
+
+  /// Hands Flutter what the draws since the last settle wrote, where what
+  /// it shows of the target is not the texture they write: copied onto
+  /// it, submitted, and waited for by none of this — the next
+  /// [GpuEngine.done] ends once the copy is done too
+  /// (rust/src/platform/mod.rs, `gpu_engine_surface_settle`). Asked once a
+  /// frame is drawn, before its done (the app's `ScreenTexture.present`),
+  /// on every platform; where the two are one texture — every device but
+  /// an Android one whose AHardwareBuffer images take no stores — it
+  /// copies nothing.
+  ///
+  /// 🗣️유저 2026-11-23 (card the-galaxy-tab-canvas-went-slow-on-build-1095-Q9):
+  /// 「그 기기만 바뀐 곳을 한 번 옮겨 보여 준다」 — what changed, once.
+  void settle() {
+    final changed = _changed;
+    _changed = null;
+    if (changed == null) {
+      return;
+    }
+    using(
+      (arena) => rust.surfaceSettle(
+        _engine._engine,
+        _surface,
+        _edges(arena, changed),
+      ),
+    );
+  }
 
   /// Fills the target with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
@@ -733,20 +876,9 @@ sealed class GpuTarget implements _OfAnEngine {
     rust.fillRun(
       _engine._fillKernel,
       _engine._engine,
-      _engine._toDrawOn(this),
+      _engine._toDrawOn(this, null),
       seed,
     ),
-  );
-}
-
-/// A texture the compute pass fills and Flutter shows.
-class GpuSurface extends GpuTarget {
-  GpuSurface._(
-    super._engine,
-    this._surface,
-    this.width,
-    this.height,
-    this.bgra,
   );
 
   final Pointer<rust.Surface> _surface;
@@ -754,9 +886,20 @@ class GpuSurface extends GpuTarget {
   final int height;
   final bool bgra;
 
+  /// The layout it was asked for ([GpuEngine.surface]).
+  final bool asTheDriverChooses;
+
+  /// How its buffer was laid out, read back off it: on Android its
+  /// AHardwareBuffer's usage — what the driver kept of what was asked —,
+  /// empty elsewhere (rust/src/platform/android.rs, `laid_said`).
+  String get laidSaid => _copiedOut(
+    64,
+    (buffer, capacity) => rust.surfaceLaidSaid(_surface, buffer, capacity),
+  );
+
   Pointer<Void> get _handle => rust.surfaceHandle(_surface);
 
-  @override
+  /// The texture the kernel writes.
   Pointer<rust.Texture> get _texture => rust.surfaceTexture(_surface);
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
@@ -830,11 +973,33 @@ final int gpuTileBytes = gpuTileSide * gpuTileSide * 4;
 /// Where a [GpuPool] keeps a tile: a slot of one of its pages.
 typedef GpuTile = ({int page, int slot});
 
+/// What an engine's compiler made since it opened ([GpuEngine.compiles]):
+/// pipelines [made] and the microseconds they took in all, the longest of
+/// them, compiles [underWay] now, composite passes run on the pass that
+/// takes any plan while their own was still to come ([stoodIn]), and the
+/// pipelines the folder it keeps them in answered ([found]) — null where
+/// the OS keeps them and says nothing (Apple).
+typedef GpuCompiles = ({
+  int made,
+  int micros,
+  int longestMicros,
+  int underWay,
+  int stoodIn,
+  int? found,
+});
+
+/// How a wait for the GPU went where it finished ([GpuEngine.done]): the
+/// microseconds it stood in turn on the engine's thread behind the bodies
+/// handed there before it ([queuedMicros]), and those its poll stood in
+/// the driver till the GPU had finished all that was submitted — of any
+/// caller's ([polledMicros]).
+typedef GpuWaited = ({int queuedMicros, int polledMicros});
+
 /// What one place of the engine took since it was last asked
 /// ([GpuEngine.took]): whose time it is — the [gpu]'s, of the submits
-/// made there, each waited out where it was made; else the engine's
-/// thread's, in the bodies handed over there, less their waits for the
-/// GPU —, the [place] (`file:line` in the engine's sources), how many
+/// made there, by its own clock ([GpuEngine.clocked]); else the engine's
+/// thread's, in the bodies handed over there —, the [place] (`file:line`
+/// in the engine's sources), how many
 /// [times], their [micros]econds in all and the [longest] of them, and
 /// the workgroups its submits dispatched in all ([groups]; none for a
 /// body).
@@ -914,7 +1079,8 @@ class GpuPool implements _OfAnEngine {
       ..keepToInsteadOfTheOs(debugBudgetTillOneIsSet);
   }
 
-  GpuPool._(this._engine, this._pool);
+  GpuPool._(this._engine, Pointer<rust.Pool> pool)
+    : _given = _Held(pool, 'a pool', asked: () => debugAsked);
 
   /// Test seam: the budget each pool made keeps to in place of the OS's
   /// till one is set ([keepToInsteadOfTheOs]) — the OS's where null, as in
@@ -939,7 +1105,27 @@ class GpuPool implements _OfAnEngine {
 
   @override
   final GpuEngine _engine;
-  final Pointer<rust.Pool> _pool;
+
+  /// The engine's pool, for each ask of it — here, and of a job that names
+  /// it ([GpuEngine._its]) —; refused by name once it is [free]d
+  /// ([_Held]). [release] answers a freed pool as it answers a slot none
+  /// holds.
+  ///
+  /// 🗣️관제 2026-11-24 (card a-pool-release-aborts-on-an-empty-book): a tile
+  /// a ledger stored, collected once a test had freed that ledger's pool,
+  /// let its slot go (EngineTileLedger `_letGoWithKey`), the engine read a
+  /// slot of no book and panicked past the ABI, and the process ended with
+  /// it.
+  Pointer<rust.Pool> get _pool => _given.ofIt;
+  final _Held<rust.Pool> _given;
+
+  /// Whether it was [free]d: what is told of it after asks it nothing.
+  bool get _isFreed => _given.freed;
+
+  /// Test seam: called as each ask reaches the engine ([_pool]) — how a
+  /// test tells an ask of a freed pool refused from one that went through.
+  @visibleForTesting
+  static void Function()? debugAsked;
 
   /// A cel: the tiles stored under it go to pages of theirs first, then to
   /// any page with room (rust/src/kernels/pool/mod.rs).
@@ -1004,7 +1190,7 @@ class GpuPool implements _OfAnEngine {
     written,
   ) {
     final pool = stored.pool;
-    if (written || pool._freed) {
+    if (written || pool._isFreed) {
       return;
     }
     final unwritten = pool._unwritten();
@@ -1028,8 +1214,10 @@ class GpuPool implements _OfAnEngine {
     ];
   });
 
-  /// Lets [tile] go; false where no tile is held there.
-  bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
+  /// Lets [tile] go; false where no tile is held there — none is, in a
+  /// pool freed: a tile collected after its pool went lets go of nothing.
+  bool release(GpuTile tile) =>
+      !_isFreed && rust.poolRelease(_pool, tile.page, tile.slot);
 
   /// Hands the engine's thread a fold of the tiles next to fold — [most]
   /// at most, by [kernels] — and gives them their places once it is told,
@@ -1062,7 +1250,7 @@ class GpuPool implements _OfAnEngine {
     final folded = await told.future;
     // Freed meanwhile, its books went with it — what was folded too. A
     // fold that failed is settled as well: its tiles are the next's.
-    if (!_freed) {
+    if (!_isFreed) {
       rust.poolSettle(_pool, _engine._engine);
     }
     return folded ? handed : 0;
@@ -1138,14 +1326,61 @@ class GpuPool implements _OfAnEngine {
   /// (rust/src/kernels/pool/mod.rs).
   int get aheadBytes => rust.poolAheadBytes(_pool);
 
-  /// Frees the pool's pages; before its engine is closed.
-  void free() {
-    _freed = true;
-    rust.poolFree(_pool);
+  /// The bytes of the pages of folded tiles among [bytes]
+  /// (rust/src/kernels/pool/mod.rs).
+  int get foldedBytes => rust.poolFoldedBytes(_pool);
+
+  /// Frees the pool's pages; before its engine is closed. Asked again, it
+  /// is refused as any ask of a freed pool is ([_pool]).
+  void free() => rust.poolFree(_given.letGo());
+}
+
+/// What the engine handed an object, held by it till it frees it: every
+/// ask of it comes through [ofIt], which refuses one freed by name — the
+/// pointer goes with the free ([letGo]).
+///
+/// 🚨★A FREED HANDLE ASKS THE ENGINE NOTHING (관제 2026-11-24): what is
+/// asked after a free reads freed memory, and need not crash where it does
+/// — 🔬a screen's bytes asked after it was freed (the crate's
+/// `screens_composed_of_the_same_hold_one_tile_weighed_once`) read on on
+/// Windows and faulted on Linux (card release-2026-11-24), as a pool's let-go
+/// had ended a process (card a-pool-release-aborts-on-an-empty-book). The
+/// pool's law till then, the screen's with it ([GpuPool], [GpuScreen]).
+final class _Held<T extends NativeType> {
+  _Held(Pointer<T> pointer, this._what, {void Function()? Function()? asked})
+    : _live = pointer,
+      _asked = asked;
+
+  /// What it is, as a refusal names it.
+  final String _what;
+
+  /// The holder's test seam, told of each ask that reaches the engine — how
+  /// a test tells an ask refused from one that went through.
+  final void Function()? Function()? _asked;
+
+  /// The pointer while it is not freed; null once it is ([letGo]).
+  Pointer<T>? _live;
+
+  /// Whether it was freed ([letGo]).
+  bool get freed => _live == null;
+
+  /// The pointer, for an ask of it; refused by name once it is freed.
+  Pointer<T> get ofIt {
+    final live = _live;
+    if (live == null) {
+      throw GpuRefused('$_what was asked after it was freed');
+    }
+    _asked?.call()?.call();
+    return live;
   }
 
-  /// Freed: a store's copy told of after asks the pool nothing.
-  bool _freed = false;
+  /// The pointer for the free that lets it go, refused as any ask is once
+  /// it is freed: asked from here on, it names nothing.
+  Pointer<T> letGo() {
+    final live = ofIt;
+    _live = null;
+    return live;
+  }
 }
 
 /// A bitmap dabs read — a tip's or the paper's — kept for the piles that read
@@ -1323,8 +1558,11 @@ enum GpuChange { same, inked, cleared }
 /// there, if it has one.
 typedef GpuTileAsk = ({int column, int row, GpuTile? under});
 
-/// What a landing made of a tile asked: what it is, and where it landed.
-typedef GpuLanded = ({GpuChange change, GpuTile? tile});
+/// What a landing made of a tile asked: what it is, where it landed, and
+/// the box its ink fills — as a landing that compares is told them
+/// (rust/src/kernels/dab/landing.rs, `Landed`). One that does not compare
+/// is told neither: each tile [GpuChange.inked], and no box.
+typedef GpuLanded = ({GpuChange change, GpuTile? tile, GpuInkBox? box});
 
 /// [asks] as a landing's call takes them, and what it wrote read back.
 List<GpuLanded> _landed(
@@ -1335,6 +1573,7 @@ List<GpuLanded> _landed(
     Pointer<Uint32> under,
     Pointer<Uint32> places,
     Pointer<Uint8> changes,
+    Pointer<Int32> inks,
   )
   call,
 ) => using((arena) {
@@ -1342,7 +1581,8 @@ List<GpuLanded> _landed(
   final (:coordinates, :under) = _asked(arena, asks);
   final places = arena<Uint32>(_held(count));
   final changes = arena<Uint8>(_held(count));
-  final landed = call(arena, coordinates, under, places, changes);
+  final inks = arena<Int32>(_held(count * 4));
+  final landed = call(arena, coordinates, under, places, changes, inks);
   if (landed < 0) {
     throw GpuRefused(_lastError());
   }
@@ -1353,6 +1593,7 @@ List<GpuLanded> _landed(
         tile: places[at] == _noTile
             ? null
             : (page: places[at] >> 16, slot: places[at] & 0xFFFF),
+        box: _inkBoxAt(inks.asTypedList(landed * 4), at * 4),
       ),
   ];
 });
@@ -1389,7 +1630,7 @@ List<GpuLanded> _landed(
 /// same would take a page of the pool's for a moment, and a full pool
 /// would let go of tiles to make room for slots nothing keeps.
 final class GpuFinished {
-  GpuFinished._(this._engine, this._finished, this.changes) {
+  GpuFinished._(this._engine, this._finished, this.changes, this.inks) {
     debugKept += 1;
   }
 
@@ -1402,6 +1643,15 @@ final class GpuFinished {
 
   /// What each tile asked is, in the order they were asked.
   final List<GpuChange> changes;
+
+  /// The box each tile's ink fills, in the order they were asked — null
+  /// where it holds none.
+  ///
+  /// 🗣️유저 2026-11-24 (card the-ui-isolate-still-waits-for-the-gpu-in-
+  /// places-Q1 「A 를 커널 안에서 — 비교 커널이 상자도 같이 쓴다」): told
+  /// with [changes], by the one test that tells them, so the box a stroke's
+  /// tiles frame asks no scan of its own.
+  final List<GpuInkBox?> inks;
 
   /// How many of its tiles take a slot: the inked.
   int get inked => changes.where((one) => one == GpuChange.inked).length;
@@ -1462,7 +1712,7 @@ final class GpuFinished {
           return;
         }
         finish.told.complete(
-          GpuFinished._(finish.engine, made, _changesOf(made)),
+          GpuFinished._(finish.engine, made, _changesOf(made), _inksOf(made)),
         );
       });
 
@@ -1474,6 +1724,15 @@ final class GpuFinished {
         return [
           for (var at = 0; at < count; at++) GpuChange.values[changes[at]],
         ];
+      });
+
+  static List<GpuInkBox?> _inksOf(Pointer<rust.Finished> finished) =>
+      using((arena) {
+        final count = rust.finishedChanges(finished, nullptr);
+        final words = arena<Int32>(_held(count * 4));
+        rust.finishedInks(finished, words);
+        final read = words.asTypedList(count * 4);
+        return [for (var at = 0; at < count; at++) _inkBoxAt(read, at * 4)];
       });
 
   /// What [handOver] hands the engine's thread — given where to write
@@ -1845,7 +2104,7 @@ class GpuStroke {
     bool compared = false,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => rust.strokeLandBlur(
+    (_, coordinates, under, places, changes, inks) => rust.strokeLandBlur(
       _stroke,
       _engine._engine,
       _engine._its(blurs)._blurs,
@@ -1860,6 +2119,7 @@ class GpuStroke {
       compared,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -1880,7 +2140,7 @@ class GpuStroke {
     required void Function() unput,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+    (_, coordinates, under, places, changes, inks) => _putsOnTheirWay.handing(
       unput,
       (number) => rust.strokeLandBlurUnwaited(
         _stroke,
@@ -1896,6 +2156,7 @@ class GpuStroke {
         mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
+        inks,
         _putsOnTheirWay.told,
         number,
       ),
@@ -1919,7 +2180,7 @@ class GpuStroke {
     bool compared = false,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => rust.strokeLand(
+    (_, coordinates, under, places, changes, inks) => rust.strokeLand(
       _stroke,
       _engine._engine,
       _engine._its(composite)._composite,
@@ -1934,6 +2195,7 @@ class GpuStroke {
       compared,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -1954,7 +2216,7 @@ class GpuStroke {
     required void Function() unput,
   }) => _landed(
     asks,
-    (_, coordinates, under, places, changes) => _putsOnTheirWay.handing(
+    (_, coordinates, under, places, changes, inks) => _putsOnTheirWay.handing(
       unput,
       (number) => rust.strokeLandUnwaited(
         _stroke,
@@ -1970,10 +2232,47 @@ class GpuStroke {
         mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
+        inks,
         _putsOnTheirWay.told,
         number,
       ),
     ),
+  );
+
+  /// What each of [tiles] — tiles this stroke's landings put on [pool],
+  /// as they are now, each with its ask: the cel's tile under it — is
+  /// beside that tile, in their order: asked behind every put handed over
+  /// before, with no wait and no slot taken, and told once the GPU has
+  /// said (rust/src/kernels/dab/abi.rs,
+  /// `gpu_engine_stroke_tiles_told_unwaited`, has why). What it finished:
+  /// its [GpuFinished.changes] to read and it to free, its tiles landed by
+  /// none. Fails as [GpuRefused] where it was not finished — a tile that
+  /// lies folded, or none asked.
+  Future<GpuFinished> toldOf(
+    GpuPool pool,
+    List<(GpuTile, GpuTileAsk)> tiles,
+  ) => GpuFinished._of(
+    _engine,
+    (out, told, number) => using((arena) {
+      final (:coordinates, :under) = _asked(arena, [
+        for (final (_, ask) in tiles) ask,
+      ]);
+      rust.strokeTilesToldUnwaited(
+        _stroke,
+        _engine._engine,
+        _engine._its(pool)._pool,
+        _tileWords(arena, tiles.length, 1, [
+          for (final (tile, _) in tiles) tile,
+        ]),
+        coordinates,
+        under,
+        tiles.length,
+        out,
+        told,
+        number,
+      );
+      return true;
+    }),
   );
 
   /// Clears what the stroke wrote and lets its tiles go; the pages stay.
@@ -2269,7 +2568,7 @@ class GpuStampLanding {
     GpuMask? mask,
   }) => _landed(
     asks,
-    (arena, coordinates, under, places, changes) {
+    (arena, coordinates, under, places, changes, inks) {
       final (l, t, r, b) = within;
       final box = arena<Int32>(4);
       box[0] = l;
@@ -2294,6 +2593,7 @@ class GpuStampLanding {
         mask == null ? nullptr : _engine._its(mask)._mask,
         places,
         changes,
+        inks,
       );
     },
   );
@@ -2316,7 +2616,7 @@ class GpuStampLanding {
     GpuMask? mask,
   }) => _landed(
     asks,
-    (arena, coordinates, under, places, changes) => rust.stampLandMask(
+    (arena, coordinates, under, places, changes, inks) => rust.stampLandMask(
       _landing,
       _engine._engine,
       _engine._its(composite)._composite,
@@ -2333,6 +2633,7 @@ class GpuStampLanding {
       mask == null ? nullptr : _engine._its(mask)._mask,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -3241,7 +3542,7 @@ class GpuComposite implements _OfAnEngine {
 
   /// Compiled on [engine] off this isolate, which goes on meanwhile — and
   /// with it the pass that shows on a screen of BGRA texels where [bgra],
-  /// of RGBA else ([GpuEngine.surface]'s; a [GpuWindow] is RGBA), which the
+  /// of RGBA else ([GpuEngine.surface]'s), which the
   /// first [show] compiles where it is called else: the thread an app's
   /// frames are built on (🗣️관제 2026-11-10 18:14, gpu-canonical-store ⑦ —
   /// 🔬3.5 s of a stopped UI at the first canvas, Surface Pro 11).
@@ -3355,7 +3656,7 @@ class GpuComposite implements _OfAnEngine {
   int show(
     GpuPool pool,
     GpuPlan plan,
-    GpuTarget target,
+    GpuSurface target,
     (int, int, int, int) rect,
   ) {
     final passes = using(
@@ -3364,12 +3665,31 @@ class GpuComposite implements _OfAnEngine {
         _engine._engine,
         _engine._its(pool)._pool,
         _engine._its(plan)._plan,
-        _engine._toDrawOn(target),
+        _engine._toDrawOn(target, rect),
         _edges(arena, rect),
       ),
     );
     _engine._composed();
     return _checked(passes);
+  }
+
+  /// Moves the texels of [target] by [by] — the one at (x, y) to
+  /// (x + dx, y + dy) — leaving those the move uncovers as they were, and
+  /// submits the work, waiting for none of it ([GpuEngine.done]): what a
+  /// screen panned by whole pixels still holds of its frame, put where the
+  /// pan takes it before [GpuScreen.show] draws the rest (the app's
+  /// `EngineStackScreen.show`). It copies through a buffer the engine
+  /// keeps while a hand is at work, as a compose's ([GpuEngine.restsAfter]).
+  void move(GpuSurface target, (int, int) by) {
+    final (dx, dy) = by;
+    rust.compositeMove(
+      _composite,
+      _engine._engine,
+      _engine._toDrawOn(target, null),
+      dx,
+      dy,
+    );
+    _engine._composed();
   }
 
   /// Lays [picture] — [pool]'s tiles over a box of canvas tiles as
@@ -3390,7 +3710,7 @@ class GpuComposite implements _OfAnEngine {
     GpuMask? mask,
   }) => _landed(
     asks,
-    (arena, coordinates, under, places, changes) => rust.tilesLand(
+    (arena, coordinates, under, places, changes, inks) => rust.tilesLand(
       _engine._engine,
       _composite,
       _engine._its(pool)._pool,
@@ -3408,6 +3728,7 @@ class GpuComposite implements _OfAnEngine {
       mask == null ? nullptr : _engine._its(mask)._mask,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -3450,10 +3771,20 @@ class GpuScreen implements _OfAnEngine {
     return GpuScreen._(composite, screen);
   }
 
-  GpuScreen._(this._composite, this._screen);
+  GpuScreen._(this._composite, Pointer<rust.Screen> screen)
+    : _given = _Held(screen, 'a screen'),
+      _serial = _made++ {
+    _unfreed[_serial] = debugNoteWhereMade ? StackTrace.current : null;
+  }
 
+  final int _serial;
   final GpuComposite _composite;
-  final Pointer<rust.Screen> _screen;
+
+  /// The engine's screen, for each ask of it — here, and of a job that
+  /// names it as its film ([composeOver]) —; refused by name once it is
+  /// [free]d ([_Held]).
+  Pointer<rust.Screen> get _screen => _given.ofIt;
+  final _Held<rust.Screen> _given;
 
   @override
   GpuEngine get _engine => _composite._engine;
@@ -3530,7 +3861,7 @@ class GpuScreen implements _OfAnEngine {
   /// the turn the frame is drawn: a done asked after another body handed
   /// over in between would answer for that one's too.
   void show(
-    GpuTarget target, {
+    GpuSurface target, {
     required List<double> inverse,
     required GpuSampling sampling,
     required (int, int, int, int) rect,
@@ -3545,7 +3876,7 @@ class GpuScreen implements _OfAnEngine {
         _engine._engine,
         _doubles(arena, inverse),
         sampling.id,
-        _engine._toDrawOn(target),
+        _engine._toDrawOn(target, rect),
         _edges(arena, rect),
       ),
     );
@@ -3581,7 +3912,42 @@ class GpuScreen implements _OfAnEngine {
   /// engine lets go of it behind them, and its pictures' slots go back to
   /// the pool there — [GpuEngine.idlePictureBytes] counts them by a
   /// [GpuEngine.done] asked after this.
-  void free() => rust.screenFree(_screen);
+  void free() {
+    rust.screenFree(_given.letGo());
+    _unfreed.remove(_serial);
+  }
+
+  static int _made = 0;
+
+  /// Each screen made and not freed, by the serial it was made at — with
+  /// where it was made while [debugNoteWhereMade].
+  static final _unfreed = <int, StackTrace?>{};
+
+  /// Whether a screen notes where it was made, for [debugUnfreedSince].
+  static bool debugNoteWhereMade = false;
+
+  /// How many screens were made: the serial the next one is made at.
+  static int get debugMade => _made;
+
+  /// The screens made at [serial] or after and not freed — where each was
+  /// made, or null where [debugNoteWhereMade] was off: what each test asks
+  /// as it ends of those it made (test/flutter_test_config.dart). Counted
+  /// here, not read off the engine's [liveBytes] — those are counted once a
+  /// compose lands, so a screen whose compose a test left in flight read as
+  /// none or one by when the engine got to it. ↩️A count of all the
+  /// unfreed till the baseline of 2026-11-24: a test that freed one an
+  /// earlier test made read as -1, red for the earlier one's.
+  ///
+  /// 🔬Card the-prerender-scheduler-rests-a-tile-late-on-ci (2026-11-24):
+  /// a storyboard cell's picture (frame_shots.dart, `frameOnTheEngine`)
+  /// made its screen and frees it after the compose's answer; a widget
+  /// test ended first, its fake clock's zone ran no more, and the screen
+  /// stayed for the process — its tiles counted by every picture store a
+  /// later file of the bundle made.
+  static List<StackTrace?> debugUnfreedSince(int serial) => [
+    for (final MapEntry(:key, :value) in _unfreed.entries)
+      if (key >= serial) value,
+  ];
 }
 
 /// What a run put: its output tiles' pixels, on the GPU.
@@ -4154,14 +4520,13 @@ class GpuReadout implements _OfAnEngine {
   void free() => rust.readoutFree(_readout);
 }
 
-/// A walked tile's ink: where it is on its cel's grid, and its box —
-/// tile-local, the far edges past the last column and row with ink — or
-/// null where it holds none.
-typedef GpuTileInk = ({
-  int column,
-  int row,
-  ({int left, int top, int right, int bottom})? box,
-});
+/// The box a tile's ink fills: tile-local, the far edges past the last
+/// column and row with ink.
+typedef GpuInkBox = ({int left, int top, int right, int bottom});
+
+/// A walked tile's ink: where it is on its cel's grid, and its box — null
+/// where it holds none.
+typedef GpuTileInk = ({int column, int row, GpuInkBox? box});
 
 /// The words the scan puts for a walked tile (cel_pixel/abi.rs's
 /// TILE_INK_WORDS): its column and row, then its box's four edges — four 0s
@@ -4251,15 +4616,17 @@ class GpuInk {
     if (walked < 0) {
       throw GpuRefused(_lastError());
     }
-    final put = out.asTypedList(capacity);
-    return [
-      for (var tile = 0; tile < walked; tile++)
-        _walkedAt(put, tile * _tileInkWords),
-    ];
+    return _walkedIn(out.asTypedList(capacity), walked);
   });
 
   void free() => rust.inkFree(_ink);
 }
+
+/// The first [walked] tiles' ink in [put], as the scan put them.
+List<GpuTileInk> _walkedIn(Int32List put, int walked) => [
+  for (var tile = 0; tile < walked; tile++)
+    _walkedAt(put, tile * _tileInkWords),
+];
 
 /// The channel a colour verb writes (rust/src/kernels/cel_pixel/mod.rs
 /// `Channel`): its [bytes], byte i at [base] + i × [stride] of a pixel's
@@ -4556,7 +4923,7 @@ final class GpuCelPassed {
     List<GpuTileAsk> asks,
   ) => _landed(
     asks,
-    (arena, _, _, places, changes) => rust.celPassedLand(
+    (arena, _, _, places, changes, inks) => rust.celPassedLand(
       _passed,
       _engine._engine,
       _engine._its(pool)._pool,
@@ -4565,6 +4932,7 @@ final class GpuCelPassed {
       asks.length,
       places,
       changes,
+      inks,
     ),
   );
 
@@ -4954,6 +5322,11 @@ class GpuFaces {
   void free() => rust.facesFree(_faces);
 }
 
+/// Where a file's bytes lie on the device: the [length] bytes at [offset]
+/// of the file at [path] — a whole file from 0 to its end, or on Android a
+/// bundled one lying stored in the APK ([GpuFacesHanding.addAt]).
+typedef FileSpan = ({String path, int offset, int length});
+
 /// [GpuFaces] being handed to the engine a file at a time: each file
 /// mapped by the engine where it is a file on the device ([addAt]), else
 /// copied by it as it is [add]ed — once, from where its bytes lie
@@ -4981,22 +5354,24 @@ class GpuFacesHanding {
     debugFilesHanded += 1;
   }
 
-  /// The file at [path] as one of family [family]'s, as [add] hands one —
-  /// mapped by the engine, not copied: its bytes are the file's own pages,
-  /// which the OS shares with whoever else maps it, and Flutter maps the
-  /// app's bundled fonts too (`gpu_engine_faces_file_at`). False, and
+  /// The file lying at [span] as one of family [family]'s, as [add] hands
+  /// one — mapped by the engine, not copied: its bytes are the file's own
+  /// pages, which the OS shares with whoever else maps it, and Flutter maps
+  /// the app's bundled fonts too (`gpu_engine_faces_file_at`). False, and
   /// nothing handed, where the engine cannot map it: [add] its bytes then.
   ///
   /// 🗣️유저 (engine-fonts-held-twice): 「사본이나 ram에있는걸 최대한
   /// 없애고싶어서」 — 🔬공통 11-21, a Windows release run: [add]'s copy was
   /// the faces' one copy in the process, 35 MB.
-  bool addAt(int family, String path) => using((arena) {
-    final bytes = utf8.encode(path);
+  bool addAt(int family, FileSpan span) => using((arena) {
+    final bytes = utf8.encode(span.path);
     final mapped = rust.facesFileAt(
       _handed,
       family,
       _bytes(arena, bytes),
       bytes.length,
+      span.offset,
+      span.length,
     );
     if (mapped) {
       debugFilesHanded += 1;
@@ -5118,7 +5493,7 @@ class GpuLetters {
     final engine = composite._engine;
     return _landed(
       asks,
-      (_, coordinates, _, places, changes) => _putsOnTheirWay.handing(
+      (_, coordinates, _, places, changes, inks) => _putsOnTheirWay.handing(
         unput,
         (number) => rust.lettersLand(
           _letters,
@@ -5130,6 +5505,7 @@ class GpuLetters {
           asks.length,
           places,
           changes,
+          inks,
           _putsOnTheirWay.told,
           number,
         ),
@@ -5712,7 +6088,7 @@ class GpuGridLay {
 
   /// The pass compiled on [engine], off this isolate, which goes on
   /// meanwhile, for a screen of BGRA texels where [bgra], of RGBA else —
-  /// [GpuEngine.surface]'s; a [GpuWindow] is RGBA.
+  /// [GpuEngine.surface]'s.
   static Future<GpuGridLay> opening(
     GpuEngine engine, {
     required bool bgra,
@@ -5739,7 +6115,7 @@ class GpuGridLay {
   /// ([GpuEngine.done]). Throws for a rect past the target and a tile laid
   /// from past its picture or onto no box.
   void lay(
-    GpuTarget target,
+    GpuSurface target,
     (int, int, int, int) rect,
     List<GpuGridLaid> laid,
   ) => using((arena) {
@@ -5760,7 +6136,7 @@ class GpuGridLay {
       rust.gridLay(
         _lay,
         _engine._engine,
-        _engine._toDrawOn(target),
+        _engine._toDrawOn(target, rect),
         edges,
         pictures,
         boxes,
@@ -5932,18 +6308,17 @@ void _done(bool done) {
 }
 
 /// The walked tile whose words start at [at] of [words].
-GpuTileInk _walkedAt(Int32List words, int at) {
-  final [column, row, left, top, right, bottom] = words.sublist(
-    at,
-    at + _tileInkWords,
-  );
-  return (
-    column: column,
-    row: row,
-    box: right > left
-        ? (left: left, top: top, right: right, bottom: bottom)
-        : null,
-  );
+GpuTileInk _walkedAt(Int32List words, int at) =>
+    (column: words[at], row: words[at + 1], box: _inkBoxAt(words, at + 2));
+
+/// The box whose four words — its left, top, right and bottom
+/// (rust/src/kernels/cel_pixel/ink.rs, `InkBox::words`) — start at [at] of
+/// [words]: none where they are four 0s, no right past its left.
+GpuInkBox? _inkBoxAt(Int32List words, int at) {
+  final [left, top, right, bottom] = words.sublist(at, at + 4);
+  return right > left
+      ? (left: left, top: top, right: right, bottom: bottom)
+      : null;
 }
 
 /// The closed contours of the pixels [ends] hold — row `r`'s
@@ -6021,59 +6396,47 @@ int crc32Update(int running, Uint8List bytes, int length) {
 /// well under a frame, at a gigabyte a second.
 const int _crcSlice = 1 << 20;
 
-/// A Flutter texture the engine presents into: a SurfaceProducer's window,
-/// whose images Flutter shows without a copy (Android). Drawn on and
-/// presented with no wait for the engine's thread
-/// (rust/src/platform/android.rs, `Window`).
-class GpuWindow extends GpuTarget {
-  GpuWindow._(super._engine, this._window, this.textureId);
-
-  final Pointer<rust.Window> _window;
-
-  /// What a `Texture` widget shows the window by.
-  final int textureId;
-
-  /// What the kernels write for the window, one texture for its life —
-  /// [present] shows what a kernel wrote there. What is drawn on it
-  /// stands till the next draw, as on a surface ([kept]).
-  @override
-  Pointer<rust.Texture> get _texture => rust.windowTarget(_window);
-
-  /// Hands what a kernel last wrote ([fill], [GpuScreen.show]) to
-  /// Flutter: copied onto the window's next image and put up once the GPU
-  /// has finished the copy, this isolate waiting for none of it. Asked
-  /// once the GPU has finished what was written ([GpuEngine.done]), as a
-  /// screen's frame is (`ScreenTexture.present`); where it fails, the
-  /// next done fails by it.
-  void present() => rust.windowPresent(_engine._engine, _window);
-
-  /// 🔬What the window says of itself, a line each
-  /// (rust/src/platform/android.rs, `Window::said`): what the device said,
-  /// as the window was made, of an image made of an AHardwareBuffer —
-  /// `ahb storage … color …`. Read with no hand on the device.
-  String get said => using((arena) {
-    const capacity = 1024;
-    final buffer = arena<Uint8>(capacity);
-    final length = rust.windowSaid(_window, buffer, capacity);
-    final count = length < capacity ? length : capacity;
-    return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
-  });
-
-  /// Frees the swapchain, then Flutter's producer: the window it presents
-  /// into must outlive it.
-  Future<void> free() async {
-    rust.windowFree(_window);
-    await _plugin.invokeMethod<void>('release', {'textureId': textureId});
-  }
-}
-
-/// A Flutter external texture that shows [front], or [back] once
-/// [show] picks slot 1 — Windows', iOS', macOS' and Linux' way to the
-/// screen: the engine makes the texture, Flutter shows it.
+/// A Flutter external texture that shows [front], or [back] once [show]
+/// picks slot 1 — every platform's way to the screen: the engine makes the
+/// texture, Flutter shows it. Windows', iOS', macOS' and Linux' through
+/// the texture shim (src/texture_shim.dart); Android's through the plugin
+/// (GpuEnginePlugin.kt, `register`), as a texture of the AHardwareBuffer
+/// the surface lives in.
+///
+/// 🚨ON ANDROID A TEXTURE SHOWS ONE BUFFER FOR ITS LIFE, so it takes no
+/// [back]: a picture changes by showing another texture, never under one
+/// id (Anicel's Flutter patch 0006, `createHardwareBufferTexture`; card
+/// panning-then-pen-jumps-the-android-canvas-a-frame — a buffer swapped
+/// under one id was taken up by the raster a frame apart from where the
+/// layer tree placed it).
 class SharedTexture {
-  SharedTexture._(this.id);
-
-  factory SharedTexture.register(GpuSurface front, {GpuSurface? back}) {
+  static Future<SharedTexture> register(
+    GpuSurface front, {
+    GpuSurface? back,
+  }) async {
+    if (Platform.isAndroid) {
+      if (back != null) {
+        throw GpuRefused('an Android texture shows one buffer, not two');
+      }
+      // A refusal is the plugin's words (GpuEnginePlugin.kt), refused as
+      // every platform's is: by name, for the screen to say (the app's
+      // ScreenTexture.path). ↩️It came up as the channel's own exception,
+      // which no one caught: unhandled, and the debug path row read the way
+      // as if it had stood (검증 2026-11-24 01:42, card
+      // the-galaxy-tab-canvas-went-slow-on-build-1095).
+      final int? id;
+      try {
+        id = await _plugin.invokeMethod<int>('register', {
+          'buffer': front._handle.address,
+          'readSignal': Native.addressOf<
+            NativeFunction<Void Function(Int64, Int32, Uint64)>
+          >(rust.screenRead).address,
+        });
+      } on PlatformException catch (refused) {
+        throw GpuRefused(refused.message ?? refused.code);
+      }
+      return SharedTexture._(id!);
+    }
     final id = shim.textureRegister(
       front._handle,
       back?._handle ?? nullptr,
@@ -6087,14 +6450,62 @@ class SharedTexture {
     return SharedTexture._(id);
   }
 
+  // Kept before Flutter can paint it: nothing is painted of an id till a
+  // layer names it, and none can before [register] answers it.
+  SharedTexture._(this.id) {
+    rust.screenReadsKeep(id);
+  }
+
   final int id;
 
-  /// Shows slot 0 (front) or 1 (back) on the next frame.
-  bool show(int slot) => shim.textureShow(id, slot);
+  /// How many of this texture's paints Flutter's raster has submitted and
+  /// its GPU has not yet read (rust/src/screen_reads.rs) — none where
+  /// Flutter tells nothing: an engine without patch 0007, and every
+  /// platform's texture but Android's.
+  int get unread => rust.screenUnread(id);
+
+  /// Why this platform's texture can tell no read of Flutter's GPU — [unread]
+  /// is then always 0 and a screen draws by its frames alone — in the
+  /// adapter's own words, for the frame statistics' `wait` line: null where
+  /// it tells, Android's by patch 0007.
+  ///
+  /// 🗣️관제 2026-11-24 (card every-platform-knows-the-screen-was-read ②,
+  /// 유저 11-23 「전플랫폼 최대한 통일하는방향으로」): one law, the Dart
+  /// side's (the app's ScreenTurns); an adapter has only how it knows, and
+  /// one that cannot says why by name. Each why is read off Flutter 3.47.4's
+  /// source (the card's table, 11-24 11:15). ⚠️Android's GL texture tells
+  /// nothing either (0007's image_external_texture_gl.cc), and is not told
+  /// apart here: no adapter of Android's knows which backend Flutter drew by.
+  static String? get untold => untoldOn(Platform.operatingSystem);
+
+  @visibleForTesting
+  static String? untoldOn(String os) => switch (os) {
+    'android' => null,
+    // A surface descriptor's release_callback is called as it is bound,
+    // before the GPU reads it (windows/external_texture_d3d.cc:112-115).
+    'windows' => 'D3D 는 묶을 때 알린다',
+    // Populated once a frame is marked available, told nothing after the
+    // draw (embedder/embedder_external_texture_gl.cc:45 · 203).
+    'linux' => 'FlTextureGL 은 알리지 않는다',
+    // copyPixelBuffer hands a buffer over and is told nothing after.
+    'macos' || 'ios' => 'FlutterTexture 는 알리지 않는다',
+    _ => '알림 없음',
+  };
+
+  /// Shows slot 0 (front) or 1 (back) on the next frame. On Android the
+  /// texture's one buffer is what it shows each paint: nothing to tell.
+  bool show(int slot) => Platform.isAndroid || shim.textureShow(id, slot);
 
   /// Flutter must no longer show the texture: on Linux nothing tells the
   /// plugin when Flutter stops drawing it (linux/gpu_engine_plugin.cc).
-  void unregister() => shim.textureUnregister(id);
+  void unregister() {
+    rust.screenReadsForget(id);
+    if (Platform.isAndroid) {
+      unawaited(_plugin.invokeMethod<void>('release', {'textureId': id}));
+      return;
+    }
+    shim.textureUnregister(id);
+  }
 }
 
 /// How a plugin's value — four doubles a parameter — becomes the words it
@@ -6327,7 +6738,7 @@ class GpuPluginMade {
   List<GpuLanded> land(GpuPool pool, int cel, List<GpuTileAsk> asks) =>
       _landed(
         asks,
-        (_, coordinates, _, places, changes) => rust.pluginMadeLand(
+        (_, coordinates, _, places, changes, inks) => rust.pluginMadeLand(
           _engine._engine,
           _made,
           _engine._its(pool)._pool,
@@ -6336,6 +6747,7 @@ class GpuPluginMade {
           asks.length,
           places,
           changes,
+          inks,
         ),
       );
 

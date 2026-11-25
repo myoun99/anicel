@@ -1,3 +1,4 @@
+import '../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kDoubleTapTimeout, kSecondaryButton;
 import 'package:flutter/material.dart';
@@ -213,6 +214,7 @@ Future<void> _drag(WidgetTester tester, Offset from, Offset to) async {
 }
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   group('the row', () {
     // In the app, as it is opened: what the panel's own tests stand on.
     testWidgets('stands directly under the V row, one row tall, on the same '

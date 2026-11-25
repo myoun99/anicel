@@ -136,7 +136,7 @@ void main() {
       (EditorActionIds.fileSave, ShortcutShelf.file),
       (EditorActionIds.preferences, ShortcutShelf.settings),
       (EditorActionIds.regionOnTop, ShortcutShelf.panels),
-      (EditorActionIds.inputInspector, ShortcutShelf.debug),
+      (EditorActionIds.debugWindow, ShortcutShelf.debug),
     ]) {
       expect(shelfOf(id), shelf, reason: id);
     }

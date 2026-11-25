@@ -14,13 +14,17 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.system.ErrnoException
+import android.system.Os
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import com.myoun.gpu_engine.PenPoints
+import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
@@ -39,6 +43,23 @@ class MainActivity : FlutterActivity() {
     // AUDIO-PRO R5: the mic grant is a system dialog whose answer arrives
     // in a callback; the channel result waits here for it.
     private var pendingMicResult: MethodChannel.Result? = null
+
+    // H69 (user 2026-11-24, Galaxy Tab: 「앱 기동후 선긋고 언두 키보드로하면
+    // 안먹어. b같은거 누르면 되」): the window comes up in touch mode with no
+    // view focused - Android gives none on its own there since API 28 - and
+    // a key reaches a view only through focus. Flutter's view takes every
+    // touch itself (its onTouchEvent never asks for focus as a view's own
+    // does), so only a key that types something, which takes the window out
+    // of touch mode, gave it focus: Ctrl+Z types nothing (measured on the
+    // emulator 11-24: before B every key went to a window with no focus).
+    // Whenever the window is in front with nothing focused, Flutter's view
+    // is - every key the hardware sends then reaches it.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && currentFocus == null) {
+            findViewById<View>(FlutterActivity.FLUTTER_VIEW_ID)?.requestFocus()
+        }
+    }
 
     // I-104 (user 2026-10-15: 「아이패드같은거 조작안하면 화면 꺼지는데 …
     // 안꺼지도록」; I-104-Q1, 2026-10-16: on the iPad and Android, always
@@ -144,6 +165,10 @@ class MainActivity : FlutterActivity() {
                 // directory is, which every update empties (board
                 // android-settings-live-in-the-code-cache).
                 "appSupportPath" -> result.success(filesDir.absolutePath)
+                "bundledFiles" ->
+                    result.success(
+                        bundledFiles(call.arguments<List<String>>() ?: emptyList()),
+                    )
                 "requestMicrophone" -> requestMicrophone(result)
                 "pickProjectFolder" ->
                     pickProjectFolder(call.argument<String>("initialDirectory"), result)
@@ -994,5 +1019,31 @@ class MainActivity : FlutterActivity() {
             getExternalFilesDir(null) ?: filesDir
         }
         return "${base.absolutePath}/Anicel"
+    }
+
+    // engine-fonts-held-twice (유저 11-22, Q1 「글꼴을 압축 없이 두고 둘 다
+    // 비춰 쓴다」): where each of the bundle's [keys] lies stored in the APK
+    // - the file, the start and the length the AssetManager itself gives -
+    // so the GPU engine maps the same pages Flutter maps (EngineFaces). Null
+    // for one the APK holds compressed: openFd refuses it.
+    private fun bundledFiles(keys: List<String>): List<Map<String, Any>?> {
+        val loader = FlutterInjector.instance().flutterLoader()
+        return keys.map { key ->
+            try {
+                assets.openFd(loader.getLookupKeyForAsset(key)).use { lies ->
+                    mapOf(
+                        "path" to Os.readlink(
+                            "/proc/self/fd/${lies.parcelFileDescriptor.fd}",
+                        ),
+                        "offset" to lies.startOffset,
+                        "length" to lies.length,
+                    )
+                }
+            } catch (_: IOException) {
+                null
+            } catch (_: ErrnoException) {
+                null
+            }
+        }
     }
 }

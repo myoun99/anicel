@@ -345,13 +345,16 @@ class BrushPresetLibrary extends ChangeNotifier {
     _persist();
   }
 
-  /// Runs the pick→decode→merge import flow. Returns the user-facing result
-  /// message, or `null` when the picker was cancelled.
-  Future<String?> importFromFile() => importPickedFile(
-    pick: _filePicker,
-    disposed: () => _disposed,
-    import: _importBrushFile,
-  );
+  /// Runs the pick→decode→merge import flow, the decode and the merge
+  /// [behind] what the door stands them behind. Returns the user-facing
+  /// result message, or `null` when the picker was cancelled.
+  Future<String?> importFromFile({required BringIn behind}) =>
+      importPickedFile(
+        pick: _filePicker,
+        disposed: () => _disposed,
+        import: _importBrushFile,
+        behind: behind,
+      );
 
   /// The same import of a file already in hand — the one door's (F-282):
   /// a brush file opened or dropped like any other file comes here.

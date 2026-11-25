@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer_sections.dart' show TimelineSection;
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/playback_mode.dart' show defaultPlaybackMode;
 import '../../models/project.dart';
@@ -151,12 +152,14 @@ class ProjectFileDoor {
     required TimelineZoomMemory timelineZoom,
     required PanelViewMemory panelViews,
     required ValueNotifier<LaneGraphsView> laneGraphs,
+    required ValueNotifier<Set<TimelineSection>> hiddenSections,
     required MediaFileViews mediaFileViews,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
        _panelViews = panelViews,
        _laneGraphs = laneGraphs,
+       _hiddenSections = hiddenSections,
        _mediaFileViews = mediaFileViews,
        _failedCopies = failedCopies,
        _project = project,
@@ -186,13 +189,18 @@ class ProjectFileDoor {
   final TimelineZoomMemory _timelineZoom;
 
   /// Whose conte zoom, panel scrolls and frames display a save keeps and an
-  /// open puts back ([ProjectResume.storyboardZoom],
+  /// open puts back ([ProjectResume.conteZooms],
   /// [ProjectResume.frameAxisOffsets], [ProjectResume.rulerView]).
   final PanelViewMemory _panelViews;
 
   /// Whose header graphs and pinned lanes a save keeps and an open puts
   /// back ([ProjectResume.laneGraphs]) — the rail's (`RailView.laneGraphs`).
   final ValueNotifier<LaneGraphsView> _laneGraphs;
+
+  /// Whose hidden SE and camera sections a save keeps and an open puts
+  /// back ([ProjectResume.hiddenSections], H77) — the rail's
+  /// (`RailView.hiddenSections`).
+  final ValueNotifier<Set<TimelineSection>> _hiddenSections;
 
   /// Whose files' pages and framings in the viewers a save keeps and an
   /// open puts back ([ProjectResume.mediaFileViews], F-382).
@@ -926,18 +934,12 @@ class ProjectFileDoor {
     tools: toolChoice?.read() ?? const {},
     playbackMode: _playback.playbackMode,
     timelineZoom: _timelineZoom.byCut,
-    storyboardZoom: switch (_panelViews.storyboardPixelsPerFrame.value) {
-      PanelViewMemory.defaultStoryboardPixelsPerFrame => null,
-      final zoom => zoom,
-    },
-    frameAxisOffsets: PanelViewMemory.awayFromTheStart(
-      _panelViews.frameAxisOffsets,
-    ),
-    layerAxisOffsets: PanelViewMemory.awayFromTheStart(
-      _panelViews.layerAxisOffsets,
-    ),
+    conteZooms: _panelViews.conteZooms,
+    frameAxisOffsets: _panelViews.frameAxisOffsets.awayFromTheStart,
+    layerAxisOffsets: _panelViews.layerAxisOffsets.awayFromTheStart,
     rulerView: _panelViews.rulerView.value,
     laneGraphs: _laneGraphs.value,
+    hiddenSections: _hiddenSections.value,
     mediaFileViews: _mediaFileViews.views,
   );
 
@@ -1213,6 +1215,10 @@ class ProjectFileDoor {
     // came INTO a session whose rail view could be folding the saved row
     // away (F-169 ②); a session born for its file has nothing folded, and
     // what a file itself shuts — a folder — is not the view's to open.
+    // The sections the panels hid are hidden again BEFORE it is asked
+    // (H77), so the row it seats is one the panels show; a section the file
+    // hid is the file's, not the view's to open, as a folder is.
+    _hiddenSections.value = resume.hiddenSections;
     _keepStandingShown();
     _resumeTools(resume.tools);
     // A file that says nothing plays as a new project does.
@@ -1225,20 +1231,13 @@ class ProjectFileDoor {
         _timelineZoom.remember(cut, zoom);
       }
     }
-    // The conte at the zoom it was left at, and each panel scrolled where it
-    // was along both axes (F-267) and writing frames as it was (F-354) — set
-    // before any panel is built, so each is born there.
-    if (resume.storyboardZoom case final zoom?) {
-      _panelViews.storyboardPixelsPerFrame.value = zoom;
-    }
-    PanelViewMemory.standAt(
-      _panelViews.frameAxisOffsets,
-      resume.frameAxisOffsets,
-    );
-    PanelViewMemory.standAt(
-      _panelViews.layerAxisOffsets,
-      resume.layerAxisOffsets,
-    );
+    // The conte at the zoom each timeline was left at, and each panel
+    // scrolled where it was along both axes (F-267) — for each cut and each
+    // timeline (H78) — and writing frames as it was (F-354) — set before any
+    // panel is built, so each is born there.
+    _panelViews.standAtConteZooms(resume.conteZooms);
+    _panelViews.frameAxisOffsets.standAt(resume.frameAxisOffsets);
+    _panelViews.layerAxisOffsets.standAt(resume.layerAxisOffsets);
     _panelViews.rulerView.value = resume.rulerView;
     // The header graphs and their pins as they stood (F-360-Q1) — each on a
     // row the project still has: a new row's id is minted afresh every

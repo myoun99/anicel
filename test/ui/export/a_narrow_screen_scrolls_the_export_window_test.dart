@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,6 +9,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️I-153-Q3 (유저 2026-11-04): 「창 전체가 가로로 스크롤」 — a screen
 /// narrower than the export window's four columns stands them at their
@@ -15,6 +17,7 @@ import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 /// past the screen, so the columns overflowed and were cut where it ended:
 /// the Cels list's rules, its rail, the folder columns, the settings.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -32,7 +35,7 @@ void main() {
     );
     await tester.binding.setSurfaceSize(screen);
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -1,0 +1,881 @@
+[anicel 0004] embedder: doors to let a lost OpenGL context go and stand again
+
+Board a-real-gpu-reset-went-unheard-on-the-main-pc, step two.
+
+- FlutterEngineNotifyGLContextLost: on the raster thread the surface lets
+  go (no thread reacts, nothing is made current, the context is cleared)
+  and the texture registry forgets its images; the platform view is
+  destroyed; on the IO thread the resource context is released. After it
+  returns the engine calls no OpenGL callback and has no context current.
+- FlutterEngineNotifyGLContextRestored: on the raster thread the surface
+  makes the new context current and tells Impeller it was replaced
+  (0003); the platform view is created again and a frame is drawn.
+- A thread of the Impeller GL surface reacts only where its context was
+  made current: upstream let it react before it heard whether it could be.
+
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder.cc b/engine/src/flutter/shell/platform/embedder/embedder.cc
+index d7f02e79018..49c2abc2a6e 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder.cc
++++ b/engine/src/flutter/shell/platform/embedder/embedder.cc
+@@ -3738,6 +3738,35 @@ FlutterEngineResult FlutterEngineSetNextFrameCallback(
+   return kSuccess;
+ }
+ 
++FlutterEngineResult FlutterEngineNotifyGLContextLost(
++    FLUTTER_API_SYMBOL(FlutterEngine) engine) {
++  if (engine == nullptr) {
++    return LOG_EMBEDDER_ERROR(kInvalidArguments, "Invalid engine handle.");
++  }
++
++  return reinterpret_cast<flutter::EmbedderEngine*>(engine)
++                 ->NotifyGLContextLost()
++             ? kSuccess
++             : LOG_EMBEDDER_ERROR(kInvalidArguments,
++                                  "The engine is not running, or does not "
++                                  "render with Impeller on OpenGL.");
++}
++
++FlutterEngineResult FlutterEngineNotifyGLContextRestored(
++    FLUTTER_API_SYMBOL(FlutterEngine) engine) {
++  if (engine == nullptr) {
++    return LOG_EMBEDDER_ERROR(kInvalidArguments, "Invalid engine handle.");
++  }
++
++  return reinterpret_cast<flutter::EmbedderEngine*>(engine)
++                 ->NotifyGLContextRestored()
++             ? kSuccess
++             : LOG_EMBEDDER_ERROR(kInternalInconsistency,
++                                  "The engine's OpenGL context was not lost, "
++                                  "or the one made anew could not be made "
++                                  "current.");
++}
++
+ FlutterEngineResult FlutterEngineGetProcAddresses(
+     FlutterEngineProcTable* table) {
+   if (!table) {
+@@ -3794,6 +3823,8 @@ FlutterEngineResult FlutterEngineGetProcAddresses(
+   SET_PROC(AddView, FlutterEngineAddView);
+   SET_PROC(RemoveView, FlutterEngineRemoveView);
+   SET_PROC(SendViewFocusEvent, FlutterEngineSendViewFocusEvent);
++  SET_PROC(NotifyGLContextLost, FlutterEngineNotifyGLContextLost);
++  SET_PROC(NotifyGLContextRestored, FlutterEngineNotifyGLContextRestored);
+ #undef SET_PROC
+ 
+   return kSuccess;
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder.h b/engine/src/flutter/shell/platform/embedder/embedder.h
+index e9f3769963b..2a1aa2eeaed 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder.h
++++ b/engine/src/flutter/shell/platform/embedder/embedder.h
+@@ -3624,6 +3624,65 @@ FlutterEngineResult FlutterEngineSetNextFrameCallback(
+     VoidCallback callback,
+     void* user_data);
+ 
++//------------------------------------------------------------------------------
++/// @brief      [anicel 0004] Tells the engine that the OpenGL context it
++///             renders with is lost (the GPU was reset, or its driver
++///             replaced) and that the embedder is about to make its contexts
++///             anew. The engine lets go of what it built in the lost context
++///             and stops rendering.
++///
++///             While it lets go, the engine takes the contexts off its own
++///             threads: clear_current is called on the raster thread and on
++///             the thread make_resource_current was called on, and is to
++///             clear whatever context is current on the calling thread.
++///
++///             When this returns, and until
++///             FlutterEngineNotifyGLContextRestored, the engine calls none of
++///             the renderer's OpenGL callbacks (make_current, clear_current,
++///             make_resource_current, present, fbo), none of its threads has
++///             a context current, and none makes an OpenGL call of the
++///             engine's own: the embedder may destroy its contexts.
++///
++///             The backing stores and external textures the engine holds are
++///             collected through their usual callbacks, during this call and
++///             the restoring one. They name objects of the lost context: the
++///             embedder is not to delete those through OpenGL.
++///
++///             Only an engine that renders with Impeller on OpenGL restores.
++///             This must be called from the platform thread.
++///
++/// @param[in]  engine     A running engine instance.
++///
++/// @return     kSuccess where the engine let go. An error, and nothing done,
++///             where the engine is not one that restores.
++///
++FLUTTER_EXPORT
++FlutterEngineResult FlutterEngineNotifyGLContextLost(
++    FLUTTER_API_SYMBOL(FlutterEngine) engine);
++
++//------------------------------------------------------------------------------
++/// @brief      [anicel 0004] Tells the engine that the embedder made its
++///             OpenGL contexts anew after FlutterEngineNotifyGLContextLost.
++///             The engine makes the new context current through the
++///             renderer's callbacks, builds its rendering surface in it and
++///             schedules a frame. Buffers the engine held stand again whole.
++///             Textures stand again empty, of the same size and format: what
++///             an application drew into images is for the application to
++///             draw again.
++///
++///             This must be called from the platform thread.
++///
++/// @param[in]  engine     A running engine instance.
++///
++/// @return     kSuccess where the engine renders again. An error where the
++///             context made anew could not be made current (the engine is
++///             still lost, and may be told again), or where the engine was
++///             not lost.
++///
++FLUTTER_EXPORT
++FlutterEngineResult FlutterEngineNotifyGLContextRestored(
++    FLUTTER_API_SYMBOL(FlutterEngine) engine);
++
+ #endif  // !FLUTTER_ENGINE_NO_PROTOTYPES
+ 
+ // Typedefs for the function pointers in FlutterEngineProcTable.
+@@ -3758,6 +3817,10 @@ typedef FlutterEngineResult (*FlutterEngineRemoveViewFnPtr)(
+ typedef FlutterEngineResult (*FlutterEngineSendViewFocusEventFnPtr)(
+     FLUTTER_API_SYMBOL(FlutterEngine) engine,
+     const FlutterViewFocusEvent* event);
++typedef FlutterEngineResult (*FlutterEngineNotifyGLContextLostFnPtr)(
++    FLUTTER_API_SYMBOL(FlutterEngine) engine);
++typedef FlutterEngineResult (*FlutterEngineNotifyGLContextRestoredFnPtr)(
++    FLUTTER_API_SYMBOL(FlutterEngine) engine);
+ 
+ /// Function-pointer-based versions of the APIs above.
+ typedef struct {
+@@ -3808,6 +3871,8 @@ typedef struct {
+   FlutterEngineRemoveViewFnPtr RemoveView;
+   FlutterEngineSendViewFocusEventFnPtr SendViewFocusEvent;
+   FlutterEngineSendSemanticsActionFnPtr SendSemanticsAction;
++  FlutterEngineNotifyGLContextLostFnPtr NotifyGLContextLost;
++  FlutterEngineNotifyGLContextRestoredFnPtr NotifyGLContextRestored;
+ } FlutterEngineProcTable;
+ 
+ //------------------------------------------------------------------------------
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_engine.cc b/engine/src/flutter/shell/platform/embedder/embedder_engine.cc
+index d3e78ee5536..77985f4938f 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_engine.cc
++++ b/engine/src/flutter/shell/platform/embedder/embedder_engine.cc
+@@ -5,6 +5,8 @@
+ #include "flutter/shell/platform/embedder/embedder_engine.h"
+ 
+ #include "flutter/fml/make_copyable.h"
++#include "flutter/fml/synchronization/waitable_event.h"
++#include "flutter/shell/platform/embedder/platform_view_embedder.h"
+ #include "flutter/shell/platform/embedder/vsync_waiter_embedder.h"
+ 
+ namespace flutter {
+@@ -140,6 +142,84 @@ bool EmbedderEngine::NotifyDestroyed() {
+   return true;
+ }
+ 
++bool EmbedderEngine::NotifyGLContextLost() {
++  if (!IsValid()) {
++    return false;
++  }
++
++  // The platform view of an embedder's shell is the embedder's own:
++  // embedder.cc makes no other.
++  auto* platform_view =
++      static_cast<PlatformViewEmbedder*>(shell_->GetPlatformView().get());
++
++  // [anicel 0004] THE SURFACE LETS GO FIRST, and only then is the rasterizer
++  // torn down: its teardown asks for the context to be made current, and the
++  // surface that knows the context is lost refuses without asking the
++  // embedder. So nothing the teardown does reaches OpenGL -- which is also
++  // why the textures are told here that their context goes: the teardown
++  // tells them only where the context could be made current.
++  bool let_go = false;
++  fml::AutoResetWaitableEvent latch;
++  fml::TaskRunner::RunNowOrPostTask(
++      task_runners_.GetRasterTaskRunner(),
++      [&let_go, &latch, platform_view, rasterizer = shell_->GetRasterizer()] {
++        let_go = platform_view->GLContextLost();
++        if (let_go && rasterizer) {
++          rasterizer->GetTextureRegistry()->OnGrContextDestroyed();
++        }
++        latch.Signal();
++      });
++  latch.Wait();
++  if (!let_go) {
++    return false;
++  }
++
++  // What the rasterizer built in the lost context goes with its surface. The
++  // IO thread is waited for as well: what it was doing as the context went is
++  // done by the time this returns, and it reacts no more.
++  platform_view->NotifyDestroyed();
++
++  // The raster thread gave its context up as the surface let go; the IO
++  // thread gives up the resource context here, now that it is idle. No thread
++  // of the engine has a context current once this returns.
++  fml::AutoResetWaitableEvent io_latch;
++  fml::TaskRunner::RunNowOrPostTask(task_runners_.GetIOTaskRunner(),
++                                    [&io_latch, platform_view] {
++                                      platform_view->ReleaseGLResourceContext();
++                                      io_latch.Signal();
++                                    });
++  io_latch.Wait();
++  return true;
++}
++
++bool EmbedderEngine::NotifyGLContextRestored() {
++  if (!IsValid()) {
++    return false;
++  }
++
++  auto* platform_view =
++      static_cast<PlatformViewEmbedder*>(shell_->GetPlatformView().get());
++
++  bool stands_again = false;
++  fml::AutoResetWaitableEvent latch;
++  fml::TaskRunner::RunNowOrPostTask(
++      task_runners_.GetRasterTaskRunner(),
++      [&stands_again, &latch, platform_view] {
++        stands_again = platform_view->GLContextRestored();
++        latch.Signal();
++      });
++  latch.Wait();
++  if (!stands_again) {
++    return false;
++  }
++
++  // The rendering surface is built in the context made anew, the resource
++  // context is made current on the IO thread, and a frame is scheduled: the
++  // same steps as when the engine first ran.
++  platform_view->NotifyCreated();
++  return true;
++}
++
+ bool EmbedderEngine::SetViewportMetrics(
+     int64_t view_id,
+     const flutter::ViewportMetrics& metrics) {
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_engine.h b/engine/src/flutter/shell/platform/embedder/embedder_engine.h
+index c9c16ecb9ea..95b8d1fe03e 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_engine.h
++++ b/engine/src/flutter/shell/platform/embedder/embedder_engine.h
+@@ -46,6 +46,12 @@ class EmbedderEngine {
+ 
+   bool NotifyDestroyed();
+ 
++  // [anicel 0004] See FlutterEngineNotifyGLContextLost.
++  bool NotifyGLContextLost();
++
++  // [anicel 0004] See FlutterEngineNotifyGLContextRestored.
++  bool NotifyGLContextRestored();
++
+   bool RunRootIsolate();
+ 
+   bool IsValid() const;
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_external_texture_gl.cc b/engine/src/flutter/shell/platform/embedder/embedder_external_texture_gl.cc
+index 61fc5de62c3..ee5fa5f0015 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_external_texture_gl.cc
++++ b/engine/src/flutter/shell/platform/embedder/embedder_external_texture_gl.cc
+@@ -197,7 +197,13 @@ sk_sp<DlImage> EmbedderExternalTextureGL::ResolveTextureImpeller(
+ void EmbedderExternalTextureGL::OnGrContextCreated() {}
+ 
+ // |flutter::Texture|
+-void EmbedderExternalTextureGL::OnGrContextDestroyed() {}
++void EmbedderExternalTextureGL::OnGrContextDestroyed() {
++  // [anicel 0004] The image resolved for the last frame names a texture of
++  // the context that goes: the next paint asks the embedder for it anew.
++  // Upstream kept it, and a texture whose embedder never marked another
++  // frame would have gone on naming the lost context.
++  last_image_ = nullptr;
++}
+ 
+ // |flutter::Texture|
+ void EmbedderExternalTextureGL::MarkNewFrameAvailable() {
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.cc b/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.cc
+index 1d3ff65c77f..0a3f9a80ba8 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.cc
++++ b/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.cc
+@@ -37,6 +37,10 @@ void EmbedderExternalViewEmbedder::CollectView(int64_t view_id) {
+   render_target_caches_.erase(view_id);
+ }
+ 
++void EmbedderExternalViewEmbedder::CollectRenderTargets() {
++  render_target_caches_.clear();
++}
++
+ void EmbedderExternalViewEmbedder::SetSurfaceTransformationCallback(
+     SurfaceTransformationCallback surface_transformation_callback) {
+   surface_transformation_callback_ = std::move(surface_transformation_callback);
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.h b/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.h
+index 91953a1f7c6..c710e70a360 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.h
++++ b/engine/src/flutter/shell/platform/embedder/embedder_external_view_embedder.h
+@@ -69,6 +69,15 @@ class EmbedderExternalViewEmbedder final : public ExternalViewEmbedder {
+   // |ExternalViewEmbedder|
+   void CollectView(int64_t view_id) override;
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] Collects every render target kept for a later
++  ///             frame, of every view. The OpenGL context they were made in
++  ///             is lost: a target of it is not to be drawn into again.
++  ///
++  ///             Called on the raster thread.
++  ///
++  void CollectRenderTargets();
++
+   //----------------------------------------------------------------------------
+   /// @brief      Sets the surface transformation callback used by the external
+   ///             view embedder to ask the platform for the per frame root
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_surface.cc b/engine/src/flutter/shell/platform/embedder/embedder_surface.cc
+index 029833f7434..27be3e18552 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_surface.cc
++++ b/engine/src/flutter/shell/platform/embedder/embedder_surface.cc
+@@ -19,4 +19,14 @@ sk_sp<GrDirectContext> EmbedderSurface::CreateResourceContext() const {
+   return nullptr;
+ }
+ 
++bool EmbedderSurface::GLContextLost() {
++  return false;
++}
++
++void EmbedderSurface::ReleaseResourceContext() const {}
++
++bool EmbedderSurface::GLContextRestored() {
++  return false;
++}
++
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_surface.h b/engine/src/flutter/shell/platform/embedder/embedder_surface.h
+index 32873f1a944..167137c6b23 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_surface.h
++++ b/engine/src/flutter/shell/platform/embedder/embedder_surface.h
+@@ -26,6 +26,44 @@ class EmbedderSurface {
+ 
+   virtual sk_sp<GrDirectContext> CreateResourceContext() const;
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] The OpenGL context this surface draws with is
++  ///             lost and the embedder is about to make another: the surface
++  ///             lets go of it, and takes the context off this thread. From
++  ///             here to GLContextRestored it makes nothing current, and no
++  ///             thread reaches OpenGL through it.
++  ///
++  ///             Called on the raster thread.
++  ///
++  /// @return     Whether this surface is one that stands again in a context
++  ///             made anew. Where it is not, nothing was done.
++  ///
++  virtual bool GLContextLost();
++
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] Takes the resource context off this thread:
++  ///             the one CreateResourceContext made current on it. Asked of
++  ///             a surface whose OpenGL context is lost, after
++  ///             GLContextLost.
++  ///
++  ///             Called on the IO thread.
++  ///
++  virtual void ReleaseResourceContext() const;
++
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] The embedder made the OpenGL contexts anew:
++  ///             the surface makes its context current and stands in it. What
++  ///             was built in the lost context names nothing from here on.
++  ///
++  ///             Called on the raster thread.
++  ///
++  /// @return     Whether the surface stands again. False, and still lost,
++  ///             where the context made anew could not be made current;
++  ///             false, and nothing done, where the surface was not lost or
++  ///             is not one that stands again.
++  ///
++  virtual bool GLContextRestored();
++
+  private:
+   FML_DISALLOW_COPY_AND_ASSIGN(EmbedderSurface);
+ };
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.cc b/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.cc
+index 1aad505136e..bfd17694730 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.cc
++++ b/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.cc
+@@ -67,6 +67,14 @@ class ReactorWorker final : public impeller::ReactorGLES::Worker {
+     reactions_allowed_[std::this_thread::get_id()] = allowed;
+   }
+ 
++  // [anicel 0004] No thread reacts any more: the context each of them had
++  // current is lost. A thread reacts again once its context was made current
++  // anew (SetReactionsAllowedOnCurrentThread).
++  void ForgetAllThreads() {
++    impeller::WriterLock lock(mutex_);
++    reactions_allowed_.clear();
++  }
++
+  private:
+   mutable impeller::RWMutex mutex_;
+   std::map<std::thread::id, bool> reactions_allowed_ IPLR_GUARDED_BY(mutex_);
+@@ -140,9 +148,20 @@ bool EmbedderSurfaceGLImpeller::IsValid() const {
+ // |GPUSurfaceGLDelegate|
+ std::unique_ptr<GLContextResult>
+ EmbedderSurfaceGLImpeller::GLContextMakeCurrent() {
+-  worker_->SetReactionsAllowedOnCurrentThread(true);
+-  return std::make_unique<GLContextDefaultResult>(
+-      gl_dispatch_table_.gl_make_current_callback());
++  // [anicel 0004] WHILE THE CONTEXT IS LOST NOTHING IS MADE CURRENT: the
++  // embedder is making its contexts anew, and is not to be asked for the one
++  // that went.
++  if (gl_context_lost_) {
++    return std::make_unique<GLContextDefaultResult>(false);
++  }
++  // [anicel 0004] A THREAD REACTS ONLY WHERE ITS CONTEXT WAS MADE CURRENT.
++  // Upstream let the thread react before it had heard whether the context
++  // could be made current, and so a thread whose context was refused went on
++  // to name objects in no context at all -- names that would then pass for
++  // names of the context that stands next.
++  const bool is_current = gl_dispatch_table_.gl_make_current_callback();
++  worker_->SetReactionsAllowedOnCurrentThread(is_current);
++  return std::make_unique<GLContextDefaultResult>(is_current);
+ }
+ 
+ // |GPUSurfaceGLDelegate|
+@@ -230,4 +249,51 @@ sk_sp<GrDirectContext> EmbedderSurfaceGLImpeller::CreateResourceContext()
+   return nullptr;
+ }
+ 
++// |EmbedderSurface|
++bool EmbedderSurfaceGLImpeller::GLContextLost() {
++  if (!valid_) {
++    return false;
++  }
++  // [anicel 0004] ONLY THE LETTING GO. Nothing is deleted through OpenGL
++  // (there is no context left to delete in), and Impeller's context is kept:
++  // it stands on into the context made anew, see
++  // ContextGLES::GLContextWasReplaced.
++  gl_context_lost_ = true;
++  worker_->ForgetAllThreads();
++  // The lost context is taken off this thread: the embedder cannot destroy
++  // its contexts while one of them is current anywhere.
++  gl_dispatch_table_.gl_clear_current_callback();
++  return true;
++}
++
++// |EmbedderSurface|
++void EmbedderSurfaceGLImpeller::ReleaseResourceContext() const {
++  // [anicel 0004] The embedder has one callback that clears, and it clears
++  // whatever context is current on the thread it is called on: upstream's
++  // own word for it is that it "may be called on either the Raster or IO
++  // threads" (GPUSurfaceGLDelegate::GLContextClearCurrent).
++  worker_->SetReactionsAllowedOnCurrentThread(false);
++  gl_dispatch_table_.gl_clear_current_callback();
++}
++
++// |EmbedderSurface|
++bool EmbedderSurfaceGLImpeller::GLContextRestored() {
++  if (!valid_ || !gl_context_lost_) {
++    return false;
++  }
++  if (!gl_dispatch_table_.gl_make_current_callback()) {
++    FML_LOG(ERROR) << "Could not make the OpenGL context made anew current.";
++    return false;
++  }
++  // [anicel 0004] THE ORDER IS THE LAW. Impeller hears that its context was
++  // replaced after every thread was forgotten (GLContextLost) and before any
++  // thread reacts again: nothing is named in the new context and counted to
++  // the old one, nor the other way round. A thread that was still reacting
++  // as the context went can only have named things of the old one.
++  impeller_context_->GLContextWasReplaced();
++  gl_context_lost_ = false;
++  worker_->SetReactionsAllowedOnCurrentThread(true);
++  return true;
++}
++
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.h b/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.h
+index 598925f44b4..e1833fa256a 100644
+--- a/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.h
++++ b/engine/src/flutter/shell/platform/embedder/embedder_surface_gl_impeller.h
+@@ -48,6 +48,9 @@ class EmbedderSurfaceGLImpeller final : public EmbedderSurface,
+   std::shared_ptr<impeller::ContextGLES> impeller_context_;
+   std::shared_ptr<EmbedderExternalViewEmbedder> external_view_embedder_;
+   std::shared_ptr<ReactorWorker> worker_;
++  // [anicel 0004] True from GLContextLost to GLContextRestored. Written and
++  // read on the raster thread only.
++  bool gl_context_lost_ = false;
+ 
+   // |EmbedderSurface|
+   bool IsValid() const override;
+@@ -85,6 +88,15 @@ class EmbedderSurfaceGLImpeller final : public EmbedderSurface,
+   // |EmbedderSurface|
+   sk_sp<GrDirectContext> CreateResourceContext() const override;
+ 
++  // |EmbedderSurface|
++  bool GLContextLost() override;
++
++  // |EmbedderSurface|
++  void ReleaseResourceContext() const override;
++
++  // |EmbedderSurface|
++  bool GLContextRestored() override;
++
+   FML_DISALLOW_COPY_AND_ASSIGN(EmbedderSurfaceGLImpeller);
+ };
+ 
+diff --git a/engine/src/flutter/shell/platform/embedder/platform_view_embedder.cc b/engine/src/flutter/shell/platform/embedder/platform_view_embedder.cc
+index 712a5287e39..68ada2367c2 100644
+--- a/engine/src/flutter/shell/platform/embedder/platform_view_embedder.cc
++++ b/engine/src/flutter/shell/platform/embedder/platform_view_embedder.cc
+@@ -220,4 +220,25 @@ PlatformViewEmbedder::GetPlatformMessageHandler() const {
+   return platform_message_handler_;
+ }
+ 
++bool PlatformViewEmbedder::GLContextLost() {
++  if (embedder_surface_ == nullptr || !embedder_surface_->GLContextLost()) {
++    return false;
++  }
++  if (external_view_embedder_) {
++    external_view_embedder_->CollectRenderTargets();
++  }
++  return true;
++}
++
++void PlatformViewEmbedder::ReleaseGLResourceContext() const {
++  if (embedder_surface_ != nullptr) {
++    embedder_surface_->ReleaseResourceContext();
++  }
++}
++
++bool PlatformViewEmbedder::GLContextRestored() {
++  return embedder_surface_ != nullptr &&
++         embedder_surface_->GLContextRestored();
++}
++
+ }  // namespace flutter
+diff --git a/engine/src/flutter/shell/platform/embedder/platform_view_embedder.h b/engine/src/flutter/shell/platform/embedder/platform_view_embedder.h
+index 1b9f500140e..483cc97f3b6 100644
+--- a/engine/src/flutter/shell/platform/embedder/platform_view_embedder.h
++++ b/engine/src/flutter/shell/platform/embedder/platform_view_embedder.h
+@@ -116,6 +116,36 @@ class PlatformViewEmbedder final : public PlatformView {
+   std::shared_ptr<PlatformMessageHandler> GetPlatformMessageHandler()
+       const override;
+ 
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] The OpenGL context the engine renders with is
++  ///             lost: the rendering surface lets go of it, and the render
++  ///             targets kept for later frames are collected.
++  ///
++  ///             Called on the raster thread.
++  ///
++  /// @return     Whether the surface is one that stands again in a context
++  ///             made anew. Where it is not, nothing was done.
++  ///
++  bool GLContextLost();
++
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] Takes the resource context off the IO thread,
++  ///             after GLContextLost.
++  ///
++  ///             Called on the IO thread.
++  ///
++  void ReleaseGLResourceContext() const;
++
++  //----------------------------------------------------------------------------
++  /// @brief      [anicel 0004] The embedder made the OpenGL contexts anew:
++  ///             the rendering surface stands in its own again.
++  ///
++  ///             Called on the raster thread.
++  ///
++  /// @return     Whether the surface stands again.
++  ///
++  bool GLContextRestored();
++
+  private:
+   class EmbedderPlatformMessageHandler;
+   std::shared_ptr<EmbedderExternalViewEmbedder> external_view_embedder_;
+diff --git a/engine/src/flutter/shell/platform/embedder/tests/embedder_test_surface_gl_impeller.cc b/engine/src/flutter/shell/platform/embedder/tests/embedder_test_surface_gl_impeller.cc
+index eda11d2ccb0..5926c675fc0 100644
+--- a/engine/src/flutter/shell/platform/embedder/tests/embedder_test_surface_gl_impeller.cc
++++ b/engine/src/flutter/shell/platform/embedder/tests/embedder_test_surface_gl_impeller.cc
+@@ -2,10 +2,22 @@
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+ 
++#include <atomic>
++#include <memory>
++#include <thread>
++
+ #include "flatbuffers/stl_emulation.h"
++#include "flutter/fml/synchronization/waitable_event.h"
+ #include "flutter/impeller/renderer/backend/gles/test/mock_gles.h"
++#include "flutter/shell/gpu/gpu_surface_gl_delegate.h"
++#include "flutter/shell/platform/embedder/embedder_surface.h"
+ #include "flutter/shell/platform/embedder/embedder_surface_gl_impeller.h"
++#include "impeller/renderer/backend/gles/context_gles.h"
++#include "impeller/renderer/backend/gles/handle_gles.h"
++#include "impeller/renderer/backend/gles/reactor_gles.h"
+ #include "impeller/renderer/backend/gles/shader_function_gles.h"
++#include "impeller/renderer/pipeline_descriptor.h"
++#include "impeller/renderer/pipeline_library.h"
+ 
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+@@ -77,5 +89,266 @@ TEST(EmbedderSurfaceGLImpellerTest, GLES2ContextDoesNotHaveGLES3Shaders) {
+       std::string_view(reinterpret_cast<const char*>(source->GetMapping()));
+   EXPECT_THAT(text, StartsWith("#version 100"));
+ }
++
++// [anicel 0004] The embedder's OpenGL context is lost and made anew under the
++// surface (FlutterEngineNotifyGLContextLost, ...Restored).
++
++namespace {
++// The embedder's context as a test sets it, and what was asked of it.
++struct ContextOfTheEmbedder {
++  bool can_be_made_current = true;
++  int asked_to_be_made_current = 0;
++  // Asked of more threads than one.
++  std::atomic<int> asked_to_be_cleared = 0;
++};
++
++EmbedderSurfaceGLSkia::GLDispatchTable DispatchTableOver(
++    const std::shared_ptr<ContextOfTheEmbedder>& context) {
++  auto table = StubDispatchTable(/* version */ "OpenGL ES 3.0");
++  table.gl_make_current_callback = [context] {
++    context->asked_to_be_made_current += 1;
++    return context->can_be_made_current;
++  };
++  table.gl_clear_current_callback = [context] {
++    context->asked_to_be_cleared += 1;
++    return true;
++  };
++  return table;
++}
++
++std::shared_ptr<impeller::ReactorGLES> ReactorOf(
++    const EmbedderSurface& surface) {
++  return impeller::ContextGLES::Cast(*surface.CreateImpellerContext())
++      .GetReactor();
++}
++
++impeller::HandleGLES NameATexture(
++    const std::shared_ptr<impeller::ReactorGLES>& reactor) {
++  return reactor->CreateUntrackedHandle(impeller::HandleType::kTexture);
++}
++}  // namespace
++
++TEST(EmbedderSurfaceGLImpellerTest,
++     AThreadReactsOnlyWhereItsContextWasMadeCurrent) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  GPUSurfaceGLDelegate& delegate = surface;
++  const auto reactor = ReactorOf(surface);
++
++  context->can_be_made_current = false;
++  EXPECT_FALSE(delegate.GLContextMakeCurrent()->GetResult());
++  EXPECT_FALSE(reactor->CanReactOnCurrentThread());
++
++  context->can_be_made_current = true;
++  EXPECT_TRUE(delegate.GLContextMakeCurrent()->GetResult());
++  EXPECT_TRUE(reactor->CanReactOnCurrentThread());
++
++  // And no longer, once the context was refused again.
++  context->can_be_made_current = false;
++  EXPECT_FALSE(delegate.GLContextMakeCurrent()->GetResult());
++  EXPECT_FALSE(reactor->CanReactOnCurrentThread());
++}
++
++TEST(EmbedderSurfaceGLImpellerTest,
++     WhileItsContextIsLostNothingIsMadeCurrentAndNoThreadReacts) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  GPUSurfaceGLDelegate& delegate = surface;
++  EmbedderSurface& embedder_surface = surface;
++  const auto reactor = ReactorOf(surface);
++
++  // Two threads react: this one, as the raster thread does, and another the
++  // resource context is current on.
++  ASSERT_TRUE(delegate.GLContextMakeCurrent()->GetResult());
++  ASSERT_TRUE(reactor->CanReactOnCurrentThread());
++  fml::AutoResetWaitableEvent the_resource_context_is_current;
++  fml::AutoResetWaitableEvent the_context_is_lost;
++  bool the_other_thread_reacted_before = false;
++  bool the_other_thread_reacts_after = true;
++  int cleared_before_the_other_thread_released = -1;
++  int cleared_after_the_other_thread_released = -1;
++  std::thread the_other_thread([&] {
++    embedder_surface.CreateResourceContext();
++    the_other_thread_reacted_before = reactor->CanReactOnCurrentThread();
++    the_resource_context_is_current.Signal();
++    the_context_is_lost.Wait();
++    the_other_thread_reacts_after = reactor->CanReactOnCurrentThread();
++    cleared_before_the_other_thread_released = context->asked_to_be_cleared;
++    embedder_surface.ReleaseResourceContext();
++    cleared_after_the_other_thread_released = context->asked_to_be_cleared;
++  });
++  the_resource_context_is_current.Wait();
++  const int asked_before = context->asked_to_be_made_current;
++  // The surface cleared once already, as it was made.
++  const int cleared_before = context->asked_to_be_cleared;
++
++  EXPECT_TRUE(embedder_surface.GLContextLost());
++  // The lost context is taken off the thread the surface let go on...
++  EXPECT_EQ(context->asked_to_be_cleared, cleared_before + 1);
++  the_context_is_lost.Signal();
++  the_other_thread.join();
++
++  EXPECT_TRUE(the_other_thread_reacted_before);
++  EXPECT_FALSE(the_other_thread_reacts_after);
++  // ...and the resource context off the thread that releases it.
++  EXPECT_EQ(cleared_before_the_other_thread_released, cleared_before + 1);
++  EXPECT_EQ(cleared_after_the_other_thread_released, cleared_before + 2);
++  EXPECT_FALSE(reactor->CanReactOnCurrentThread());
++  // The embedder is not asked for the context that went.
++  EXPECT_FALSE(delegate.GLContextMakeCurrent()->GetResult());
++  EXPECT_EQ(context->asked_to_be_made_current, asked_before);
++  EXPECT_FALSE(reactor->CanReactOnCurrentThread());
++}
++
++TEST(EmbedderSurfaceGLImpellerTest,
++     ItStandsAgainInTheContextMadeAnewAndWhatTheLostOneNamedNamesNothing) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  GPUSurfaceGLDelegate& delegate = surface;
++  EmbedderSurface& embedder_surface = surface;
++  const auto reactor = ReactorOf(surface);
++
++  ASSERT_TRUE(delegate.GLContextMakeCurrent()->GetResult());
++  const impeller::HandleGLES of_the_lost_context = NameATexture(reactor);
++  ASSERT_TRUE(embedder_surface.GLContextLost());
++  // Nothing stands in the lost context's place yet: Impeller still counts by
++  // it, so that what a thread named as the context went is counted to it.
++  EXPECT_FALSE(reactor->IsOfReplacedContext(of_the_lost_context));
++
++  EXPECT_TRUE(embedder_surface.GLContextRestored());
++
++  EXPECT_TRUE(reactor->IsOfReplacedContext(of_the_lost_context));
++  EXPECT_TRUE(reactor->CanReactOnCurrentThread());
++  EXPECT_TRUE(delegate.GLContextMakeCurrent()->GetResult());
++  EXPECT_FALSE(reactor->IsOfReplacedContext(NameATexture(reactor)));
++}
++
++TEST(EmbedderSurfaceGLImpellerTest, ASurfaceThatWasNotLostDoesNotStandAgain) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  GPUSurfaceGLDelegate& delegate = surface;
++  EmbedderSurface& embedder_surface = surface;
++  const auto reactor = ReactorOf(surface);
++
++  ASSERT_TRUE(delegate.GLContextMakeCurrent()->GetResult());
++  const impeller::HandleGLES of_the_standing_context = NameATexture(reactor);
++  EXPECT_FALSE(embedder_surface.GLContextRestored());
++  EXPECT_FALSE(reactor->IsOfReplacedContext(of_the_standing_context));
++
++  // Nor twice for one loss.
++  ASSERT_TRUE(embedder_surface.GLContextLost());
++  ASSERT_TRUE(embedder_surface.GLContextRestored());
++  const impeller::HandleGLES of_the_context_made_anew = NameATexture(reactor);
++  EXPECT_FALSE(embedder_surface.GLContextRestored());
++  EXPECT_FALSE(reactor->IsOfReplacedContext(of_the_context_made_anew));
++}
++
++TEST(EmbedderSurfaceGLImpellerTest,
++     ItStaysLostWhereTheContextMadeAnewCannotBeMadeCurrent) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  GPUSurfaceGLDelegate& delegate = surface;
++  EmbedderSurface& embedder_surface = surface;
++  const auto reactor = ReactorOf(surface);
++
++  ASSERT_TRUE(delegate.GLContextMakeCurrent()->GetResult());
++  const impeller::HandleGLES of_the_lost_context = NameATexture(reactor);
++  ASSERT_TRUE(embedder_surface.GLContextLost());
++
++  context->can_be_made_current = false;
++  EXPECT_FALSE(embedder_surface.GLContextRestored());
++  EXPECT_FALSE(reactor->IsOfReplacedContext(of_the_lost_context));
++  EXPECT_FALSE(reactor->CanReactOnCurrentThread());
++  EXPECT_FALSE(delegate.GLContextMakeCurrent()->GetResult());
++
++  // It may be told again, once the embedder has a context that can be.
++  context->can_be_made_current = true;
++  EXPECT_TRUE(embedder_surface.GLContextRestored());
++  EXPECT_TRUE(reactor->IsOfReplacedContext(of_the_lost_context));
++  EXPECT_TRUE(reactor->CanReactOnCurrentThread());
++}
++
++TEST(EmbedderSurfaceTest, ASurfaceOfAnotherRendererDoesNotStandAgain) {
++  class SurfaceOfAnotherRenderer final : public EmbedderSurface {
++   public:
++    // |EmbedderSurface|
++    bool IsValid() const override { return true; }
++
++    // |EmbedderSurface|
++    std::unique_ptr<Surface> CreateGPUSurface() override { return nullptr; }
++  };
++  SurfaceOfAnotherRenderer surface;
++
++  EXPECT_FALSE(surface.GLContextLost());
++  EXPECT_FALSE(surface.GLContextRestored());
++}
++
++TEST(EmbedderSurfaceGLImpellerTest,
++     AThreadThatReleasedTheResourceContextReactsNoMore) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  EmbedderSurface& embedder_surface = surface;
++  const auto reactor = ReactorOf(surface);
++
++  embedder_surface.CreateResourceContext();
++  ASSERT_TRUE(reactor->CanReactOnCurrentThread());
++  const int cleared_before = context->asked_to_be_cleared;
++
++  embedder_surface.ReleaseResourceContext();
++
++  EXPECT_FALSE(reactor->CanReactOnCurrentThread());
++  EXPECT_EQ(context->asked_to_be_cleared, cleared_before + 1);
++}
++
++TEST(EmbedderSurfaceGLImpellerTest,
++     NoPipelineAskedForOfTheLostContextIsHandedOutAgain) {
++  const auto context = std::make_shared<ContextOfTheEmbedder>();
++  auto surface = EmbedderSurfaceGLImpeller(
++      DispatchTableOver(context), /* fbo_reset_after_present */ false,
++      /* external_view_embedder */ nullptr);
++  EmbedderSurface& embedder_surface = surface;
++  const std::shared_ptr<impeller::Context> impeller_context =
++      embedder_surface.CreateImpellerContext();
++  const std::shared_ptr<impeller::ShaderLibrary> shaders =
++      impeller_context->GetShaderLibrary();
++  impeller::PipelineDescriptor descriptor;
++  descriptor.AddStageEntrypoint(shaders->GetFunction(
++      "imp_line_vertex_main", impeller::ShaderStage::kVertex));
++  descriptor.AddStageEntrypoint(shaders->GetFunction(
++      "imp_line_fragment_main", impeller::ShaderStage::kFragment));
++  ASSERT_NE(descriptor.GetEntrypointForStage(impeller::ShaderStage::kVertex),
++            nullptr);
++  ASSERT_NE(
++      descriptor.GetEntrypointForStage(impeller::ShaderStage::kFragment),
++      nullptr);
++  const std::shared_ptr<impeller::PipelineLibrary> library =
++      impeller_context->GetPipelineLibrary();
++
++  // Asked for on a thread whose context was never made current: its linking
++  // waits there, so nothing of the mock's OpenGL is run.
++  const auto asked_of_the_lost_context = library->GetPipeline(descriptor);
++  ASSERT_TRUE(library->HasPipeline(descriptor));
++  ASSERT_TRUE(embedder_surface.GLContextLost());
++  // The lost context's still, until a context stands in its place.
++  EXPECT_TRUE(library->HasPipeline(descriptor));
++
++  ASSERT_TRUE(embedder_surface.GLContextRestored());
++
++  // Its linking went with the lost context (ReactorGLES::GLContextWasReplaced
++  // lets the waiting work go), so it would never come.
++  EXPECT_FALSE(library->HasPipeline(descriptor));
++}
+ }  // namespace testing
+ }  // namespace flutter

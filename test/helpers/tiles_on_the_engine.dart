@@ -50,20 +50,22 @@ BitmapSurface surfaceOnEngine(BitmapSurface surface) =>
 /// a kernel stores what it lands, with no kernel to compile ([tilesOf]);
 /// [again], where the landing says how it is made once more
 /// (`LandsAgain`). A hand's, unless [ofTheHand] says it is a picture's
-/// made as a frame is (`EngineTileLedger.land`).
+/// made as a frame is (`EngineTileLedger.land`). Told the box [telling]
+/// where given ([tilesLike]).
 List<BitmapTile> landedOn(
   EngineTileLedger ledger,
   List<BitmapTile?> unders,
   int value, {
   LandsAgain? again,
   bool ofTheHand = true,
+  GpuInkBox? telling,
 }) => [
   for (final landed in ledger.land(
     [
       for (final (column, under) in unders.indexed)
         (column: column, row: 0, under: under),
     ],
-    by: tilesOf(value),
+    by: tilesOf(value, telling: telling),
     ofTheHand: ofTheHand,
     compared: true,
     again: again,
@@ -73,18 +75,41 @@ List<BitmapTile> landedOn(
 
 /// What lands a tile of [value] at every byte for each tile asked, as a
 /// kernel stores what it lands, with no kernel to compile.
-LandedBy tilesOf(int value) => (pool, cel, asked) {
-  // A tile, not bytes of this call's: the store's copy reads them once it
-  // returns, holding what keeps them (GpuPool.store).
-  final tile = BitmapTile.written(
+LandedBy tilesOf(int value, {GpuInkBox? telling}) => tilesLike(
+  BitmapTile.written(
     size: gpuTileSide,
     write: (pixels) => pixels.fillRange(0, gpuTileBytes, value),
-  );
+  ),
+  telling: telling,
+);
+
+/// What lands [tile]'s bytes for each tile asked, as [tilesOf] does — and
+/// tells each the box its ink fills, as a landing that compares is told:
+/// or [telling], a box no scan of it would find, where a test tells what
+/// its maker said from what is found once that is forgotten.
+LandedBy tilesLike(BitmapTile tile, {GpuInkBox? telling}) => (
+  pool,
+  cel,
+  asked,
+) {
+  final ink = tile.inkBounds;
+  final box =
+      telling ??
+      (ink == null
+          ? null
+          : (
+              left: ink.left,
+              top: ink.top,
+              right: ink.rightExclusive,
+              bottom: ink.bottomExclusive,
+            ));
+  // A tile, not bytes of this call's: the store's copy reads them once it
+  // returns, holding what keeps them (GpuPool.store).
   return [
     for (final at in pool.store(cel, [
       for (final _ in asked) tile,
     ], (tile) => tile.readPixels((pointer, _) => pointer)))
-      (change: GpuChange.inked, tile: at),
+      (change: GpuChange.inked, tile: at, box: box),
   ];
 };
 

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -33,6 +34,7 @@ import 'package:anicel/src/ui/export/held_pictures.dart';
 import '../../helpers/a_film_frame_on_the_engine.dart';
 import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️export-film-preview-is-not-the-film (11-04): the export window's
 /// preview of a film is the frame its file holds — the stage and its
@@ -45,6 +47,7 @@ import '../../helpers/export_preview_probe.dart';
 /// film lays the paper as a camera-size one does. ↩️It stood on its ground
 /// alone, whatever the paper.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
@@ -369,7 +372,7 @@ void main() {
       );
       await tester.binding.setSurfaceSize(const Size(1280, 720));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      theTreeGoesFirst(tester);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

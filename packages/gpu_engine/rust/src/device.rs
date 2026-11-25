@@ -9,6 +9,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 
+use crate::clock::Clock;
 use crate::kernels::shared::{Counted, built_here, put_built_here};
 use crate::submits::Submits;
 use crate::took::Took;
@@ -30,10 +31,6 @@ pub(crate) const NO_PAGE_BYTES: u64 = 4;
 /// One wgpu device and its queue.
 #[derive(Clone)]
 pub struct Engine {
-    /// Kept for Android's window surfaces, which must come from the
-    /// instance the adapter came from.
-    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-    pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
     /// ⛔Private to this type, as the `wgpu::Queue` is to [`Queue`]: a
     /// kernel takes it by [`Engine::device`], which counts the hands that
@@ -91,6 +88,8 @@ pub struct Engine {
     no_page: wgpu::Buffer,
     /// Every kernel the engine has compiled ([`Kernels`]).
     pub(crate) kernels: Kernels,
+    /// What its compiler made, counted ([`Compiles`]).
+    pub(crate) compiles: Arc<Compiles>,
     /// When what is compiled apart may take the compiler ([`Apart`]).
     pub(crate) apart: Apart,
     /// How fast the device spends a plugin's share, once a plugin first
@@ -111,6 +110,9 @@ pub struct Engine {
     /// Why each wait no caller stayed for failed, till the caller asks
     /// ([`gpu_engine_done_failure`]).
     ended: Ended,
+    /// How each wait no caller stayed for went where it finished, till the
+    /// caller takes it ([`gpu_engine_done_waited`]).
+    waits_went: WaitsWent,
     /// What the bodies handed over unwaited refused, till a done tells it
     /// ([`Engine::posted`]).
     posted_refused: PostedRefused,
@@ -157,7 +159,7 @@ impl PostedRefused {
 /// the last save all that was left).
 ///
 /// So an error no scope catches is NOTED here, and the next wait fails by
-/// it ([`Engine::wait`]) — the law a submit on a thread that is gone
+/// it ([`Engine::wait_within`]) — the law a submit on a thread that is gone
 /// already keeps ([`Queue::submit`]). A device that is gone fails every
 /// wait from then on. ⚠️What ends without a wait is told nothing: the
 /// tests' engine panics as wgpu did (`testing::first_engine`), and the
@@ -176,6 +178,27 @@ struct Refused {
     gone: Option<String>,
     /// The first error no scope caught since a wait last told one.
     noted: Option<String>,
+    /// What asks the device's driver whether it took the device
+    /// ([`Refusals::asks`]) — none where the platform's driver says no
+    /// such thing, and of a test's that stands for no device.
+    driver: Option<platform::DriverAsked>,
+    /// How many waits passed their limit with the device standing
+    /// ([`Refusals::past`]).
+    late: u32,
+}
+
+impl Refused {
+    /// Gone by its driver's word, where the driver has one and nothing
+    /// said it before ([`Refusals::asks`]). Why it took it is
+    /// [`Engine::went_by`]'s to say.
+    fn ask_the_driver(&mut self) {
+        if self.gone.is_some() {
+            return;
+        }
+        if self.driver.as_ref().is_some_and(|took| took()) {
+            self.gone = Some("its driver took it".to_string());
+        }
+    }
 }
 
 impl Refusals {
@@ -194,9 +217,57 @@ impl Refusals {
         self.kept().noted.get_or_insert(error);
     }
 
-    /// Whether the device is gone.
+    /// 🚨THE DEVICE ANSWERS FOR ITSELF WHETHER ITS DRIVER TOOK IT — to
+    /// whoever asks whether it is gone ([`Self::gone`]) and as every wait
+    /// ends ([`Self::told`]). `driver` asks it, waiting on nothing.
+    ///
+    /// WHY (board a-real-gpu-reset-went-unheard-on-the-main-pc,
+    /// 2026-11-22): wgpu says a device is lost only where a call of
+    /// D3D12's fails by it (wgpu-hal 30.0.1, auxil/dxgi/result.rs), and a
+    /// wait is no such call — a removed device's fence reads as through
+    /// (dx12/device.rs, `wait`). So the job under way as a driver took the
+    /// device came back done, the loss was learnt at the next submit, and
+    /// of a canvas that stood still, never. Found reading how a loss
+    /// reaches the app, after a fault of the main PC's GPU went unheard
+    /// (nvlddmkm 153, 11-22 16:47: the window on its last picture, and no
+    /// loss written) — whether this engine's device went then, nothing
+    /// said, which is the hole.
+    fn asks(&self, driver: platform::DriverAsked) {
+        self.kept().driver = Some(driver);
+    }
+
+    /// Whether the device is gone — by what was said of it, or by its
+    /// driver's word now ([`Self::asks`]).
     fn gone(&self) -> bool {
-        self.kept().gone.is_some()
+        let mut kept = self.kept();
+        kept.ask_the_driver();
+        kept.gone.is_some()
+    }
+
+    /// A wait passed `limit`: fails by it — or, where its driver took the
+    /// device, as every wait on a gone device does: that one is gone, not
+    /// late, and the poll stays in the driver for what will not come.
+    ///
+    /// 🚨COUNTED WHERE THE DEVICE STANDS ([`Self::late`]): the app writes
+    /// what the engine had sent the GPU at the first refusal it hears once
+    /// one is (board a-real-gpu-reset-went-unheard-on-the-main-pc,
+    /// 2026-11-22 — a wait past its limit left no word of what the GPU
+    /// was at). ⛔Not read from this failure's words: a body handed over
+    /// unwaited tells its caller only whether it worked
+    /// (lib/gpu_engine.dart, `_toldRefused` — a landing's finish, a lift),
+    /// and these words stay on the thread that waited.
+    fn past(&self, limit: Duration) -> Option<()> {
+        if self.gone() {
+            return self.told();
+        }
+        self.kept().late += 1;
+        fail(format!("the GPU did not finish within {limit:?}"))
+    }
+
+    /// How many waits passed their limit with the device standing
+    /// ([`Self::past`]).
+    fn late(&self) -> u32 {
+        self.kept().late
     }
 
     /// Whether the device is gone for want of memory: wgpu gave it up at
@@ -227,6 +298,7 @@ impl Refusals {
     /// it stands on by them, and a refusal reaches it as its words alone.
     fn told(&self) -> Option<()> {
         let mut kept = self.kept();
+        kept.ask_the_driver();
         if let Some(why) = &kept.gone {
             return fail(format!("the graphics device is gone: {why}"));
         }
@@ -382,7 +454,86 @@ impl Apart {
 /// 묶는다 — 디스크 캐시 + 나란히 컴파일」): wgpu-hal is ours to patch
 /// (Cargo.toml, `[patch.crates-io]`), and each compile under way takes a
 /// DXC compiler no other holds (vendor/wgpu-hal, `DxcCompilers`).
-pub(crate) struct CompilerTurn(());
+///
+/// It counts what is compiled in it ([`Compiles`], [`Self::counted`]).
+pub(crate) struct CompilerTurn(Arc<Compiles>);
+
+impl CompilerTurn {
+    /// What `compile` makes — `device` asked for a pipeline — counted as
+    /// one compile, with how long it took and what the folder that keeps
+    /// them has answered since ([`Compiles`]).
+    pub(crate) fn counted<T>(&self, device: &wgpu::Device, compile: impl FnOnce() -> T) -> T {
+        let compiles = &self.0;
+        compiles.under_way.fetch_add(1, Ordering::Relaxed);
+        let began = Instant::now();
+        let made = compile();
+        let took = began.elapsed().as_micros() as u64;
+        compiles.found_on(device);
+        compiles.under_way.fetch_sub(1, Ordering::Relaxed);
+        compiles.made.fetch_add(1, Ordering::Relaxed);
+        compiles.micros.fetch_add(took, Ordering::Relaxed);
+        compiles.longest.fetch_max(took, Ordering::Relaxed);
+        made
+    }
+}
+
+/// What the engine's compiler made since the engine opened, and what ran
+/// meanwhile without it — the frame statistics' COMPILE line
+/// ([`gpu_engine_compiles`]).
+///
+/// 🗣️유저 2026-11-24 (card the-galaxy-tab-canvas-went-slow-on-build-1095):
+/// 「앱 키고 초기에 스트로크 초기렉 아직있고, 시간지나면 점점 괜찮아져」 — what a
+/// launch warms is its compiles (every kernel, the composite's own passes,
+/// what a launch compiles after the wait window), and the readout said
+/// none of them: 🗣️관제 the same day 「몇번을 임시빌드로 테스트하게
+/// 만드는거냐고 … 모든가능성 철저하게 검사해서 디버그화면 만들면되지」.
+pub(crate) struct Compiles {
+    /// Pipelines the device made ([`CompilerTurn::counted`]).
+    made: AtomicU64,
+    /// What they took in all, and the longest of them, in microseconds.
+    micros: AtomicU64,
+    longest: AtomicU64,
+    /// Compiles under way now.
+    under_way: AtomicU64,
+    /// Passes of the composite run on the pass that takes any plan while
+    /// their own was still to be compiled (`Composite::pass`).
+    stood_in: AtomicU64,
+    /// The pipelines the folder that keeps them answered
+    /// (`platform::pipelines_found`) as the engine opened and as each
+    /// compile left it — the only times it changes —, `u64::MAX` where the
+    /// OS keeps them and says nothing. ⛔Read where the device is in hand,
+    /// never as the statistics ask: they ask on the thread frames are
+    /// built on, which takes no GPU device in hand (`Engine::device`,
+    /// test/flutter_test_config.dart).
+    found: AtomicU64,
+}
+
+impl Compiles {
+    /// Counting from `device` as it opened.
+    fn of(device: &wgpu::Device) -> Self {
+        let compiles = Self {
+            made: AtomicU64::new(0),
+            micros: AtomicU64::new(0),
+            longest: AtomicU64::new(0),
+            under_way: AtomicU64::new(0),
+            stood_in: AtomicU64::new(0),
+            found: AtomicU64::new(0),
+        };
+        compiles.found_on(device);
+        compiles
+    }
+
+    /// One pass run on the pass that takes any plan meanwhile.
+    pub(crate) fn stood_in(&self) {
+        self.stood_in.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// What the folder `device` keeps its pipelines in has answered, now.
+    fn found_on(&self, device: &wgpu::Device) {
+        let found = platform::pipelines_found(device).unwrap_or(u64::MAX);
+        self.found.store(found, Ordering::Relaxed);
+    }
+}
 
 /// How many threads the engine compiles on ([`CompilerTurn`]): one to each
 /// of the device's cores, a tablet's few among them.
@@ -400,10 +551,10 @@ pub(crate) struct Queue {
     /// Every submit through here, and whether the GPU said it finished it
     /// ([`Submits`]).
     pub(crate) submits: Arc<Submits>,
-    /// What a submit is waited out by while the engine is timed
-    /// ([`Took`]): the engine's thread for polls, and the device it
-    /// polls.
-    polls: EngineThread,
+    /// What a submit is stamped by while the engine is timed ([`Took`]),
+    /// where the device has a clock of its own ([`Clock`]) — and the
+    /// device the stamps are made on.
+    pub(crate) clock: Option<Arc<Clock>>,
     device: wgpu::Device,
 }
 
@@ -413,10 +564,10 @@ impl Queue {
     /// is gone is the next wait's error. Noted, where its caller made it,
     /// until the GPU says it finished it ([`Submits`]).
     ///
-    /// While the engine is timed it returns once the GPU has finished
-    /// them, too: waited out on the engine's thread, so that what the GPU
-    /// took of this submit is told of the place it was made and of no
-    /// other ([`Took`] has what that makes of a frame).
+    /// While the engine is timed, what the GPU took of this submit is told
+    /// of the place it was made and of no other — stamped on the GPU
+    /// before and after it and read once written, where the device has a
+    /// clock ([`Clock`]); waited for by no one either way ([`Took`]).
     #[track_caller]
     pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
         self.submit_by(Location::caller(), buffers);
@@ -435,37 +586,33 @@ impl Queue {
         let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
         let (submits, made) = (self.submits.clone(), self.submits.note(by));
         let took = &self.thread.took;
-        let timed = took.timed().then(|| (took.clone(), self.polls.clone(), self.device.clone()));
+        let clocked = match (took.timed(), &self.clock) {
+            (true, Some(clock)) => Some((clock.clone(), took.clone(), self.device.clone())),
+            _ => None,
+        };
         #[cfg(test)]
         let thread = self.thread.number;
         let _ = self.thread.run(move || {
-            {
-                // The tests' shared device waits here while a test's own is
-                // up (`testing::a_device_of_its_own`) — on the engine's
-                // thread, where no caller waits for it with that turn in
-                // hand.
-                #[cfg(test)]
-                let _turn = crate::testing::submitting(thread);
-                queue.submit(buffers);
-                queue.on_submitted_work_done(move || submits.done(made.number));
+            // The tests' shared device waits here while a test's own is up
+            // (`testing::a_device_of_its_own`) — on the engine's thread,
+            // where no caller waits for it with that turn in hand.
+            #[cfg(test)]
+            let _turn = crate::testing::submitting(thread);
+            let (buffers, stamps) = match &clocked {
+                Some((clock, _, device)) => clock.around(device, buffers),
+                None => (buffers, None),
+            };
+            queue.submit(buffers);
+            if let (Some(stamps), Some((clock, took, _))) = (stamps, clocked) {
+                clock.read_after(stamps, by, made.groups, took);
             }
-            if let Some((took, polls, device)) = timed {
-                let since = Instant::now();
-                Poll::asked_of(&polls, &device).through();
-                took.waited(by, since.elapsed(), made.groups);
-            }
+            queue.on_submitted_work_done(move || submits.done(made.number));
         });
     }
 
     pub(crate) fn write_buffer(&self, buffer: &wgpu::Buffer, offset: wgpu::BufferAddress, data: &[u8]) {
         entered();
         self.queue.write_buffer(buffer, offset, data);
-    }
-
-    #[cfg(target_os = "android")]
-    pub(crate) fn present(&self, texture: wgpu::SurfaceTexture) {
-        entered();
-        self.queue.present(texture);
     }
 
     pub(crate) fn write_texture(
@@ -493,7 +640,7 @@ impl Engine {
             .into_iter()
             .find(|adapter| platform::adapter_luid(adapter) == Some(luid));
         match adapter {
-            Some(adapter) => Self::on(instance, adapter),
+            Some(adapter) => Self::on(adapter),
             None => fail(format!("no adapter has LUID {luid:#x}")),
         }
     }
@@ -506,13 +653,40 @@ impl Engine {
         if adapters.len() != 1 {
             return fail(format!("{} adapters, not one", adapters.len()));
         }
-        Self::on(instance, adapters.remove(0))
+        Self::on(adapters.remove(0))
     }
 
-    /// Opens on the platform's first adapter: the tests', cargo's and
-    /// `flutter test`'s alike, where no Flutter names one.
+    /// Opens on the platform's first adapter: cargo's tests', where no
+    /// Flutter names one — and asking of the limits the kernels' sources fix
+    /// only what they use ([`used`]). A kernel that comes to use more than
+    /// the engine says they do is so refused by its own test's device, on
+    /// whatever adapter that runs, as an adapter that gave only that much
+    /// would refuse the app's.
+    #[cfg(test)]
     pub(crate) fn open_first() -> Option<Self> {
-        Self::first_within(most_storage)
+        Self::first_within(|most| asked(most).map(used))
+    }
+
+    /// Opens on the platform's first adapter — `flutter test`'s, where no
+    /// Flutter names one — asking what the app asks of its own ([`asked`]),
+    /// as 1099 did.
+    ///
+    /// 🚨관제 2026-11-24 12:1x (card bundled-files-find-the-engine-already-open,
+    /// from the experiment 관제 set 2026-11-23 20:1x): [`used`]'s limits were
+    /// why build 1100's Linux `flutter test` segfaulted on lavapipe. The
+    /// flutter tester crashed in the_engine_keys_a_row_as_each_pixel_is_keyed_test,
+    /// alone too, after its device came to ask them (99f2b3e25, PR 1502
+    /// shard 4); 1099 had asked these on the same mesa and stood. With this
+    /// back (ff1afe336), that test ran and passed in PR 1503 (shard 1, job
+    /// 137699858883) and PR 1504 (shard 4, job 137990725233); the stalls
+    /// those runs had besides are no limit's. ⛔Do not have `flutter test`'s
+    /// device ask [`used`] again till why they crash the tester is known —
+    /// a card of its own (the-used-limits-crash-lavapipe-s-flutter-tester).
+    /// cargo's tests keep [`Self::open_first`], so a kernel that uses more
+    /// is still refused in its own test.
+    #[cfg(not(test))]
+    fn open_for_flutter_test() -> Option<Self> {
+        Self::first_within(asked)
     }
 
     /// [`Self::open_first`], one binding holding no more than `room` bytes:
@@ -522,34 +696,43 @@ impl Engine {
     /// found a plane bound past it, and every device here binds more).
     #[cfg(test)]
     pub(crate) fn open_first_binding(room: u64) -> Option<Self> {
-        Self::first_within(|adapter| wgpu::Limits {
-            max_storage_buffer_binding_size: room,
-            ..most_storage(adapter)
+        Self::first_within(|most| {
+            Some(wgpu::Limits {
+                max_storage_buffer_binding_size: room,
+                ..used(asked(most)?)
+            })
         })
     }
 
-    fn first_within(limits: impl FnOnce(&wgpu::Adapter) -> wgpu::Limits) -> Option<Self> {
+    /// On the platform's first adapter, within what `limits` makes of the
+    /// most that adapter gives.
+    fn first_within(
+        limits: impl FnOnce(&wgpu::Limits) -> Option<wgpu::Limits>,
+    ) -> Option<Self> {
         let instance = platform::instance();
         match platform::adapters(&instance).into_iter().next() {
             Some(adapter) => {
-                let limits = limits(&adapter);
-                Self::within(instance, adapter, limits)
+                let limits = limits(&adapter.limits())?;
+                Self::within(adapter, limits)
             }
             None => fail("no adapter"),
         }
     }
 
-    pub(crate) fn on(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
-        let limits = most_storage(&adapter);
-        Self::within(instance, adapter, limits)
+    pub(crate) fn on(adapter: wgpu::Adapter) -> Option<Self> {
+        let limits = asked(&adapter.limits())?;
+        Self::within(adapter, limits)
     }
 
     fn within(
-        instance: wgpu::Instance,
         adapter: wgpu::Adapter,
         required_limits: wgpu::Limits,
     ) -> Option<Self> {
-        let required_features = adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE;
+        // The GPU's own clock where it has one, both halves of it or
+        // neither ([`Clock`]): what a timed engine is told the GPU's time by.
+        let stamps = Some(crate::clock::stamped()).filter(|stamps| adapter.features().contains(*stamps));
+        let required_features =
+            (adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE) | stamps.unwrap_or_default();
         let request = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("gpu_engine"),
             required_features,
@@ -571,6 +754,9 @@ impl Engine {
                     mapped_at_creation: false,
                 });
                 let refusals = Refusals::default();
+                if let Some(driver) = platform::asking_the_driver_of(&device) {
+                    refusals.asks(driver);
+                }
                 let (lost, noting) = (refusals.clone(), refusals.clone());
                 device.set_device_lost_callback(move |reason, message| {
                     lost.lose(format!("{reason:?} {message}").trim_end().to_owned());
@@ -587,10 +773,10 @@ impl Engine {
                 };
                 Some(Self {
                     queue: Queue {
+                        clock: Clock::of(&device, &queue).map(Arc::new),
                         queue,
                         thread: thread.clone(),
                         submits: Arc::default(),
-                        polls: polls.clone(),
                         device: device.clone(),
                     },
                     thread,
@@ -600,6 +786,7 @@ impl Engine {
                     pages,
                     no_page,
                     kernels: Kernels::default(),
+                    compiles: Arc::new(Compiles::of(&device)),
                     apart: Apart::default(),
                     plugin_pace: OnceLock::new(),
                     pictures: Default::default(),
@@ -607,8 +794,8 @@ impl Engine {
                     spares,
                     refusals,
                     ended: Ended::default(),
+                    waits_went: WaitsWent::default(),
                     posted_refused: PostedRefused::default(),
-                    instance,
                     adapter,
                     device,
                 })
@@ -685,6 +872,24 @@ impl Engine {
     #[cfg(test)]
     pub(crate) fn through_with_all_submitted(&self) {
         self.poll().through();
+    }
+
+    /// Test seam: this engine's polls stand behind one that ends as what
+    /// this returns is let go — no wait of the engine's is answered till
+    /// then, nor the GPU's answer to a body handed over unwaited told
+    /// ([`Self::map_then`]): what a test meets a body by before the GPU
+    /// can answer it, however soon the GPU would have. ⚠️For an engine of
+    /// a test's own (`testing::a_device_of_its_own`), and nothing on its
+    /// thread waiting for a poll meanwhile: a body that did would hold
+    /// the thread till the hold is let go, and whatever waits for that
+    /// thread with it.
+    #[cfg(test)]
+    pub(crate) fn polls_held(&self) -> mpsc::Sender<()> {
+        let (go, held) = mpsc::channel::<()>();
+        self.polls.post(move || {
+            let _ = held.recv();
+        });
+        go
     }
 
     /// What `work` answers, run on the engine's thread while the caller
@@ -875,7 +1080,8 @@ impl Engine {
         work: impl FnOnce(&CompilerTurn) -> T + Send + 'static,
     ) -> T {
         self.thread.stands_aside();
-        self.compiling.run(move || work(&CompilerTurn(()))).expect("the engine's thread")
+        let compiles = Arc::clone(&self.compiles);
+        self.compiling.run(move || work(&CompilerTurn(compiles))).expect("the engine's thread")
     }
 
     /// The texture's bytes, rows top to bottom with no padding — for
@@ -944,6 +1150,30 @@ impl Engine {
     pub(crate) fn read_buffer(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
         let readback = self.staged(buffer, buffer.size());
         self.mapped(&readback)
+    }
+
+    /// [`Self::read_buffer`] with no wait for the caller, who goes on:
+    /// `then` is told `buffer`'s bytes on a thread of the engine's once
+    /// the GPU has written them ([`Self::map_then`]) — or nothing where
+    /// the map failed.
+    ///
+    /// 🚨ONE DOOR (rule of three, 공통 2026-11-24, card
+    /// the-ui-isolate-still-waits-for-the-gpu-in-places W3 — 관제: 「합칠 때
+    /// 두 기존 문도 그 한 문으로 옮겨 사본을 남기지 말 것」): a lift's flag,
+    /// a write's changes and a fold's sizes each staged, mapped and read
+    /// the mapped range alike — the third came, and every kernel whose
+    /// answer the UI waited for comes here.
+    pub(crate) fn read_buffer_then(
+        &self,
+        buffer: &wgpu::Buffer,
+        then: impl FnOnce(Option<&[u8]>) + Send + 'static,
+    ) {
+        self.map_then(self.staged(buffer, buffer.size()), move |mapped| {
+            match mapped.as_ref().ok().and_then(|buffer| buffer.get_mapped_range(..).ok()) {
+                Some(view) => then(Some(&view)),
+                None => then(None),
+            }
+        });
     }
 
     /// A buffer the CPU maps, its copy of `buffer`'s first `size` bytes —
@@ -1029,12 +1259,37 @@ impl Engine {
     }
 
     fn done_within(&self, limit: Duration, then: impl FnOnce(Result<(), String>) + Send + 'static) {
-        let told = Told { then: Some(then), refusals: self.refusals.clone() };
+        self.done_waited(limit, move |done| then(done.map(|_| ())));
+    }
+
+    /// [`Self::done_then`], told how the wait went where the GPU finished
+    /// ([`Waited`]): how long it stood in turn on the engine's thread
+    /// before its poll was asked, and how long the poll stood in the driver
+    /// till the GPU had finished all that was submitted.
+    fn done_waited(&self, limit: Duration, then: impl FnOnce(Result<Waited, String>) + Send + 'static) {
+        let asked = Instant::now();
+        // Set as the poll is asked, read as it is told — ⛔not a Told made
+        // in the body: a body never run drops what it holds untold, and a
+        // Told dropped tells its caller the device is gone ([`Told`]).
+        let polled: Arc<OnceLock<(Duration, Instant)>> = Arc::default();
+        let read = Arc::clone(&polled);
+        let told = Told {
+            then: Some(move |done: Result<(), String>| {
+                then(done.map(|()| match read.get() {
+                    Some(&(queued, from)) => Waited { queued, polled: from.elapsed() },
+                    None => Waited { queued: asked.elapsed(), polled: Duration::ZERO },
+                }))
+            }),
+            refusals: self.refusals.clone(),
+        };
         let (asker, refused) = (std::thread::current().id(), self.posted_refused.clone());
         let (polls, device, tells) = (self.polls.clone(), self.device.clone(), self.tells.clone());
         self.thread.posts(move || match refused.taken(asker) {
             Some(why) => told.tell(Err(format!("a body handed over unwaited failed: {why}"))),
-            None => told.once_polled(&tells, Poll::asked_of(&polls, &device), limit),
+            None => {
+                let _ = polled.set((asked.elapsed(), Instant::now()));
+                told.once_polled(&tells, Poll::asked_of(&polls, &device), limit);
+            }
         });
     }
 
@@ -1205,7 +1460,9 @@ impl Poll {
 
     /// Waits for it — till [`WAIT_LIMIT`], and no longer — and for nothing
     /// else of a wait's: no failure named, and no refusal told, which the
-    /// next wait is to fail by. A timed submit's ([`Queue::submit`]).
+    /// next wait is to fail by. A test's
+    /// ([`Engine::through_with_all_submitted`]).
+    #[cfg(test)]
     fn through(self) {
         if let Ok(answer) = self.answer {
             let _ = answer.recv_timeout(WAIT_LIMIT);
@@ -1223,9 +1480,7 @@ impl Poll {
                 polled.map_or_else(fail, Some)?;
                 return refusals.told();
             }
-            Ok(Err(mpsc::RecvTimeoutError::Timeout)) => {
-                return fail(format!("the GPU did not finish within {limit:?}"));
-            }
+            Ok(Err(mpsc::RecvTimeoutError::Timeout)) => return refusals.past(limit),
             Ok(Err(mpsc::RecvTimeoutError::Disconnected)) => {
                 format!("the engine's thread never answered: {}", mpsc::RecvError)
             }
@@ -1274,6 +1529,28 @@ impl Ended {
     }
 }
 
+/// How a wait for the GPU went where it finished ([`Engine::done_waited`]):
+/// how long it stood in turn on the engine's thread behind the bodies
+/// handed there before it, and how long its poll stood in the driver till
+/// the GPU had finished all that was submitted — of any caller's.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Waited {
+    pub(crate) queued: Duration,
+    pub(crate) polled: Duration,
+}
+
+/// How each wait that finished went ([`Waited`], [`gpu_engine_done_then`]),
+/// by the number its caller knows it by — kept till that caller takes it
+/// ([`gpu_engine_done_waited`]).
+#[derive(Clone, Default)]
+struct WaitsWent(Arc<Mutex<HashMap<u64, Waited>>>);
+
+impl WaitsWent {
+    fn kept(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Waited>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
 /// Who is told how a wait ended that its caller did not stay for
 /// ([`Engine::done_then`]) — once, whatever becomes of the wait. Dropped
 /// untold, the thread that was to wait in its caller's stead ended under
@@ -1315,19 +1592,94 @@ impl<Then: FnOnce(Result<(), String>)> Drop for Told<Then> {
     }
 }
 
-/// The defaults, but with the most `adapter` gives of the three limits a
-/// pool's pages are bounded by: storage buffers a stage, the size of one
-/// binding, the size of one buffer. That is 1a's ④ (브러시/렌더링,
-/// gpu-canonical-store 2026-11-05 13:19), which names these three. The
-/// composite reads `device.limits()`, and a bigger limit only means fewer
-/// passes, never other bytes (its tests pin every page count).
-fn most_storage(adapter: &wgpu::Adapter) -> wgpu::Limits {
-    let most = adapter.limits();
-    wgpu::Limits {
+/// What the engine asks of an adapter that gives `most` — or nothing,
+/// where that is too little for the kernels ([`short`]).
+///
+/// The defaults, no more of any than the adapter gives, but with the most
+/// it gives of the three limits a pool's pages are bounded by: storage
+/// buffers a stage, the size of one binding, the size of one buffer. That
+/// is 1a's ④ (브러시/렌더링, gpu-canonical-store 2026-11-05 13:19), which
+/// names these three. The composite reads `device.limits()`, and a bigger
+/// limit only means fewer passes, never other bytes (its tests pin every
+/// page count).
+///
+/// ↩️Till 2026-11-22 the rest were the defaults whatever the adapter gave,
+/// and wgpu refused the open on one that gave less of any — of one no
+/// kernel comes near, too: 🔬the Android emulator's software Vulkan
+/// (SwiftShader, 2026-11-22) gives a uniform binding 16384 bytes against
+/// the default's 65536, the biggest the engine binds is 88, and the canvas
+/// never opened there. What the kernels cannot do with less of is
+/// [`used`]'s to say, not the defaults' (관제 2026-11-22 17:56,
+/// the-user-travels-ten-days-from-11-21: 「엔진이 실제로 쓰는 만큼만 묻게」).
+fn asked(most: &wgpu::Limits) -> Option<wgpu::Limits> {
+    let too_little = short(most);
+    if !too_little.is_empty() {
+        let named = too_little.join(", ");
+        return fail(format!("the adapter gives the kernels too little: {named}"));
+    }
+    Some(wgpu::Limits {
         max_storage_buffers_per_shader_stage: most.max_storage_buffers_per_shader_stage,
         max_storage_buffer_binding_size: most.max_storage_buffer_binding_size,
         max_buffer_size: most.max_buffer_size,
-        ..wgpu::Limits::default()
+        ..wgpu::Limits::default().or_worse_values_from(most)
+    })
+}
+
+/// Every limit an adapter that gives `most` gives the kernels too little
+/// of ([`used`]), each by its name with what it gives of what they use —
+/// all of them at once: wgpu's own refusal of an open names one of however
+/// many, the last it checked (wgpu-core 30, `request_device`).
+fn short(most: &wgpu::Limits) -> Vec<String> {
+    let mut short = Vec::new();
+    used(most.clone()).check_limits_with_fail_fn(most, false, |name, uses, gives| {
+        short.push(format!("{name} {gives} of {uses}"));
+    });
+    short
+}
+
+/// `rest`, but of the limits the kernels' own sources fix only what the
+/// kernel that uses most of each does, whatever the device (🔬every shader
+/// read, 2026-11-22: 68 files' 72 entry points and the plugins' prelude):
+/// - one bind group, and in it a stage binds two uniform buffers (a blur
+///   effect's held words and its pass's: held.wgsl with its own) — 88 bytes
+///   the biggest, the lens gather's (gather.wgsl, since a chunk of its band
+///   is a submit of its own and names its first column — 2026-11-22), the
+///   composite's pass and the cel pixel verbs' 84 —, one storage texture
+///   and one sampled one (the timeline's grid and wave), and no sampler;
+/// - a workgroup 256 across (the fold, the write, the Gaussian), 256 down
+///   and one deep, of 256 invocations — a plugin's may be any shape of so
+///   many (`fx_wgsl::MOST_INVOCATIONS`), the engine's own go 16 down —
+///   sharing 16384 bytes (the Gaussian's window, gaussian.wgsl; a
+///   plugin's, fx_wgsl's `MOST_SHARED_BYTES`).
+///
+/// The storage buffers a stage binds are not among them: a kernel takes its
+/// pages from what the device gives past its own (pages.rs), and the tests'
+/// device gives all its adapter does, as the app's ([`asked`]). Four a
+/// stage is the least any kernel runs on — the flood's round and the
+/// colour mix bind four of their own, a paged kernel three and a page.
+///
+/// [`asked`] refuses an adapter that gives less of one of these, and the
+/// tests' device asks no more of them ([`Engine::open_first`]) — which is
+/// what holds each number to the kernels. ⚠️A kernel that comes to use
+/// more is refused in its own test, by wgpu and by the limit's name, and
+/// the number goes up here with it: one more device the app does not open
+/// on, so it is the kernel's to weigh first. ⛔But the shared bytes: wgpu
+/// 30 holds no shader to that limit, and the number stands by
+/// gaussian.wgsl's own ⛔ (a window of the least a device gives).
+fn used(rest: wgpu::Limits) -> wgpu::Limits {
+    wgpu::Limits {
+        max_bind_groups: 1,
+        max_uniform_buffers_per_shader_stage: 2,
+        max_uniform_buffer_binding_size: 88,
+        max_storage_textures_per_shader_stage: 1,
+        max_sampled_textures_per_shader_stage: 1,
+        max_samplers_per_shader_stage: 0,
+        max_compute_workgroup_size_x: 256,
+        max_compute_workgroup_size_y: 256,
+        max_compute_workgroup_size_z: 1,
+        max_compute_invocations_per_workgroup: 256,
+        max_compute_workgroup_storage_size: 16384,
+        ..rest
     }
 }
 
@@ -2134,8 +2486,8 @@ pub(crate) unsafe fn let_go<T>(handed: *mut T) {
 /// (2026-11-14, each body read): `gpu_engine_held_let_go` and
 /// `gpu_engine_blurs_let_go` let buffers go on their caller's thread, and
 /// Android's `gpu_engine_window_target` took the swapchain's image there
-/// (↩️it names a texture of the engine's own from 2026-11-21, and takes no
-/// hand on the device: `platform/android.rs`) —
+/// (↩️gone with Android's window on 2026-11-23: Android shows surfaces as
+/// every platform does, `platform/android.rs`) —
 /// past `every_verb.rs`, which read the verbs handed the engine alone till
 /// then.
 ///
@@ -2279,10 +2631,16 @@ pub extern "C" fn gpu_engine_open_sole() -> *mut Engine {
 }
 
 /// Opens the engine on the platform's first adapter — `flutter test`'s,
-/// where no Flutter names one. Null on failure; see the last error.
+/// where no Flutter names one ([`Engine::open_for_flutter_test`]); cargo's
+/// tests that open through it ask what [`Engine::open_first`] does. Null
+/// on failure; see the last error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open_first() -> *mut Engine {
-    opened(Engine::open_first)
+    #[cfg(test)]
+    let open = Engine::open_first;
+    #[cfg(not(test))]
+    let open = Engine::open_for_flutter_test;
+    opened(open)
 }
 
 /// # Safety
@@ -2409,6 +2767,20 @@ pub unsafe extern "C" fn gpu_engine_went_by(engine: *const Engine) -> u32 {
     engine.on_thread(|| engine.went_by())
 }
 
+/// How many waits on `engine` passed their limit with its device standing
+/// ([`Refusals::past`]) — the GPU at one job longer than the engine waits
+/// for any ([`WAIT_LIMIT`]): what the app writes down of the GPU (H63) is
+/// written at the first refusal it hears once this is not none.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_late(engine: *const Engine) -> u32 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.refusals.late()
+}
+
 /// Takes the error `engine` noted that no wait has told yet ([`Refusals`]):
 /// copies it (UTF-8) into `buffer` and returns its full length, 0 where
 /// there is none — and no wait fails by it after. For the app's tests,
@@ -2446,11 +2818,36 @@ pub unsafe extern "C" fn gpu_engine_unfinished(
     copy_out(&engine.queue.submits.told(), buffer, capacity)
 }
 
+/// How many submits `engine` made that the GPU has not said it finished
+/// ([`Submits::behind`]) — as of the device's last poll. Asks nothing of
+/// the engine's thread or the device.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_submits_behind(engine: *const Engine) -> u64 {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.queue.submits.behind()
+}
+
+/// Whether `engine`'s device has a clock of its own ([`Clock`]): what a
+/// timed engine tells the GPU's time by — none told where it has not.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_clocked(engine: *const Engine) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.queue.clock.is_some()
+}
+
 /// Times `engine` from here on, or no longer ([`Took::times`]): while it
 /// is, each body handed to its thread and each submit is timed by where
-/// it was made, and a submit is waited out there — so a timed engine is
-/// slower by what it no longer does beside the GPU's work. Asks nothing
-/// of the engine's thread or the device.
+/// it was made — a submit by the GPU's own clock, where the device has
+/// one ([`Clock`]), and waited for by no one either way. Asks nothing of
+/// the engine's thread or the device.
 ///
 /// # Safety
 /// `engine` is live.
@@ -2496,13 +2893,65 @@ pub unsafe extern "C" fn gpu_engine_done_then(
 ) {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    let ended = engine.ended.clone();
-    engine.done_then(move |done| {
-        if let Err(why) = &done {
-            ended.kept().insert(wait, why.clone());
+    let (ended, went) = (engine.ended.clone(), engine.waits_went.clone());
+    engine.done_waited(WAIT_LIMIT, move |done| {
+        match &done {
+            Ok(waited) => {
+                went.kept().insert(wait, *waited);
+            }
+            Err(why) => {
+                ended.kept().insert(wait, why.clone());
+            }
         }
         then(wait, done.is_ok());
     });
+}
+
+/// Takes how the wait `wait` went where it finished
+/// ([`gpu_engine_done_then`], [`Waited`]): into `into` — two words, the
+/// microseconds it stood in turn on the engine's thread, then those its
+/// poll stood in the driver — and true; false where none is kept under
+/// that number. It is kept no more.
+///
+/// # Safety
+/// `engine` is live and `into` holds two words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_done_waited(engine: *const Engine, wait: u64, into: *mut u64) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let Some(waited) = engine.waits_went.kept().remove(&wait) else {
+        return false;
+    };
+    // SAFETY: `into` holds two words.
+    let into = unsafe { std::slice::from_raw_parts_mut(into, 2) };
+    into[0] = waited.queued.as_micros() as u64;
+    into[1] = waited.polled.as_micros() as u64;
+    true
+}
+
+/// What `engine`'s compiler made since it opened ([`Compiles`]) into
+/// `into` — six words: pipelines made, the microseconds they took in all,
+/// the longest of them, compiles under way now, composite passes run on the
+/// pass that takes any plan while their own was to come, and pipelines the
+/// folder it keeps them in answered (`platform::pipelines_found`) or
+/// `u64::MAX` where the OS keeps them and says nothing. Asks nothing of
+/// the engine's thread, and takes no device in hand (`Compiles::found`).
+///
+/// # Safety
+/// `engine` is live and `into` holds six words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_compiles(engine: *const Engine, into: *mut u64) {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    let compiles = &engine.compiles;
+    // SAFETY: `into` holds six words.
+    let into = unsafe { std::slice::from_raw_parts_mut(into, 6) };
+    into[0] = compiles.made.load(Ordering::Relaxed);
+    into[1] = compiles.micros.load(Ordering::Relaxed);
+    into[2] = compiles.longest.load(Ordering::Relaxed);
+    into[3] = compiles.under_way.load(Ordering::Relaxed);
+    into[4] = compiles.stood_in.load(Ordering::Relaxed);
+    into[5] = compiles.found.load(Ordering::Relaxed);
 }
 
 /// Takes why the wait `wait` failed ([`gpu_engine_done_then`]): copies it
@@ -2524,7 +2973,7 @@ pub unsafe extern "C" fn gpu_engine_done_failure(
 }
 
 /// How many waits for the GPU the thread that asks has made
-/// ([`Engine::wait`]) — its bodies handed over unwaited among them, as far
+/// ([`Engine::wait_within`]) — its bodies handed over unwaited among them, as far
 /// as they have run ([`POSTED_HERE`]): what a test holds at none on the
 /// thread an app's frames are built on, over work that is to wait there for
 /// nothing ([`Engine::map_then`]).
@@ -2563,6 +3012,21 @@ pub unsafe extern "C" fn gpu_engine_lose(engine: *const Engine, for_memory: bool
         }
         engine.device().destroy();
     })
+}
+
+/// Test seam: a wait on `engine` ended past its limit, as a poll the GPU
+/// does not answer ends one ([`Refusals::past`]) — which no test waits
+/// out ([`WAIT_LIMIT`]). On the engine's thread, where a verb's wait
+/// ends ([`Engine::wait_within`]). Answers whether it finished: it did
+/// not, and the caller's last error says so.
+///
+/// # Safety
+/// `engine` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_wait_late(engine: *const Engine) -> bool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    engine.on_thread(|| engine.refusals.past(Duration::ZERO).is_some())
 }
 
 /// Test seam: `engine`'s thread stands still for `millis` ms in its turn,
@@ -2632,7 +3096,7 @@ pub unsafe extern "C" fn gpu_engine_apart_held(engine: *const Engine) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Apart, Engine, gpu_engine_close, opened};
+    use super::{Apart, Engine, asked, gpu_engine_close, opened, used};
     use crate::testing::{a_device_of_its_own, done_here, first_engine};
     use crate::{fail, last_error};
 
@@ -2831,6 +3295,48 @@ mod tests {
         });
         assert!(got_through, "a body stood behind a wait no caller stayed for");
         assert_eq!(told.recv_timeout(IN_TIME), Ok(Ok(())));
+    }
+
+    // How a wait no caller stays for went where it finished is kept under
+    // its number for its caller to take, once (`gpu_engine_done_waited`):
+    // the time it stood in turn on the engine's thread behind a body, and
+    // apart from it the time its poll stood in the driver — here inside a
+    // map's answer — which a screen's finish says apart (🗣️관제 2026-11-24,
+    // card the-galaxy-tab-canvas-went-slow-on-build-1095: 「FINISH 넷으로」).
+    #[test]
+    fn how_a_wait_went_is_kept_for_its_caller_to_take_once() {
+        use super::{gpu_engine_done_then, gpu_engine_done_waited, gpu_engine_stand_still};
+        use std::sync::{Mutex, PoisonError};
+        use std::time::{Duration, Instant};
+        static TOLD: Mutex<Vec<(u64, bool)>> = Mutex::new(Vec::new());
+        extern "C" fn then(wait: u64, finished: bool) {
+            TOLD.lock().unwrap_or_else(PoisonError::into_inner).push((wait, finished));
+        }
+        let told = |wait| TOLD.lock().unwrap_or_else(PoisonError::into_inner).iter().find(|it| it.0 == wait).copied();
+        let turn = a_device_of_its_own();
+        let engine = &turn.engine();
+        let (stood, in_the_driver) = (Duration::from_millis(300), Duration::from_millis(600));
+        let buffer = engine.readback(4);
+        // SAFETY: `engine` is live.
+        unsafe { gpu_engine_stand_still(engine, stood.as_millis() as u32) };
+        buffer.map_async(wgpu::MapMode::Read, .., move |_| std::thread::sleep(in_the_driver));
+        let wait = 0x5eed_0001;
+        // SAFETY: `engine` is live; `then` any thread may call.
+        unsafe { gpu_engine_done_then(engine, then, wait) };
+        let deadline = Instant::now() + IN_TIME;
+        while told(wait).is_none() {
+            assert!(Instant::now() < deadline, "the wait was never told");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(told(wait), Some((wait, true)));
+        let mut into = [0u64; 2];
+        // SAFETY: `engine` is live and `into` holds two words.
+        assert!(unsafe { gpu_engine_done_waited(engine, wait, into.as_mut_ptr()) }, "kept for its caller");
+        let [queued, polled] = into.map(Duration::from_micros);
+        assert!(queued >= stood - Duration::from_millis(50), "it stood in turn behind the body: {queued:?}");
+        assert!(polled >= in_the_driver - Duration::from_millis(50), "its poll stood in the driver: {polled:?}");
+        // SAFETY: as above.
+        assert!(!unsafe { gpu_engine_done_waited(engine, wait, into.as_mut_ptr()) }, "taken, kept no more");
     }
 
     // 🚨A wait no caller stays for is told at its limit that the GPU did
@@ -3838,6 +4344,165 @@ mod tests {
         assert!(refusals.gone());
     }
 
+    // A device its driver took is gone to whoever asks — with no wait
+    // and no word of wgpu's — and every wait fails by it; one that stands
+    // is not. What was said of a device first stays.
+    #[test]
+    fn a_device_its_driver_took_is_gone_to_whoever_asks() {
+        use super::Refusals;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        // What the driver says: that the device stands, then that it took it.
+        let took = Arc::new(AtomicBool::new(false));
+        let refusals = Refusals::default();
+        let says = took.clone();
+        refusals.asks(Box::new(move || says.load(Ordering::SeqCst)));
+        assert!(!refusals.gone(), "a device that stands");
+        assert_eq!(refusals.told(), Some(()));
+
+        took.store(true, Ordering::SeqCst);
+        assert!(refusals.gone(), "asked: no wait, no word of wgpu's");
+        assert_eq!(refusals.told(), None);
+        let gone = "the graphics device is gone: its driver took it";
+        assert_eq!(last_error(), gone);
+
+        // As a wait ends, no one having asked before it: the job under
+        // way as the driver took the device does not come back done.
+        let waited = Refusals::default();
+        waited.asks(Box::new(|| true));
+        assert_eq!(waited.told(), None);
+        assert_eq!(last_error(), gone);
+
+        let lost = Refusals::default();
+        lost.asks(Box::new(|| true));
+        lost.lose("Unknown lost".into());
+        assert_eq!(lost.told(), None);
+        assert_eq!(last_error(), "the graphics device is gone: Unknown lost", "wgpu's, said first");
+
+        assert!(!Refusals::default().gone(), "one that asks no driver");
+    }
+
+    // A wait past its limit on a device its driver took fails as every
+    // wait on a gone device does, and the device is gone; on one that
+    // stands it fails by its limit, and the device is not — counted, each
+    // one, where it stands and nowhere else.
+    #[test]
+    fn a_wait_past_its_limit_is_of_a_gone_device_where_its_driver_took_it() {
+        use super::{Poll, Refusals};
+        use std::time::{Duration, Instant};
+        // A poll in the driver still: nothing answers, and nothing will.
+        let in_the_driver = || {
+            let (keep, answer) = std::sync::mpsc::channel::<Result<(), String>>();
+            (keep, Poll { asked: Instant::now(), answer: Ok(answer) })
+        };
+        let stands = Refusals::default();
+        let (_keep, poll) = in_the_driver();
+        assert_eq!(stands.late(), 0);
+        assert_eq!(poll.within(Duration::ZERO, &stands), None);
+        assert_eq!(last_error(), "the GPU did not finish within 0ns");
+        assert!(!stands.gone());
+        assert_eq!(stands.late(), 1);
+        let (_keep, poll) = in_the_driver();
+        assert_eq!(poll.within(Duration::ZERO, &stands), None);
+        assert_eq!(stands.late(), 2);
+
+        let taken = Refusals::default();
+        taken.asks(Box::new(|| true));
+        let (_keep, poll) = in_the_driver();
+        assert_eq!(poll.within(Duration::ZERO, &taken), None);
+        assert_eq!(last_error(), "the graphics device is gone: its driver took it");
+        assert!(taken.gone());
+        assert_eq!(taken.late(), 0, "gone, not late");
+    }
+
+    // The engine's own device is asked of its driver from when it opens,
+    // where the platform's driver says (D3D12). What a removal itself
+    // comes to is run alone, below.
+    #[cfg(windows)]
+    #[test]
+    fn an_engine_asks_its_devices_driver_from_when_it_opens() {
+        use super::gpu_engine_gone;
+        let _turn = a_device_of_its_own();
+        let made = opened(Engine::open_first);
+        assert!(!made.is_null(), "{}", last_error());
+        // SAFETY: `made` is live till the close below.
+        unsafe {
+            assert!((*made).refusals.kept().driver.is_some());
+            assert!(!gpu_engine_gone(made), "asked, and it stands");
+            gpu_engine_close(made);
+        }
+    }
+
+    // 🔬D3D12 ITSELF STANDING IN FOR A DRIVER THAT TAKES A DEVICE
+    // (`ID3D12Device5::RemoveDevice`): what the engine learns of it, and
+    // what becomes of opening another.
+    //
+    // ⚠️RUN ALONE (`--ignored --exact`): D3D12's device is one a process
+    // for an adapter (Microsoft Learn, "D3D12CreateDevice": 「Direct3D 12
+    // devices are singletons per adapter」), so this removes the device
+    // every test of this process stands on. It resets no driver and no
+    // adapter — the process's own device object is marked removed — and
+    // 관제 2026-11-22 17:18 allowed it on those terms, one at a time and
+    // outside a measuring window (board
+    // a-real-gpu-reset-went-unheard-on-the-main-pc).
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "removes this process's one D3D12 device: run alone"]
+    fn a_device_d3d12_marks_removed_is_gone_to_whoever_asks() {
+        use super::{gpu_engine_gone, gpu_engine_went_by};
+        use crate::platform::{WENT_BY_REMOVAL, WENT_UNSAID};
+        use wgpu::hal::api::Dx12;
+        use windows::Win32::Graphics::Direct3D12::ID3D12Device5;
+        use windows::core::Interface;
+
+        let _turn = a_device_of_its_own();
+        let made = opened(Engine::open_first);
+        assert!(!made.is_null(), "{}", last_error());
+        // SAFETY: `made` is live till the close below.
+        unsafe {
+            let engine = &*made;
+            assert_eq!(engine.wait(), Some(()));
+            assert!(!gpu_engine_gone(made));
+            assert_eq!(gpu_engine_went_by(made), WENT_UNSAID);
+
+            // On the engine's thread, as every hand on its device is.
+            engine.on_thread(|| {
+                let hal = engine.device().as_hal::<Dx12>().expect("a D3D12 device");
+                let removes: ID3D12Device5 = hal.raw_device().cast().expect("ID3D12Device5");
+                removes.RemoveDevice();
+            });
+
+            assert!(gpu_engine_gone(made), "asked: no wait, no submit");
+            assert_eq!(gpu_engine_went_by(made), WENT_BY_REMOVAL);
+            assert_eq!(engine.wait(), None);
+            println!("a wait on it: {}", last_error());
+            assert!(last_error().starts_with("the graphics device is gone: its driver took it"));
+
+            // 🔬Not this lane's law — what the app's 「open another」 meets:
+            // another engine asked for while the removed one is held, and
+            // once it is let go.
+            let beside = opened(Engine::open_first);
+            println!(
+                "another engine, the removed one held: {}",
+                if beside.is_null() { format!("none — {}", last_error()) } else { "opened".into() },
+            );
+            if !beside.is_null() {
+                println!("  gone={} wait={:?}", gpu_engine_gone(beside), (*beside).wait());
+                gpu_engine_close(beside);
+            }
+            gpu_engine_close(made);
+            let after = opened(Engine::open_first);
+            println!(
+                "another engine, the removed one let go: {}",
+                if after.is_null() { format!("none — {}", last_error()) } else { "opened".into() },
+            );
+            if !after.is_null() {
+                println!("  gone={} wait={:?}", gpu_engine_gone(after), (*after).wait());
+                gpu_engine_close(after);
+            }
+        }
+    }
+
     #[test]
     fn what_fails_on_that_thread_is_the_callers_last_error() {
         let made = opened(|| fail("no adapter here"));
@@ -3845,8 +4510,92 @@ mod tests {
         assert_eq!(last_error(), "no adapter here");
     }
 
+    /// An adapter that gives more of one limit than the defaults, less of
+    /// another, and its own of the three a pool's pages are bounded by: the
+    /// engine asks the default of the first, no more than is given of the
+    /// second, and all of the three.
     #[test]
-    fn the_device_has_the_most_storage_the_adapter_gives() {
+    fn asks_the_defaults_no_more_than_given_and_all_the_storage() {
+        let most = wgpu::Limits {
+            max_texture_dimension_2d: 16384,
+            max_uniform_buffer_binding_size: 16384,
+            max_storage_buffers_per_shader_stage: 30,
+            max_storage_buffer_binding_size: 1 << 30,
+            max_buffer_size: 1 << 31,
+            ..wgpu::Limits::default()
+        };
+        let asks = wgpu::Limits {
+            max_texture_dimension_2d: wgpu::Limits::default().max_texture_dimension_2d,
+            ..most.clone()
+        };
+        assert_eq!(asked(&most), Some(asks));
+    }
+
+    #[test]
+    fn an_adapter_short_of_what_the_kernels_use_is_refused_by_every_such_limit() {
+        let most = wgpu::Limits {
+            max_uniform_buffer_binding_size: 80,
+            max_compute_invocations_per_workgroup: 128,
+            max_compute_workgroup_size_x: 128,
+            ..wgpu::Limits::default()
+        };
+        assert_eq!(asked(&most), None);
+        assert_eq!(
+            last_error(),
+            "the adapter gives the kernels too little: \
+             max_uniform_buffer_binding_size 80 of 88, \
+             max_compute_invocations_per_workgroup 128 of 256, \
+             max_compute_workgroup_size_x 128 of 256",
+        );
+    }
+
+    /// Each number of [`used`], by the adapter that gives one less of it —
+    /// refused by that limit alone — and the one that gives just it.
+    #[test]
+    fn each_limit_the_kernels_use_is_the_least_an_adapter_may_give() {
+        type Put = fn(&mut wgpu::Limits, u32);
+        let uses: [(&str, u32, Put); 10] = [
+            ("max_bind_groups", 1, |most, n| most.max_bind_groups = n),
+            ("max_uniform_buffers_per_shader_stage", 2, |most, n| {
+                most.max_uniform_buffers_per_shader_stage = n;
+            }),
+            ("max_uniform_buffer_binding_size", 88, |most, n| {
+                most.max_uniform_buffer_binding_size = n.into();
+            }),
+            ("max_storage_textures_per_shader_stage", 1, |most, n| {
+                most.max_storage_textures_per_shader_stage = n;
+            }),
+            ("max_sampled_textures_per_shader_stage", 1, |most, n| {
+                most.max_sampled_textures_per_shader_stage = n;
+            }),
+            ("max_compute_workgroup_size_x", 256, |most, n| most.max_compute_workgroup_size_x = n),
+            ("max_compute_workgroup_size_y", 256, |most, n| most.max_compute_workgroup_size_y = n),
+            ("max_compute_workgroup_size_z", 1, |most, n| most.max_compute_workgroup_size_z = n),
+            ("max_compute_invocations_per_workgroup", 256, |most, n| {
+                most.max_compute_invocations_per_workgroup = n;
+            }),
+            ("max_compute_workgroup_storage_size", 16384, |most, n| {
+                most.max_compute_workgroup_storage_size = n;
+            }),
+        ];
+        for (name, least, put) in uses {
+            let mut most = wgpu::Limits::default();
+            put(&mut most, least);
+            assert!(asked(&most).is_some(), "{name} {least}");
+            put(&mut most, least - 1);
+            assert_eq!(asked(&most), None, "{name} {}", least - 1);
+            let why = format!("the adapter gives the kernels too little: {name} {} of {least}", least - 1);
+            assert_eq!(last_error(), why);
+        }
+        let no_sampler = wgpu::Limits { max_samplers_per_shader_stage: 0, ..wgpu::Limits::default() };
+        assert!(asked(&no_sampler).is_some());
+    }
+
+    /// The tests' device: all its adapter's storage, as the app's, and of
+    /// the limits the kernels' sources fix only what they use — so every
+    /// kernel's own test holds [`used`] to it.
+    #[test]
+    fn the_tests_device_asks_all_the_storage_and_only_what_the_kernels_use() {
         let engine = first_engine();
         let (most, got) = (engine.adapter.limits(), engine.device.limits());
         println!(
@@ -3856,8 +4605,6 @@ mod tests {
             got.max_storage_buffer_binding_size,
             got.max_buffer_size,
         );
-        assert_eq!(got.max_storage_buffers_per_shader_stage, most.max_storage_buffers_per_shader_stage);
-        assert_eq!(got.max_storage_buffer_binding_size, most.max_storage_buffer_binding_size);
-        assert_eq!(got.max_buffer_size, most.max_buffer_size);
+        assert_eq!(Some(got), asked(&most).map(used));
     }
 }

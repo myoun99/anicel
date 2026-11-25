@@ -3,6 +3,7 @@
 // the timeline's ⇄ X-sheet, and the camera view. A key presses what the
 // button presses, on the panel the button is on — and the buttons speak the
 // program language (they were English everywhere until this round).
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,6 +70,7 @@ AppIconButton button(WidgetTester tester, String keyValue) =>
     );
 
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   setUp(() => _held = null);
 
   testWidgets('the zoom keys step the zoom of the panel being worked in, '

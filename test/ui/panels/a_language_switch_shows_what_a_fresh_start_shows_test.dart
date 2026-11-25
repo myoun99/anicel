@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -20,6 +21,7 @@ import '../../helpers/app_icon_button_probe.dart';
 /// rebuilds its theme for a switch, which a switch between two languages of
 /// one face never moves.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   /// The app as it opens, with the frame dock's [tab] brought up.
   Future<void> pumpHome(WidgetTester tester, String? tab) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));

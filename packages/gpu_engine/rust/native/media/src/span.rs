@@ -43,6 +43,37 @@
 use std::ffi::{CStr, c_char};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
+
+/// How far into a medium its readers have read: the furthest byte any
+/// span sharing it ([Span::reaching]) handed back — the one count of a
+/// decoder's reading, whichever decoder reads and on whichever thread.
+///
+/// 🗣️유저 11-23 (decoder-reads-skip-the-percent-Q2, 「디코더가 읽은
+/// 바이트를 센다」): the import window's percent is the bytes read from the
+/// user's file of the bytes to read (F-608-Q2), and a sound's decoder read
+/// the file where the window could not see it — a movie on the cloud stood
+/// 47 s at one number while its sound was made (🔬저장 11-23, 910 MB).
+#[derive(Clone, Default)]
+pub struct Reach(Arc<AtomicI64>);
+
+impl Reach {
+    /// The furthest byte read, counted from the medium's first.
+    pub fn get(&self) -> i64 {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// Counted again from nothing: what a decoder read finding its way
+    /// around the medium is not how far it has walked through it.
+    pub fn from_nothing(&self) {
+        self.0.store(0, Ordering::Relaxed);
+    }
+
+    fn read_to(&self, end: i64) {
+        self.0.fetch_max(end, Ordering::Relaxed);
+    }
+}
 
 /// Bytes before the block lengths: blockBytes, totalLength, blockCount.
 const PREFIX: i64 = 16;
@@ -79,6 +110,7 @@ pub struct Span {
     framed: Option<Framed>,
     blocks_decoded: i64,
     stored_bytes_read: i64,
+    reach: Reach,
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> u32 {
@@ -114,6 +146,7 @@ impl Span {
             framed: None,
             blocks_decoded: 0,
             stored_bytes_read: 0,
+            reach: Reach::default(),
         };
         if framed {
             span.framed = Some(span.open_framed()?);
@@ -224,10 +257,34 @@ impl Span {
         true
     }
 
+    /// How far its readers have read ([Reach]) — this span's, and every one
+    /// sharing it.
+    pub fn reach(&self) -> Reach {
+        self.reach.clone()
+    }
+
+    /// This span, counting what it reads into [reach] — the count of the
+    /// span it was opened again for (`audio::container`'s, for the OS
+    /// stage that reads on threads of its own).
+    #[must_use]
+    pub fn reaching(mut self, reach: Reach) -> Span {
+        self.reach = reach;
+        self
+    }
+
     /// The medium's bytes from `position` into `out`: how many landed —
     /// short only at the end, 0 past it — or None when the file would not
-    /// read or a block would not decode.
+    /// read or a block would not decode. What landed counts as read
+    /// ([Reach]).
     pub fn read(&mut self, position: i64, out: &mut [u8]) -> Option<usize> {
+        let landed = self.read_landing(position, out)?;
+        if landed > 0 {
+            self.reach.read_to(position + landed as i64);
+        }
+        Some(landed)
+    }
+
+    fn read_landing(&mut self, position: i64, out: &mut [u8]) -> Option<usize> {
         if position < 0 || out.is_empty() || position >= self.size {
             return Some(0);
         }

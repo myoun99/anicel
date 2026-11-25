@@ -258,7 +258,12 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
       _unlisten(before);
       _listen(now);
     }
-    _anchorZoom(oldWidget.pixelsPerFrame);
+    // H78: another axis is another place — the cut or the timeline opened
+    // brings its own zoom and its own scroll, and the scroll stands where
+    // it was left, as the open grid born on it stands.
+    if (identical(oldWidget.frameAxisOffset, widget.frameAxisOffset)) {
+      _anchorZoom(oldWidget.pixelsPerFrame);
+    }
   }
 
   /// A zoom step re-anchors the axis on THIS window, by the open grids' own

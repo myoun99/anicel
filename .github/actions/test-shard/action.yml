@@ -137,6 +137,19 @@ runs:
         # default, half the cores — so the move changes where files run,
         # not how many run at once.
         #
+        # --bundle: ten files a compile, as the machine's checks run them
+        # (유저 what-more-ci-can-do-paid-gpu-runners-included-Q1 a
+        # 「돈 안 드는 길부터」 2026-11-21, its ② 「묶어 컴파일을 CI 조각에도 —
+        # 전수 조사가 끝나야 착지」; the census was the-wide-check-takes-five-
+        # hours-Q3 a 「묶는다 — 혼자 서야 하는 파일만 따로」). The files of
+        # kRunsAlone (tool/test_bundles.dart) run alone, and a file red in its
+        # bundle runs again alone — that run is its verdict. Measured on the
+        # logs of run 45056447664 (2026-11-22, card ci-heaviest-files-draw-on-
+        # the-cpu): a Linux shard's two slots spent 38-48% of their time
+        # between one file's last test and the next file's first — the
+        # compile, the tester's spawn and the load, 1.1-1.3 s a file at the
+        # median, paid about 570 times a shard.
+        #
         # ⛔`dart tool/…`, not `dart run tool/…`: `dart run` runs every
         # package's build hook for the Dart VM first — the GPU engine's
         # Rust among them — for a tool that imports none of them
@@ -148,7 +161,7 @@ runs:
         [ "$half" -ge 1 ] || half=1
         dart tool/affected_tests.dart \
           --files-from "$RUNNER_TEMP/shard_tests.txt" \
-          --outside-the-line --concurrency "$half"
+          --outside-the-line --concurrency "$half" --bundle
     # What this slice took, for the next run's deal — kept red or green,
     # and from a run cut short too: each batch that ended was timed. Only
     # this slice's files, so the shards' records never overlap and the

@@ -1,3 +1,4 @@
+import '../../helpers/screens_left_of_the_engine.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -28,6 +29,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/the_tree_goes_first.dart';
 
 /// 🗣️F-289 · F-221 (유저 2026-10-06): the bar across the export window's top
 /// is gone — 「이름줄 없는거 맘에들고」. A file a hand names is named at the
@@ -37,6 +39,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// 내보내기는 지금위치로하고 그 왼쪽에 붙여서 위치 지정하고 출력합니다라는
 /// 텍스트」, with the progress of a run between them 「출력때만 보이게」.
 void main() {
+  itsTestsLeaveScreensOfTheEngine({ScreensLeft.ofAShot});
   late Directory temp;
 
   setUp(() {
@@ -97,7 +100,7 @@ void main() {
     // than 「Art」 did (F-578-Q4).
     await tester.binding.setSurfaceSize(const Size(2040, 930));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    theTreeGoesFirst(tester);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

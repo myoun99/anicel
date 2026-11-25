@@ -107,8 +107,9 @@ void main() {
       // ↩️31 with the bake switch, gone 2026-10-23 (F-448); 31 again with
       // Send Feedback under About (I-139, 2026-10-28); 32 with the tool
       // strip's tools alone under Panels (I-128, 2026-10-30); 33 with Engine
-      // Stages under Debug (H66, 2026-11-23).
-      expect(menuActions, hasLength(33));
+      // Stages under Debug (H66, 2026-11-23); 29 with Debug's five switches
+      // one Debug Window (one-debug-window-shows-everything Q2, 2026-11-24).
+      expect(menuActions, hasLength(29));
       expect(
         editorActionDefinitions.last.shelf,
         ShortcutShelf.panels,
