@@ -632,7 +632,10 @@ void main() {
     expect(
       find.descendant(
         of: notice,
-        matching: find.text('Could not read the file. (1)'),
+        // H72: and why — nothing stands where it was.
+        matching: find.text(
+          'Could not read the file — no file at its path (1)',
+        ),
       ),
       findsOneWidget,
     );
