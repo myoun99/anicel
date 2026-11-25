@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/wait_window.dart'
     show waitOutTheWaitWindow, windowBehind;
@@ -43,6 +44,15 @@ import '../../helpers/surface_rgba_in_place.dart';
 /// own funnel for it to be the last drawing action at all, so the pen, the
 /// keys and the rail button are the real ones.
 void main() {
+  // The bucket's test below reads the frame's picture on the engine, and
+  // nothing holds a test's app while that opens (`appEngineGetsReady`): a
+  // launch's hold is what keeps a tap from coming before it. ↩️Missed here
+  // when 9c22d9bcc opened them for the two other files that press the
+  // bucket through HomePage — red alone since 6bd7706fb (11-12), green
+  // where a test before it in the process had opened them (card
+  // the-bucket-comes-back-too-is-red-on-master).
+  opensTheEnginesScreens();
+
   const frameA = FrameId('cv-frame-a');
   const frameB = FrameId('cv-frame-b');
   const frameC = FrameId('cv-frame-c');
