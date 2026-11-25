@@ -906,37 +906,9 @@ class TimelineRowCellsPainter extends CustomPainter
     final tiledSpans = <(int, int)>[];
     final grid = _tileGridIn(window, frameEndIndexExclusive);
     for (final (spanStart, spanEnd) in grid.shown) {
-      final picture = store.tileFor(
-        painter: this,
-        spanStartIndex: spanStart,
-        spanEndIndexExclusive: spanEnd,
-        devicePixelRatio: devicePixelRatio,
-      );
-      final tiles = picture != null
-          ? [
-              (
-                picture: picture,
-                spanStartIndex: spanStart,
-                spanEndIndexExclusive: spanEnd,
-              ),
-            ]
-          : store.standInFor(
-              painter: this,
-              spanStartIndex: spanStart,
-              spanEndIndexExclusive: spanEnd,
-              devicePixelRatio: devicePixelRatio,
-            );
-      if (tiles != null) {
-        var up = true;
-        for (final tile in tiles) {
-          up = _layTile(laying, tile, spanStart, spanEnd) && up;
-        }
-        if (up) {
-          tiledSpans.add((spanStart, spanEnd));
-          continue;
-        }
-        // Laid, and not on the frame up yet: drawn here as well till it is
-        // ([TimelineGridScreenLaying.lay]) — glyphs and all.
+      if (_laysUp(store, laying, spanStart, spanEnd)) {
+        tiledSpans.add((spanStart, spanEnd));
+        continue;
       }
       // ⛔This call was lost once, silently: `a055c51a`(2026-09-04) — a
       // commit about the accessibility sentence and the corner radius —
@@ -964,6 +936,47 @@ class TimelineRowCellsPainter extends CustomPainter
       );
     }
     return tiledSpans;
+  }
+
+  /// The span from [spanStart] to [spanEnd] laid on [laying] — its tile, or
+  /// what the tiles kept stand in for it with — answering whether the frame
+  /// up shows it. Where the store has nothing for it, or the frame up was
+  /// laid before it ([TimelineGridScreenLaying.lay]), the row paints it
+  /// itself, glyphs and all.
+  bool _laysUp(
+    TimelineGridTileStore store,
+    TimelineGridScreenLaying laying,
+    int spanStart,
+    int spanEnd,
+  ) {
+    final picture = store.tileFor(
+      painter: this,
+      spanStartIndex: spanStart,
+      spanEndIndexExclusive: spanEnd,
+      devicePixelRatio: devicePixelRatio,
+    );
+    final tiles = picture != null
+        ? [
+            (
+              picture: picture,
+              spanStartIndex: spanStart,
+              spanEndIndexExclusive: spanEnd,
+            ),
+          ]
+        : store.standInFor(
+            painter: this,
+            spanStartIndex: spanStart,
+            spanEndIndexExclusive: spanEnd,
+            devicePixelRatio: devicePixelRatio,
+          );
+    if (tiles == null) {
+      return false;
+    }
+    var up = true;
+    for (final tile in tiles) {
+      up = _layTile(laying, tile, spanStart, spanEnd) && up;
+    }
+    return up;
   }
 
   /// [tile] laid over the cells of the frames it holds from [from] to [to]
