@@ -481,6 +481,72 @@ void main() {
     );
   });
 
+  for (final axis in Axis.values) {
+    testWidgets('🚨a scroll ${axis.name} and back, a step a frame, has what '
+        'the view shows on the frame up in every frame, the GPU a frame '
+        'behind (card the-left-edge-of-the-rows-blinks-for-a-frame-as-a-'
+        'scroll-rewinds)', (tester) async {
+      // 검증 11-25: rewinding the timeline, the left 3 px of the rows were
+      // blank for a frame, nearly every time. The screen was laid again
+      // only once what the view shows had left where it was laid — so the
+      // frame up, laid before, had not got what was past it.
+      aSmallView(tester);
+      final gates = <Completer<GpuWaited?>>[];
+      debugOpenEngineScreen = (_, width, height) async {
+        surface = shownSurfaceOf(width, height);
+        surfaces.add(surface);
+        return ScreenTexture.debugOnSurface(
+          surface,
+          done: () {
+            gates.add(Completer<GpuWaited?>());
+            return gates.last.future;
+          },
+        );
+      };
+      Future<void> theGpuFinishes() async {
+        for (final gate in gates) {
+          if (!gate.isCompleted) {
+            gate.complete();
+          }
+        }
+        await tester.pump(Duration.zero);
+      }
+
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(
+        aGrid(_Row(() => tile), scroll: scroll, axis: axis),
+      );
+      await tester.pump();
+      await theGpuFinishes();
+      await tester.pump();
+      final lays = gates.length;
+
+      final steps = [
+        for (var to = 10.0; to <= 300; to += 10) to,
+        for (var to = 290.0; to >= 0; to -= 10) to,
+      ];
+      final bare = <double>[];
+      for (final to in steps) {
+        scroll.jumpTo(to);
+        await tester.pump();
+        final up = tester.layers.whereType<TextureLayer>().single.rect;
+        // What the view shows of the box, in its own pixels: the viewport's
+        // 100 along, from the scroll, and all of it across.
+        final (from, end) = axis == Axis.horizontal
+            ? (up.left, up.right)
+            : (up.top, up.bottom);
+        if (from > to || end < to + 100) {
+          bare.add(to);
+        }
+        await theGpuFinishes();
+      }
+
+      expect(gates.length - lays, greaterThan(1), reason: '⛔premise: laid');
+      expect(bare, isEmpty, reason: 'the frame up had not what was shown');
+    });
+  }
+
   testWidgets('a scroll down past what the screen holds lays it again, and '
       'back up', (tester) async {
     aSmallView(tester);
