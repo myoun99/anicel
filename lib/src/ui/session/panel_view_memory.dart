@@ -113,8 +113,7 @@ class PanelViewMemory {
   /// open one's as it stands — as a save writes them.
   Map<String, double> get conteZooms => {
     ..._conteZoomsLeft,
-    if (_timeline()?.value case final open?)
-      open: storyboardPixelsPerFrame.value,
+    ?_timeline()?.value: storyboardPixelsPerFrame.value,
   };
 
   /// Each timeline's conte zoom [saved] names, put back — the open one's
