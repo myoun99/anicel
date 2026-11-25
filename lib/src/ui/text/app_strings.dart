@@ -5148,6 +5148,7 @@ enum AppStrings {
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
     'importWarning.soundMissing': 'この場所に音声ファイルがありません: {path}',
     'importWarning.celUnreadable': '{file}: 絵を読めませんでした — {detail}',
+    'importWarning.fileUnreadable': '{file}: ファイルを読めませんでした — {detail}',
     'importWarning.psdBitDepth': '{depth}ビットのドキュメントを8ビットに落としました。',
     'importWarning.psdVectorMask': '{name}: ベクターマスクを無視しました。',
     'importWarning.psdComposite': '合成画像の圧縮形式 {compression} には対応していません — 飛ばしました。',
@@ -7133,6 +7134,7 @@ enum AppStrings {
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
     'importWarning.soundMissing': '사운드 파일이 이 자리에 없습니다: {path}',
     'importWarning.celUnreadable': '{file}: 그림을 읽지 못했습니다 — {detail}',
+    'importWarning.fileUnreadable': '{file}: 파일을 읽지 못했습니다 — {detail}',
     'importWarning.psdBitDepth': '{depth}비트 문서를 8비트로 낮췄습니다.',
     'importWarning.psdVectorMask': '{name}: 벡터 마스크를 무시했습니다.',
     'importWarning.psdComposite': '합성 이미지의 압축 방식 {compression} 은(는) 지원하지 않습니다 — 건너뛰었습니다.',
@@ -9191,6 +9193,8 @@ enum AppStrings {
         'Le fichier son n\'est pas à cet emplacement : {path}',
     'importWarning.celUnreadable':
         '{file} : impossible de lire l\'image — {detail}',
+    'importWarning.fileUnreadable':
+        '{file} : impossible de lire le fichier — {detail}',
     'importWarning.psdBitDepth': 'Document {depth} bits ramené à 8 bits.',
     'importWarning.psdVectorMask': '{name} : masque vectoriel ignoré.',
     'importWarning.psdComposite':
@@ -11208,6 +11212,7 @@ enum AppStrings {
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
     'importWarning.soundMissing': '此位置没有声音文件：{path}',
     'importWarning.celUnreadable': '{file}：无法读取该画面——{detail}',
+    'importWarning.fileUnreadable': '{file}：无法读取文件——{detail}',
     'importWarning.psdBitDepth': '{depth} 位文档已降为 8 位。',
     'importWarning.psdVectorMask': '{name}：已忽略矢量蒙版。',
     'importWarning.psdComposite': '合成图像使用压缩方式 {compression}——已跳过。',

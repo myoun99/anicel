@@ -575,8 +575,11 @@ class ProjectImportDoors {
   ///
   /// Returns the warnings (colour conversions, blends we have no
   /// equivalent for, adjustment layers left behind), or null when the
-  /// import did not happen — including a FLATTENED document, which has no
-  /// stack to expand and which merge reads perfectly.
+  /// import did not happen — the destination refused it, or a FLATTENED
+  /// document, which has no stack to expand and which merge reads
+  /// perfectly. A document that could not be READ throws what kept it:
+  /// ↩️it answered null too, and the window said 「no layers to expand」
+  /// of a file it never read (H72, 2026-11-25).
   Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
@@ -594,31 +597,25 @@ class ProjectImportDoors {
     if (gate == null) {
       return null;
     }
-    final Uint8List bytes;
-    try {
-      bytes = await readHeldMediaBytes(_holdBytes, path, onRead: onReading);
-    } on Object {
-      return null;
-    }
+    final bytes = await readHeldMediaBytes(
+      _holdBytes,
+      path,
+      onRead: onReading,
+    );
     final cutId = gate.cutId;
     final duration = gate.stillDuration(lengthFrames: lengthFrames);
     final newCut = gate.targetCut == null;
 
-    final PsdExpansion? expansion;
-    try {
-      expansion = await readPsdExpansion(
-        bytes: bytes,
-        displayName: gate.displayName,
-        cutId: cutId,
-        duration: duration,
-        canvas: gate.canvasSize,
-        newCut: newCut,
-        fit: fit,
-        mint: gate.mint,
-      );
-    } on Object {
-      return null;
-    }
+    final expansion = await readPsdExpansion(
+      bytes: bytes,
+      displayName: gate.displayName,
+      cutId: cutId,
+      duration: duration,
+      canvas: gate.canvasSize,
+      newCut: newCut,
+      fit: fit,
+      mint: gate.mint,
+    );
     if (expansion == null || expansion.layers.isEmpty) {
       return null;
     }
@@ -651,7 +648,7 @@ class ProjectImportDoors {
     // PICTURE is what the hand should land on.
     final picture = expansion.layers.lastWhere(
       (layer) => layer.kind != LayerKind.folder,
-      orElse: () => expansion!.layers.last,
+      orElse: () => expansion.layers.last,
     );
     _changes.refreshAfterCutCommand(preferredActiveLayerId: picture.id);
     _changes.notifyChanged();

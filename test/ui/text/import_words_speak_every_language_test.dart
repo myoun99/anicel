@@ -56,6 +56,7 @@ void main() {
     'tvppHoldNoDrawing',
     'tvppChunkBroken',
     'celUnreadable',
+    'fileUnreadable',
     'stagedCopy',
     'soundMissing',
     'clipRead',

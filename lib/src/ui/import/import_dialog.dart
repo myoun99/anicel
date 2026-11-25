@@ -1322,10 +1322,10 @@ class _ImportDialogState extends State<ImportDialog> {
   /// come is left out and named in the warnings the status line opens.
   Future<List<String>> _readablePathsOf(List<FolderGrant> picked) async {
     final paths = <String>[];
-    final missed = <String>[];
+    final missed = <WarningLine>[];
     for (final grant in picked) {
       if (grant.document case final document?) {
-        final copy = await _readableForImport(document.uri);
+        final (path: copy, :why) = await _readableForImport(document.uri);
         if (!mounted) {
           // The window went while the copy came: nothing will let go of it.
           if (copy != null) {
@@ -1334,7 +1334,7 @@ class _ImportDialogState extends State<ImportDialog> {
           return const [];
         }
         if (copy == null) {
-          missed.add(document.name);
+          missed.add(_unreadLine(document.name, why));
         } else {
           _intakeCopies.add(copy);
           paths.add(copy);
@@ -1345,10 +1345,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     if (picked.any((grant) => grant.document != null)) {
       setState(
-        () => _status = _Warnings([
-          for (final name in missed)
-            partsOf(AppText.strings.imUnreadable(name), about: name),
-        ]),
+        () => _status = _Warnings(missed),
       );
     }
     return paths;
@@ -1593,8 +1590,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// still produce one: an import names the asset after its file, so a
   /// temp name would land in the project as the drawing's name. Waiting
   /// for the PICK to read is the only outcome this door can use.
-  /// Answers null when the file never arrives or the user stops it.
-  Future<String?> _readableForImport(String path) async {
+  /// Answers no path when the file never arrives — and why, where the read
+  /// said — or the user stops it.
+  Future<({String? path, String? why})> _readableForImport(
+    String path,
+  ) async {
     _wait.begin();
     try {
       final source = await FolderPicker.materializeOpenedFile(
@@ -1609,13 +1609,13 @@ class _ImportDialogState extends State<ImportDialog> {
       );
       if (source.staged) {
         unawaited(FolderPicker.letGoOfStagedCopy(source));
-        return null;
+        return (path: null, why: null);
       }
-      return source.path;
+      return (path: source.path, why: null);
     } on MaterializeCancelled {
-      return null;
-    } on FileSystemException {
-      return null;
+      return (path: null, why: null);
+    } on FileSystemException catch (error) {
+      return (path: null, why: error.message);
     } finally {
       if (mounted) {
         _wait.ended();
@@ -2058,12 +2058,24 @@ class _ImportDialogState extends State<ImportDialog> {
     final held =
         !_landsInANewProject(path) &&
         widget.session.projectFile.projectHoldsMediaBytes(path);
-    if (held || await _readableForImport(path) != null) {
+    if (held) {
       return true;
     }
-    _warnOf(tally, path, AppText.strings.imUnreadable);
+    final (path: read, :why) = await _readableForImport(path);
+    if (read != null) {
+      return true;
+    }
+    tally.warnings.add(_unreadLine(_shownName(path), why));
     return false;
   }
+
+  /// [name] not reading, as a warning says it — and why, where the read
+  /// said (H72, 유저 2026-11-24: 「갤탭 psd임포트 경고뜨면서 안됨.
+  /// 읽을수없다면서」): the provider's refusal, or how far the file came.
+  /// A wait the user stopped says no why.
+  static WarningLine _unreadLine(String name, String? why) => why == null
+      ? partsOf(AppText.strings.imUnreadable(name), about: name)
+      : ImportWarning.fileUnreadable(name, why).partsFor(AppText.language);
 
   /// Places the rows of [placing] — every file handed in that is placed:
   /// a picture where the window says, a sound on the track's SE rows —
@@ -2691,20 +2703,27 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// EXPAND, which reports its outcome as warnings-or-null rather than a
   /// bool: a flattened PSD has no stack, and that is not a failure worth
-  /// the word "could not".
+  /// the word "could not". A document that could not be read says why, as
+  /// every door that reads pictures does ([ImportWarning.celUnreadable]).
   Future<bool> _expandPsd(
     _Landing into,
     String path,
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
-    final expanded = await into.session.importDoors.importPsdExpanded(
-      path: path,
-      destination: into.settings.into,
-      fit: into.settings.fit,
-      spot: into.spot,
-      onReading: fileReport.reading,
-    );
+    final List<ImportWarning>? expanded;
+    try {
+      expanded = await into.session.importDoors.importPsdExpanded(
+        path: path,
+        destination: into.settings.into,
+        fit: into.settings.fit,
+        spot: into.spot,
+        onReading: fileReport.reading,
+      );
+    } on Object catch (error) {
+      tally.warnAll([ImportWarning.celUnreadable(_shownName(path), '$error')]);
+      return false;
+    }
     if (expanded == null) {
       _warnOf(tally, path, AppText.strings.imPsdNoLayers);
       return false;

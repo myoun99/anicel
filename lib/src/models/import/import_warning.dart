@@ -15,6 +15,32 @@
 class ImportWarning {
   const ImportWarning(this.key, this.template, [this.values = const {}]);
 
+  /// A picture a door could not read — [file] the name it is known by — and
+  /// what kept it from being read.
+  ///
+  /// ↩️Built at each door till a third read pictures (H72, 2026-11-25): the
+  /// TVPaint and Clip Studio doors spelled this sentence out apiece, and the
+  /// PSD's expand said 「no layers to expand」 of a document it could not
+  /// read at all.
+  factory ImportWarning.celUnreadable(String file, String detail) =>
+      ImportWarning(
+        'celUnreadable',
+        '{file}: the picture could not be read — {detail}',
+        {'file': file, 'detail': detail},
+      );
+
+  /// A FILE the import could not read, and why (H72, 유저 2026-11-24:
+  /// 「갤탭 psd임포트 경고뜨면서 안됨. 읽을수없다면서」): the provider's
+  /// refusal, or how far the file arrived. ↩️It said only that it could not
+  /// be read, and five roads say that — so a photo of the warning could not
+  /// tell which one the Galaxy Tab took.
+  factory ImportWarning.fileUnreadable(String file, String detail) =>
+      ImportWarning(
+        'fileUnreadable',
+        '{file}: could not read the file — {detail}',
+        {'file': file, 'detail': detail},
+      );
+
   /// What a table answers, without its `importWarning.` prefix.
   final String key;
 

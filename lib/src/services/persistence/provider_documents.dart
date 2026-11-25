@@ -52,7 +52,8 @@ class ProviderDocumentRefused implements Exception {
 
 /// One document on its way into its working copy ([ProviderDocuments.copyIn]).
 class ProviderCopy {
-  ProviderCopy._(this.destination, this.done, this.length);
+  ProviderCopy._(this.destination, this.refusal, this.length)
+    : done = refusal.then((why) => why == null);
 
   /// Where the working copy stands once [done] answers true.
   final String destination;
@@ -68,6 +69,11 @@ class ProviderCopy {
   /// True once the whole document stands at [destination]; false when the
   /// provider refused it or the copy was stopped.
   final Future<bool> done;
+
+  /// Why the document did not come: what the provider said (its error, or
+  /// `cancelled`) — null once it stands at [destination]. H72: the native
+  /// side always said why, and the copy kept only that it had failed.
+  final Future<String?> refusal;
 
   /// How many bytes have come so far.
   Future<int> moved() => ProviderDocuments._moved(destination);
@@ -173,7 +179,7 @@ abstract final class ProviderDocuments {
   /// Starts bringing [uri] into a fresh working copy.
   static ProviderCopy copyIn(String uri) {
     final destination = _freshWorkingCopy(nameOf(uri));
-    final done = _call('copyDocument', {
+    final refusal = _call('copyDocument', {
       'uri': uri,
       'destinationPath': destination,
     }).then((answer) {
@@ -181,15 +187,15 @@ abstract final class ProviderDocuments {
         // What came so far is gone already (the native side drops its part
         // file); the folder made for it goes too.
         _discardFolderOf(destination);
-        return false;
+        return '${answer?['error'] ?? answer?['status'] ?? 'unavailable'}';
       }
       _documentOfCopy[destination] = uri;
-      return true;
+      return null;
     });
     final picked = _known[uri]?.length;
     return ProviderCopy._(
       destination,
-      done,
+      refusal,
       picked != null ? Future.value(picked) : _sizeOf(uri),
     );
   }
